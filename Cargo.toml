@@ -1,0 +1,55 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/shell/src-tauri",
+    "crates/core",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.85"
+
+[workspace.dependencies]
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Errors
+thiserror = "2"
+anyhow = "1"
+
+# IDs and time
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# URL handling
+url = { version = "2", features = ["serde"] }
+
+# Logging
+log = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Tauri
+tauri = { version = "2.11.2", features = [] }
+tauri-build = "2.6.2"
+tauri-plugin-log = "2"
+
+# Internal crates
+wis-core = { path = "crates/core" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true

@@ -1,0 +1,19 @@
+[package]
+name = "wis-core"
+description = "Core data model for the Wis browser: workspaces, tabs, settings, and immutable state operations."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "wis_core"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+url = { workspace = true }

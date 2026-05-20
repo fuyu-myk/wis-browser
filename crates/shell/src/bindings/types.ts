@@ -1,0 +1,162 @@
+// TypeScript mirror of the Rust types in `crates/core/src/`.
+// Future plan: generate by specta/tauri-specta once the type surface
+// stabilises.
+//
+// Field names are kept exactly as serde emits them (snake_case
+// on enum variants, original field names on structs). Wrapper functions
+// in `./commands.ts` accept camelCase arguments and translate at the
+// boundary.
+
+// ---------------------------------------------------------------------------
+// Newtype IDs — branded strings so the type system distinguishes them.
+// ---------------------------------------------------------------------------
+
+declare const TabIdBrand: unique symbol
+declare const WorkspaceIdBrand: unique symbol
+declare const WidgetIdBrand: unique symbol
+
+export type TabId = string & { readonly [TabIdBrand]: never }
+export type WorkspaceId = string & { readonly [WorkspaceIdBrand]: never }
+export type WidgetId = string & { readonly [WidgetIdBrand]: never }
+
+// ---------------------------------------------------------------------------
+// Enums — serialised by serde as snake_case strings.
+// ---------------------------------------------------------------------------
+
+export type LayoutMode = 'sidebar_left' | 'sidebar_right' | 'top_tabs'
+
+export type ThemeMode = 'light' | 'dark' | 'system'
+
+export type PrivacyMode = 'strict' | 'balanced' | 'permissive'
+
+export type AccentColor =
+  | 'primary'
+  | 'mint'
+  | 'rose'
+  | 'sun'
+  | 'lila'
+  | 'gray'
+  | 'ink'
+  | 'azur'
+
+export type WidgetKind =
+  | 'whats_app'
+  | 'telegram'
+  | 'discord'
+  | 'slack'
+  | 'messenger'
+  | 'x_twitter'
+  | 'instagram'
+  | 'custom'
+
+// ---------------------------------------------------------------------------
+// Domain types.
+// ---------------------------------------------------------------------------
+
+export interface FaviconRef {
+  hash: string
+}
+
+export interface Tab {
+  id: TabId
+  workspace_id: WorkspaceId
+  url: string // serialised from url::Url
+  title: string
+  favicon: FaviconRef | null
+  pinned: boolean
+  muted: boolean
+  created_at: string // ISO 8601 from chrono::DateTime<Utc>
+  last_active_at: string
+}
+
+export interface EssentialPin {
+  slot: number
+  label: string
+  url: string
+  icon: string | null
+}
+
+export interface Workspace {
+  id: WorkspaceId
+  name: string
+  accent: AccentColor
+  icon: string | null
+  tab_order: TabId[]
+  pinned_tab_ids: TabId[]
+  essentials: EssentialPin[]
+  active_tab_id: TabId | null
+  privacy_mode: PrivacyMode
+}
+
+export interface UserSettings {
+  layout: LayoutMode
+  theme: ThemeMode
+  glass_enabled: boolean
+  sidebar_collapsible: boolean
+  compact: boolean
+  default_privacy_mode: PrivacyMode
+  doh_resolver: string | null
+  homepage: string | null
+}
+
+/**
+ * Partial update for `UserSettings`. Fields left undefined mean "no change".
+ * Setting a field replaces the corresponding `UserSettings` field.
+ */
+export interface UserSettingsPatch {
+  layout?: LayoutMode
+  theme?: ThemeMode
+  glass_enabled?: boolean
+  sidebar_collapsible?: boolean
+  compact?: boolean
+  default_privacy_mode?: PrivacyMode
+  doh_resolver?: string
+  homepage?: string
+}
+
+export interface PerSitePolicy {
+  host: string
+  allow_javascript: boolean
+  allow_cookies: boolean
+  allow_third_party: boolean
+  allow_camera: boolean
+  allow_microphone: boolean
+  allow_location: boolean
+}
+
+export interface Widget {
+  id: WidgetId
+  kind: WidgetKind
+  label: string
+  url: string
+  icon: string | null
+  enabled: boolean
+}
+
+export interface BrowserState {
+  workspaces: Workspace[]
+  tabs: Tab[]
+  active_workspace_id: WorkspaceId
+  settings: UserSettings
+}
+
+// ---------------------------------------------------------------------------
+// Errors — tagged union matching `WisError`'s serde representation.
+// ---------------------------------------------------------------------------
+
+export type WisError =
+  | { code: 'workspace_not_found'; id: WorkspaceId }
+  | { code: 'tab_not_found'; id: TabId }
+  | { code: 'invalid_url'; url: string }
+  | { code: 'cannot_delete_last_workspace' }
+  | { code: 'tab_workspace_mismatch'; tab_id: TabId; workspace_id: WorkspaceId }
+  | { code: 'invalid_input'; message: string }
+
+export function isWisError(value: unknown): value is WisError {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'code' in value &&
+    typeof (value as { code: unknown }).code === 'string'
+  )
+}

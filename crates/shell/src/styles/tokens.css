@@ -1,0 +1,88 @@
+/* ─── FONTS ────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&display=swap');
+
+/* ─── PRIMARY SCALE ───────────────────────────────────────────── */
+:root {
+  --primary:        #8F99FB;
+  --primary-50:     #f0f1ff;
+  --primary-100:    #e2e4fe;
+  --primary-200:    #c5cafd;
+  --primary-300:    #a8b0fc;
+  --primary-400:    #8F99FB;
+  --primary-500:    #6b77f8;
+  --primary-600:    #4a58f4;
+  --primary-700:    #2e3ce0;
+  --primary-800:    #2230b3;
+  --primary-900:    #18237f;
+
+  --success:        #1a7a4a;
+  --success-bg:     #ecfdf4;
+  --warning:        #b45309;
+  --warning-bg:     #fffbeb;
+  --destructive:    #c0392b;
+  --destructive-bg: #fef2f2;
+  --info:           var(--primary-400);
+  --info-bg:        var(--primary-50);
+
+  --transition-speed: 220ms;
+}
+
+/* ─── LIGHT MODE (class + data-mode) ──────────────────────────── */
+.light, [data-mode="light"] {
+  --bg:             #F7F6F3;
+  --bg-subtle:      #F0EFeb;
+  --surface:        #FFFFFF;
+  --surface-raised: #FAFAF9;
+  --border:         #E4E2DC;
+  --border-strong:  #C9C7BF;
+  --text-primary:   #1A1916;
+  --text-secondary: #5C5A54;
+  --text-tertiary:  #9B9890;
+  --text-on-accent: #FFFFFF;
+  --overlay:        rgba(26,25,22,0.04);
+  --sidebar-bg:     #EFEEEA;
+  --success:        #1a7a4a;
+  --success-bg:     #ecfdf4;
+  --warning:        #b45309;
+  --warning-bg:     #fffbeb;
+  --destructive:    #c0392b;
+  --destructive-bg: #fef2f2;
+}
+
+/* ─── DARK MODE (class + data-mode) ───────────────────────────── */
+.dark, [data-mode="dark"] {
+  --bg:             #0F0F12;
+  --bg-subtle:      #151519;
+  --surface:        #1C1C22;
+  --surface-raised: #242429;
+  --border:         #2C2C34;
+  --border-strong:  #3E3E4A;
+  --text-primary:   #EEEDF0;
+  --text-secondary: #9998A8;
+  --text-tertiary:  #5E5D6E;
+  --text-on-accent: #FFFFFF;
+  --overlay:        rgba(238,237,240,0.04);
+  --sidebar-bg:     #131317;
+  --primary-50:     rgba(143,153,251,0.08);
+  --primary-100:    rgba(143,153,251,0.14);
+  --primary-200:    rgba(143,153,251,0.22);
+  --success:        #34d399;
+  --success-bg:     rgba(52,211,153,0.12);
+  --warning:        #fbbf24;
+  --warning-bg:     rgba(251,191,36,0.12);
+  --destructive:    #f87171;
+  --destructive-bg: rgba(248,113,113,0.12);
+}
+
+/* ─── RESET ───────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { height: 100%; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--text-primary);
+  overflow: hidden;
+}

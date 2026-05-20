@@ -1,0 +1,23 @@
+[package]
+name = "wis-browser-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+tauri = { workspace = true }
+tauri-plugin-log = { workspace = true }
+thiserror = { workspace = true }
+
+wis-core = { workspace = true }

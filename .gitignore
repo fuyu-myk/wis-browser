@@ -1,0 +1,36 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Rust
+target/
+**/*.rs.bk
+
+# Node
+node_modules/
+dist/
+.pnpm-store/
+
+# Tauri
+crates/shell/src-tauri/gen/
+crates/shell/src-tauri/target/
+
+# Editors / IDEs
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.env.local
+
+# Caches
+.*cache/
