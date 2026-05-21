@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/shell/src-tauri",
     "crates/core",
+    "crates/storage",
 ]
 
 [workspace.package]
@@ -40,8 +41,13 @@ tauri = { version = "2.11.2", features = [] }
 tauri-build = "2.6.2"
 tauri-plugin-log = "2"
 
+# Database
+rusqlite = { version = "0.34", features = ["bundled", "chrono", "url"] }
+rusqlite_migration = "2"
+
 # Internal crates
 wis-core = { path = "crates/core" }
+wis-storage = { path = "crates/storage" }
 
 [profile.release]
 opt-level = 3

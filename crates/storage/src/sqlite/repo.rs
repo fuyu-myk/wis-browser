@@ -1,0 +1,347 @@
+//! All CRUD against the SQLite schema.
+
+use std::collections::HashMap;
+
+use chrono::{DateTime, Utc};
+use rusqlite::{params, Connection, Transaction};
+use url::Url;
+use uuid::Uuid;
+use wis_core::{
+    AccentColor, BrowserState, EssentialPin, FaviconRef, PrivacyMode, Tab, TabId, UserSettings,
+    Workspace, WorkspaceId,
+};
+
+use crate::error::{StorageError, StorageResult};
+use crate::sqlite::convert::{enum_from_text, enum_to_text};
+
+const META_ACTIVE_WORKSPACE: &str = "active_workspace_id";
+const SETTINGS_KEY: &str = "user_settings";
+
+// ===========================================================================
+// SAVE
+// ===========================================================================
+
+pub fn save(tx: &Transaction<'_>, state: &BrowserState) -> StorageResult<()> {
+    clear_all(tx)?;
+
+    for (position, workspace) in state.workspaces.iter().enumerate() {
+        insert_workspace(tx, workspace, position as i64)?;
+
+        for pin in &workspace.essentials {
+            insert_essential(tx, workspace.id, pin)?;
+        }
+
+        for (tab_position, tab_id) in workspace.tab_order.iter().enumerate() {
+            let tab = state.tabs.iter().find(|t| t.id == *tab_id).ok_or_else(|| {
+                StorageError::DataCorruption(format!(
+                    "workspace {} references missing tab {tab_id}",
+                    workspace.id
+                ))
+            })?;
+            insert_tab(tx, tab, tab_position as i64)?;
+        }
+    }
+
+    save_settings(tx, &state.settings)?;
+    upsert_meta(
+        tx,
+        META_ACTIVE_WORKSPACE,
+        &uuid_string(state.active_workspace_id.into()),
+    )?;
+
+    Ok(())
+}
+
+fn clear_all(tx: &Transaction<'_>) -> StorageResult<()> {
+    for table in ["essentials", "tabs", "workspaces", "settings", "meta"] {
+        tx.execute(&format!("DELETE FROM {table}"), [])?;
+    }
+
+    Ok(())
+}
+
+fn insert_workspace(
+    tx: &Transaction<'_>,
+    workspace: &Workspace,
+    position: i64,
+) -> StorageResult<()> {
+    tx.execute(
+        "INSERT INTO workspaces (id, position, name, accent, icon, privacy_mode, active_tab_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            uuid_string(workspace.id.into()),
+            position,
+            workspace.name,
+            enum_to_text(&workspace.accent)?,
+            workspace.icon,
+            enum_to_text(&workspace.privacy_mode)?,
+            workspace.active_tab_id.map(|id| uuid_string(id.into())),
+        ],
+    )?;
+
+    Ok(())
+}
+
+fn insert_tab(tx: &Transaction<'_>, tab: &Tab, position: i64) -> StorageResult<()> {
+    tx.execute(
+        "INSERT INTO tabs (id, workspace_id, position, url, title, favicon_hash,
+                           pinned, muted, created_at, last_active_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            uuid_string(tab.id.into()),
+            uuid_string(tab.workspace_id.into()),
+            position,
+            tab.url,
+            tab.title,
+            tab.favicon.as_ref().map(|f| f.hash.clone()),
+            tab.pinned,
+            tab.muted,
+            tab.created_at,
+            tab.last_active_at,
+        ],
+    )?;
+
+    Ok(())
+}
+
+fn insert_essential(
+    tx: &Transaction<'_>,
+    workspace_id: WorkspaceId,
+    pin: &EssentialPin,
+) -> StorageResult<()> {
+    tx.execute(
+        "INSERT INTO essentials (workspace_id, slot, label, url, icon)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            uuid_string(workspace_id.into()),
+            pin.slot as i64,
+            pin.label,
+            pin.url,
+            pin.icon,
+        ],
+    )?;
+
+    Ok(())
+}
+
+fn save_settings(tx: &Transaction<'_>, settings: &UserSettings) -> StorageResult<()> {
+    let json = serde_json::to_string(settings)?;
+    tx.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)",
+        params![SETTINGS_KEY, json],
+    )?;
+
+    Ok(())
+}
+
+fn upsert_meta(tx: &Transaction<'_>, key: &str, value: &str) -> StorageResult<()> {
+    tx.execute(
+        "INSERT INTO meta (key, value) VALUES (?1, ?2)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )?;
+
+    Ok(())
+}
+
+// ===========================================================================
+// LOAD
+// ===========================================================================
+
+pub fn load(conn: &Connection) -> StorageResult<Option<BrowserState>> {
+    let workspaces = load_workspaces(conn)?;
+    if workspaces.is_empty() {
+        return Ok(None);
+    }
+
+    // Loaded in (workspace_id, position) order
+    let mut tabs = load_tabs(conn)?;
+    let essentials = load_essentials(conn)?;
+    let settings = load_settings(conn)?.unwrap_or_default();
+    let active_workspace_id = load_active_workspace(conn)?
+        .or_else(|| workspaces.first().map(|w| w.id))
+        .ok_or_else(|| {
+            StorageError::DataCorruption(
+                "no active workspace and no workspaces to fall back to".into(),
+            )
+        })?;
+
+    let workspaces = assemble_workspaces(workspaces, &tabs, essentials);
+
+    // The BrowserState convention is that `tabs` follows insertion order,
+    // which equals `created_at` ASC. Re-sort after assemble has consumed the
+    // position-ordered Vec.
+    tabs.sort_by_key(|t| t.created_at);
+
+    let state = BrowserState {
+        workspaces,
+        tabs,
+        active_workspace_id,
+        settings,
+    };
+
+    super::validate(&state)?;
+    Ok(Some(state))
+}
+
+/// Workspaces without their tab_order / pinned_tab_ids / essentials filled in.
+/// Those derive from the `tabs` and `essentials` tables and get attached in
+/// [`assemble_workspaces`].
+fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, accent, icon, privacy_mode, active_tab_id
+         FROM workspaces ORDER BY position ASC",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+
+    while let Some(row) = rows.next()? {
+        let id_str: String = row.get(0)?;
+        let active_tab_id_str: Option<String> = row.get(5)?;
+
+        out.push(Workspace {
+            id: WorkspaceId::from(parse_uuid(&id_str)?),
+            name: row.get(1)?,
+            accent: enum_from_text::<AccentColor>(&row.get::<_, String>(2)?)?,
+            icon: row.get(3)?,
+            privacy_mode: enum_from_text::<PrivacyMode>(&row.get::<_, String>(4)?)?,
+            active_tab_id: active_tab_id_str
+                .as_deref()
+                .map(parse_uuid)
+                .transpose()?
+                .map(TabId::from),
+            tab_order: Vec::new(),
+            pinned_tab_ids: Vec::new(),
+            essentials: Vec::new(),
+        });
+    }
+
+    Ok(out)
+}
+
+fn load_tabs(conn: &Connection) -> StorageResult<Vec<Tab>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, workspace_id, url, title, favicon_hash, pinned, muted,
+                created_at, last_active_at
+         FROM tabs
+         ORDER BY workspace_id ASC, position ASC",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+
+    while let Some(row) = rows.next()? {
+        let id_str: String = row.get(0)?;
+        let workspace_id_str: String = row.get(1)?;
+        let favicon_hash: Option<String> = row.get(4)?;
+
+        out.push(Tab {
+            id: TabId::from(parse_uuid(&id_str)?),
+            workspace_id: WorkspaceId::from(parse_uuid(&workspace_id_str)?),
+            url: row.get::<_, Url>(2)?,
+            title: row.get(3)?,
+            favicon: favicon_hash.map(|hash| FaviconRef { hash }),
+            pinned: row.get(5)?,
+            muted: row.get(6)?,
+            created_at: row.get::<_, DateTime<Utc>>(7)?,
+            last_active_at: row.get::<_, DateTime<Utc>>(8)?,
+        });
+    }
+
+    Ok(out)
+}
+
+fn load_essentials(conn: &Connection) -> StorageResult<HashMap<WorkspaceId, Vec<EssentialPin>>> {
+    let mut stmt = conn.prepare(
+        "SELECT workspace_id, slot, label, url, icon FROM essentials
+         ORDER BY workspace_id ASC, slot ASC",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut out: HashMap<WorkspaceId, Vec<EssentialPin>> = HashMap::new();
+
+    while let Some(row) = rows.next()? {
+        let workspace_id_str: String = row.get(0)?;
+        let workspace_id = WorkspaceId::from(parse_uuid(&workspace_id_str)?);
+
+        out.entry(workspace_id).or_default().push(EssentialPin {
+            slot: row.get::<_, i64>(1)? as u8,
+            label: row.get(2)?,
+            url: row.get(3)?,
+            icon: row.get(4)?,
+        });
+    }
+
+    Ok(out)
+}
+
+fn load_settings(conn: &Connection) -> StorageResult<Option<UserSettings>> {
+    let json: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            params![SETTINGS_KEY],
+            |row| row.get(0),
+        )
+        .map(Some)
+        .or_else(|err| match err {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+
+    Ok(json.map(|s| serde_json::from_str(&s)).transpose()?)
+}
+
+fn load_active_workspace(conn: &Connection) -> StorageResult<Option<WorkspaceId>> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM meta WHERE key = ?1",
+            params![META_ACTIVE_WORKSPACE],
+            |row| row.get(0),
+        )
+        .map(Some)
+        .or_else(|err| match err {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+
+    value
+        .as_deref()
+        .map(parse_uuid)
+        .transpose()
+        .map(|opt| opt.map(WorkspaceId::from))
+}
+
+fn assemble_workspaces(
+    mut workspaces: Vec<Workspace>,
+    tabs: &[Tab],
+    mut essentials: HashMap<WorkspaceId, Vec<EssentialPin>>,
+) -> Vec<Workspace> {
+    for workspace in &mut workspaces {
+        let mut tab_order = Vec::new();
+        let mut pinned = Vec::new();
+
+        for tab in tabs.iter().filter(|t| t.workspace_id == workspace.id) {
+            tab_order.push(tab.id);
+
+            if tab.pinned {
+                pinned.push(tab.id);
+            }
+        }
+
+        workspace.tab_order = tab_order;
+        workspace.pinned_tab_ids = pinned;
+        workspace.essentials = essentials.remove(&workspace.id).unwrap_or_default();
+    }
+
+    workspaces
+}
+
+// ===========================================================================
+// Helpers
+// ===========================================================================
+
+fn uuid_string(id: Uuid) -> String {
+    id.to_string()
+}
+
+fn parse_uuid(s: &str) -> StorageResult<Uuid> {
+    Uuid::parse_str(s).map_err(StorageError::from)
+}

@@ -28,6 +28,9 @@ pub enum WisError {
 
     #[error("invalid input: {message}")]
     InvalidInput { message: String },
+
+    #[error("persistence failed: {reason}")]
+    PersistenceFailed { reason: String },
 }
 
 pub type WisResult<T> = Result<T, WisError>;

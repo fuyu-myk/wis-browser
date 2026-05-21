@@ -1,206 +1,187 @@
 //! Tauri IPC commands exposing the browser state model to the frontend.
 //!
-//! Every command is a thin wrapper over an immutable transition on
-//! [`BrowserState`]. The lock is held for the duration of the operation, the
-//! new state replaces the old, and a typed value is returned. Errors are
-//! [`WisError`] from `wis-core` and serialise across IPC unchanged.
+//! Each mutating command runs through [`mutate`], which:
+//!   1. Acquires the async mutex on the in-memory state.
+//!   2. Snapshots the previous state for rollback.
+//!   3. Computes the next state via a pure transition function from
+//!      `wis-core`.
+//!   4. Persists the next state to the configured `Storage`.
+//!   5. On persist failure: reverts the in-memory state and surfaces a
+//!      [`WisError::PersistenceFailed`].
+//!
+//! Read-only commands acquire the mutex briefly to clone the relevant slice.
 
-use crate::state::AppState;
 use tauri::State;
 use wis_core::{
-    AccentColor, BrowserState, Tab, TabId, UserSettings, UserSettingsPatch, WisResult, Workspace,
-    WorkspaceId,
+    AccentColor, BrowserState, Tab, TabId, UserSettings, UserSettingsPatch, WisError, WisResult,
+    Workspace, WorkspaceId,
 };
 
-fn read_state(state: &State<'_, AppState>) -> BrowserState {
-    state
-        .browser
-        .read()
-        .expect("AppState lock poisoned")
-        .clone()
+use crate::state::AppState;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Snapshot the current state. Used by every read-only command.
+async fn read_state(state: &State<'_, AppState>) -> BrowserState {
+    state.browser.lock().await.clone()
 }
 
-fn replace_state(state: &State<'_, AppState>, next: BrowserState) {
-    let mut guard = state.browser.write().expect("AppState lock poisoned");
-    *guard = next;
+/// Drive a state-mutating transition end-to-end: compute → persist → commit
+/// (or revert on persist failure).
+///
+/// `transition` is a pure function from the current state to `(next_state,
+/// return_value)`. It must not perform I/O.
+async fn mutate<R, F>(state: &State<'_, AppState>, transition: F) -> WisResult<R>
+where
+    F: FnOnce(&BrowserState) -> WisResult<(BrowserState, R)>,
+{
+    let mut guard = state.browser.lock().await;
+    let previous = guard.clone();
+    let (next, value) = transition(&guard)?;
+    *guard = next.clone();
+
+    let storage = state.storage.clone();
+    let persist = tokio::task::spawn_blocking(move || storage.save_state(&next))
+        .await
+        .map_err(|join_err| WisError::PersistenceFailed {
+            reason: format!("persistence task panicked: {join_err}"),
+        })?;
+
+    if let Err(err) = persist {
+        log::error!("persisting state failed: {err}; reverting in-memory state");
+        *guard = previous;
+
+        return Err(WisError::PersistenceFailed {
+            reason: err.to_string(),
+        });
+    }
+
+    Ok(value)
 }
 
-// -- queries ----------------------------------------------------------------
+/// Convenience for transitions that don't have an additional return value.
+async fn mutate_unit<F>(state: &State<'_, AppState>, transition: F) -> WisResult<()>
+where
+    F: FnOnce(&BrowserState) -> WisResult<BrowserState>,
+{
+    mutate(state, |s| transition(s).map(|next| (next, ()))).await
+}
+
+// ---------------------------------------------------------------------------
+// Queries
+// ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn get_browser_state(state: State<'_, AppState>) -> BrowserState {
-    read_state(&state)
+pub async fn get_browser_state(state: State<'_, AppState>) -> Result<BrowserState, WisError> {
+    Ok(read_state(&state).await)
 }
 
 #[tauri::command]
-pub fn get_workspace(state: State<'_, AppState>, id: WorkspaceId) -> WisResult<Workspace> {
-    read_state(&state).workspace(id).cloned()
+pub async fn get_workspace(state: State<'_, AppState>, id: WorkspaceId) -> WisResult<Workspace> {
+    read_state(&state).await.workspace(id).cloned()
 }
 
 #[tauri::command]
-pub fn get_tab(state: State<'_, AppState>, id: TabId) -> WisResult<Tab> {
-    read_state(&state).tab(id).cloned()
+pub async fn get_tab(state: State<'_, AppState>, id: TabId) -> WisResult<Tab> {
+    read_state(&state).await.tab(id).cloned()
 }
 
 #[tauri::command]
-pub fn get_settings(state: State<'_, AppState>) -> UserSettings {
-    read_state(&state).settings.clone()
+pub async fn get_settings(state: State<'_, AppState>) -> Result<UserSettings, WisError> {
+    Ok(read_state(&state).await.settings)
 }
 
-// -- workspace mutations ----------------------------------------------------
+// ---------------------------------------------------------------------------
+// Workspace mutations
+// ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn create_workspace(
+pub async fn create_workspace(
     state: State<'_, AppState>,
     name: String,
     accent: AccentColor,
-) -> Workspace {
-    let current = read_state(&state);
-    let (next, workspace) = current.with_new_workspace(name, accent);
-    replace_state(&state, next);
-
-    workspace
+) -> WisResult<Workspace> {
+    mutate(&state, |s| Ok(s.with_new_workspace(name, accent))).await
 }
 
 #[tauri::command]
-pub fn rename_workspace(
+pub async fn rename_workspace(
     state: State<'_, AppState>,
     id: WorkspaceId,
     name: String,
 ) -> WisResult<Workspace> {
-    let current = read_state(&state);
-    let next = current.with_renamed_workspace(id, name)?;
-    let renamed = next.workspace(id)?.clone();
+    mutate(&state, |s| {
+        let next = s.with_renamed_workspace(id, name)?;
+        let renamed = next.workspace(id)?.clone();
 
-    replace_state(&state, next);
-    Ok(renamed)
+        Ok((next, renamed))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn delete_workspace(state: State<'_, AppState>, id: WorkspaceId) -> WisResult<()> {
-    let current = read_state(&state);
-    let next = current.with_workspace_removed(id)?;
-
-    replace_state(&state, next);
-    Ok(())
+pub async fn delete_workspace(state: State<'_, AppState>, id: WorkspaceId) -> WisResult<()> {
+    mutate_unit(&state, |s| s.with_workspace_removed(id)).await
 }
 
 #[tauri::command]
-pub fn set_active_workspace(state: State<'_, AppState>, id: WorkspaceId) -> WisResult<()> {
-    let current = read_state(&state);
-    let next = current.with_active_workspace(id)?;
-
-    replace_state(&state, next);
-    Ok(())
+pub async fn set_active_workspace(state: State<'_, AppState>, id: WorkspaceId) -> WisResult<()> {
+    mutate_unit(&state, |s| s.with_active_workspace(id)).await
 }
 
-// -- tab mutations ----------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Tab mutations
+// ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn create_tab(
+pub async fn create_tab(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     url: String,
 ) -> WisResult<Tab> {
-    let current = read_state(&state);
-    let (next, tab) = current.with_new_tab(workspace_id, &url)?;
-
-    replace_state(&state, next);
-    Ok(tab)
+    mutate(&state, |s| s.with_new_tab(workspace_id, &url)).await
 }
 
 #[tauri::command]
-pub fn close_tab(state: State<'_, AppState>, id: TabId) -> WisResult<()> {
-    let current = read_state(&state);
-    let next = current.with_tab_closed(id)?;
-
-    replace_state(&state, next);
-    Ok(())
+pub async fn close_tab(state: State<'_, AppState>, id: TabId) -> WisResult<()> {
+    mutate_unit(&state, |s| s.with_tab_closed(id)).await
 }
 
 #[tauri::command]
-pub fn reorder_tabs(
+pub async fn reorder_tabs(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     order: Vec<TabId>,
 ) -> WisResult<()> {
-    let current = read_state(&state);
-    let next = current.with_tab_order(workspace_id, order)?;
-
-    replace_state(&state, next);
-    Ok(())
+    mutate_unit(&state, |s| s.with_tab_order(workspace_id, order)).await
 }
 
 #[tauri::command]
-pub fn pin_tab(state: State<'_, AppState>, id: TabId, pinned: bool) -> WisResult<Tab> {
-    let current = read_state(&state);
-    let (next, tab) = current.with_tab_pinned(id, pinned)?;
-
-    replace_state(&state, next);
-    Ok(tab)
+pub async fn pin_tab(state: State<'_, AppState>, id: TabId, pinned: bool) -> WisResult<Tab> {
+    mutate(&state, |s| s.with_tab_pinned(id, pinned)).await
 }
 
 #[tauri::command]
-pub fn set_active_tab(state: State<'_, AppState>, id: TabId) -> WisResult<()> {
-    let current = read_state(&state);
-    let next = current.with_active_tab(id)?;
-
-    replace_state(&state, next);
-    Ok(())
+pub async fn set_active_tab(state: State<'_, AppState>, id: TabId) -> WisResult<()> {
+    mutate_unit(&state, |s| s.with_active_tab(id)).await
 }
 
-// -- settings ---------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn update_settings(state: State<'_, AppState>, patch: UserSettingsPatch) -> UserSettings {
-    let current = read_state(&state);
-    let next = current.with_settings(patch);
-    let settings = next.settings.clone();
+pub async fn update_settings(
+    state: State<'_, AppState>,
+    patch: UserSettingsPatch,
+) -> WisResult<UserSettings> {
+    mutate(&state, |s| {
+        let next = s.with_settings(patch);
+        let settings = next.settings.clone();
 
-    replace_state(&state, next);
-    settings
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use wis_core::{LayoutMode, ThemeMode};
-
-    fn state() -> AppState {
-        AppState::new_with_defaults()
-    }
-
-    fn snapshot(s: &AppState) -> BrowserState {
-        s.browser.read().unwrap().clone()
-    }
-
-    #[test]
-    fn creating_and_listing_a_workspace_round_trips_through_state() {
-        let s = state();
-        let before = snapshot(&s);
-        assert_eq!(before.workspaces.len(), 1);
-
-        let (next, _ws) = before.with_new_workspace("Side".into(), AccentColor::Sun);
-        *s.browser.write().unwrap() = next;
-
-        let after = snapshot(&s);
-        assert_eq!(after.workspaces.len(), 2);
-    }
-
-    #[test]
-    fn settings_patch_is_applied_through_state() {
-        let s = state();
-        let current = snapshot(&s);
-        let next = current.with_settings(UserSettingsPatch {
-            layout: Some(LayoutMode::TopTabs),
-            theme: Some(ThemeMode::Dark),
-            ..Default::default()
-        });
-
-        *s.browser.write().unwrap() = next;
-        
-        let after = snapshot(&s);
-        assert_eq!(after.settings.layout, LayoutMode::TopTabs);
-        assert_eq!(after.settings.theme, ThemeMode::Dark);
-    }
+        Ok((next, settings))
+    })
+    .await
 }

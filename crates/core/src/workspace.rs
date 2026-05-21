@@ -135,7 +135,7 @@ impl Workspace {
         } else {
             next.pinned_tab_ids.retain(|t| *t != tab_id);
         }
-        
+
         next
     }
 

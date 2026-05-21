@@ -2,7 +2,7 @@
 //!
 //! Pure, immutable types describing the browser's persistent state:
 //! workspaces, tabs, settings, and the operations that produce new states
-//! from old ones. 
+//! from old ones.
 
 pub mod error;
 pub mod ids;

@@ -151,6 +151,7 @@ export type WisError =
   | { code: 'cannot_delete_last_workspace' }
   | { code: 'tab_workspace_mismatch'; tab_id: TabId; workspace_id: WorkspaceId }
   | { code: 'invalid_input'; message: string }
+  | { code: 'persistence_failed'; reason: string }
 
 export function isWisError(value: unknown): value is WisError {
   return (

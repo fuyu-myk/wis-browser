@@ -1,25 +1,26 @@
-//! Application state container managed by Tauri. Wraps [`BrowserState`] in
-//! an `RwLock` so commands can read and update it concurrently.
+//! Application state container managed by Tauri.
 //!
-//! Storage and proxy handles will be added alongside the browser state in future.
+//! Holds the in-memory [`BrowserState`] alongside the persistent
+//! [`Storage`] backend. Commands acquire the async mutex, compute the new
+//! state, persist it, then replace the in-memory copy — see
+//! `mutate` in `commands`.
 
-use std::sync::RwLock;
+use std::sync::Arc;
+
+use tokio::sync::Mutex;
 use wis_core::BrowserState;
+use wis_storage::Storage;
 
 pub struct AppState {
-    pub browser: RwLock<BrowserState>,
+    pub browser: Mutex<BrowserState>,
+    pub storage: Arc<dyn Storage>,
 }
 
 impl AppState {
-    pub fn new_with_defaults() -> Self {
+    pub fn new(browser: BrowserState, storage: Arc<dyn Storage>) -> Self {
         Self {
-            browser: RwLock::new(BrowserState::new_with_defaults()),
+            browser: Mutex::new(browser),
+            storage,
         }
-    }
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self::new_with_defaults()
     }
 }

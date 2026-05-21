@@ -19,5 +19,7 @@ log = { workspace = true }
 tauri = { workspace = true }
 tauri-plugin-log = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 
 wis-core = { workspace = true }
+wis-storage = { workspace = true }

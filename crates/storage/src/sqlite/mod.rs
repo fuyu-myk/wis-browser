@@ -1,0 +1,88 @@
+//! SQLite-backed [`Storage`] implementation.
+//!
+//! State is persisted in a small set of normalised tables (see
+//! `migrations`). Each save replaces the whole persisted state in a single
+//! atomic transaction.
+//!
+//! Loading is the inverse: reconstruct [`BrowserState`] from the tables, then
+//! validate against [`BrowserState::invariant_violations`] before handing it
+//! back. A corrupted store returns [`StorageError::DataCorruption`] so the
+//! shell can log and fall back to defaults rather than crash.
+
+mod convert;
+mod migrations;
+mod repo;
+
+use std::path::Path;
+use std::sync::Mutex;
+
+use rusqlite::Connection;
+use wis_core::BrowserState;
+
+use crate::error::{StorageError, StorageResult};
+use crate::traits::Storage;
+
+pub struct SqliteStorage {
+    conn: Mutex<Connection>,
+}
+
+impl SqliteStorage {
+    /// Open (or create) the SQLite file at `path` and run pending migrations.
+    pub fn open(path: impl AsRef<Path>) -> StorageResult<Self> {
+        let mut conn = Connection::open(path)?;
+        Self::configure(&conn)?;
+        migrations::run(&mut conn)?;
+
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
+    }
+
+    /// Open an in-memory database. Used by tests.
+    pub fn open_in_memory() -> StorageResult<Self> {
+        let mut conn = Connection::open_in_memory()?;
+        Self::configure(&conn)?;
+        migrations::run(&mut conn)?;
+
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
+    }
+
+    fn configure(conn: &Connection) -> StorageResult<()> {
+        // WAL gives us readers concurrent with writers and survives crashes
+        // mid-transaction; FULL synchronous is the safe-by-default fsync mode.
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "synchronous", "FULL")?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+
+        Ok(())
+    }
+}
+
+impl Storage for SqliteStorage {
+    fn load_state(&self) -> StorageResult<Option<BrowserState>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        repo::load(&conn)
+    }
+
+    fn save_state(&self, state: &BrowserState) -> StorageResult<()> {
+        let mut conn = self.conn.lock().expect("storage mutex poisoned");
+        let tx = conn.transaction()?;
+
+        repo::save(&tx, state)?;
+        tx.commit()?;
+
+        Ok(())
+    }
+}
+
+/// Verify the loaded state passes [`BrowserState::invariant_violations`].
+pub(crate) fn validate(state: &BrowserState) -> StorageResult<()> {
+    let violations = state.invariant_violations();
+    if !violations.is_empty() {
+        return Err(StorageError::DataCorruption(violations.join("; ")));
+    }
+
+    Ok(())
+}

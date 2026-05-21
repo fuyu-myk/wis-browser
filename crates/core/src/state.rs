@@ -71,7 +71,7 @@ impl BrowserState {
         let workspace = Workspace::new(name, accent);
         let mut workspaces = self.workspaces.clone();
         workspaces.push(workspace.clone());
-        
+
         (
             Self {
                 workspaces,
