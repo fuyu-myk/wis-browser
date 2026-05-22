@@ -153,6 +153,27 @@ export type WisError =
   | { code: 'invalid_input'; message: string }
   | { code: 'persistence_failed'; reason: string }
 
+// ---------------------------------------------------------------------------
+// Privacy decision engine (wis-network).
+// ---------------------------------------------------------------------------
+
+export type RequestType =
+  | 'document'
+  | 'subdocument'
+  | 'stylesheet'
+  | 'script'
+  | 'image'
+  | 'font'
+  | 'media'
+  | 'xhr'
+  | 'websocket'
+  | 'other'
+
+export type Decision =
+  | { kind: 'allow' }
+  | { kind: 'rewrite'; url: string }
+  | { kind: 'block'; reason: string }
+
 export function isWisError(value: unknown): value is WisError {
   return (
     typeof value === 'object' &&

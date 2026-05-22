@@ -4,6 +4,7 @@ members = [
     "crates/shell/src-tauri",
     "crates/core",
     "crates/storage",
+    "crates/network",
 ]
 
 [workspace.package]
@@ -45,9 +46,14 @@ tauri-plugin-log = "2"
 rusqlite = { version = "0.34", features = ["bundled", "chrono", "url"] }
 rusqlite_migration = "2"
 
+# Networking & privacy
+hickory-resolver = { version = "0.25", default-features = false, features = ["tokio", "https-ring", "webpki-roots"] }
+adblock = { version = "0.12", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }
+
 # Internal crates
 wis-core = { path = "crates/core" }
 wis-storage = { path = "crates/storage" }
+wis-network = { path = "crates/network" }
 
 [profile.release]
 opt-level = 3

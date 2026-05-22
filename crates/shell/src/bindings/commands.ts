@@ -8,6 +8,8 @@ import { invoke } from '@tauri-apps/api/core'
 import type {
   AccentColor,
   BrowserState,
+  Decision,
+  RequestType,
   Tab,
   TabId,
   UserSettings,
@@ -79,6 +81,33 @@ export const commands = {
 
   async updateSettings(patch: UserSettingsPatch): Promise<UserSettings> {
     return invoke('update_settings', { patch })
+  },
+
+  // -- privacy engine -------------------------------------------------------
+
+  /**
+   * Ask the privacy engine what it would do with `url` requested from
+   * `sourceUrl`. This inspector is read-only.
+   */
+  async checkUrlPolicy(
+    url: string,
+    sourceUrl: string,
+    requestType: RequestType,
+  ): Promise<Decision> {
+    return invoke('check_url_policy', {
+      url,
+      source_url: sourceUrl,
+      request_type: requestType,
+    })
+  },
+
+  /**
+   * Resolve `hostname` via the configured DoH resolver. Returns IPv4 / IPv6
+   * addresses as strings. Useful for verifying DoH connectivity from
+   * devtools.
+   */
+  async resolveHostname(hostname: string): Promise<string[]> {
+    return invoke('resolve_hostname', { hostname })
   },
 } as const
 

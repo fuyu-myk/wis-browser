@@ -1,0 +1,28 @@
+[package]
+name = "wis-network"
+description = "Privacy decision engine for the Wis browser: DoH, tracker blocking, HTTPS-First."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "wis_network"
+path = "src/lib.rs"
+
+[dependencies]
+wis-core = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+async-trait = "0.1"
+
+hickory-resolver = { workspace = true }
+adblock = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use tauri::Manager;
 use wis_core::BrowserState;
+use wis_network::TrackerBlocker;
 use wis_storage::{SqliteStorage, Storage};
 
 use state::AppState;
@@ -35,7 +36,26 @@ pub fn run() {
             let browser_state = hydrate_state(&storage);
             let storage: Arc<dyn Storage> = Arc::new(storage);
 
-            app.manage(AppState::new(browser_state, storage));
+            // Build the privacy engine's long-lived handles. The tracker
+            // blocker parses its filter list once here; the resolver is
+            // picked based on the hydrated settings' DoH endpoint.
+            let tracker_blocker = match TrackerBlocker::with_default_list() {
+                Ok(b) => Arc::new(b),
+                Err(err) => {
+                    log::error!(
+                        "failed to build tracker blocker ({err}); falling back to empty list"
+                    );
+                    Arc::new(TrackerBlocker::empty())
+                }
+            };
+            let resolver = state::build_resolver(browser_state.settings.doh_resolver.as_deref());
+
+            app.manage(AppState::new(
+                browser_state,
+                storage,
+                tracker_blocker,
+                resolver,
+            ));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -53,6 +73,8 @@ pub fn run() {
             commands::pin_tab,
             commands::set_active_tab,
             commands::update_settings,
+            commands::check_url_policy,
+            commands::resolve_hostname,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

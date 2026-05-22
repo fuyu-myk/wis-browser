@@ -20,6 +20,8 @@ tauri = { workspace = true }
 tauri-plugin-log = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+url = { workspace = true }
 
 wis-core = { workspace = true }
 wis-storage = { workspace = true }
+wis-network = { workspace = true }

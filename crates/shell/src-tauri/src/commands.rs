@@ -12,10 +12,12 @@
 //! Read-only commands acquire the mutex briefly to clone the relevant slice.
 
 use tauri::State;
+use url::Url;
 use wis_core::{
     AccentColor, BrowserState, Tab, TabId, UserSettings, UserSettingsPatch, WisError, WisResult,
     Workspace, WorkspaceId,
 };
+use wis_network::{Decision, OutboundRequest, RequestType};
 
 use crate::state::AppState;
 
@@ -184,4 +186,53 @@ pub async fn update_settings(
         Ok((next, settings))
     })
     .await
+}
+
+// ---------------------------------------------------------------------------
+// Privacy decision engine (read-only inspector)
+// ---------------------------------------------------------------------------
+
+/// Ask the privacy engine what it would do with the given request, without
+/// actually sending it.
+///
+/// The active workspace's `PrivacyMode` drives the decision; per-site
+/// overrides will be plumbed through once they're modelled in `BrowserState`.
+#[tauri::command]
+pub async fn check_url_policy(
+    state: State<'_, AppState>,
+    url: String,
+    source_url: String,
+    request_type: RequestType,
+) -> WisResult<Decision> {
+    let parsed_url = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url })?;
+    let parsed_source =
+        Url::parse(&source_url).map_err(|_| WisError::InvalidUrl { url: source_url })?;
+
+    let policy = state.request_policy_for_active_workspace().await;
+    policy
+        .decide(&OutboundRequest {
+            url: &parsed_url,
+            source_url: &parsed_source,
+            request_type,
+        })
+        .map_err(|err| WisError::InvalidInput {
+            message: err.to_string(),
+        })
+}
+
+/// Resolve `hostname` via the configured DoH resolver and return the
+/// addresses as strings.
+#[tauri::command]
+pub async fn resolve_hostname(
+    state: State<'_, AppState>,
+    hostname: String,
+) -> WisResult<Vec<String>> {
+    let resolver = state.resolver.clone();
+    resolver
+        .resolve(&hostname)
+        .await
+        .map(|ips| ips.into_iter().map(|ip| ip.to_string()).collect())
+        .map_err(|err| WisError::InvalidInput {
+            message: err.to_string(),
+        })
 }
