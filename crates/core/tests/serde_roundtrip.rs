@@ -83,13 +83,17 @@ fn settings_patch_omits_none_fields_when_serialised() {
 fn settings_patch_round_trips_when_all_fields_set() {
     let patch = UserSettingsPatch {
         layout: Some(LayoutMode::TopTabs),
+        top_tabs_rail_side: Some(wis_core::RailSide::Right),
+        url_bar_position: Some(wis_core::UrlBarPosition::Top),
         theme: Some(ThemeMode::Light),
+        accent: Some(wis_core::AccentColor::Mint),
         glass_enabled: Some(true),
         sidebar_collapsible: Some(false),
         compact: Some(true),
         default_privacy_mode: Some(PrivacyMode::Strict),
         doh_resolver: Some("https://dns.example/dns-query".into()),
         homepage: Some("https://start.example".into()),
+        mitm_enabled: Some(true),
     };
     let after: UserSettingsPatch = roundtrip(&patch);
     assert_eq!(patch, after);
@@ -100,6 +104,24 @@ fn user_settings_roundtrips() {
     let before = UserSettings::default();
     let after: UserSettings = roundtrip(&before);
     assert_eq!(before, after);
+}
+
+#[test]
+fn url_bar_position_roundtrips_as_snake_case() {
+    for variant in [
+        wis_core::UrlBarPosition::Sidebar,
+        wis_core::UrlBarPosition::Top,
+    ] {
+        let json = serde_json::to_string(&variant).unwrap();
+        let parsed: wis_core::UrlBarPosition = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, variant);
+    }
+}
+
+#[test]
+fn url_bar_position_rejects_unknown_variants() {
+    let result: Result<wis_core::UrlBarPosition, _> = serde_json::from_str("\"diagonal\"");
+    assert!(result.is_err(), "unknown variant must error");
 }
 
 #[test]

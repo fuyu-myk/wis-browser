@@ -15,6 +15,12 @@ pub enum NetworkError {
 
     #[error("config: {0}")]
     Config(String),
+
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("proxy: {0}")]
+    Proxy(String),
 }
 
 pub type NetworkResult<T> = Result<T, NetworkError>;

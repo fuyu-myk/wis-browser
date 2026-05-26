@@ -52,9 +52,8 @@ impl RequestPolicy {
 
     /// Attach per-host overrides. Later entries override earlier ones for
     /// the same host.
-    pub fn with_per_site(mut self, per_site: Vec<PerSitePolicy>) -> Self {
-        self.per_site = per_site;
-        self
+    pub fn with_per_site(self, per_site: Vec<PerSitePolicy>) -> Self {
+        Self { per_site, ..self }
     }
 
     pub fn privacy_mode(&self) -> PrivacyMode {

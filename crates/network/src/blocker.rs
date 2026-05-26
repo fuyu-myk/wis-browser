@@ -98,7 +98,7 @@ impl TrackerBlocker {
         let req = Request::new(url.as_str(), source_url.as_str(), request_type.as_str())
             .map_err(|e| NetworkError::FilterList(format!("invalid request: {e:?}")))?;
         let result = self.engine.check_network_request(&req);
-        
+
         if result.matched {
             Ok(BlockerVerdict::Block {
                 reason: result.filter.unwrap_or_else(|| "tracker".into()),

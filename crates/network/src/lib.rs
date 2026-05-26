@@ -15,6 +15,7 @@ pub mod context;
 pub mod error;
 pub mod filter_lists;
 pub mod policy;
+pub mod proxy;
 pub mod resolver;
 pub mod upgrader;
 
@@ -22,5 +23,6 @@ pub use blocker::{RequestType, TrackerBlocker};
 pub use context::{NetworkContext, RefererPolicy};
 pub use error::{NetworkError, NetworkResult};
 pub use policy::{Decision, OutboundRequest, RequestPolicy};
+pub use proxy::{ca_dir, CertAuthority, CertIssuer, MitmConfig, ProxyServer};
 pub use resolver::{DohResolver, Resolver, StubResolver};
 pub use upgrader::HttpsUpgrader;

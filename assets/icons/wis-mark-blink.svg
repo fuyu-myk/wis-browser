@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="currentColor" role="img" aria-label="wis owl mark — blinking">
+  
+  <defs>
+    <mask id="wis-blink" maskUnits="userSpaceOnUse">
+      <rect width="200" height="200" fill="#fff"></rect>
+      
+      <circle cx="76" cy="108" r="15" fill="#000">
+        
+      </circle>
+      <circle cx="124" cy="108" r="15" fill="#000">
+        
+      </circle>
+      
+      <g opacity="0">
+        <path d="M62 108 Q76 100 90 108" stroke="#000" stroke-width="6" fill="none" stroke-linecap="round"></path>
+        <path d="M110 108 Q124 100 138 108" stroke="#000" stroke-width="6" fill="none" stroke-linecap="round"></path>
+        
+      </g>
+      
+      <path d="M100 122 L106 132 L100 138 L94 132 Z" fill="#000"></path>
+    </mask>
+  </defs>
+  <path d="M32 72 L58 34 L82 72 L100 58 L118 72 L142 34 L168 72 C168 128 144 168 100 168 C56 168 32 128 32 72 Z" mask="url(#wis-blink)"></path>
+</svg>

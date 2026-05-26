@@ -18,6 +18,7 @@ serde_json = { workspace = true }
 log = { workspace = true }
 tauri = { workspace = true }
 tauri-plugin-log = { workspace = true }
+tauri-plugin-dialog = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 url = { workspace = true }
@@ -25,3 +26,6 @@ url = { workspace = true }
 wis-core = { workspace = true }
 wis-storage = { workspace = true }
 wis-network = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.5"

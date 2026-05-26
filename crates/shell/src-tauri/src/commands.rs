@@ -11,7 +11,8 @@
 //!
 //! Read-only commands acquire the mutex briefly to clone the relevant slice.
 
-use tauri::State;
+use tauri::webview::{PageLoadEvent, PageLoadPayload, WebviewBuilder};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
 use url::Url;
 use wis_core::{
     AccentColor, BrowserState, Tab, TabId, UserSettings, UserSettingsPatch, WisError, WisResult,
@@ -20,6 +21,17 @@ use wis_core::{
 use wis_network::{Decision, OutboundRequest, RequestType};
 
 use crate::state::AppState;
+
+/// Tauri event name fired whenever a tab's state changed via a wry callback
+/// (URL sync, title change, loading state). Chrome listens once and refetches
+/// `BrowserState`: the React-Query cache is the single source of truth.
+const BROWSER_STATE_CHANGED: &str = "browser-state-changed";
+
+fn emit_state_changed(app: &AppHandle) {
+    if let Err(err) = app.emit(BROWSER_STATE_CHANGED, ()) {
+        log::warn!("emit {BROWSER_STATE_CHANGED} failed: {err}");
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -129,6 +141,21 @@ pub async fn delete_workspace(state: State<'_, AppState>, id: WorkspaceId) -> Wi
 }
 
 #[tauri::command]
+pub async fn recolor_workspace(
+    state: State<'_, AppState>,
+    id: WorkspaceId,
+    accent: AccentColor,
+) -> WisResult<Workspace> {
+    mutate(&state, |s| {
+        let next = s.with_recoloured_workspace(id, accent)?;
+        let recoloured = next.workspace(id)?.clone();
+
+        Ok((next, recoloured))
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn set_active_workspace(state: State<'_, AppState>, id: WorkspaceId) -> WisResult<()> {
     mutate_unit(&state, |s| s.with_active_workspace(id)).await
 }
@@ -170,6 +197,293 @@ pub async fn set_active_tab(state: State<'_, AppState>, id: TabId) -> WisResult<
     mutate_unit(&state, |s| s.with_active_tab(id)).await
 }
 
+/// Navigate an existing tab's child webview to `url`, and persist the new URL
+/// in state. If the webview hasn't been created yet (the frontend reconciler
+/// will pick it up on the next render), only state is updated: the URL takes
+/// effect when the webview comes into being.
+#[tauri::command]
+pub async fn navigate_tab(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: TabId,
+    url: String,
+) -> WisResult<()> {
+    // Update in-memory + persisted state.
+    mutate_unit(&state, |s| {
+        s.with_navigated_tab(id, &url).map(|(next, _)| next)
+    })
+    .await?;
+
+    // Drive the actual native webview navigation.
+    let label = format!("tab-{}", id.as_uuid());
+    if let Some(webview) = app.webviews().get(&label).cloned() {
+        let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
+        webview
+            .navigate(parsed)
+            .map_err(|err| WisError::InvalidInput {
+                message: format!("webview navigate failed: {err}"),
+            })?;
+    }
+
+    Ok(())
+}
+
+/// Create a Tauri child webview for a tab using `WebviewBuilder` directly.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn create_tab_webview(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    window_label: String,
+    label: String,
+    url: String,
+    workspace_id: WorkspaceId,
+    tab_id: TabId,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> WisResult<()> {
+    let window = app
+        .get_window(&window_label)
+        .ok_or_else(|| WisError::InvalidInput {
+            message: format!("no window labelled {window_label}"),
+        })?;
+
+    let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
+
+    let bytes = workspace_id_to_data_store_bytes(workspace_id);
+
+    let proxy_port = state
+        .ensure_proxy_for(workspace_id)
+        .await
+        .map_err(wis_core::WisError::from)?;
+    let proxy_url = format!("http://127.0.0.1:{proxy_port}")
+        .parse::<Url>()
+        .expect("loopback proxy URL is valid");
+
+    let mut builder = WebviewBuilder::new(label, WebviewUrl::External(parsed))
+        .focused(false)
+        .proxy_url(proxy_url);
+    builder = builder.data_store_identifier(bytes);
+
+    {
+        let app = app.clone();
+        builder = builder.on_navigation(move |url: &Url| {
+            let app = app.clone();
+            let url_string = url.to_string();
+            tauri::async_runtime::spawn(async move {
+                let state = app.state::<AppState>();
+                let result =
+                    mutate_unit(&state, |s| s.with_tab_url_synced(tab_id, &url_string)).await;
+                match result {
+                    Ok(()) => emit_state_changed(&app),
+                    Err(err) => log::warn!("on_navigation update for {tab_id} failed: {err}"),
+                }
+            });
+            true
+        });
+    }
+
+    // Document title changes: fires when the page sets `<title>` or
+    // mutates `document.title` from JS.
+    {
+        let app = app.clone();
+        builder = builder.on_document_title_changed(move |_webview, title: String| {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let state = app.state::<AppState>();
+                let result = mutate_unit(&state, |s| s.with_tab_title(tab_id, title.clone())).await;
+                match result {
+                    Ok(()) => emit_state_changed(&app),
+                    Err(err) => log::warn!("title update for {tab_id} failed: {err}"),
+                }
+            });
+        });
+    }
+
+    // Page load lifecycle: Started/Finished, used to drive the loading flag.
+    {
+        let app = app.clone();
+        builder = builder.on_page_load(move |_webview, payload: PageLoadPayload<'_>| {
+            let app = app.clone();
+            let loading = matches!(payload.event(), PageLoadEvent::Started);
+            tauri::async_runtime::spawn(async move {
+                let state = app.state::<AppState>();
+                let result = mutate_unit(&state, |s| s.with_tab_loading(tab_id, loading)).await;
+                match result {
+                    Ok(()) => emit_state_changed(&app),
+                    Err(err) => log::warn!("loading update for {tab_id} failed: {err}"),
+                }
+            });
+        });
+    }
+
+    window
+        .add_child(
+            builder,
+            tauri::LogicalPosition::new(x, y),
+            tauri::LogicalSize::new(width, height),
+        )
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("add_child failed: {err}"),
+        })?;
+
+    Ok(())
+}
+
+fn workspace_id_to_data_store_bytes(workspace_id: WorkspaceId) -> [u8; 16] {
+    *workspace_id.as_uuid().as_bytes()
+}
+
+/// Read the current URL of a tab's native webview. Returns `None` if the
+/// webview hasn't been created yet (chrome tab or not yet reconciled).
+#[tauri::command]
+pub async fn webview_url(app: AppHandle, label: String) -> WisResult<Option<String>> {
+    let Some(webview) = app.webviews().get(&label).cloned() else {
+        return Ok(None);
+    };
+
+    match webview.url() {
+        Ok(url) => Ok(Some(url.to_string())),
+        Err(err) => Err(WisError::InvalidInput {
+            message: format!("read webview url failed: {err}"),
+        }),
+    }
+}
+
+/// Sync a tab's stored URL to match where the user actually navigated inside
+/// the webview (in-page link clicks, history hops). Unlike `navigate_tab`
+/// this does not call `webview.navigate(...)`.
+#[tauri::command]
+pub async fn sync_tab_url(state: State<'_, AppState>, id: TabId, url: String) -> WisResult<()> {
+    mutate_unit(&state, |s| s.with_tab_url_synced(id, &url)).await
+}
+
+// ---------------------------------------------------------------------------
+// Navigation event bridge IPC + nav controls
+// ---------------------------------------------------------------------------
+
+/// Set the tab's title from a programmatic source (e.g. a chrome-injected
+/// rename).
+#[tauri::command]
+pub async fn update_tab_title(
+    state: State<'_, AppState>,
+    id: TabId,
+    title: String,
+) -> WisResult<()> {
+    mutate_unit(&state, |s| s.with_tab_title(id, title)).await
+}
+
+/// Set a tab's `loading` flag explicitly.
+#[tauri::command]
+pub async fn update_tab_loading(
+    state: State<'_, AppState>,
+    id: TabId,
+    loading: bool,
+) -> WisResult<()> {
+    mutate_unit(&state, |s| s.with_tab_loading(id, loading)).await
+}
+
+/// Reload a tab's webview.
+#[tauri::command]
+pub async fn tab_reload(app: AppHandle, id: TabId) -> WisResult<()> {
+    let label = format!("tab-{}", id.as_uuid());
+    let webview = app
+        .webviews()
+        .get(&label)
+        .cloned()
+        .ok_or_else(|| WisError::InvalidInput {
+            message: format!("no webview labelled {label}"),
+        })?;
+
+    webview.reload().map_err(|err| WisError::InvalidInput {
+        message: format!("reload failed: {err}"),
+    })
+}
+
+/// Navigate the tab back in its history.
+#[tauri::command]
+pub async fn tab_go_back(app: AppHandle, id: TabId) -> WisResult<()> {
+    eval_history_step(&app, id, "back")
+}
+
+/// Counterpart to [`tab_go_back`].
+#[tauri::command]
+pub async fn tab_go_forward(app: AppHandle, id: TabId) -> WisResult<()> {
+    eval_history_step(&app, id, "forward")
+}
+
+fn eval_history_step(app: &AppHandle, id: TabId, direction: &str) -> WisResult<()> {
+    let label = format!("tab-{}", id.as_uuid());
+    let webview = app
+        .webviews()
+        .get(&label)
+        .cloned()
+        .ok_or_else(|| WisError::InvalidInput {
+            message: format!("no webview labelled {label}"),
+        })?;
+
+    webview
+        .eval(format!("window.history.{direction}()"))
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("history.{direction}() eval failed: {err}"),
+        })
+}
+
+/// Apply a CSS-style corner radius to a tab's native webview surface, macOS only.
+#[tauri::command]
+pub async fn set_webview_corner_radius(
+    app: AppHandle,
+    label: String,
+    radius: f64,
+) -> WisResult<()> {
+    let webview = app
+        .webviews()
+        .get(&label)
+        .cloned()
+        .ok_or_else(|| WisError::InvalidInput {
+            message: format!("no webview labelled {label}"),
+        })?;
+
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
+
+        webview
+            .with_webview(move |w| unsafe {
+                let wkwebview: *mut AnyObject = w.inner() as *mut AnyObject;
+                if wkwebview.is_null() {
+                    return;
+                }
+
+                // Force the view to be layer-backed.
+                let _: () = msg_send![wkwebview, setWantsLayer: true];
+
+                let layer: *mut AnyObject = msg_send![wkwebview, layer];
+                if layer.is_null() {
+                    return;
+                }
+
+                // Round + clip.
+                let _: () = msg_send![layer, setCornerRadius: radius];
+                let _: () = msg_send![layer, setMasksToBounds: true];
+            })
+            .map_err(|err| WisError::InvalidInput {
+                message: format!("with_webview failed: {err}"),
+            })?;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = webview;
+        let _ = radius;
+    }
+
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
@@ -179,13 +493,44 @@ pub async fn update_settings(
     state: State<'_, AppState>,
     patch: UserSettingsPatch,
 ) -> WisResult<UserSettings> {
-    mutate(&state, |s| {
+    let mitm_changed = {
+        let current = state.browser.lock().await;
+        patch
+            .mitm_enabled
+            .map(|new| new != current.settings.mitm_enabled)
+            .unwrap_or(false)
+    };
+
+    let settings = mutate(&state, |s| {
         let next = s.with_settings(patch);
         let settings = next.settings.clone();
 
         Ok((next, settings))
     })
-    .await
+    .await?;
+
+    if mitm_changed {
+        state.clear_proxies().await;
+    }
+
+    Ok(settings)
+}
+
+/// Write the local Wis CA certificate (PEM) to `target_path` so the user can
+/// trust it in their OS keychain. Returns the path actually written.
+#[tauri::command]
+pub async fn export_wis_ca(state: State<'_, AppState>, target_path: String) -> WisResult<String> {
+    let pem = state.ca.cert_pem().to_string();
+    let path = std::path::PathBuf::from(&target_path);
+    tokio::task::spawn_blocking(move || std::fs::write(&path, pem.as_bytes()).map(|_| path))
+        .await
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("ca export task panicked: {err}"),
+        })?
+        .map(|p| p.display().to_string())
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("ca export write failed: {err}"),
+        })
 }
 
 // ---------------------------------------------------------------------------

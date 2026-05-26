@@ -5,8 +5,8 @@
 //!
 //! | Mode       | Behaviour                                  |
 //! |------------|--------------------------------------------|
-//! | Strict     | HTTPS only — block HTTP outright.          |
-//! | Balanced   | HTTPS-First — try HTTPS, fall back to HTTP only if explicitly allowed by the caller. |
+//! | Strict     | HTTPS only: block HTTP outright.          |
+//! | Balanced   | HTTPS-First: try HTTPS, fall back to HTTP only if explicitly allowed by the caller. |
 //! | Permissive | Leave HTTP alone.                          |
 //!
 //! Loopback (`localhost`, `127.0.0.1`, `::1`) is always exempt regardless of

@@ -1,4 +1,4 @@
-//! The [`Storage`] trait — the contract the rest of the app codes against.
+//! The [`Storage`] trait: the contract the rest of the app codes against.
 
 use crate::error::StorageResult;
 use wis_core::BrowserState;

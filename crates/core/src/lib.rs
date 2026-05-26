@@ -16,7 +16,7 @@ pub mod workspace;
 
 pub use error::{WisError, WisResult};
 pub use ids::{TabId, WidgetId, WorkspaceId};
-pub use layout::{LayoutMode, ThemeMode};
+pub use layout::{LayoutMode, RailSide, ThemeMode, UrlBarPosition};
 pub use privacy::{PerSitePolicy, PrivacyMode};
 pub use settings::{UserSettings, UserSettingsPatch};
 pub use state::BrowserState;

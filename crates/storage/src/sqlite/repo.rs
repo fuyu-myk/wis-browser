@@ -242,6 +242,7 @@ fn load_tabs(conn: &Connection) -> StorageResult<Vec<Tab>> {
             favicon: favicon_hash.map(|hash| FaviconRef { hash }),
             pinned: row.get(5)?,
             muted: row.get(6)?,
+            loading: false,
             created_at: row.get::<_, DateTime<Utc>>(7)?,
             last_active_at: row.get::<_, DateTime<Utc>>(8)?,
         });
@@ -310,28 +311,32 @@ fn load_active_workspace(conn: &Connection) -> StorageResult<Option<WorkspaceId>
 }
 
 fn assemble_workspaces(
-    mut workspaces: Vec<Workspace>,
+    workspaces: Vec<Workspace>,
     tabs: &[Tab],
     mut essentials: HashMap<WorkspaceId, Vec<EssentialPin>>,
 ) -> Vec<Workspace> {
-    for workspace in &mut workspaces {
-        let mut tab_order = Vec::new();
-        let mut pinned = Vec::new();
-
-        for tab in tabs.iter().filter(|t| t.workspace_id == workspace.id) {
-            tab_order.push(tab.id);
-
-            if tab.pinned {
-                pinned.push(tab.id);
-            }
-        }
-
-        workspace.tab_order = tab_order;
-        workspace.pinned_tab_ids = pinned;
-        workspace.essentials = essentials.remove(&workspace.id).unwrap_or_default();
-    }
-
     workspaces
+        .into_iter()
+        .map(|workspace| {
+            let id = workspace.id;
+            let tab_order: Vec<TabId> = tabs
+                .iter()
+                .filter(|t| t.workspace_id == id)
+                .map(|t| t.id)
+                .collect();
+            let pinned_tab_ids: Vec<TabId> = tabs
+                .iter()
+                .filter(|t| t.workspace_id == id && t.pinned)
+                .map(|t| t.id)
+                .collect();
+            Workspace {
+                tab_order,
+                pinned_tab_ids,
+                essentials: essentials.remove(&id).unwrap_or_default(),
+                ..workspace
+            }
+        })
+        .collect()
 }
 
 // ===========================================================================

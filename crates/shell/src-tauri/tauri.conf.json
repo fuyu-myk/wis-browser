@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Wis",
   "version": "0.1.0",
-  "identifier": "app.wis.browser",
+  "identifier": "app.myk.wis",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:3010",
@@ -11,6 +11,7 @@
   },
   "app": {
     "withGlobalTauri": true,
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
@@ -25,7 +26,12 @@
         "decorations": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "acceptFirstMouse": true
+        "acceptFirstMouse": true,
+        "windowEffects": {
+          "effects": ["hudWindow"],
+          "state": "active",
+          "radius": 14
+        }
       }
     ],
     "security": {
@@ -44,6 +50,9 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
-    }
+    },
+    "resources": [
+      "icons/runtime/*"
+    ]
   }
 }

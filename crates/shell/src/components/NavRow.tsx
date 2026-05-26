@@ -1,0 +1,75 @@
+import { useMutation } from '@tanstack/react-query'
+
+import { commands } from '@/bindings/commands'
+import type { Tab } from '@/bindings/types'
+import { cx } from '@/lib/cx'
+import { ArrowLeftIcon, ArrowRightIcon, RefreshIcon } from '@/lib/icons'
+import { isChromeUrl } from '@/lib/url'
+
+interface NavRowProps {
+  /** Active tab the buttons act on. When `null`, the row is fully disabled. */
+  activeTab: Tab | null
+  /** Render the buttons as standalone glass circles. */
+  circular?: boolean
+}
+
+/**
+ * Back / Forward / Refresh strip.
+ *
+ * wry 0.55 doesn't expose native `go_back` / `go_forward` methods, so
+ * fire `eval("window.history.back()")` via the `tab_go_back/forward`
+ * commands. At start-of-history these are benign no-ops: matches the
+ * convention every other browser uses (button always clickable, may
+ * silently do nothing).
+ *
+ * The Refresh button calls wry's native `webview.reload()`.
+ */
+export function NavRow({ activeTab, circular = false }: NavRowProps) {
+  const btnClass = circular ? 'kb-circle-btn' : 'kb-iconbtn'
+
+  const back = useMutation({
+    mutationFn: (id: Tab['id']) => commands.tabGoBack(id),
+  })
+  const forward = useMutation({
+    mutationFn: (id: Tab['id']) => commands.tabGoForward(id),
+  })
+  const reload = useMutation({
+    mutationFn: (id: Tab['id']) => commands.tabReload(id),
+  })
+
+  // No active tab: or active tab is a chrome page with no
+  // history of its own.
+  const navigable = activeTab !== null && !isChromeUrl(activeTab.url)
+
+  return (
+    <div className={cx('kb-nav-row', { 'is-circular': circular })}>
+      <button
+        type="button"
+        className={btnClass}
+        aria-label="Back"
+        disabled={!navigable}
+        onClick={() => activeTab && back.mutate(activeTab.id)}
+      >
+        <ArrowLeftIcon />
+      </button>
+      <button
+        type="button"
+        className={btnClass}
+        aria-label="Forward"
+        disabled={!navigable}
+        onClick={() => activeTab && forward.mutate(activeTab.id)}
+      >
+        <ArrowRightIcon />
+      </button>
+      <button
+        type="button"
+        className={btnClass}
+        aria-label="Refresh"
+        disabled={!navigable}
+        onClick={() => activeTab && reload.mutate(activeTab.id)}
+      >
+        <RefreshIcon />
+      </button>
+    </div>
+  )
+}

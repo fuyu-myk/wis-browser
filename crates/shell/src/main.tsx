@@ -1,11 +1,30 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import App from "./App";
-import "./styles/tokens.css";
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
+import App from '@/App'
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+import '@/styles/tokens.css'
+import '@/styles/window.css'
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: Infinity,
+      retry: 0,
+    },
+    mutations: {
+      retry: 0,
+    },
+  },
+})
+
+ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>
   </React.StrictMode>,
-);
+)

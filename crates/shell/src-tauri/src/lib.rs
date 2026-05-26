@@ -1,4 +1,5 @@
 mod commands;
+mod error_compat;
 mod state;
 
 use std::sync::Arc;
@@ -22,6 +23,7 @@ pub fn run() {
                 })
                 .build(),
         )
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app
                 .path()
@@ -50,11 +52,14 @@ pub fn run() {
             };
             let resolver = state::build_resolver(browser_state.settings.doh_resolver.as_deref());
 
+            let ca = state::load_or_generate_ca(&data_dir)?;
+
             app.manage(AppState::new(
                 browser_state,
                 storage,
                 tracker_blocker,
                 resolver,
+                ca,
             ));
             Ok(())
         })
@@ -66,13 +71,25 @@ pub fn run() {
             commands::create_workspace,
             commands::rename_workspace,
             commands::delete_workspace,
+            commands::recolor_workspace,
             commands::set_active_workspace,
             commands::create_tab,
             commands::close_tab,
             commands::reorder_tabs,
             commands::pin_tab,
             commands::set_active_tab,
+            commands::navigate_tab,
+            commands::set_webview_corner_radius,
+            commands::create_tab_webview,
+            commands::webview_url,
+            commands::sync_tab_url,
+            commands::update_tab_title,
+            commands::update_tab_loading,
+            commands::tab_reload,
+            commands::tab_go_back,
+            commands::tab_go_forward,
             commands::update_settings,
+            commands::export_wis_ca,
             commands::check_url_policy,
             commands::resolve_hostname,
         ])
@@ -84,7 +101,7 @@ pub fn run() {
 /// Logs the chosen path so a user can tell from the dev console whether their
 /// data survived a restart.
 fn hydrate_state(storage: &SqliteStorage) -> BrowserState {
-    match storage.load_state() {
+    let state = match storage.load_state() {
         Ok(Some(state)) => {
             log::info!(
                 "hydrated state from disk: {} workspaces, {} tabs",
@@ -95,11 +112,29 @@ fn hydrate_state(storage: &SqliteStorage) -> BrowserState {
         }
         Ok(None) => {
             log::info!("no persisted state found, starting with defaults");
-            BrowserState::new_with_defaults()
+            BrowserState::new_first_run()
         }
         Err(err) => {
             log::warn!("failed to load persisted state ({err}); starting with defaults");
-            BrowserState::new_with_defaults()
+            BrowserState::new_first_run()
+        }
+    };
+
+    // Heal any workspace that lost its tabs.
+    let mut healed = state;
+    let empty_workspace_ids: Vec<_> = healed
+        .workspaces
+        .iter()
+        .filter(|w| w.tab_order.is_empty())
+        .map(|w| w.id)
+        .collect();
+    
+    for ws_id in empty_workspace_ids {
+        match healed.with_new_tab(ws_id, "about:blank") {
+            Ok((next, _)) => healed = next,
+            Err(err) => log::warn!("could not seed tab for workspace {ws_id}: {err}"),
         }
     }
+
+    healed
 }

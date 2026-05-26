@@ -28,6 +28,7 @@ anyhow = "1"
 # IDs and time
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", default-features = false, features = ["std"] }
 
 # URL handling
 url = { version = "2", features = ["serde"] }
@@ -38,9 +39,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Tauri
-tauri = { version = "2.11.2", features = [] }
+tauri = { version = "2.11.2", features = ["macos-private-api", "unstable", "macos-proxy"] }
 tauri-build = "2.6.2"
 tauri-plugin-log = "2"
+tauri-plugin-dialog = "2"
 
 # Database
 rusqlite = { version = "0.34", features = ["bundled", "chrono", "url"] }
@@ -49,6 +51,13 @@ rusqlite_migration = "2"
 # Networking & privacy
 hickory-resolver = { version = "0.25", default-features = false, features = ["tokio", "https-ring", "webpki-roots"] }
 adblock = { version = "0.12", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }
+
+# TLS (MITM proxy in Strict mode)
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "ring"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["tls12", "ring"] }
+rcgen = { version = "0.13", default-features = false, features = ["pem", "crypto", "ring"] }
+rustls-pemfile = "2"
+webpki-roots = "1"
 
 # Internal crates
 wis-core = { path = "crates/core" }

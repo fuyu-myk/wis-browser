@@ -233,3 +233,99 @@ fn setting_a_workspaces_privacy_mode_is_isolated_to_that_workspace() {
         "default workspace must be unaffected"
     );
 }
+
+#[test]
+fn with_tab_title_updates_only_the_title() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws_id = s0.workspaces[0].id;
+    let (s1, t1) = s0.with_new_tab(ws_id, "https://example.com").unwrap();
+    let original_url = t1.url.clone();
+
+    let s2 = s1.with_tab_title(t1.id, "Hello World".into()).unwrap();
+    let after = s2.tab(t1.id).unwrap();
+    assert_eq!(after.title, "Hello World");
+    assert_eq!(after.url, original_url, "URL must not change");
+    assert_clean(&s2);
+}
+
+#[test]
+fn with_tab_title_is_idempotent_when_value_unchanged() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws_id = s0.workspaces[0].id;
+    let (s1, t1) = s0.with_new_tab(ws_id, "https://example.com").unwrap();
+    let s2 = s1.with_tab_title(t1.id, t1.title.clone()).unwrap();
+    assert_eq!(s1, s2, "no-op title update must produce an equal state");
+}
+
+#[test]
+fn with_tab_title_errors_on_missing_tab() {
+    let s0 = BrowserState::new_with_defaults();
+    let ghost = wis_core::TabId::new();
+    let err = s0.with_tab_title(ghost, "x".into()).unwrap_err();
+    assert!(matches!(err, WisError::TabNotFound { .. }));
+}
+
+#[test]
+fn with_tab_loading_flips_the_loading_flag() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws_id = s0.workspaces[0].id;
+    let (s1, t1) = s0.with_new_tab(ws_id, "https://example.com").unwrap();
+    assert!(!s1.tab(t1.id).unwrap().loading);
+
+    let s2 = s1.with_tab_loading(t1.id, true).unwrap();
+    assert!(s2.tab(t1.id).unwrap().loading);
+
+    let s3 = s2.with_tab_loading(t1.id, false).unwrap();
+    assert!(!s3.tab(t1.id).unwrap().loading);
+}
+
+#[test]
+fn with_tab_loading_is_idempotent_when_value_unchanged() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws_id = s0.workspaces[0].id;
+    let (s1, t1) = s0.with_new_tab(ws_id, "https://example.com").unwrap();
+    let s2 = s1.with_tab_loading(t1.id, false).unwrap();
+    assert_eq!(s1, s2);
+}
+
+#[test]
+fn with_tab_url_synced_updates_url_but_preserves_title() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws_id = s0.workspaces[0].id;
+    let (s1, t1) = s0.with_new_tab(ws_id, "https://example.com").unwrap();
+    let s2 = s1.with_tab_title(t1.id, "My Page".into()).unwrap();
+
+    let s3 = s2
+        .with_tab_url_synced(t1.id, "https://example.com/other")
+        .unwrap();
+
+    let after = s3.tab(t1.id).unwrap();
+    assert_eq!(after.url.as_str(), "https://example.com/other");
+    assert_eq!(
+        after.title, "My Page",
+        "title must be preserved by url sync"
+    );
+    assert_clean(&s3);
+}
+
+#[test]
+fn with_tab_url_synced_is_idempotent_when_url_unchanged() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws_id = s0.workspaces[0].id;
+    let (s1, t1) = s0.with_new_tab(ws_id, "https://example.com").unwrap();
+    let s2 = s1
+        .with_tab_url_synced(t1.id, "https://example.com")
+        .unwrap();
+    assert_eq!(s1, s2);
+}
+
+#[test]
+fn with_tab_url_synced_errors_on_bad_url() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws_id = s0.workspaces[0].id;
+    let (s1, t1) = s0.with_new_tab(ws_id, "https://example.com").unwrap();
+    let err = s1
+        .with_tab_url_synced(t1.id, "definitely not a url")
+        .unwrap_err();
+    assert!(matches!(err, WisError::InvalidUrl { .. }));
+}

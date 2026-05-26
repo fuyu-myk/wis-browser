@@ -1,2 +1,2 @@
-export * from './types'
+export * from '@/bindings/types'
 export * from './commands'

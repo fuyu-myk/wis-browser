@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="wis owl mark — line, eyes open">
+  <path d="M32 72 L58 34 L82 72 L100 58 L118 72 L142 34 L168 72 C168 128 144 168 100 168 C56 168 32 128 32 72 Z"></path>
+  <circle cx="76" cy="108" r="15" fill="currentColor" stroke="none"></circle>
+  <circle cx="124" cy="108" r="15" fill="currentColor" stroke="none"></circle>
+  <path d="M100 122 L106 132 L100 138 L94 132 Z" fill="currentColor" stroke="none"></path>
+</svg>

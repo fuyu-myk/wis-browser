@@ -1,4 +1,4 @@
-//! Workspace — a named group of tabs with its own accent colour,
+//! Workspace: a named group of tabs with its own accent colour,
 //! essentials, and privacy preset.
 
 use crate::ids::{TabId, WorkspaceId};

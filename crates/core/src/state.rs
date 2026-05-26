@@ -1,4 +1,4 @@
-//! [`BrowserState`] — the root aggregate that holds workspaces, tabs, and
+//! [`BrowserState`]: the root aggregate that holds workspaces, tabs, and
 //! settings. All mutation operations are pure: they return a new value rather
 //! than mutating self.
 
@@ -31,6 +31,28 @@ impl BrowserState {
             active_workspace_id,
             settings: UserSettings::default(),
         }
+    }
+
+    /// First-run state: defaults plus a single seeded "New Tab".
+    pub fn new_first_run() -> Self {
+        let state = Self::new_with_defaults();
+        let ws_id = state.active_workspace_id;
+        let (state, tab) = state
+            .with_new_tab(ws_id, "Enter search or web address")
+            .expect("seed new tab into fresh defaults");
+        let tabs = state
+            .tabs
+            .iter()
+            .map(|t| {
+                if t.id == tab.id {
+                    t.with_title("New Tab".to_string())
+                } else {
+                    t.clone()
+                }
+            })
+            .collect();
+
+        Self { tabs, ..state }
     }
 
     pub fn workspace(&self, id: WorkspaceId) -> WisResult<&Workspace> {
@@ -92,6 +114,33 @@ impl BrowserState {
             .map(|w| {
                 if w.id == id {
                     w.with_name(name.clone())
+                } else {
+                    w.clone()
+                }
+            })
+            .collect();
+
+        Ok(Self {
+            workspaces,
+            ..self.clone()
+        })
+    }
+
+    pub fn with_recoloured_workspace(
+        &self,
+        id: WorkspaceId,
+        accent: crate::workspace::AccentColor,
+    ) -> WisResult<Self> {
+        if !self.workspaces.iter().any(|w| w.id == id) {
+            return Err(WisError::WorkspaceNotFound { id });
+        }
+
+        let workspaces = self
+            .workspaces
+            .iter()
+            .map(|w| {
+                if w.id == id {
+                    w.with_accent(accent)
                 } else {
                     w.clone()
                 }
@@ -168,7 +217,7 @@ impl BrowserState {
             .iter()
             .map(|w| {
                 if w.id == workspace_id {
-                    w.with_tab_appended(tab_id)
+                    w.with_tab_appended(tab_id).with_active_tab(tab_id)
                 } else {
                     w.clone()
                 }
@@ -276,6 +325,84 @@ impl BrowserState {
             },
             updated_tab,
         ))
+    }
+
+    /// Replace a tab's URL. The title is also bumped to the URL string as a
+    /// placeholder: useful when initiating the navigation (URL bar, new
+    /// tab) because the real `<title>` arrives via a separate event afterward
+    /// and overwrites this placeholder. `last_active_at` is refreshed.
+    pub fn with_navigated_tab(&self, id: TabId, url_str: &str) -> WisResult<(Self, Tab)> {
+        let url = Url::parse(url_str).map_err(|_| WisError::InvalidUrl {
+            url: url_str.to_string(),
+        })?;
+        let current = self.tab(id)?;
+        let updated = current
+            .with_url(url.clone())
+            .with_title(url.to_string())
+            .touched();
+
+        Ok((self.replace_tab(id, &updated), updated))
+    }
+
+    /// Sync a tab's URL from a navigation event the webview originated
+    /// itself (in-page link, history hop). Unlike [`with_navigated_tab`],
+    /// the title is **left alone**: wry's `on_document_title_changed`
+    /// is the source of truth for that. Idempotent when the URL doesn't
+    /// actually change.
+    pub fn with_tab_url_synced(&self, id: TabId, url_str: &str) -> WisResult<Self> {
+        let url = Url::parse(url_str).map_err(|_| WisError::InvalidUrl {
+            url: url_str.to_string(),
+        })?;
+        let current = self.tab(id)?;
+        if current.url == url {
+            return Ok(self.clone());
+        }
+        let updated = current.with_url(url);
+
+        Ok(self.replace_tab(id, &updated))
+    }
+
+    /// Update a tab's title. Idempotent when the title doesn't change.
+    pub fn with_tab_title(&self, id: TabId, title: String) -> WisResult<Self> {
+        let current = self.tab(id)?;
+        if current.title == title {
+            return Ok(self.clone());
+        }
+        let updated = current.with_title(title);
+
+        Ok(self.replace_tab(id, &updated))
+    }
+
+    /// Toggle a tab's `loading` flag. Idempotent when the value doesn't change.
+    pub fn with_tab_loading(&self, id: TabId, loading: bool) -> WisResult<Self> {
+        let current = self.tab(id)?;
+        if current.loading == loading {
+            return Ok(self.clone());
+        }
+        let updated = current.with_loading(loading);
+
+        Ok(self.replace_tab(id, &updated))
+    }
+
+    /// Internal helper: produce a new state with the tab at `id` swapped for
+    /// `updated`. Caller must guarantee `id == updated.id`.
+    fn replace_tab(&self, id: TabId, updated: &Tab) -> Self {
+        let tabs: Vec<Tab> = self
+            .tabs
+            .iter()
+            .map(|t| {
+                if t.id == id {
+                    updated.clone()
+                } else {
+                    t.clone()
+                }
+            })
+            .collect();
+        
+        Self {
+            tabs,
+            ..self.clone()
+        }
     }
 
     pub fn with_active_tab(&self, id: TabId) -> WisResult<Self> {

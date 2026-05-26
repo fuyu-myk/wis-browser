@@ -1,7 +1,7 @@
 //! Versioned schema migrations.
 //!
 //! Add new migrations by appending to `all()`. Never edit a
-//! migration that has already been released — write a new one instead.
+//! migration that has already been released: write a new one instead.
 
 use rusqlite::Connection;
 use rusqlite_migration::{Migrations, M};

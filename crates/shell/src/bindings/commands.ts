@@ -1,8 +1,9 @@
 // Typed wrappers around `@tauri-apps/api/core` invoke() for every command
 // exposed by `crates/shell/src-tauri/src/commands.rs`.
 //
-// The wrappers accept camelCase arguments and translate at the boundary to
-// the snake_case keys serde expects.
+// Tauri 2 convention: JS-side arg keys are camelCase. The Rust-side function
+// param `workspace_id: WorkspaceId` corresponds to `workspaceId` on the JS
+// side. Passing snake_case from JS silently fails to deserialise.
 
 import { invoke } from '@tauri-apps/api/core'
 import type {
@@ -16,7 +17,7 @@ import type {
   UserSettingsPatch,
   Workspace,
   WorkspaceId,
-} from './types'
+} from '@/bindings/types'
 
 export const commands = {
   // -- queries --------------------------------------------------------------
@@ -51,6 +52,10 @@ export const commands = {
     return invoke('delete_workspace', { id })
   },
 
+  async recolorWorkspace(id: WorkspaceId, accent: AccentColor): Promise<Workspace> {
+    return invoke('recolor_workspace', { id, accent })
+  },
+
   async setActiveWorkspace(id: WorkspaceId): Promise<void> {
     return invoke('set_active_workspace', { id })
   },
@@ -58,7 +63,7 @@ export const commands = {
   // -- tab mutations --------------------------------------------------------
 
   async createTab(workspaceId: WorkspaceId, url: string): Promise<Tab> {
-    return invoke('create_tab', { workspace_id: workspaceId, url })
+    return invoke('create_tab', { workspaceId, url })
   },
 
   async closeTab(id: TabId): Promise<void> {
@@ -66,7 +71,7 @@ export const commands = {
   },
 
   async reorderTabs(workspaceId: WorkspaceId, order: TabId[]): Promise<void> {
-    return invoke('reorder_tabs', { workspace_id: workspaceId, order })
+    return invoke('reorder_tabs', { workspaceId, order })
   },
 
   async pinTab(id: TabId, pinned: boolean): Promise<Tab> {
@@ -77,10 +82,94 @@ export const commands = {
     return invoke('set_active_tab', { id })
   },
 
+  /**
+   * Navigate an existing tab's child webview to `url`. State is updated
+   * even if the webview hasn't been spun up yet: the next reconcile
+   * pass picks up the new URL.
+   */
+  async navigateTab(id: TabId, url: string): Promise<void> {
+    return invoke('navigate_tab', { id, url })
+  },
+
+  /**
+   * Apply a CSS-style corner radius to a tab's native webview surface so its
+   * edges match the rounded chrome. macOS only; other platforms no-op.
+   */
+  async setWebviewCornerRadius(label: string, radius: number): Promise<void> {
+    return invoke('set_webview_corner_radius', { label, radius })
+  },
+
+  /**
+   * Create a tab's child webview server-side so the per-workspace
+   * `WKWebsiteDataStore` identifier is actually applied.
+   */
+  async createTabWebview(args: {
+    windowLabel: string
+    label: string
+    url: string
+    workspaceId: WorkspaceId
+    tabId: TabId
+    x: number
+    y: number
+    width: number
+    height: number
+  }): Promise<void> {
+    return invoke('create_tab_webview', args)
+  },
+
+  /** Read the current URL of a tab's native webview by label. */
+  async webviewUrl(label: string): Promise<string | null> {
+    return invoke('webview_url', { label })
+  },
+
+  /**
+   * Sync a tab's stored URL to where the webview actually navigated
+   * (in-page link clicks, history hops). State-only; does not call
+   * `webview.navigate` again: see `navigateTab` for more information.
+   */
+  async syncTabUrl(id: TabId, url: string): Promise<void> {
+    return invoke('sync_tab_url', { id, url })
+  },
+
+  // -- nav controls + state pokes ---------------------------------
+
+  /** Update a tab's title from the chrome side. */
+  async updateTabTitle(id: TabId, title: string): Promise<void> {
+    return invoke('update_tab_title', { id, title })
+  },
+
+  /** Explicitly set a tab's loading flag. */
+  async updateTabLoading(id: TabId, loading: boolean): Promise<void> {
+    return invoke('update_tab_loading', { id, loading })
+  },
+
+  /** Reload the tab's native webview. */
+  async tabReload(id: TabId): Promise<void> {
+    return invoke('tab_reload', { id })
+  },
+
+  /** History back in the tab. No-ops at start of history. */
+  async tabGoBack(id: TabId): Promise<void> {
+    return invoke('tab_go_back', { id })
+  },
+
+  /** History forward in the tab. No-ops at end of history. */
+  async tabGoForward(id: TabId): Promise<void> {
+    return invoke('tab_go_forward', { id })
+  },
+
   // -- settings -------------------------------------------------------------
 
   async updateSettings(patch: UserSettingsPatch): Promise<UserSettings> {
     return invoke('update_settings', { patch })
+  },
+
+  /**
+   * Export the local Wis CA cert PEM to `targetPath` so the user can trust
+   * it in their OS keychain. Returns the path actually written.
+   */
+  async exportWisCa(targetPath: string): Promise<string> {
+    return invoke('export_wis_ca', { targetPath })
   },
 
   // -- privacy engine -------------------------------------------------------
@@ -96,8 +185,8 @@ export const commands = {
   ): Promise<Decision> {
     return invoke('check_url_policy', {
       url,
-      source_url: sourceUrl,
-      request_type: requestType,
+      sourceUrl,
+      requestType,
     })
   },
 

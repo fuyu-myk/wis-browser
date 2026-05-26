@@ -1,4 +1,4 @@
-//! Tab — a single open page inside a workspace. Immutable: all "mutations"
+//! Tab: a single open page inside a workspace. Immutable: all "mutations"
 //! return a new value.
 
 use crate::ids::{TabId, WorkspaceId};
@@ -22,6 +22,11 @@ pub struct Tab {
     pub favicon: Option<FaviconRef>,
     pub pinned: bool,
     pub muted: bool,
+    /// Whether the tab's page is currently loading. In-memory only:
+    /// not persisted. On cold start no tab can legitimately be
+    /// mid-load, so the storage layer always reconstructs `loading: false`.
+    #[serde(default)]
+    pub loading: bool,
     pub created_at: DateTime<Utc>,
     pub last_active_at: DateTime<Utc>,
 }
@@ -37,6 +42,7 @@ impl Tab {
             favicon: None,
             pinned: false,
             muted: false,
+            loading: false,
             created_at: now,
             last_active_at: now,
         }
@@ -73,6 +79,13 @@ impl Tab {
     pub fn with_muted(&self, muted: bool) -> Self {
         Self {
             muted,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_loading(&self, loading: bool) -> Self {
+        Self {
+            loading,
             ..self.clone()
         }
     }

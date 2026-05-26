@@ -8,7 +8,7 @@
 // boundary.
 
 // ---------------------------------------------------------------------------
-// Newtype IDs — branded strings so the type system distinguishes them.
+// Newtype IDs: branded strings so the type system distinguishes them.
 // ---------------------------------------------------------------------------
 
 declare const TabIdBrand: unique symbol
@@ -20,10 +20,14 @@ export type WorkspaceId = string & { readonly [WorkspaceIdBrand]: never }
 export type WidgetId = string & { readonly [WidgetIdBrand]: never }
 
 // ---------------------------------------------------------------------------
-// Enums — serialised by serde as snake_case strings.
+// Enums: serialised by serde as snake_case strings.
 // ---------------------------------------------------------------------------
 
 export type LayoutMode = 'sidebar_left' | 'sidebar_right' | 'top_tabs'
+
+export type RailSide = 'left' | 'right'
+
+export type UrlBarPosition = 'sidebar' | 'top'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -65,6 +69,8 @@ export interface Tab {
   favicon: FaviconRef | null
   pinned: boolean
   muted: boolean
+  /** In-memory only; reset to false on app launch. */
+  loading: boolean
   created_at: string // ISO 8601 from chrono::DateTime<Utc>
   last_active_at: string
 }
@@ -90,13 +96,17 @@ export interface Workspace {
 
 export interface UserSettings {
   layout: LayoutMode
+  top_tabs_rail_side: RailSide
+  url_bar_position: UrlBarPosition
   theme: ThemeMode
+  accent: AccentColor
   glass_enabled: boolean
   sidebar_collapsible: boolean
   compact: boolean
   default_privacy_mode: PrivacyMode
   doh_resolver: string | null
   homepage: string | null
+  mitm_enabled: boolean
 }
 
 /**
@@ -105,13 +115,17 @@ export interface UserSettings {
  */
 export interface UserSettingsPatch {
   layout?: LayoutMode
+  top_tabs_rail_side?: RailSide
+  url_bar_position?: UrlBarPosition
   theme?: ThemeMode
+  accent?: AccentColor
   glass_enabled?: boolean
   sidebar_collapsible?: boolean
   compact?: boolean
   default_privacy_mode?: PrivacyMode
   doh_resolver?: string
   homepage?: string
+  mitm_enabled?: boolean
 }
 
 export interface PerSitePolicy {
@@ -141,7 +155,7 @@ export interface BrowserState {
 }
 
 // ---------------------------------------------------------------------------
-// Errors — tagged union matching `WisError`'s serde representation.
+// Errors: tagged union matching `WisError`'s serde representation.
 // ---------------------------------------------------------------------------
 
 export type WisError =
