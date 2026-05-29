@@ -6,6 +6,7 @@ import type { Tab, WorkspaceId } from '@/bindings/types'
 import { SearchIcon } from '@/lib/icons'
 import { NEW_TAB_URL, normaliseUrl } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
+import { useWindowIconSwap } from '@/hooks/useWindowIcon'
 import { WisMark } from '@/components/WisMark'
 
 interface QuickLink {
@@ -43,6 +44,8 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
   const { data: state } = useBrowserState()
   const activeWorkspaceId = state?.active_workspace_id ?? null
   const [query, setQuery] = useState('')
+  const [logoHovered, setLogoHovered] = useState(false)
+  const swapIcon = useWindowIconSwap()
 
   const navigate = useNavigateOrCreate(activeWorkspaceId, activeTab)
 
@@ -58,13 +61,27 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
     <div className="kb-newtab-page">
       <div className="inner">
         <div className="kb-hero">
-          <div className="brand-row">
+          <div
+            className="brand-row"
+            onMouseEnter={() => {
+              setLogoHovered(true)
+              swapIcon('closed')
+            }}
+            onMouseLeave={() => {
+              setLogoHovered(false)
+              swapIcon('open')
+            }}
+          >
             <span className="kb-launch-mark" aria-hidden="true">
-              <WisMark variant="blink" size={72} aria-label="wis" />
+              <WisMark
+                variant={logoHovered ? 'solid-closed' : 'blink'}
+                size={72}
+                aria-label="wis"
+              />
             </span>
             <span className="wordmark">wis</span>
           </div>
-          <span className="tagline">what would you like to explore today?</span>
+          <span className="tagline">What would you like to explore today?</span>
         </div>
         <form className="kb-omnisearch" onSubmit={submit}>
           <SearchIcon />

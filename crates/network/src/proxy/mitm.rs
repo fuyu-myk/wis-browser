@@ -215,6 +215,6 @@ async fn forward_https_inner(
     let (mut resp_parts, resp_body) = upstream_resp.into_parts();
     super::upstream::strip_hop_by_hop(&mut resp_parts.headers);
     let body = resp_body.boxed();
-    
+
     Ok(Response::from_parts(resp_parts, body))
 }

@@ -254,7 +254,7 @@ fn ca_params() -> NetworkResult<CertificateParams> {
         KeyUsagePurpose::DigitalSignature,
         KeyUsagePurpose::CrlSign,
     ];
-    
+
     let now = OffsetDateTime::now_utc();
     params.not_before = now - TimeDuration::hours(1);
     params.not_after = now + TimeDuration::days(CA_VALIDITY_DAYS);
@@ -305,7 +305,7 @@ mod tests {
         let tmp = tempdir();
         let a = CertAuthority::load_or_generate(&tmp).expect("first");
         let b = CertAuthority::load_or_generate(&tmp).expect("second");
-        
+
         // Same CA PEM both times (persist + reload, never regenerate when
         // the files already exist).
         assert_eq!(a.cert_pem(), b.cert_pem());

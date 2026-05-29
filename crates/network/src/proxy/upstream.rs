@@ -121,7 +121,7 @@ pub(super) fn strip_hop_by_hop(headers: &mut HeaderMap) {
                 .collect()
         })
         .unwrap_or_default();
-    
+
     for name in HOP_BY_HOP {
         headers.remove(*name);
     }

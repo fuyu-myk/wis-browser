@@ -89,6 +89,6 @@ fn parse_authority(req: &Request<Incoming>) -> Option<(String, u16)> {
     let authority = req.uri().authority()?;
     let host = authority.host().to_owned();
     let port = authority.port_u16().unwrap_or(443);
-    
+
     Some((host, port))
 }

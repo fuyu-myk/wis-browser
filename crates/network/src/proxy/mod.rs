@@ -126,7 +126,7 @@ async fn serve_connection(
             Ok::<_, Infallible>(resp)
         }
     });
-    
+
     if let Err(err) = hyper::server::conn::http1::Builder::new()
         .preserve_header_case(true)
         .title_case_headers(true)

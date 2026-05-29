@@ -1,3 +1,6 @@
+import { useState } from 'react'
+
+import { useWindowIconSwap } from '@/hooks/useWindowIcon'
 import { WisMark } from '@/components/WisMark'
 
 /**
@@ -14,9 +17,22 @@ export function TrafficLights() {
  * Owl-only brand mark for sidebar and rail chrome surfaces.
  */
 export function Brand() {
+  const [hovered, setHovered] = useState(false)
+  const swapIcon = useWindowIconSwap()
   return (
-    <span className="kb-brand" aria-label="wis">
-      <WisMark variant="solid-open" size={20} />
+    <span
+      className="kb-brand"
+      aria-label="wis"
+      onMouseEnter={() => {
+        setHovered(true)
+        swapIcon('closed')
+      }}
+      onMouseLeave={() => {
+        setHovered(false)
+        swapIcon('open')
+      }}
+    >
+      <WisMark variant={hovered ? 'solid-closed' : 'solid-open'} size={20} />
     </span>
   )
 }

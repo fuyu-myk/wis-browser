@@ -92,6 +92,7 @@ pub fn run() {
             commands::export_wis_ca,
             commands::check_url_policy,
             commands::resolve_hostname,
+            commands::set_window_icon,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -128,7 +129,7 @@ fn hydrate_state(storage: &SqliteStorage) -> BrowserState {
         .filter(|w| w.tab_order.is_empty())
         .map(|w| w.id)
         .collect();
-    
+
     for ws_id in empty_workspace_ids {
         match healed.with_new_tab(ws_id, "about:blank") {
             Ok((next, _)) => healed = next,

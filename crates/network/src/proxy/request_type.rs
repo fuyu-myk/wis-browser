@@ -17,7 +17,7 @@ pub fn classify(headers: &HeaderMap) -> RequestType {
     let Ok(text) = value.to_str() else {
         return RequestType::Other;
     };
-    
+
     match text {
         "document" => RequestType::Document,
         "frame" | "iframe" => RequestType::Subdocument,

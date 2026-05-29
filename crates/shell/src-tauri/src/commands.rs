@@ -11,6 +11,8 @@
 //!
 //! Read-only commands acquire the mutex briefly to clone the relevant slice.
 
+use tauri::image::Image;
+use tauri::path::BaseDirectory;
 use tauri::webview::{PageLoadEvent, PageLoadPayload, WebviewBuilder};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
 use url::Url;
@@ -580,4 +582,43 @@ pub async fn resolve_hostname(
         .map_err(|err| WisError::InvalidInput {
             message: err.to_string(),
         })
+}
+
+// ---------------------------------------------------------------------------
+// Runtime window/dock icon swap
+// ---------------------------------------------------------------------------
+
+/// Variant of the wis owl shown as the window/dock icon. `"closed"` for
+/// private/reader contexts; `"open"` (or anything else) for the default state.
+/// Frontend hovers and private-mode toggles invoke this to keep the OS-level
+/// brand surface in sync with the in-app state — "the brand state is the
+/// system state."
+#[tauri::command]
+pub async fn set_window_icon(
+    app: AppHandle,
+    window_label: String,
+    variant: String,
+) -> WisResult<()> {
+    let file = match variant.as_str() {
+        "closed" => "icons/runtime/mark-closed-512.png",
+        _ => "icons/runtime/mark-open-512.png",
+    };
+    let path = app
+        .path()
+        .resolve(file, BaseDirectory::Resource)
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("resolve icon {file}: {err}"),
+        })?;
+    let icon = Image::from_path(&path).map_err(|err| WisError::InvalidInput {
+        message: format!("load icon {file}: {err}"),
+    })?;
+    let window = app
+        .get_webview_window(&window_label)
+        .ok_or_else(|| WisError::InvalidInput {
+            message: format!("no window labelled {window_label}"),
+        })?;
+
+    window.set_icon(icon).map_err(|err| WisError::InvalidInput {
+        message: format!("set_icon failed: {err}"),
+    })
 }

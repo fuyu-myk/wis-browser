@@ -88,9 +88,7 @@ impl UserSettings {
     pub fn with_patch(&self, patch: UserSettingsPatch) -> Self {
         Self {
             layout: patch.layout.unwrap_or(self.layout),
-            top_tabs_rail_side: patch
-                .top_tabs_rail_side
-                .unwrap_or(self.top_tabs_rail_side),
+            top_tabs_rail_side: patch.top_tabs_rail_side.unwrap_or(self.top_tabs_rail_side),
             url_bar_position: patch.url_bar_position.unwrap_or(self.url_bar_position),
             theme: patch.theme.unwrap_or(self.theme),
             accent: patch.accent.unwrap_or(self.accent),

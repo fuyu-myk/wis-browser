@@ -198,6 +198,15 @@ export const commands = {
   async resolveHostname(hostname: string): Promise<string[]> {
     return invoke('resolve_hostname', { hostname })
   },
+
+  /**
+   * Swap the OS-level window / dock icon for the given window. `"open"` is
+   * the at-rest owl; `"closed"` is the eyes-closed variant for private or
+   * reader contexts. Returns when the platform has accepted the new icon.
+   */
+  async setWindowIcon(windowLabel: string, variant: 'open' | 'closed'): Promise<void> {
+    return invoke('set_window_icon', { windowLabel, variant })
+  },
 } as const
 
 export type Commands = typeof commands

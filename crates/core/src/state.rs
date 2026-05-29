@@ -398,7 +398,7 @@ impl BrowserState {
                 }
             })
             .collect();
-        
+
         Self {
             tabs,
             ..self.clone()
