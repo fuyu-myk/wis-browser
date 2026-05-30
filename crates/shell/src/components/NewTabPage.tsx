@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { commands } from '@/bindings/commands'
 import type { Tab, WorkspaceId } from '@/bindings/types'
 import { SearchIcon } from '@/lib/icons'
-import { NEW_TAB_URL, normaliseUrl } from '@/lib/url'
+import { isChromeUrl, normaliseUrl } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { useWindowIconSwap } from '@/hooks/useWindowIcon'
 import { WisMark } from '@/components/WisMark'
@@ -26,6 +26,29 @@ const QUICK_LINKS: QuickLink[] = [
 
 const MAX_BUBBLES = 8
 
+/**
+ * Editorial prompts shown in the hero. One is picked at random per launch so
+ * the launchpad feels alive without animation. Keep the voice consistent:
+ * one capital, a single question, never cute.
+ */
+const LAUNCH_PROMPTS: readonly string[] = [
+  'What would you like to explore today?',
+  'What would you like to search today?',
+  'What are you curious about?',
+  'What shall we look into?',
+  'What are you searching for?',
+  "What's on your mind?",
+  'What would you like to find?',
+  'What are you looking up today?',
+  "Where shall we surf to today?",
+  "Where to next?",
+]
+
+function pickPrompt(): string {
+  const index = Math.floor(Math.random() * LAUNCH_PROMPTS.length)
+  return LAUNCH_PROMPTS[index]
+}
+
 function faviconFor(url: string): string {
   try {
     const host = new URL(url).hostname
@@ -45,6 +68,7 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
   const activeWorkspaceId = state?.active_workspace_id ?? null
   const [query, setQuery] = useState('')
   const [logoHovered, setLogoHovered] = useState(false)
+  const [prompt] = useState(pickPrompt)
   const swapIcon = useWindowIconSwap()
 
   const navigate = useNavigateOrCreate(activeWorkspaceId, activeTab)
@@ -72,16 +96,15 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
               swapIcon('open')
             }}
           >
-            <span className="kb-launch-mark" aria-hidden="true">
+            <span className="kb-launch-mark">
               <WisMark
                 variant={logoHovered ? 'solid-closed' : 'blink'}
                 size={72}
                 aria-label="wis"
               />
             </span>
-            <span className="wordmark">wis</span>
           </div>
-          <span className="tagline">What would you like to explore today?</span>
+          <span className="tagline">{prompt}</span>
         </div>
         <form className="kb-omnisearch" onSubmit={submit}>
           <SearchIcon />
@@ -139,8 +162,9 @@ function QuickLinkBubble({ link, onNavigate }: QuickLinkBubbleProps) {
 }
 
 /**
- * If there's an `about:newtab` placeholder active, navigate it. Otherwise
- * create a new tab at the URL in the active workspace.
+ * The launchpad always renders on top of a chrome/launchpad tab (see
+ * `isChromeUrl`). Navigate that tab in place rather than spawning a new one;
+ * only fall back to creating a tab if somehow there's no placeholder.
  */
 function useNavigateOrCreate(
   workspaceId: WorkspaceId | null,
@@ -159,7 +183,7 @@ function useNavigateOrCreate(
   })
 
   return (url) => {
-    if (placeholderTab && placeholderTab.url === NEW_TAB_URL) {
+    if (placeholderTab && isChromeUrl(placeholderTab.url)) {
       navigateMutation.mutate({ id: placeholderTab.id, url })
     } else if (workspaceId) {
       createMutation.mutate({ workspaceId, url })

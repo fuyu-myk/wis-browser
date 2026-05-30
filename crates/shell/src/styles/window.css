@@ -212,7 +212,7 @@
   letter-spacing: -0.01em;
 }
 .kb-brand .ver {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-tertiary);
   letter-spacing: 0.05em;
@@ -301,7 +301,7 @@
   min-height: 0;
 }
 .kb-tabs .group-label {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 9.5px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -352,7 +352,7 @@
   width: 16px; height: 16px;
   border-radius: 4px;
   display: inline-flex; align-items: center; justify-content: center;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 600;
   color: white;
@@ -676,7 +676,7 @@
   color: var(--text-primary);
 }
 .kb-urlpill-inline svg { width: 14px; height: 14px; opacity: 0.7; flex-shrink: 0; }
-.kb-urlpill-inline .protocol { color: var(--text-tertiary); font-family: 'DM Mono', monospace; font-size: 11px; }
+.kb-urlpill-inline .protocol { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 11px; }
 .kb-urlpill-inline .domain   { color: var(--text-primary); font-weight: 500; }
 .kb-urlpill-inline .path     {
   color: var(--text-secondary);
@@ -829,6 +829,7 @@
   color: var(--primary-400);
 }
 .kb-hero .wordmark {
+  font-family: var(--font-display);
   font-size: 56px;
   line-height: 0.98;
   letter-spacing: -0.04em;
@@ -836,13 +837,15 @@
   color: var(--text-primary);
 }
 .kb-hero .tagline {
-  font-size: 18px;
-  line-height: 1.4;
-  letter-spacing: -0.005em;
-  color: color-mix(in oklab, var(--text-primary) 55%, transparent);
+  font-family: var(--font-editorial);
+  font-style: italic;
+  font-size: 32px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: color-mix(in oklab, var(--text-primary) 70%, transparent);
 }
 [data-mode="dark"] .kb-hero .tagline {
-  color: color-mix(in oklab, var(--text-primary) 65%, transparent);
+  color: color-mix(in oklab, var(--text-primary) 75%, transparent);
 }
 
 .kb-brand {
@@ -897,7 +900,9 @@
   outline: 0;
   color: inherit;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 15px;
+  /* Brand: tabular numerals where the eye counts characters (addresses). */
+  font-feature-settings: "tnum";
 }
 .kb-omnisearch input::placeholder { color: var(--text-tertiary); }
 .glass-on .kb-omnisearch {
@@ -955,14 +960,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 18px;
   font-weight: 600;
   color: white;
   border-radius: inherit;
 }
 .kb-quicklink .ql-lbl {
-  font-size: 11.5px;
+  font-size: 11px;
+  letter-spacing: 0.01em;
   color: var(--text-secondary);
   max-width: 84px;
   white-space: nowrap;
@@ -1030,7 +1036,7 @@
   gap: 8px;
 }
 .kb-settings-pop .sec-h {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 9.5px;
   font-weight: 500;
   letter-spacing: 0.14em;
@@ -1046,7 +1052,7 @@
 .kb-settings-close { width: 24px; height: 24px; }
 .kb-settings-close svg { width: 14px; height: 14px; }
 .kb-settings-pop-title {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1092,7 +1098,7 @@
   padding: 0 10px;
   border-radius: 100px;
   font-size: 11px;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   color: var(--text-tertiary);
   display: inline-flex;
   align-items: center;
@@ -1359,7 +1365,7 @@
   padding: 4px 6px 6px;
 }
 .kb-ws-pop-title {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;

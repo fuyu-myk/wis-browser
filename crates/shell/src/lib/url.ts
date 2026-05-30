@@ -27,9 +27,6 @@ function looksLikeHost(input: string): boolean {
   return HOST_RE.test(input)
 }
 
-/** The "blank" URL we open new tabs at: the chrome renders `NewTabPage` instead of a native webview. */
-export const NEW_TAB_URL = 'Enter search or web address'
-
 /** Truthy when a tab's URL should not cause a native webview to be created. */
 export function isChromeUrl(url: string): boolean {
   return url.startsWith('about:')
