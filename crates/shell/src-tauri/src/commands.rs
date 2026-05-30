@@ -315,24 +315,6 @@ pub async fn create_tab_webview(
         .proxy_url(proxy_url);
     builder = builder.data_store_identifier(bytes);
 
-    {
-        let app = app.clone();
-        builder = builder.on_navigation(move |url: &Url| {
-            let app = app.clone();
-            let url_string = url.to_string();
-            tauri::async_runtime::spawn(async move {
-                let state = app.state::<AppState>();
-                let result =
-                    mutate_unit(&state, |s| s.with_tab_url_synced(tab_id, &url_string)).await;
-                match result {
-                    Ok(()) => emit_state_changed(&app),
-                    Err(err) => log::warn!("on_navigation update for {tab_id} failed: {err}"),
-                }
-            });
-            true
-        });
-    }
-
     // Document title changes: fires when the page sets `<title>` or
     // mutates `document.title` from JS.
     {
@@ -350,18 +332,22 @@ pub async fn create_tab_webview(
         });
     }
 
-    // Page load lifecycle: Started/Finished, used to drive the loading flag.
     {
         let app = app.clone();
         builder = builder.on_page_load(move |_webview, payload: PageLoadPayload<'_>| {
             let app = app.clone();
             let loading = matches!(payload.event(), PageLoadEvent::Started);
+            let url_string = payload.url().to_string();
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<AppState>();
-                let result = mutate_unit(&state, |s| s.with_tab_loading(tab_id, loading)).await;
+                let result = mutate_unit(&state, |s| {
+                    s.with_tab_loading(tab_id, loading)
+                        .and_then(|next| next.with_tab_url_synced(tab_id, &url_string))
+                })
+                .await;
                 match result {
                     Ok(()) => emit_state_changed(&app),
-                    Err(err) => log::warn!("loading update for {tab_id} failed: {err}"),
+                    Err(err) => log::warn!("page load update for {tab_id} failed: {err}"),
                 }
             });
         });
@@ -384,7 +370,7 @@ pub async fn create_tab_webview(
             .map(|w| w.privacy_mode)
             .unwrap_or_default()
     };
-    
+
     // Engine-level filtering is best-effort: a failure must not block the tab.
     if let Some(spec) = state.content_rule_spec(privacy_mode) {
         if let Err(err) = crate::content_filter::attach_rule_list(&child, spec) {
