@@ -10,7 +10,6 @@ use url::Url;
 
 use crate::{policy::Decision, OutboundRequest, RequestPolicy, Resolver};
 
-use super::ca::MitmConfig;
 use super::request_type::classify;
 use super::tunnel::tunnel;
 use super::upstream::{bad_gateway, empty, forward, full};
@@ -20,10 +19,9 @@ pub async fn handle(
     req: Request<Incoming>,
     policy: Arc<RequestPolicy>,
     resolver: Arc<dyn Resolver>,
-    mitm: Option<Arc<MitmConfig>>,
 ) -> Response<BoxBody<Bytes, hyper::Error>> {
     if req.method() == Method::CONNECT {
-        return handle_connect(req, policy, resolver, mitm).await;
+        return handle_connect(req, policy, resolver).await;
     }
     handle_http(req, policy, resolver).await
 }
@@ -77,11 +75,10 @@ async fn handle_connect(
     req: Request<Incoming>,
     policy: Arc<RequestPolicy>,
     resolver: Arc<dyn Resolver>,
-    mitm: Option<Arc<MitmConfig>>,
 ) -> Response<BoxBody<Bytes, hyper::Error>> {
     // The path can't be seen for HTTPS, an https://host/ document request
     // is synthesized and run that through the policy. Host-level
-    // blocking works; path-level rules only apply to plain HTTP requests.
+    // blocking works; path-level filtering is enforced in the WebView engine.
     let authority = match req.uri().authority() {
         Some(a) => a,
         None => return bad_gateway("CONNECT missing authority"),
@@ -102,7 +99,14 @@ async fn handle_connect(
     };
 
     match decision {
-        Decision::Allow | Decision::Rewrite { .. } => tunnel(req, resolver, policy, mitm).await,
+        Decision::Allow | Decision::Rewrite { .. } => {
+            tracing::info!(
+                target: "wis_network::proxy",
+                host = %synthetic.host_str().unwrap_or(""),
+                "CONNECT tunnel"
+            );
+            tunnel(req, resolver).await
+        }
         Decision::Block { reason } => {
             tracing::info!(target = %synthetic, %reason, "blocked CONNECT");
             Response::builder()

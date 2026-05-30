@@ -24,12 +24,6 @@ pub struct UserSettings {
     pub default_privacy_mode: PrivacyMode,
     pub doh_resolver: Option<String>,
     pub homepage: Option<String>,
-    /// Master switch for HTTPS interception. Off by default. Even
-    /// when on, MITM only engages for workspaces in `PrivacyMode::Strict`.
-    /// The user must trust the Wis CA in their OS keychain for inner sites
-    /// to load without certificate errors.
-    #[serde(default)]
-    pub mitm_enabled: bool,
 }
 
 impl Default for UserSettings {
@@ -46,7 +40,6 @@ impl Default for UserSettings {
             default_privacy_mode: PrivacyMode::Balanced,
             doh_resolver: Some(DEFAULT_DOH_RESOLVER.to_string()),
             homepage: None,
-            mitm_enabled: false,
         }
     }
 }
@@ -79,8 +72,6 @@ pub struct UserSettingsPatch {
     pub doh_resolver: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub homepage: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mitm_enabled: Option<bool>,
 }
 
 impl UserSettings {
@@ -102,7 +93,6 @@ impl UserSettings {
                 .unwrap_or(self.default_privacy_mode),
             doh_resolver: patch.doh_resolver.or_else(|| self.doh_resolver.clone()),
             homepage: patch.homepage.or_else(|| self.homepage.clone()),
-            mitm_enabled: patch.mitm_enabled.unwrap_or(self.mitm_enabled),
         }
     }
 }

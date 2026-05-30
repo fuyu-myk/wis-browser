@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import { save } from '@tauri-apps/plugin-dialog'
+import { useEffect, useRef } from 'react'
 
 import { commands } from '@/bindings/commands'
 import type {
@@ -11,8 +10,10 @@ import type {
   UrlBarPosition,
   UserSettings,
   UserSettingsPatch,
+  WorkspaceId,
 } from '@/bindings/types'
-import { useUpdateSettings } from '@/hooks/useBrowserState'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { BROWSER_STATE_KEY, useBrowserState, useUpdateSettings } from '@/hooks/useBrowserState'
 import {
   MonitorIcon,
   MoonIcon,
@@ -78,22 +79,14 @@ interface SettingsPopoverProps {
 export function SettingsPopover({ settings, onClose }: SettingsPopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
   const update = useUpdateSettings()
-  const [exportStatus, setExportStatus] = useState<string | null>(null)
-
-  async function handleExportCa() {
-    try {
-      const target = await save({
-        defaultPath: 'wis-local-ca.pem',
-        filters: [{ name: 'PEM certificate', extensions: ['pem', 'crt'] }],
-      })
-      if (!target) return
-      const written = await commands.exportWisCa(target)
-      setExportStatus(`Wrote CA to ${written}`)
-    } catch (err) {
-      setExportStatus(`Export failed: ${err instanceof Error ? err.message : String(err)}`)
-    }
-  }
-
+  const qc = useQueryClient()
+  const { data: state } = useBrowserState()
+  const activeWorkspace = state?.workspaces.find((w) => w.id === state.active_workspace_id)
+  const setWorkspaceMode = useMutation({
+    mutationFn: ({ id, mode }: { id: WorkspaceId; mode: PrivacyMode }) =>
+      commands.setWorkspacePrivacyMode(id, mode),
+    onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
+  })
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
@@ -231,9 +224,25 @@ export function SettingsPopover({ settings, onClose }: SettingsPopoverProps) {
 
       <div className="sec">
         <div className="sec-h">Privacy</div>
+        {activeWorkspace ? (
+          <div className="row">
+            <div className="l">
+              <span>This workspace ({activeWorkspace.name})</span>
+              <span>{PRIVACY_DESCRIPTIONS[activeWorkspace.privacy_mode]}</span>
+            </div>
+            <Segmented
+              value={activeWorkspace.privacy_mode}
+              onChange={(mode) =>
+                setWorkspaceMode.mutate({ id: activeWorkspace.id, mode })
+              }
+              options={PRIVACY_OPTIONS}
+              ariaLabel="Workspace privacy mode"
+            />
+          </div>
+        ) : null}
         <div className="row">
           <div className="l">
-            <span>Default mode</span>
+            <span>Default for new workspaces</span>
             <span>{PRIVACY_DESCRIPTIONS[settings.default_privacy_mode]}</span>
           </div>
           <Segmented
@@ -243,43 +252,6 @@ export function SettingsPopover({ settings, onClose }: SettingsPopoverProps) {
             ariaLabel="Default privacy mode"
           />
         </div>
-      </div>
-
-      <div className="sec">
-        <div className="sec-h">HTTPS interception</div>
-        <div className="row">
-          <div className="l">
-            <span>Inspect HTTPS in Strict workspaces</span>
-            <span>
-              Terminates TLS at a local proxy so path-level tracker rules apply.
-              Requires trusting the Wis CA in your OS keychain.
-            </span>
-          </div>
-          <Switch
-            checked={settings.mitm_enabled}
-            onChange={(mitm_enabled) => update.mutate({ mitm_enabled })}
-            label="HTTPS interception"
-          />
-        </div>
-        <div className="row">
-          <div className="l">
-            <span>Export Wis local CA</span>
-            <span>
-              Save the CA certificate, then add it to your keychain and mark it
-              trusted for SSL.
-            </span>
-          </div>
-          <button type="button" className="kb-btn" onClick={handleExportCa}>
-            Export CA
-          </button>
-        </div>
-        {exportStatus !== null ? (
-          <div className="row">
-            <div className="l">
-              <span>{exportStatus}</span>
-            </div>
-          </div>
-        ) : null}
       </div>
     </div>
     </div>

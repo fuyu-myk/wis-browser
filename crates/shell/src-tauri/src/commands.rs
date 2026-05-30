@@ -17,8 +17,8 @@ use tauri::webview::{PageLoadEvent, PageLoadPayload, WebviewBuilder};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
 use url::Url;
 use wis_core::{
-    AccentColor, BrowserState, Tab, TabId, UserSettings, UserSettingsPatch, WisError, WisResult,
-    Workspace, WorkspaceId,
+    AccentColor, BrowserState, PrivacyMode, Tab, TabId, UserSettings, UserSettingsPatch, WisError,
+    WisResult, Workspace, WorkspaceId,
 };
 use wis_network::{Decision, OutboundRequest, RequestType};
 
@@ -160,6 +160,52 @@ pub async fn recolor_workspace(
 #[tauri::command]
 pub async fn set_active_workspace(state: State<'_, AppState>, id: WorkspaceId) -> WisResult<()> {
     mutate_unit(&state, |s| s.with_active_workspace(id)).await
+}
+
+/// Change the privacy mode for a specific workspace. The workspace proxy is
+/// dropped so the next navigation rebuilds it with the new policy, and the
+/// engine-level rule list on every open tab in the workspace is re-applied.
+#[tauri::command]
+pub async fn set_workspace_privacy_mode(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: WorkspaceId,
+    mode: PrivacyMode,
+) -> WisResult<Workspace> {
+    let workspace = mutate(&state, |s| {
+        let next = s.with_workspace_privacy_mode(id, mode)?;
+        let updated = next.workspace(id)?.clone();
+        Ok((next, updated))
+    })
+    .await?;
+
+    state.clear_proxies().await;
+
+    let spec = state.content_rule_spec(mode).cloned();
+    let tab_labels: Vec<String> = {
+        let browser = state.browser.lock().await;
+        browser
+            .tabs_for(id)
+            .map(|tabs| {
+                tabs.iter()
+                    .map(|tab| format!("tab-{}", tab.id.as_uuid()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    for label in tab_labels {
+        let Some(webview) = app.webviews().get(&label).cloned() else {
+            continue;
+        };
+        let _ = crate::content_filter::clear_rule_lists(&webview);
+        if let Some(spec) = &spec {
+            if let Err(err) = crate::content_filter::attach_rule_list(&webview, spec) {
+                log::warn!("content filter: re-attach for {label} skipped: {err}");
+            }
+        }
+    }
+
+    Ok(workspace)
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +367,7 @@ pub async fn create_tab_webview(
         });
     }
 
-    window
+    let child = window
         .add_child(
             builder,
             tauri::LogicalPosition::new(x, y),
@@ -330,6 +376,21 @@ pub async fn create_tab_webview(
         .map_err(|err| WisError::InvalidInput {
             message: format!("add_child failed: {err}"),
         })?;
+
+    let privacy_mode = {
+        let browser = state.browser.lock().await;
+        browser
+            .workspace(workspace_id)
+            .map(|w| w.privacy_mode)
+            .unwrap_or_default()
+    };
+    
+    // Engine-level filtering is best-effort: a failure must not block the tab.
+    if let Some(spec) = state.content_rule_spec(privacy_mode) {
+        if let Err(err) = crate::content_filter::attach_rule_list(&child, spec) {
+            log::warn!("content filter: attach skipped: {err}");
+        }
+    }
 
     Ok(())
 }
@@ -495,44 +556,13 @@ pub async fn update_settings(
     state: State<'_, AppState>,
     patch: UserSettingsPatch,
 ) -> WisResult<UserSettings> {
-    let mitm_changed = {
-        let current = state.browser.lock().await;
-        patch
-            .mitm_enabled
-            .map(|new| new != current.settings.mitm_enabled)
-            .unwrap_or(false)
-    };
-
-    let settings = mutate(&state, |s| {
+    mutate(&state, |s| {
         let next = s.with_settings(patch);
         let settings = next.settings.clone();
 
         Ok((next, settings))
     })
-    .await?;
-
-    if mitm_changed {
-        state.clear_proxies().await;
-    }
-
-    Ok(settings)
-}
-
-/// Write the local Wis CA certificate (PEM) to `target_path` so the user can
-/// trust it in their OS keychain. Returns the path actually written.
-#[tauri::command]
-pub async fn export_wis_ca(state: State<'_, AppState>, target_path: String) -> WisResult<String> {
-    let pem = state.ca.cert_pem().to_string();
-    let path = std::path::PathBuf::from(&target_path);
-    tokio::task::spawn_blocking(move || std::fs::write(&path, pem.as_bytes()).map(|_| path))
-        .await
-        .map_err(|err| WisError::InvalidInput {
-            message: format!("ca export task panicked: {err}"),
-        })?
-        .map(|p| p.display().to_string())
-        .map_err(|err| WisError::InvalidInput {
-            message: format!("ca export write failed: {err}"),
-        })
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -591,8 +621,7 @@ pub async fn resolve_hostname(
 /// Variant of the wis owl shown as the window/dock icon. `"closed"` for
 /// private/reader contexts; `"open"` (or anything else) for the default state.
 /// Frontend hovers and private-mode toggles invoke this to keep the OS-level
-/// brand surface in sync with the in-app state — "the brand state is the
-/// system state."
+/// brand surface in sync with the in-app state.
 #[tauri::command]
 pub async fn set_window_icon(
     app: AppHandle,

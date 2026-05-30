@@ -106,7 +106,6 @@ export interface UserSettings {
   default_privacy_mode: PrivacyMode
   doh_resolver: string | null
   homepage: string | null
-  mitm_enabled: boolean
 }
 
 /**
@@ -125,7 +124,6 @@ export interface UserSettingsPatch {
   default_privacy_mode?: PrivacyMode
   doh_resolver?: string
   homepage?: string
-  mitm_enabled?: boolean
 }
 
 export interface PerSitePolicy {

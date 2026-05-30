@@ -62,14 +62,9 @@ async fn start_proxy(blocker: TrackerBlocker, resolver: Arc<dyn Resolver>) -> Pr
         wis_core::PrivacyMode::Balanced,
         Arc::new(blocker),
     ));
-    ProxyServer::start(
-        policy,
-        resolver,
-        SocketAddr::from(([127, 0, 0, 1], 0)),
-        None,
-    )
-    .await
-    .expect("proxy start")
+    ProxyServer::start(policy, resolver, SocketAddr::from(([127, 0, 0, 1], 0)))
+        .await
+        .expect("proxy start")
 }
 
 /// Send a request through the proxy. Bypasses any client-side proxy

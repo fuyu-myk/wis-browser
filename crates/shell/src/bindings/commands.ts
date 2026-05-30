@@ -10,6 +10,7 @@ import type {
   AccentColor,
   BrowserState,
   Decision,
+  PrivacyMode,
   RequestType,
   Tab,
   TabId,
@@ -58,6 +59,14 @@ export const commands = {
 
   async setActiveWorkspace(id: WorkspaceId): Promise<void> {
     return invoke('set_active_workspace', { id })
+  },
+
+  /**
+   * Change a specific workspace's privacy mode. The server rebuilds the proxy
+   * and re-applies the engine content filter to open tabs in the workspace.
+   */
+  async setWorkspacePrivacyMode(id: WorkspaceId, mode: PrivacyMode): Promise<Workspace> {
+    return invoke('set_workspace_privacy_mode', { id, mode })
   },
 
   // -- tab mutations --------------------------------------------------------
@@ -162,14 +171,6 @@ export const commands = {
 
   async updateSettings(patch: UserSettingsPatch): Promise<UserSettings> {
     return invoke('update_settings', { patch })
-  },
-
-  /**
-   * Export the local Wis CA cert PEM to `targetPath` so the user can trust
-   * it in their OS keychain. Returns the path actually written.
-   */
-  async exportWisCa(targetPath: string): Promise<string> {
-    return invoke('export_wis_ca', { targetPath })
   },
 
   // -- privacy engine -------------------------------------------------------

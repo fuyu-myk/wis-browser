@@ -5,7 +5,7 @@
 //! - the persistent [`Storage`] backend;
 //! - the long-lived [`TrackerBlocker`] and DoH [`Resolver`] used by the
 //!   privacy decision engine;
-//! - the local [`CertAuthority`] used by MITM proxies;
+//! - the precomputed per-mode content-filter rule specs;
 //! - one [`ProxyServer`] per workspace, started lazily on first use.
 //!   Each tab webview is pointed at its workspace's proxy via `WebviewBuilder::proxy_url`.
 //!
@@ -14,17 +14,16 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::Path;
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
 use wis_core::{BrowserState, PrivacyMode, WorkspaceId};
 use wis_network::{
-    ca_dir, CertAuthority, DohResolver, MitmConfig, ProxyServer, RequestPolicy, Resolver,
-    StubResolver, TrackerBlocker,
+    DohResolver, ProxyServer, RequestPolicy, Resolver, StubResolver, TrackerBlocker,
 };
 use wis_storage::Storage;
 
+use crate::content_filter::{build_rule_specs, RuleSpec};
 use crate::error_compat::WisShellError;
 
 pub struct AppState {
@@ -32,7 +31,7 @@ pub struct AppState {
     pub storage: Arc<dyn Storage>,
     pub tracker_blocker: Arc<TrackerBlocker>,
     pub resolver: Arc<dyn Resolver>,
-    pub ca: Arc<CertAuthority>,
+    pub content_rules: HashMap<PrivacyMode, Option<RuleSpec>>,
     pub proxies: Mutex<HashMap<WorkspaceId, ProxyServer>>,
 }
 
@@ -42,16 +41,21 @@ impl AppState {
         storage: Arc<dyn Storage>,
         tracker_blocker: Arc<TrackerBlocker>,
         resolver: Arc<dyn Resolver>,
-        ca: Arc<CertAuthority>,
     ) -> Self {
         Self {
             browser: Mutex::new(browser),
             storage,
             tracker_blocker,
             resolver,
-            ca,
+            content_rules: build_rule_specs(),
             proxies: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// The content-filter rule spec for a privacy mode, or `None` when the
+    /// mode applies no engine-level filtering.
+    pub fn content_rule_spec(&self, mode: PrivacyMode) -> Option<&RuleSpec> {
+        self.content_rules.get(&mode).and_then(|spec| spec.as_ref())
     }
 
     /// Build a [`RequestPolicy`] for the currently-active workspace.
@@ -68,17 +72,16 @@ impl AppState {
     /// its bound port. Idempotent: subsequent calls for the same workspace
     /// return the same port without re-binding.
     ///
-    /// MITM is engaged when the workspace is in `PrivacyMode::Strict` and
-    /// the user has flipped `UserSettings::mitm_enabled` on. Otherwise the
-    /// proxy tunnels HTTPS raw.
+    /// The proxy handles DoH resolution, host-level tracker blocking, and
+    /// HTTPS-First upgrades. HTTPS is tunnelled raw; path-level filtering is
+    /// enforced in the WebView engine (see `content_filter`).
     pub async fn ensure_proxy_for(&self, workspace_id: WorkspaceId) -> Result<u16, WisShellError> {
-        let (privacy_mode, mitm_enabled) = {
+        let privacy_mode = {
             let browser = self.browser.lock().await;
-            let mode = browser
+            browser
                 .workspace(workspace_id)
                 .map_err(WisShellError::from)?
-                .privacy_mode;
-            (mode, browser.settings.mitm_enabled)
+                .privacy_mode
         };
 
         let mut proxies = self.proxies.lock().await;
@@ -90,27 +93,13 @@ impl AppState {
             privacy_mode,
             self.tracker_blocker.clone(),
         ));
-        let mitm = if mitm_enabled && privacy_mode == PrivacyMode::Strict {
-            match MitmConfig::new(self.ca.clone()) {
-                Ok(cfg) => Some(Arc::new(cfg)),
-                Err(err) => {
-                    log::warn!("workspace {workspace_id} mitm setup failed ({err}); tunneling");
-                    None
-                }
-            }
-        } else {
-            None
-        };
         let bind: SocketAddr = ([127, 0, 0, 1], 0).into();
-        let server = ProxyServer::start(policy, self.resolver.clone(), bind, mitm.clone())
+        let server = ProxyServer::start(policy, self.resolver.clone(), bind)
             .await
             .map_err(|err| WisShellError::Other(format!("proxy start: {err}")))?;
         let port = server.port();
 
-        log::info!(
-            "workspace {workspace_id} proxy listening on 127.0.0.1:{port}{}",
-            if mitm.is_some() { " (mitm)" } else { "" }
-        );
+        log::info!("workspace {workspace_id} proxy listening on 127.0.0.1:{port}");
         proxies.insert(workspace_id, server);
 
         Ok(port)
@@ -146,17 +135,6 @@ pub fn build_resolver(doh_url: Option<&str>) -> Arc<dyn Resolver> {
     }
 }
 
-/// Load (or generate) the Wis local CA from the canonical sub-directory of
-/// the Tauri-resolved app-data dir. Failure is fatal at startup: without a
-/// CA we cannot MITM, and the toggle in settings would silently no-op.
-pub fn load_or_generate_ca(app_data_dir: &Path) -> Result<Arc<CertAuthority>, WisShellError> {
-    let dir = ca_dir(app_data_dir);
-    let ca = CertAuthority::load_or_generate(&dir)
-        .map_err(|err| WisShellError::Other(format!("ca load: {err}")))?;
-    log::info!("wis CA available at {}", dir.display());
-    Ok(Arc::new(ca))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,20 +145,11 @@ mod tests {
             Arc::new(SqliteStorage::open_in_memory().expect("in-memory DB"));
         let blocker = Arc::new(TrackerBlocker::with_default_list().expect("default list"));
         let resolver: Arc<dyn Resolver> = Arc::new(StubResolver::new());
-        let ca_dir = std::env::temp_dir().join(format!(
-            "wis-state-test-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let ca = Arc::new(CertAuthority::load_or_generate(&ca_dir).expect("ca"));
         AppState::new(
             BrowserState::new_with_defaults(),
             storage,
             blocker,
             resolver,
-            ca,
         )
     }
 
@@ -217,6 +186,32 @@ mod tests {
         }
         let policy = state.request_policy_for_active_workspace().await;
         assert_eq!(policy.privacy_mode(), PrivacyMode::Strict);
+    }
+
+    #[test]
+    fn content_rule_specs_track_privacy_mode() {
+        let state = app_state_for_test();
+        assert!(
+            state.content_rule_spec(PrivacyMode::Strict).is_some(),
+            "strict gets an engine rule list"
+        );
+        assert!(
+            state.content_rule_spec(PrivacyMode::Balanced).is_some(),
+            "balanced gets an engine rule list"
+        );
+        assert!(
+            state.content_rule_spec(PrivacyMode::Permissive).is_none(),
+            "permissive applies no engine filter"
+        );
+        assert_ne!(
+            state
+                .content_rule_spec(PrivacyMode::Strict)
+                .map(|s| s.identifier.as_str()),
+            state
+                .content_rule_spec(PrivacyMode::Balanced)
+                .map(|s| s.identifier.as_str()),
+            "each mode has a distinct cache identifier"
+        );
     }
 
     #[test]

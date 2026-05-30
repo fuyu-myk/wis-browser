@@ -11,6 +11,7 @@
 //! crate and will be wired in at the shell layer in future.
 
 pub mod blocker;
+pub mod content_filter;
 pub mod context;
 pub mod error;
 pub mod filter_lists;
@@ -20,9 +21,10 @@ pub mod resolver;
 pub mod upgrader;
 
 pub use blocker::{RequestType, TrackerBlocker};
+pub use content_filter::content_blocking_json;
 pub use context::{NetworkContext, RefererPolicy};
 pub use error::{NetworkError, NetworkResult};
 pub use policy::{Decision, OutboundRequest, RequestPolicy};
-pub use proxy::{ca_dir, CertAuthority, CertIssuer, MitmConfig, ProxyServer};
+pub use proxy::ProxyServer;
 pub use resolver::{DohResolver, Resolver, StubResolver};
 pub use upgrader::HttpsUpgrader;

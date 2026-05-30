@@ -30,14 +30,6 @@ hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 bytes = "1"
 
-# MITM TLS terminator
-rustls = { workspace = true }
-tokio-rustls = { workspace = true }
-rcgen = { workspace = true }
-rustls-pemfile = { workspace = true }
-webpki-roots = { workspace = true }
-time = { workspace = true }
-
 [dev-dependencies]
 tokio = { workspace = true }
 http-body-util = "0.1"

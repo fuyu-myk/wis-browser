@@ -1,13 +1,9 @@
-//! `CONNECT host:port` handling. Two flavours:
+//! `CONNECT host:port` handling: raw TCP tunnel.
 //!
-//! - Without MITM: raw TCP tunnel. Resolution is done via DoH,
-//!   opening an upstream socket, returning `200 Connection Established`, and
-//!   `tokio::io::copy_bidirectional` until either side closes. The WebView
-//!   talks TLS directly to the upstream, end-to-end.
-//!
-//! - With MITM (opt-in): TLS is terminated with a per-SNI leaf
-//!   cert issued by the local Wis CA, then TLS is re-initiated to the real
-//!   upstream and apply [`RequestPolicy`] to each decrypted request.
+//! Resolution is done via DoH, opening an upstream socket, returning
+//! `200 Connection Established`, and `tokio::io::copy_bidirectional` until
+//! either side closes. The WebView talks TLS directly to the upstream,
+//! end-to-end: the proxy never terminates TLS.
 
 use std::sync::Arc;
 
@@ -17,40 +13,21 @@ use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpStream;
 
-use crate::policy::RequestPolicy;
 use crate::resolver::Resolver;
 
-use super::ca::MitmConfig;
-use super::mitm::run_mitm;
 use super::upstream::{bad_gateway, empty};
 
 pub async fn tunnel(
     req: Request<Incoming>,
     resolver: Arc<dyn Resolver>,
-    policy: Arc<RequestPolicy>,
-    mitm: Option<Arc<MitmConfig>>,
 ) -> Response<BoxBody<Bytes, hyper::Error>> {
     let (host, port) = match parse_authority(&req) {
         Some(pair) => pair,
         None => return bad_gateway("CONNECT target missing host:port"),
     };
 
-    if let Some(mitm_cfg) = mitm {
-        // Don't connect upstream here; `run_mitm` does it lazily per
-        // inner request so blocked traffic never touches the network.
-        let host = host.clone();
-        tokio::spawn(async move {
-            run_mitm(req, host, port, policy, resolver, mitm_cfg).await;
-        });
-
-        return Response::builder()
-            .status(200)
-            .body(empty())
-            .expect("CONNECT 200 builder valid");
-    }
-
-    // Tunnel-only path: resolve + open upstream eagerly. On failure:
-    // a meaningful 502 can still be returned before sending 200.
+    // Resolve + open upstream eagerly so a meaningful 502 can still be
+    // returned before sending 200.
     let ip = match resolver.resolve(&host).await {
         Ok(ips) => match ips.into_iter().next() {
             Some(ip) => ip,

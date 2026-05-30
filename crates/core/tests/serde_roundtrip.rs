@@ -93,7 +93,6 @@ fn settings_patch_round_trips_when_all_fields_set() {
         default_privacy_mode: Some(PrivacyMode::Strict),
         doh_resolver: Some("https://dns.example/dns-query".into()),
         homepage: Some("https://start.example".into()),
-        mitm_enabled: Some(true),
     };
     let after: UserSettingsPatch = roundtrip(&patch);
     assert_eq!(patch, after);

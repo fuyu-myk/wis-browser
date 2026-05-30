@@ -153,6 +153,33 @@ impl BrowserState {
         })
     }
 
+    pub fn with_workspace_privacy_mode(
+        &self,
+        id: WorkspaceId,
+        mode: crate::privacy::PrivacyMode,
+    ) -> WisResult<Self> {
+        if !self.workspaces.iter().any(|w| w.id == id) {
+            return Err(WisError::WorkspaceNotFound { id });
+        }
+
+        let workspaces = self
+            .workspaces
+            .iter()
+            .map(|w| {
+                if w.id == id {
+                    w.with_privacy_mode(mode)
+                } else {
+                    w.clone()
+                }
+            })
+            .collect();
+
+        Ok(Self {
+            workspaces,
+            ..self.clone()
+        })
+    }
+
     pub fn with_workspace_removed(&self, id: WorkspaceId) -> WisResult<Self> {
         if self.workspaces.len() == 1 {
             return Err(WisError::CannotDeleteLastWorkspace);

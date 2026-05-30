@@ -1,4 +1,5 @@
 mod commands;
+mod content_filter;
 mod error_compat;
 mod state;
 
@@ -13,11 +14,20 @@ use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,wis_network=debug"));
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(true)
+        .with_writer(std::io::stderr)
+        .finish();
+    let _ = tracing::subscriber::set_global_default(subscriber);
+
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(if cfg!(debug_assertions) {
-                    log::LevelFilter::Info
+                    log::LevelFilter::Debug
                 } else {
                     log::LevelFilter::Warn
                 })
@@ -52,14 +62,11 @@ pub fn run() {
             };
             let resolver = state::build_resolver(browser_state.settings.doh_resolver.as_deref());
 
-            let ca = state::load_or_generate_ca(&data_dir)?;
-
             app.manage(AppState::new(
                 browser_state,
                 storage,
                 tracker_blocker,
                 resolver,
-                ca,
             ));
             Ok(())
         })
@@ -73,6 +80,7 @@ pub fn run() {
             commands::delete_workspace,
             commands::recolor_workspace,
             commands::set_active_workspace,
+            commands::set_workspace_privacy_mode,
             commands::create_tab,
             commands::close_tab,
             commands::reorder_tabs,
@@ -89,7 +97,6 @@ pub fn run() {
             commands::tab_go_back,
             commands::tab_go_forward,
             commands::update_settings,
-            commands::export_wis_ca,
             commands::check_url_policy,
             commands::resolve_hostname,
             commands::set_window_icon,

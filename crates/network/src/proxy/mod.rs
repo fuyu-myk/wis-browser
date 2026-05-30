@@ -6,14 +6,10 @@
 //! forward (HTTP), tunnel (HTTPS `CONNECT`), 301-redirect (HTTPS-First),
 //! or refuse (tracker blocking).
 
-pub mod ca;
 mod handler;
-mod mitm;
 mod request_type;
 mod tunnel;
 mod upstream;
-
-pub use ca::{ca_dir, CertAuthority, CertIssuer, MitmConfig};
 
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -45,15 +41,12 @@ impl ProxyServer {
     /// `bind_addr` is typically `127.0.0.1:0`: pass port `0` and read
     /// the assigned port back via [`port`](Self::port).
     ///
-    /// `mitm` opts in to HTTPS interception. When `None`, the
-    /// proxy tunnels CONNECTs raw. When `Some`, every
-    /// CONNECT terminates TLS at the proxy with a per-SNI leaf cert issued
-    /// by the local Wis CA, then re-initiates TLS to the upstream.
+    /// HTTPS CONNECTs are tunnelled raw, end-to-end: the proxy never
+    /// terminates TLS.
     pub async fn start(
         policy: Arc<RequestPolicy>,
         resolver: Arc<dyn Resolver>,
         bind_addr: SocketAddr,
-        mitm: Option<Arc<MitmConfig>>,
     ) -> NetworkResult<Self> {
         let listener = TcpListener::bind(bind_addr).await?;
         let local_addr = listener.local_addr()?;
@@ -80,8 +73,7 @@ impl ProxyServer {
                         };
                         let policy = policy.clone();
                         let resolver = resolver.clone();
-                        let mitm = mitm.clone();
-                        tokio::spawn(serve_connection(stream, policy, resolver, mitm));
+                        tokio::spawn(serve_connection(stream, policy, resolver));
                     }
                 }
             }
@@ -114,15 +106,13 @@ async fn serve_connection(
     stream: tokio::net::TcpStream,
     policy: Arc<RequestPolicy>,
     resolver: Arc<dyn Resolver>,
-    mitm: Option<Arc<MitmConfig>>,
 ) {
     let io = TokioIo::new(stream);
     let service = service_fn(move |req: Request<Incoming>| {
         let policy = policy.clone();
         let resolver = resolver.clone();
-        let mitm = mitm.clone();
         async move {
-            let resp: Response<_> = handler::handle(req, policy, resolver, mitm).await;
+            let resp: Response<_> = handler::handle(req, policy, resolver).await;
             Ok::<_, Infallible>(resp)
         }
     });
