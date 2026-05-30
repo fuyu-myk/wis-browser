@@ -33,7 +33,6 @@ pub fn run() {
                 })
                 .build(),
         )
-        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app
                 .path()

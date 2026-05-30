@@ -78,6 +78,11 @@ pub fn attach_rule_list<R: tauri::Runtime>(
 
     let identifier = spec.identifier.clone();
     let json = spec.json.clone();
+    // Counts the top-level rule objects for the diagnostic log. Parse failure
+    // here just degrades the log; the JSON itself is already known-valid.
+    let rule_count = serde_json::from_str::<Vec<serde_json::Value>>(&json)
+        .map(|v| v.len())
+        .unwrap_or(0);
 
     webview
         .with_webview(move |w| unsafe {
@@ -127,7 +132,7 @@ pub fn attach_rule_list<R: tauri::Runtime>(
                 let config: *mut AnyObject = msg_send![wkwebview, configuration];
                 let controller: *mut AnyObject = msg_send![config, userContentController];
                 let _: () = msg_send![controller, addContentRuleList: list];
-                log::info!("content filter: attached '{id_for_log}' (TLS intact, no MITM)");
+                log::info!("content filter: attached '{id_for_log}' ({rule_count} rules)");
             });
 
             let _: () = msg_send![

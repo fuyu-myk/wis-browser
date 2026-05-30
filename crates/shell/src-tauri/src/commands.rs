@@ -193,17 +193,23 @@ pub async fn set_workspace_privacy_mode(
             })
             .unwrap_or_default()
     };
+    let total = tab_labels.len();
+    let mut reattached = 0usize;
     for label in tab_labels {
         let Some(webview) = app.webviews().get(&label).cloned() else {
             continue;
         };
         let _ = crate::content_filter::clear_rule_lists(&webview);
         if let Some(spec) = &spec {
-            if let Err(err) = crate::content_filter::attach_rule_list(&webview, spec) {
-                log::warn!("content filter: re-attach for {label} skipped: {err}");
+            match crate::content_filter::attach_rule_list(&webview, spec) {
+                Ok(()) => reattached += 1,
+                Err(err) => log::warn!("content filter: re-attach for {label} skipped: {err}"),
             }
         }
     }
+    log::info!(
+        "workspace {id} privacy mode now {mode:?}: re-attached {reattached}/{total} tabs"
+    );
 
     Ok(workspace)
 }
