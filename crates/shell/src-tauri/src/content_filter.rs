@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 use wis_core::PrivacyMode;
-use wis_network::{content_blocking_json, filter_lists::DEFAULT_TRACKER_LIST};
+use wis_network::content_blocking_json;
 
 /// A compiled-rule-list spec: a stable identifier (so the WebKit store caches
 /// across launches) paired with the content-blocker JSON to compile.
@@ -19,22 +19,24 @@ pub struct RuleSpec {
     pub json: String,
 }
 
-/// Build the per-mode rule specs once from the bundled tracker list. A mode
-/// maps to `None` when it applies no engine-level filtering (Permissive). A
+/// Build per-mode rule specs from the given filter list text. A mode maps to
+/// `None` when it applies no engine-level filtering (Permissive). A
 /// conversion failure is logged and treated as `None` so a tab still loads.
-pub fn build_rule_specs() -> HashMap<PrivacyMode, Option<RuleSpec>> {
+/// The identifier hashes the JSON so swapping in a refreshed filter list
+/// produces a different identifier and forces WebKit to recompile.
+pub fn build_rule_specs_from(filter_text: &str) -> HashMap<PrivacyMode, Option<RuleSpec>> {
     [
         PrivacyMode::Strict,
         PrivacyMode::Balanced,
         PrivacyMode::Permissive,
     ]
     .into_iter()
-    .map(|mode| (mode, spec_for(mode)))
+    .map(|mode| (mode, spec_for(mode, filter_text)))
     .collect()
 }
 
-fn spec_for(mode: PrivacyMode) -> Option<RuleSpec> {
-    match content_blocking_json(&[DEFAULT_TRACKER_LIST], mode) {
+fn spec_for(mode: PrivacyMode, filter_text: &str) -> Option<RuleSpec> {
+    match content_blocking_json(&[filter_text], mode) {
         Ok(Some(json)) => Some(RuleSpec {
             identifier: identifier_for(mode, &json),
             json,

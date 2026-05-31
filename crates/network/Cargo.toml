@@ -23,6 +23,7 @@ async-trait = "0.1"
 
 hickory-resolver = { workspace = true }
 adblock = { workspace = true }
+reqwest = { workspace = true }
 
 # Proxy server
 hyper = { version = "1", features = ["server", "http1", "client"] }

@@ -24,6 +24,15 @@ pub struct UserSettings {
     pub default_privacy_mode: PrivacyMode,
     pub doh_resolver: Option<String>,
     pub homepage: Option<String>,
+    /// When true, the shell fetches the EasyPrivacy filter list on launch
+    /// (and on demand) into the per-user cache, then hot-swaps it into the
+    /// running tracker engine. When false, the bundled list is used.
+    #[serde(default = "default_filter_list_auto_update")]
+    pub filter_list_auto_update: bool,
+}
+
+fn default_filter_list_auto_update() -> bool {
+    true
 }
 
 impl Default for UserSettings {
@@ -40,6 +49,7 @@ impl Default for UserSettings {
             default_privacy_mode: PrivacyMode::Balanced,
             doh_resolver: Some(DEFAULT_DOH_RESOLVER.to_string()),
             homepage: None,
+            filter_list_auto_update: true,
         }
     }
 }
@@ -72,6 +82,8 @@ pub struct UserSettingsPatch {
     pub doh_resolver: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub homepage: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter_list_auto_update: Option<bool>,
 }
 
 impl UserSettings {
@@ -93,6 +105,9 @@ impl UserSettings {
                 .unwrap_or(self.default_privacy_mode),
             doh_resolver: patch.doh_resolver.or_else(|| self.doh_resolver.clone()),
             homepage: patch.homepage.or_else(|| self.homepage.clone()),
+            filter_list_auto_update: patch
+                .filter_list_auto_update
+                .unwrap_or(self.filter_list_auto_update),
         }
     }
 }

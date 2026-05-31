@@ -181,7 +181,7 @@ pub async fn set_workspace_privacy_mode(
 
     state.clear_proxies().await;
 
-    let spec = state.content_rule_spec(mode).cloned();
+    let spec = state.content_rule_spec(mode);
     let tab_labels: Vec<String> = {
         let browser = state.browser.lock().await;
         browser
@@ -379,7 +379,7 @@ pub async fn create_tab_webview(
 
     // Engine-level filtering is best-effort: a failure must not block the tab.
     if let Some(spec) = state.content_rule_spec(privacy_mode) {
-        if let Err(err) = crate::content_filter::attach_rule_list(&child, spec) {
+        if let Err(err) = crate::content_filter::attach_rule_list(&child, &spec) {
             log::warn!("content filter: attach skipped: {err}");
         }
     }
@@ -451,10 +451,12 @@ pub async fn tab_reload(app: AppHandle, id: TabId) -> WisResult<()> {
         .ok_or_else(|| WisError::InvalidInput {
             message: format!("no webview labelled {label}"),
         })?;
-
-    webview.reload().map_err(|err| WisError::InvalidInput {
-        message: format!("reload failed: {err}"),
-    })
+    log::info!("tab_reload: {label}");
+    webview
+        .eval("window.location.reload()")
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("reload eval failed: {err}"),
+        })
 }
 
 /// Navigate the tab back in its history.
@@ -642,4 +644,59 @@ pub async fn set_window_icon(
     window.set_icon(icon).map_err(|err| WisError::InvalidInput {
         message: format!("set_icon failed: {err}"),
     })
+}
+
+// ---------------------------------------------------------------------------
+// Filter list refresh
+// ---------------------------------------------------------------------------
+
+/// Refresh the EasyPrivacy filter list from upstream, replace the running
+/// tracker engine, and re-attach the new rules to every existing tab.
+/// Returns the number of bytes in the new filter text so the UI can confirm
+/// the swap happened.
+#[tauri::command]
+pub async fn refresh_filter_lists(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> WisResult<u32> {
+    let cache_dir = state.filter_cache_dir.clone();
+    let text = wis_network::filter_lists::fetch::refresh_easyprivacy(&cache_dir)
+        .await
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("refresh: {err}"),
+        })?;
+    let size = state
+        .rebuild_filter_engine(text)
+        .await
+        .map_err(wis_core::WisError::from)?;
+
+    // Walk every live tab webview and re-attach the new specs so the change
+    // takes effect without a navigation.
+    let tabs: Vec<(wis_core::TabId, wis_core::PrivacyMode)> = {
+        let browser = state.browser.lock().await;
+        browser
+            .tabs
+            .iter()
+            .filter_map(|tab| {
+                browser
+                    .workspace(tab.workspace_id)
+                    .ok()
+                    .map(|w| (tab.id, w.privacy_mode))
+            })
+            .collect()
+    };
+    for (tab_id, mode) in tabs {
+        let label = format!("tab-{}", tab_id.as_uuid());
+        let Some(webview) = app.webviews().get(&label).cloned() else {
+            continue;
+        };
+        let _ = crate::content_filter::clear_rule_lists(&webview);
+        if let Some(spec) = state.content_rule_spec(mode) {
+            if let Err(err) = crate::content_filter::attach_rule_list(&webview, &spec) {
+                log::warn!("content filter: re-attach for {label} skipped: {err}");
+            }
+        }
+    }
+
+    Ok(size as u32)
 }

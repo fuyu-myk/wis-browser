@@ -3,18 +3,22 @@
 //! Holds:
 //! - the in-memory [`BrowserState`] behind an async mutex;
 //! - the persistent [`Storage`] backend;
-//! - the long-lived [`TrackerBlocker`] and DoH [`Resolver`] used by the
-//!   privacy decision engine;
-//! - the precomputed per-mode content-filter rule specs;
-//! - one [`ProxyServer`] per workspace, started lazily on first use.
-//!   Each tab webview is pointed at its workspace's proxy via `WebviewBuilder::proxy_url`.
+//! - the long-lived DoH [`Resolver`] used by the privacy decision engine;
+//! - hot-swappable [`TrackerBlocker`] + content-filter rule specs behind a
+//!   sync `RwLock`, so a background EasyPrivacy refresh can replace them
+//!   without restarting the app;
+//! - the filter-list cache directory;
+//! - one [`ProxyServer`] per workspace, started lazily on first use. Each
+//!   tab webview is pointed at its workspace's proxy via
+//!   `WebviewBuilder::proxy_url`.
 //!
 //! Commands acquire the async mutex, compute the new state, persist it, then
 //! replace the in-memory copy: see `mutate` in `commands`.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 
 use tokio::sync::Mutex;
 use wis_core::{BrowserState, PrivacyMode, WorkspaceId};
@@ -23,15 +27,16 @@ use wis_network::{
 };
 use wis_storage::Storage;
 
-use crate::content_filter::{build_rule_specs, RuleSpec};
+use crate::content_filter::{build_rule_specs_from, RuleSpec};
 use crate::error_compat::WisShellError;
 
 pub struct AppState {
     pub browser: Mutex<BrowserState>,
     pub storage: Arc<dyn Storage>,
-    pub tracker_blocker: Arc<TrackerBlocker>,
+    pub tracker_blocker: RwLock<Arc<TrackerBlocker>>,
     pub resolver: Arc<dyn Resolver>,
-    pub content_rules: HashMap<PrivacyMode, Option<RuleSpec>>,
+    pub content_rules: RwLock<HashMap<PrivacyMode, Option<RuleSpec>>>,
+    pub filter_cache_dir: PathBuf,
     pub proxies: Mutex<HashMap<WorkspaceId, ProxyServer>>,
 }
 
@@ -41,21 +46,36 @@ impl AppState {
         storage: Arc<dyn Storage>,
         tracker_blocker: Arc<TrackerBlocker>,
         resolver: Arc<dyn Resolver>,
+        filter_cache_dir: PathBuf,
+        initial_filter_text: &str,
     ) -> Self {
         Self {
             browser: Mutex::new(browser),
             storage,
-            tracker_blocker,
+            tracker_blocker: RwLock::new(tracker_blocker),
             resolver,
-            content_rules: build_rule_specs(),
+            content_rules: RwLock::new(build_rule_specs_from(initial_filter_text)),
+            filter_cache_dir,
             proxies: Mutex::new(HashMap::new()),
         }
     }
 
     /// The content-filter rule spec for a privacy mode, or `None` when the
-    /// mode applies no engine-level filtering.
-    pub fn content_rule_spec(&self, mode: PrivacyMode) -> Option<&RuleSpec> {
-        self.content_rules.get(&mode).and_then(|spec| spec.as_ref())
+    /// mode applies no engine-level filtering. Cloned out so the caller
+    /// doesn't hold the lock.
+    pub fn content_rule_spec(&self, mode: PrivacyMode) -> Option<RuleSpec> {
+        self.content_rules
+            .read()
+            .expect("content_rules poisoned")
+            .get(&mode)
+            .and_then(|spec| spec.clone())
+    }
+
+    fn current_tracker_blocker(&self) -> Arc<TrackerBlocker> {
+        self.tracker_blocker
+            .read()
+            .expect("tracker_blocker poisoned")
+            .clone()
     }
 
     /// Build a [`RequestPolicy`] for the currently-active workspace.
@@ -65,7 +85,7 @@ impl AppState {
     pub async fn request_policy_for_active_workspace(&self) -> RequestPolicy {
         let browser = self.browser.lock().await;
         let mode = browser.active_workspace().privacy_mode;
-        RequestPolicy::new(mode, self.tracker_blocker.clone())
+        RequestPolicy::new(mode, self.current_tracker_blocker())
     }
 
     /// Lazily start (or look up) the workspace's loopback proxy and return
@@ -91,7 +111,7 @@ impl AppState {
 
         let policy = Arc::new(RequestPolicy::new(
             privacy_mode,
-            self.tracker_blocker.clone(),
+            self.current_tracker_blocker(),
         ));
         let bind: SocketAddr = ([127, 0, 0, 1], 0).into();
         let server = ProxyServer::start(policy, self.resolver.clone(), bind)
@@ -114,6 +134,36 @@ impl AppState {
         if count > 0 {
             log::info!("cleared {count} proxy(ies); next request rebuilds them");
         }
+    }
+
+    /// Swap in a new filter list. Rebuilds the [`TrackerBlocker`] (host-level
+    /// blocking used by the proxy) and the per-mode WebKit content-rule
+    /// specs (engine-level blocking), then drops every running proxy so the
+    /// next request picks up the new policy. Live tab webviews still hold
+    /// the previous rule list attached by [`crate::content_filter`]; the
+    /// caller is responsible for re-attaching the new specs to active tabs.
+    /// Returns the number of bytes in the new filter text for diagnostics.
+    pub async fn rebuild_filter_engine(&self, filter_text: String) -> Result<usize, WisShellError> {
+        let blocker = TrackerBlocker::from_filter_texts(&[&filter_text])
+            .map_err(|err| WisShellError::Other(format!("rebuild blocker: {err}")))?;
+        let rules = build_rule_specs_from(&filter_text);
+
+        let size = filter_text.len();
+        {
+            let mut guard = self
+                .tracker_blocker
+                .write()
+                .expect("tracker_blocker poisoned");
+            *guard = Arc::new(blocker);
+        }
+        {
+            let mut guard = self.content_rules.write().expect("content_rules poisoned");
+            *guard = rules;
+        }
+        self.clear_proxies().await;
+        
+        log::info!("filter engine rebuilt from {size} bytes of filter text");
+        Ok(size)
     }
 }
 
@@ -138,6 +188,7 @@ pub fn build_resolver(doh_url: Option<&str>) -> Arc<dyn Resolver> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wis_network::filter_lists::DEFAULT_TRACKER_LIST;
     use wis_storage::SqliteStorage;
 
     fn app_state_for_test() -> AppState {
@@ -150,6 +201,8 @@ mod tests {
             storage,
             blocker,
             resolver,
+            std::env::temp_dir().join("wis-filter-test"),
+            DEFAULT_TRACKER_LIST,
         )
     }
 
@@ -157,14 +210,12 @@ mod tests {
     async fn request_policy_reflects_active_workspaces_privacy_mode() {
         let state = app_state_for_test();
         let policy = state.request_policy_for_active_workspace().await;
-        // Default workspace ships with the Balanced privacy preset.
         assert_eq!(policy.privacy_mode(), PrivacyMode::Balanced);
     }
 
     #[tokio::test]
     async fn request_policy_picks_up_workspace_mode_changes() {
         let state = app_state_for_test();
-        // Flip the active workspace to Strict mode in place.
         {
             let mut guard = state.browser.lock().await;
             let active_id = guard.active_workspace_id;
@@ -206,11 +257,27 @@ mod tests {
         assert_ne!(
             state
                 .content_rule_spec(PrivacyMode::Strict)
-                .map(|s| s.identifier.as_str()),
+                .map(|s| s.identifier),
             state
                 .content_rule_spec(PrivacyMode::Balanced)
-                .map(|s| s.identifier.as_str()),
+                .map(|s| s.identifier),
             "each mode has a distinct cache identifier"
+        );
+    }
+
+    #[tokio::test]
+    async fn rebuild_filter_engine_swaps_rules_and_blocker() {
+        let state = app_state_for_test();
+        let before = state.content_rule_spec(PrivacyMode::Balanced).unwrap();
+        let new_text = "||example.test^\n||another.test^\n";
+        state
+            .rebuild_filter_engine(new_text.to_string())
+            .await
+            .expect("rebuild succeeds");
+        let after = state.content_rule_spec(PrivacyMode::Balanced).unwrap();
+        assert_ne!(
+            before.identifier, after.identifier,
+            "swap must produce a fresh identifier"
         );
     }
 
@@ -240,8 +307,6 @@ mod tests {
             state.proxies.lock().await.is_empty(),
             "clear_proxies must drop all entries"
         );
-        // After clear, ensure_proxy_for binds a fresh listener (which will
-        // pick a new ephemeral port).
         let _new_port = state.ensure_proxy_for(ws_id).await.expect("rebind");
     }
 }

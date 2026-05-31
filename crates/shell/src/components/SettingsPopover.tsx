@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { commands } from '@/bindings/commands'
 import type {
@@ -86,6 +86,17 @@ export function SettingsPopover({ settings, onClose }: SettingsPopoverProps) {
     mutationFn: ({ id, mode }: { id: WorkspaceId; mode: PrivacyMode }) =>
       commands.setWorkspacePrivacyMode(id, mode),
     onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
+  })
+  const [refreshStatus, setRefreshStatus] = useState<string | null>(null)
+  const refreshLists = useMutation({
+    mutationFn: () => commands.refreshFilterLists(),
+    onSuccess: (size) => {
+      setRefreshStatus(`Updated. ${formatBytes(size)} of rules now active.`)
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err)
+      setRefreshStatus(`Refresh failed: ${msg}`)
+    },
   })
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -252,8 +263,46 @@ export function SettingsPopover({ settings, onClose }: SettingsPopoverProps) {
             ariaLabel="Default privacy mode"
           />
         </div>
+        <div className="row">
+          <div className="l">
+            <span>Auto-update filter lists</span>
+            <span>Fetch EasyPrivacy on launch, cache for 24 hours.</span>
+          </div>
+          <Switch
+            checked={settings.filter_list_auto_update}
+            onChange={(filter_list_auto_update) =>
+              update.mutate({ filter_list_auto_update })
+            }
+            label="Auto-update filter lists"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
+            <span>Refresh now</span>
+            <span>
+              {refreshStatus ?? 'Download the latest filter list and apply to open tabs.'}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="kb-btn"
+            onClick={() => {
+              setRefreshStatus(null)
+              refreshLists.mutate()
+            }}
+            disabled={refreshLists.isPending}
+          >
+            {refreshLists.isPending ? 'Refreshing.' : 'Refresh'}
+          </button>
+        </div>
       </div>
     </div>
     </div>
   )
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }

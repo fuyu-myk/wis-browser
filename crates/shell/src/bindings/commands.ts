@@ -208,6 +208,15 @@ export const commands = {
   async setWindowIcon(windowLabel: string, variant: 'open' | 'closed'): Promise<void> {
     return invoke('set_window_icon', { windowLabel, variant })
   },
+
+  /**
+   * Refresh the EasyPrivacy filter list from upstream and hot-swap it into
+   * the running tracker engine. Returns the size of the new list in bytes.
+   * Live tabs are re-attached with the new rules in the same call.
+   */
+  async refreshFilterLists(): Promise<number> {
+    return invoke('refresh_filter_lists')
+  },
 } as const
 
 export type Commands = typeof commands

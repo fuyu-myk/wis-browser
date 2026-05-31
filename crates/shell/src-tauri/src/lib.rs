@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use tauri::Manager;
 use wis_core::BrowserState;
+use wis_network::filter_lists;
 use wis_network::TrackerBlocker;
 use wis_storage::{SqliteStorage, Storage};
 
@@ -47,10 +48,11 @@ pub fn run() {
             let browser_state = hydrate_state(&storage);
             let storage: Arc<dyn Storage> = Arc::new(storage);
 
-            // Build the privacy engine's long-lived handles. The tracker
-            // blocker parses its filter list once here; the resolver is
-            // picked based on the hydrated settings' DoH endpoint.
-            let tracker_blocker = match TrackerBlocker::with_default_list() {
+            // Pick the initial filter list: cached EasyPrivacy if fresh,
+            // otherwise the bundled fallback.
+            let filter_cache_dir = data_dir.join("filter_lists");
+            let (filter_text, _source) = filter_lists::load_cached_or_default(&filter_cache_dir);
+            let tracker_blocker = match TrackerBlocker::from_filter_texts(&[&filter_text]) {
                 Ok(b) => Arc::new(b),
                 Err(err) => {
                     log::error!(
@@ -60,13 +62,36 @@ pub fn run() {
                 }
             };
             let resolver = state::build_resolver(browser_state.settings.doh_resolver.as_deref());
+            let auto_update = browser_state.settings.filter_list_auto_update;
 
             app.manage(AppState::new(
                 browser_state,
                 storage,
                 tracker_blocker,
                 resolver,
+                filter_cache_dir.clone(),
+                &filter_text,
             ));
+
+            // Background EasyPrivacy refresh. Runs once per launch when the
+            // setting is on and the cache is stale; failures only log so
+            // offline launches still proceed with the bundled fallback.
+            if auto_update && filter_lists::fetch::cache_is_stale(&filter_cache_dir) {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    match filter_lists::fetch::refresh_easyprivacy(&filter_cache_dir).await {
+                        Ok(text) => {
+                            let state = handle.state::<AppState>();
+                            if let Err(err) = state.rebuild_filter_engine(text).await {
+                                log::warn!("filter_lists: rebuild after refresh failed: {err}");
+                            }
+                        }
+                        Err(err) => {
+                            log::warn!("filter_lists: refresh failed: {err}");
+                        }
+                    }
+                });
+            }
 
             #[cfg(target_os = "macos")]
             apply_transparent_chrome_webview(app);
@@ -103,6 +128,7 @@ pub fn run() {
             commands::check_url_policy,
             commands::resolve_hostname,
             commands::set_window_icon,
+            commands::refresh_filter_lists,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

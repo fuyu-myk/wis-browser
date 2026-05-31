@@ -106,6 +106,7 @@ export interface UserSettings {
   default_privacy_mode: PrivacyMode
   doh_resolver: string | null
   homepage: string | null
+  filter_list_auto_update: boolean
 }
 
 /**
@@ -124,6 +125,7 @@ export interface UserSettingsPatch {
   default_privacy_mode?: PrivacyMode
   doh_resolver?: string
   homepage?: string
+  filter_list_auto_update?: boolean
 }
 
 export interface PerSitePolicy {
