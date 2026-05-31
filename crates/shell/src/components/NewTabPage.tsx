@@ -6,6 +6,7 @@ import type { Tab, WorkspaceId } from '@/bindings/types'
 import { SearchIcon } from '@/lib/icons'
 import { isChromeUrl, normaliseUrl } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
+import { useActivePrivacyMode } from '@/hooks/useActivePrivacyMode'
 import { useWindowIconSwap } from '@/hooks/useWindowIcon'
 import { WisMark } from '@/components/WisMark'
 
@@ -70,6 +71,8 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
   const [logoHovered, setLogoHovered] = useState(false)
   const [prompt] = useState(pickPrompt)
   const swapIcon = useWindowIconSwap()
+  const mode = useActivePrivacyMode()
+  const strict = mode === 'strict'
 
   const navigate = useNavigateOrCreate(activeWorkspaceId, activeTab)
 
@@ -93,12 +96,12 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
             }}
             onMouseLeave={() => {
               setLogoHovered(false)
-              swapIcon('open')
+              swapIcon(strict ? 'closed' : 'open')
             }}
           >
             <span className="kb-launch-mark">
               <WisMark
-                variant={logoHovered ? 'solid-closed' : 'blink'}
+                variant={strict || logoHovered ? 'solid-closed' : 'blink'}
                 size={72}
                 aria-label="wis"
               />

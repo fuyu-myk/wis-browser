@@ -41,16 +41,23 @@ export function TabFavicon({ tab, className }: TabFaviconProps) {
     )
   }
 
+  // Loading tabs show the wis owl blinking.
+  if (tab.loading) {
+    return (
+      <span
+        className={cx('fav', 'fav-wis', 'is-loading', className)}
+        aria-label="loading"
+      >
+        <WisMark variant="loading" size="100%" />
+      </span>
+    )
+  }
+
   const showImage = iconUrl && !failed
 
   return (
     <span
-      className={cx(
-        'fav',
-        !showImage && fallbackClass(tab),
-        tab.loading && 'is-loading',
-        className,
-      )}
+      className={cx('fav', !showImage && fallbackClass(tab), className)}
     >
       {showImage ? (
         <img
@@ -62,7 +69,6 @@ export function TabFavicon({ tab, className }: TabFaviconProps) {
       ) : (
         tabInitial(tab)
       )}
-      {tab.loading && <span className="kb-favicon-spinner" aria-hidden />}
     </span>
   )
 }

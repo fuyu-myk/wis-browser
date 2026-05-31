@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
+import { useActivePrivacyMode } from '@/hooks/useActivePrivacyMode'
 import { useWindowIconSwap } from '@/hooks/useWindowIcon'
 import { WisMark } from '@/components/WisMark'
 
@@ -14,11 +15,23 @@ export function TrafficLights() {
 }
 
 /**
- * Owl-only brand mark for sidebar and rail chrome surfaces.
+ * Owl-only brand mark for sidebar and rail chrome surfaces. Strict workspaces
+ * close the eyes as a steady signal that the browser is not watching.
  */
 export function Brand() {
   const [hovered, setHovered] = useState(false)
   const swapIcon = useWindowIconSwap()
+  const mode = useActivePrivacyMode()
+  const strict = mode === 'strict'
+
+  // Workspace mode is the steady state for the dock/window icon; hover only
+  // produces a transient flip and the steady state re-asserts on leave.
+  useEffect(() => {
+    swapIcon(strict ? 'closed' : 'open')
+  }, [strict, swapIcon])
+
+  const closed = strict || hovered
+
   return (
     <span
       className="kb-brand"
@@ -29,10 +42,10 @@ export function Brand() {
       }}
       onMouseLeave={() => {
         setHovered(false)
-        swapIcon('open')
+        swapIcon(strict ? 'closed' : 'open')
       }}
     >
-      <WisMark variant={hovered ? 'solid-closed' : 'solid-open'} size={20} />
+      <WisMark variant={closed ? 'solid-closed' : 'solid-open'} size={20} />
     </span>
   )
 }

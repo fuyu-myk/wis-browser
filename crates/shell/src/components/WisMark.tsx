@@ -104,13 +104,26 @@ export function WisMark({
       : undefined
   const lidKeyTimes = pupilKeyTimes
 
+  // Staggered open <-> closed transitions for Brand and the launchpad hero
+  const ease = 'cubic-bezier(.4,0,.2,1)'
+  const pupilStyle = isAnimated
+    ? undefined
+    : closed
+      ? { transition: `r 150ms ${ease} 0ms` }
+      : { transition: `r 150ms ${ease} 110ms` }
+  const lidStyle = isAnimated
+    ? undefined
+    : closed
+      ? { transition: `opacity 110ms ${ease} 120ms` }
+      : { transition: `opacity 110ms ${ease} 0ms` }
+
   return (
     <svg {...common} fill="currentColor">
       <defs>
         <mask id={maskId} maskUnits="userSpaceOnUse">
           <rect width={200} height={200} fill="#fff" />
           {/* Pupils: animate r for blink/loading */}
-          <circle cx={76} cy={108} r={closed ? 0 : 15} fill="#000">
+          <circle cx={76} cy={108} r={closed ? 0 : 15} fill="#000" style={pupilStyle}>
             {isAnimated && (
               <animate
                 attributeName="r"
@@ -121,7 +134,7 @@ export function WisMark({
               />
             )}
           </circle>
-          <circle cx={124} cy={108} r={closed ? 0 : 15} fill="#000">
+          <circle cx={124} cy={108} r={closed ? 0 : 15} fill="#000" style={pupilStyle}>
             {isAnimated && (
               <animate
                 attributeName="r"
@@ -133,7 +146,7 @@ export function WisMark({
             )}
           </circle>
           {/* Closed lids: shown statically when closed, faded in for blinks */}
-          <g opacity={closed ? 1 : 0}>
+          <g opacity={closed ? 1 : 0} style={lidStyle}>
             <path
               d={LEFT_LID}
               stroke="#000"

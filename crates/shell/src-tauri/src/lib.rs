@@ -67,6 +67,10 @@ pub fn run() {
                 tracker_blocker,
                 resolver,
             ));
+
+            #[cfg(target_os = "macos")]
+            apply_transparent_chrome_webview(app);
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -144,4 +148,17 @@ fn hydrate_state(storage: &SqliteStorage) -> BrowserState {
     }
 
     healed
+}
+
+/// Function to remove visual bug with liquid glass effect where the webview's
+/// background would briefly flash solid during navigation.
+#[cfg(target_os = "macos")]
+fn apply_transparent_chrome_webview(app: &tauri::App) {
+    use tauri::Manager;
+
+    let Some(window) = app.get_webview_window("main") else {
+        log::warn!("chrome transparency: no 'main' window at setup time");
+        return;
+    };
+    window.set_shadow(false).ok();
 }
