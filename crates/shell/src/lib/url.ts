@@ -32,10 +32,15 @@ export function isChromeUrl(url: string): boolean {
   return url.startsWith('about:')
 }
 
+/** Chrome page URLs treated as opaque sentinels by the rest of the app. */
+export const NEW_TAB_URL = 'about:blank'
+export const SETTINGS_URL = 'about:settings'
+
 export function tabDisplayName(tab: { title: string; url: string }): string {
   if (tab.title && tab.title !== tab.url) {
     return tab.title
   }
+  if (tab.url === SETTINGS_URL) return 'Settings'
   try {
     const u = new URL(tab.url)
     if (u.protocol === 'about:') {

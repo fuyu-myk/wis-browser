@@ -1,21 +1,17 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 
 import type { BrowserState, Tab } from '@/bindings/types'
-import { isChromeUrl } from '@/lib/url'
+import { isChromeUrl, SETTINGS_URL } from '@/lib/url'
 import { useTabWebviews } from '@/hooks/useTabWebviews'
 
 import { NewTabPage } from '@/components/NewTabPage'
+import { SettingsPage } from '@/components/SettingsPage'
 
 interface TabWebViewHostProps {
   state: BrowserState
-  /** When true, all native tab webviews are parked off-screen so HTML
-   *  chrome (e.g. the settings modal) is visible without OS-overlay
-   *  interference. Used for full-window modals only: sidebar-anchored
-   *  popovers are clamped to chrome space instead. */
-  suppressWebview?: boolean
 }
 
-export function TabWebViewHost({ state, suppressWebview }: TabWebViewHostProps) {
+export function TabWebViewHost({ state }: TabWebViewHostProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
 
   const activeWorkspace = state.workspaces.find(
@@ -33,15 +29,16 @@ export function TabWebViewHost({ state, suppressWebview }: TabWebViewHostProps) 
     activeWorkspace?.active_tab_id != null
       ? workspaceTabs.find((t) => t.id === activeWorkspace.active_tab_id) ?? null
       : null
-  const showNewTabPage = !activeTab || isChromeUrl(activeTab.url)
+  const isChrome = !activeTab || isChromeUrl(activeTab.url)
+  const isSettings = activeTab?.url === SETTINGS_URL
 
   const { setBounds } = useTabWebviews({
     tabs: workspaceTabs,
-    activeTabId: suppressWebview ? null : activeTab?.id ?? null,
+    activeTabId: isChrome ? null : activeTab?.id ?? null,
     activeWorkspaceId: activeWorkspace?.id ?? null,
   })
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = hostRef.current
     if (!el) return
     const push = () => {
@@ -66,7 +63,7 @@ export function TabWebViewHost({ state, suppressWebview }: TabWebViewHostProps) 
 
   return (
     <div ref={hostRef} className="kb-content-host">
-      {showNewTabPage && <NewTabPage activeTab={activeTab} />}
+      {isChrome && (isSettings ? <SettingsPage /> : <NewTabPage activeTab={activeTab} />)}
     </div>
   )
 }

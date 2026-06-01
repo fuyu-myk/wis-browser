@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 
-import { commands } from '@/bindings/commands'
-import type { Tab, WorkspaceId } from '@/bindings/types'
+import type { Tab } from '@/bindings/types'
 import { SearchIcon } from '@/lib/icons'
-import { isChromeUrl, normaliseUrl } from '@/lib/url'
-import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
+import { normaliseUrl } from '@/lib/url'
+import { useBrowserState } from '@/hooks/useBrowserState'
 import { useActivePrivacyMode } from '@/hooks/useActivePrivacyMode'
+import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 import { useWindowIconSwap } from '@/hooks/useWindowIcon'
 import { WisMark } from '@/components/WisMark'
 
@@ -74,7 +73,7 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
   const mode = useActivePrivacyMode()
   const strict = mode === 'strict'
 
-  const navigate = useNavigateOrCreate(activeWorkspaceId, activeTab)
+  const navigate = useNavigateOrCreateTab(activeWorkspaceId, activeTab)
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -164,32 +163,3 @@ function QuickLinkBubble({ link, onNavigate }: QuickLinkBubbleProps) {
   )
 }
 
-/**
- * The launchpad always renders on top of a chrome/launchpad tab (see
- * `isChromeUrl`). Navigate that tab in place rather than spawning a new one;
- * only fall back to creating a tab if somehow there's no placeholder.
- */
-function useNavigateOrCreate(
-  workspaceId: WorkspaceId | null,
-  placeholderTab: Tab | null,
-): (url: string) => void {
-  const qc = useQueryClient()
-  const navigateMutation = useMutation({
-    mutationFn: ({ id, url }: { id: Tab['id']; url: string }) =>
-      commands.navigateTab(id, url),
-    onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
-  })
-  const createMutation = useMutation({
-    mutationFn: ({ workspaceId, url }: { workspaceId: WorkspaceId; url: string }) =>
-      commands.createTab(workspaceId, url),
-    onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
-  })
-
-  return (url) => {
-    if (placeholderTab && isChromeUrl(placeholderTab.url)) {
-      navigateMutation.mutate({ id: placeholderTab.id, url })
-    } else if (workspaceId) {
-      createMutation.mutate({ workspaceId, url })
-    }
-  }
-}

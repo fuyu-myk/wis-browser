@@ -11,8 +11,8 @@ const WEBVIEW_CORNER_RADIUS = 14
 
 const LABEL_PREFIX = 'tab-'
 const PENDING = Symbol('pending-webview')
-const PLACEHOLDER_BOUNDS: Bounds = { x: 0, y: 0, width: 800, height: 600 }
 const OFFSCREEN_BOUNDS: Bounds = { x: 100000, y: 100000, width: 800, height: 600 }
+const PLACEHOLDER_BOUNDS: Bounds = OFFSCREEN_BOUNDS
 
 interface Bounds {
   x: number

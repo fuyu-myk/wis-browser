@@ -3,10 +3,11 @@ import { useRef, useState } from 'react'
 import type { BrowserState, Tab, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { SettingsIcon } from '@/lib/icons'
+import { SETTINGS_URL } from '@/lib/url'
+import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 
 import { Content } from '@/components/Content'
 import { NavRow } from '@/components/NavRow'
-import { SettingsPopover } from '@/components/SettingsPopover'
 import { Sidebar } from '@/components/Sidebar'
 import { TopBar } from '@/components/TopBar'
 import { TopTabsRail } from '@/components/TopTabsRail'
@@ -18,7 +19,6 @@ interface WindowProps {
 }
 
 export function Window({ state, settings }: WindowProps) {
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const sidebarUrlInputRef = useRef<HTMLInputElement>(null)
 
@@ -31,9 +31,6 @@ export function Window({ state, settings }: WindowProps) {
   const railSide = settings.top_tabs_rail_side
   const railClass = !isSidebar ? `has-rail rail-${railSide}` : ''
 
-  const openSettings = () => setSettingsOpen(true)
-  const closeSettings = () => setSettingsOpen(false)
-
   const fixedSettingsAnchor: 'left' | 'right' =
     settings.layout === 'sidebar_right' ? 'right' : 'left'
 
@@ -42,6 +39,9 @@ export function Window({ state, settings }: WindowProps) {
     activeWorkspace?.active_tab_id != null
       ? state.tabs.find((t) => t.id === activeWorkspace.active_tab_id) ?? null
       : null
+
+  const navigateOrCreate = useNavigateOrCreateTab(activeWorkspace?.id ?? null, activeTab)
+  const openSettings = () => navigateOrCreate(SETTINGS_URL)
 
   return (
     <div
@@ -75,7 +75,7 @@ export function Window({ state, settings }: WindowProps) {
             side={railSide}
             onOpenSettings={openSettings}
           />
-          <Content state={state} suppressWebview={settingsOpen} />
+          <Content state={state} />
         </>
       ) : (
         <>
@@ -86,21 +86,16 @@ export function Window({ state, settings }: WindowProps) {
             setExpanded={setSidebarExpanded}
             urlInputRef={sidebarUrlInputRef}
           />
-          <Content state={state} suppressWebview={settingsOpen} />
+          <Content state={state} />
           <button
             type="button"
             className={cx('kb-settings-fixed', `is-${fixedSettingsAnchor}`)}
             aria-label="Settings"
-            aria-expanded={settingsOpen}
             onClick={openSettings}
           >
             <SettingsIcon />
           </button>
         </>
-      )}
-
-      {settingsOpen && (
-        <SettingsPopover settings={settings} onClose={closeSettings} />
       )}
     </div>
   )

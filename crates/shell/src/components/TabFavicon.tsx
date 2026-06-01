@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 
 import type { Tab } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { isChromeUrl } from '@/lib/url'
+import { SettingsIcon } from '@/lib/icons'
+import { isChromeUrl, SETTINGS_URL } from '@/lib/url'
 import { WisMark } from '@/components/WisMark'
 
 interface TabFaviconProps {
@@ -28,6 +29,17 @@ export function TabFavicon({ tab, className }: TabFaviconProps) {
   useEffect(() => {
     setFailed(false)
   }, [iconUrl])
+
+  if (tab.url === SETTINGS_URL) {
+    return (
+      <span
+        className={cx('fav', 'fav-settings', className)}
+        aria-label="settings"
+      >
+        <SettingsIcon />
+      </span>
+    )
+  }
 
   if (isChromeUrl(tab.url)) {
     return (

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
 import type {
@@ -8,23 +9,34 @@ import type {
   RailSide,
   ThemeMode,
   UrlBarPosition,
-  UserSettings,
   UserSettingsPatch,
   WorkspaceId,
 } from '@/bindings/types'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { cx } from '@/lib/cx'
 import { BROWSER_STATE_KEY, useBrowserState, useUpdateSettings } from '@/hooks/useBrowserState'
 import {
+  LockIcon,
   MonitorIcon,
   MoonIcon,
   PanelTopIcon,
   SidebarLeftIcon,
   SidebarRightIcon,
   SunIcon,
-  XIcon,
 } from '@/lib/icons'
 
 import { Segmented, SwatchRow, Switch } from '@/components/controls'
+
+interface NavSection {
+  id: string
+  label: string
+  icon: React.ReactNode
+}
+
+const NAV_SECTIONS: ReadonlyArray<NavSection> = [
+  { id: 'appearance', label: 'Appearance', icon: <SunIcon /> },
+  { id: 'layout', label: 'Layout', icon: <PanelTopIcon /> },
+  { id: 'privacy', label: 'Privacy', icon: <LockIcon /> },
+]
 
 const THEME_OPTIONS = [
   { value: 'light' as const, label: 'Light', icon: <SunIcon /> },
@@ -71,16 +83,10 @@ const PRIVACY_DESCRIPTIONS: Record<PrivacyMode, string> = {
   permissive: 'Minimal automatic blocking: site-by-site control',
 }
 
-interface SettingsPopoverProps {
-  settings: UserSettings
-  onClose: () => void
-}
-
-export function SettingsPopover({ settings, onClose }: SettingsPopoverProps) {
-  const ref = useRef<HTMLDivElement>(null)
+export function SettingsPage() {
+  const { data: state } = useBrowserState()
   const update = useUpdateSettings()
   const qc = useQueryClient()
-  const { data: state } = useBrowserState()
   const activeWorkspace = state?.workspaces.find((w) => w.id === state.active_workspace_id)
   const setWorkspaceMode = useMutation({
     mutationFn: ({ id, mode }: { id: WorkspaceId; mode: PrivacyMode }) =>
@@ -98,42 +104,63 @@ export function SettingsPopover({ settings, onClose }: SettingsPopoverProps) {
       setRefreshStatus(`Refresh failed: ${msg}`)
     },
   })
+
+  const mainRef = useRef<HTMLDivElement | null>(null)
+  const [activeSection, setActiveSection] = useState<string>(NAV_SECTIONS[0].id)
+
+  // Highlight the section currently dominating the viewport.
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+    const root = mainRef.current
+    if (!root) return
+    const observed = NAV_SECTIONS.map((s) => root.querySelector<HTMLElement>(`#${s.id}`)).filter(
+      (el): el is HTMLElement => el !== null,
+    )
+    if (observed.length === 0) return
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+        if (visible.length > 0 && visible[0].target.id) {
+          setActiveSection(visible[0].target.id)
+        }
+      },
+      { root, threshold: 0, rootMargin: '0px 0px -70% 0px' },
+    )
+    for (const el of observed) obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  if (!state) return null
+  const settings = state.settings
+  const navOnRight = settings.layout === 'sidebar_right'
+
+  const scrollTo = (id: string) => {
+    const el = mainRef.current?.querySelector(`#${id}`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   return (
     <div
-      className="kb-settings-backdrop"
-      role="presentation"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-    <div
-      ref={ref}
-      className="kb-settings-pop is-modal"
-      role="dialog"
-      aria-modal="true"
+      className={cx('kb-settings-page', { 'nav-right': navOnRight })}
       aria-label="Settings"
     >
-      <div className="kb-settings-pop-header">
-        <span className="kb-settings-pop-title">Tweaks</span>
-        <button
-          type="button"
-          className="kb-iconbtn kb-settings-close"
-          aria-label="Close settings"
-          onClick={onClose}
-        >
-          <XIcon />
-        </button>
-      </div>
-
-      <div className="sec">
+      <aside className="kb-settings-nav" aria-label="Settings sections">
+        <div className="kb-settings-nav-title">Settings</div>
+        {NAV_SECTIONS.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            className={cx({ 'is-active': activeSection === s.id })}
+            onClick={() => scrollTo(s.id)}
+          >
+            {s.icon}
+            <span>{s.label}</span>
+          </button>
+        ))}
+      </aside>
+      <div className="kb-settings-main" ref={mainRef}>
+      <section id="appearance" className="sec">
         <div className="sec-h">Appearance</div>
         <div className="row">
           <div className="l">
@@ -170,9 +197,9 @@ export function SettingsPopover({ settings, onClose }: SettingsPopoverProps) {
             label="Liquid glass"
           />
         </div>
-      </div>
+      </section>
 
-      <div className="sec">
+      <section id="layout" className="sec">
         <div className="sec-h">Layout</div>
         <div className="row">
           <div className="l">
@@ -231,9 +258,9 @@ export function SettingsPopover({ settings, onClose }: SettingsPopoverProps) {
             label="Collapsible sidebar"
           />
         </div>
-      </div>
+      </section>
 
-      <div className="sec">
+      <section id="privacy" className="sec">
         <div className="sec-h">Privacy</div>
         {activeWorkspace ? (
           <div className="row">
@@ -295,8 +322,8 @@ export function SettingsPopover({ settings, onClose }: SettingsPopoverProps) {
             {refreshLists.isPending ? 'Refreshing.' : 'Refresh'}
           </button>
         </div>
+      </section>
       </div>
-    </div>
     </div>
   )
 }
