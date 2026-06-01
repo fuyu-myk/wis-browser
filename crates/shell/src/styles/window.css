@@ -1022,7 +1022,10 @@
   transition: border-color .15s, box-shadow .15s;
 }
 .kb-omnisearch svg { width: 16px; height: 16px; opacity: 0.7; flex-shrink: 0; }
-.kb-omnisearch:focus-within { border-color: var(--primary-400); }
+.kb-omnisearch:focus-within {
+  border-color: var(--primary-400);
+  box-shadow: var(--shadow-pop), 0 0 0 1.5px var(--primary-400);
+}
 .kb-omnisearch input {
   flex: 1;
   background: transparent;
@@ -1044,6 +1047,9 @@
   box-shadow: none;
 }
 .glass-on .kb-omnisearch input::placeholder { color: rgba(40,40,52,0.55); }
+.glass-on .kb-omnisearch:focus-within {
+  box-shadow: 0 0 0 1.5px var(--primary-400);
+}
 [data-mode="dark"].glass-on .kb-omnisearch {
   background: rgba(255,255,255,0.10);
   color: rgba(255,255,255,0.88);

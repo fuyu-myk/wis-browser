@@ -3,6 +3,7 @@ mod content_filter;
 mod error_compat;
 mod find;
 mod menu;
+mod overlay;
 mod state;
 
 use std::sync::Arc;
@@ -138,7 +139,10 @@ pub fn run() {
             commands::refresh_filter_lists,
             find::tab_find_string,
             find::tab_find_clear,
-            find::focus_chrome_webview,
+            overlay::focus_webview,
+            overlay::ensure_overlay,
+            overlay::set_overlay_bounds,
+            overlay::hide_overlay,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -25,12 +25,12 @@ import { useQueryClient } from '@tanstack/react-query'
 
 const KEYACTION_EVENT = 'wis-keyaction'
 
-/** Custom DOM events the chrome components listen for. */
+/** Custom DOM events the chrome components listen for.
+ *  Find / palette actions are routed via the `wis-keyaction` Tauri event
+ *  (so the dedicated overlay surfaces can hear them too), so only the
+ *  URL-bar focus signal lives as a DOM event. */
 export const FOCUS_URLBAR_EVENT = 'wis-focus-urlbar'
 export const COMMAND_PALETTE_OPEN_EVENT = 'wis-command-palette-open'
-export const FIND_OPEN_EVENT = 'wis-find-open'
-export const FIND_CLOSE_EVENT = 'wis-find-close'
-export const FIND_STEP_EVENT = 'wis-find-step'
 
 const ACCENT_ROTATION: AccentColor[] = [
   'primary',
@@ -195,13 +195,11 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       return
     }
     case 'find_in_page':
-      window.dispatchEvent(new CustomEvent(FIND_OPEN_EVENT))
-      return
     case 'find_next':
-      window.dispatchEvent(new CustomEvent(FIND_STEP_EVENT, { detail: { forward: true } }))
-      return
     case 'find_previous':
-      window.dispatchEvent(new CustomEvent(FIND_STEP_EVENT, { detail: { forward: false } }))
+      // The find overlay surface listens to `wis-keyaction` directly, and
+      // `TabWebViewHost` orchestrates the overlay show/hide. Nothing to
+      // do here.
       return
     case 'open_command_palette':
       window.dispatchEvent(new CustomEvent(COMMAND_PALETTE_OPEN_EVENT))

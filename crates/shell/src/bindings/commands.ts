@@ -239,12 +239,38 @@ export const commands = {
   },
 
   /**
-   * Promote the chrome (main) WKWebView to the window's first responder so a
-   * subsequent DOM `.focus()` on chrome UI (e.g. the FindBar input) receives
-   * keystrokes even when a page webview currently has focus.
+   * Promote a named webview to its window's first responder so a subsequent
+   * DOM `.focus()` on its UI receives keystrokes even while a page webview
+   * currently has focus. Pass `"main"` for the chrome, `"overlay-<name>"`
+   * for an overlay, or a tab label.
    */
-  async focusChromeWebview(): Promise<void> {
-    return invoke('focus_chrome_webview')
+  async focusWebview(label: string): Promise<void> {
+    return invoke('focus_webview', { label })
+  },
+
+  /**
+   * Lazily create the named overlay webview (loads
+   * `index.html?surface=<name>`). Idempotent. The overlay starts hidden
+   * and must be revealed by `setOverlayBounds`.
+   */
+  async ensureOverlay(name: string): Promise<void> {
+    return invoke('ensure_overlay', { name })
+  },
+
+  /** Position/resize the overlay and make it visible. */
+  async setOverlayBounds(
+    name: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): Promise<void> {
+    return invoke('set_overlay_bounds', { name, x, y, width, height })
+  },
+
+  /** Hide the overlay (kept around for the next show). */
+  async hideOverlay(name: string): Promise<void> {
+    return invoke('hide_overlay', { name })
   },
 } as const
 

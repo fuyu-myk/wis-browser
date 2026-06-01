@@ -113,57 +113,6 @@ pub async fn tab_find_string(
     Ok(())
 }
 
-/// Make the chrome (main) WKWebView the window's first responder.
-///
-/// Tab content webviews are sibling native views composited *above* the
-/// chrome's WebKit layer, so whenever a page has focus the chrome webview
-/// is not the first responder — a DOM `.focus()` on the FindBar input then
-/// silently does nothing and keystrokes keep flowing to the page. Promoting
-/// the chrome webview to first responder lets the subsequent `.focus()` land.
-///
-/// This is `async` (so it runs off the main thread) and blocks on a channel
-/// until `makeFirstResponder:` has actually executed on the main thread.
-/// That ordering guarantee matters: the caller awaits this before issuing
-/// the DOM `.focus()`, otherwise the focus would race ahead of the responder
-/// change and be discarded.
-#[tauri::command]
-pub async fn focus_chrome_webview(app: AppHandle) -> WisResult<()> {
-    #[cfg(target_os = "macos")]
-    {
-        use objc2::msg_send;
-        use objc2::runtime::{AnyObject, Bool};
-
-        let Some(webview) = app.get_webview_window("main") else {
-            return Ok(());
-        };
-
-        let (tx, rx) = std::sync::mpsc::channel::<()>();
-        webview
-            .with_webview(move |w| unsafe {
-                let view: *mut AnyObject = w.inner() as *mut AnyObject;
-                if !view.is_null() {
-                    let window: *mut AnyObject = msg_send![view, window];
-                    if !window.is_null() {
-                        let _: Bool = msg_send![window, makeFirstResponder: view];
-                    }
-                }
-                let _ = tx.send(());
-            })
-            .map_err(|err| WisError::InvalidInput {
-                message: format!("with_webview failed: {err}"),
-            })?;
-
-        let _ = rx.recv_timeout(std::time::Duration::from_millis(500));
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = app;
-    }
-
-    Ok(())
-}
-
 #[tauri::command]
 pub async fn tab_find_clear(app: AppHandle, id: TabId) -> WisResult<()> {
     let label = format!("tab-{}", id.as_uuid());

@@ -369,6 +369,9 @@ pub async fn create_tab_webview(
             message: format!("add_child failed: {err}"),
         })?;
 
+    // Move every overlay back to the top of the subview stack.
+    crate::overlay::promote_overlays_to_front(&app);
+
     let privacy_mode = {
         let browser = state.browser.lock().await;
         browser

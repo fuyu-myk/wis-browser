@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { Tab } from '@/bindings/types'
 import { SearchIcon } from '@/lib/icons'
@@ -8,6 +8,10 @@ import { useActivePrivacyMode } from '@/hooks/useActivePrivacyMode'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 import { useWindowIconSwap } from '@/hooks/useWindowIcon'
 import { WisMark } from '@/components/WisMark'
+
+/** DOM event the chrome dispatches when Cmd+F fires on the launchpad,
+ *  asking the omnisearch input to take focus. */
+export const FOCUS_LAUNCHPAD_SEARCH_EVENT = 'wis-focus-launchpad-search'
 
 interface QuickLink {
   label: string
@@ -72,6 +76,7 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
   const swapIcon = useWindowIconSwap()
   const mode = useActivePrivacyMode()
   const strict = mode === 'strict'
+  const inputRef = useRef<HTMLInputElement | null>(null)
 
   const navigate = useNavigateOrCreateTab(activeWorkspaceId, activeTab)
 
@@ -82,6 +87,17 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
     navigate(url)
     setQuery('')
   }
+
+  useEffect(() => {
+    const onFocus = () => {
+      const el = inputRef.current
+      if (!el) return
+      el.focus()
+      el.select()
+    }
+    window.addEventListener(FOCUS_LAUNCHPAD_SEARCH_EVENT, onFocus)
+    return () => window.removeEventListener(FOCUS_LAUNCHPAD_SEARCH_EVENT, onFocus)
+  }, [])
 
   return (
     <div className="kb-newtab-page">
@@ -111,6 +127,7 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
         <form className="kb-omnisearch" onSubmit={submit}>
           <SearchIcon />
           <input
+            ref={inputRef}
             type="text"
             placeholder="Enter search or web address"
             value={query}
