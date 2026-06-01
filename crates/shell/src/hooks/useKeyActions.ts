@@ -29,6 +29,7 @@ const KEYACTION_EVENT = 'wis-keyaction'
 export const FOCUS_URLBAR_EVENT = 'wis-focus-urlbar'
 export const COMMAND_PALETTE_OPEN_EVENT = 'wis-command-palette-open'
 export const FIND_OPEN_EVENT = 'wis-find-open'
+export const FIND_CLOSE_EVENT = 'wis-find-close'
 export const FIND_STEP_EVENT = 'wis-find-step'
 
 const ACCENT_ROTATION: AccentColor[] = [

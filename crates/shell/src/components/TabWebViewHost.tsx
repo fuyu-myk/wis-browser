@@ -1,9 +1,11 @@
-import { useLayoutEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import type { BrowserState, Tab } from '@/bindings/types'
 import { isChromeUrl, SETTINGS_URL } from '@/lib/url'
+import { FIND_CLOSE_EVENT, FIND_OPEN_EVENT } from '@/hooks/useKeyActions'
 import { useTabWebviews } from '@/hooks/useTabWebviews'
 
+import { FindBar, FINDBAR_GAP_PX } from '@/components/FindBar'
 import { NewTabPage } from '@/components/NewTabPage'
 import { SettingsPage } from '@/components/SettingsPage'
 
@@ -13,6 +15,18 @@ interface TabWebViewHostProps {
 
 export function TabWebViewHost({ state }: TabWebViewHostProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
+  // Tracks the FindBar's visibility to shrink the WKWebView bounds.
+  const [findOpen, setFindOpen] = useState(false)
+  useEffect(() => {
+    const open = () => setFindOpen(true)
+    const close = () => setFindOpen(false)
+    window.addEventListener(FIND_OPEN_EVENT, open)
+    window.addEventListener(FIND_CLOSE_EVENT, close)
+    return () => {
+      window.removeEventListener(FIND_OPEN_EVENT, open)
+      window.removeEventListener(FIND_CLOSE_EVENT, close)
+    }
+  }, [])
 
   const activeWorkspace = state.workspaces.find(
     (w) => w.id === state.active_workspace_id,
@@ -43,11 +57,12 @@ export function TabWebViewHost({ state }: TabWebViewHostProps) {
     if (!el) return
     const push = () => {
       const rect = el.getBoundingClientRect()
+      const gap = findOpen ? FINDBAR_GAP_PX : 0
       setBounds({
         x: rect.x,
         y: rect.y,
         width: rect.width,
-        height: rect.height,
+        height: Math.max(0, rect.height - gap),
       })
     }
     push()
@@ -59,11 +74,12 @@ export function TabWebViewHost({ state }: TabWebViewHostProps) {
       obs.disconnect()
       window.removeEventListener('resize', push)
     }
-  }, [setBounds])
+  }, [setBounds, findOpen])
 
   return (
     <div ref={hostRef} className="kb-content-host">
       {isChrome && (isSettings ? <SettingsPage /> : <NewTabPage activeTab={activeTab} />)}
+      {!isChrome && <FindBar activeTab={activeTab} />}
     </div>
   )
 }

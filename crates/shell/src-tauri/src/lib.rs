@@ -1,6 +1,7 @@
 mod commands;
 mod content_filter;
 mod error_compat;
+mod find;
 mod menu;
 mod state;
 
@@ -135,6 +136,9 @@ pub fn run() {
             commands::resolve_hostname,
             commands::set_window_icon,
             commands::refresh_filter_lists,
+            find::tab_find_string,
+            find::tab_find_clear,
+            find::focus_chrome_webview,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

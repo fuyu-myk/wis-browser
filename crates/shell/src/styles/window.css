@@ -27,6 +27,109 @@
   flex-direction: column;
 }
 
+/* ─── Find-in-page overlay (bottom-centred glass pill) ─────────── */
+.kb-findbar-wrap {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 32px);
+  animation: kb-findbar-in 140ms cubic-bezier(.2,.9,.2,1.2);
+}
+@keyframes kb-findbar-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* Search input is a single liquid-glass pill. */
+.kb-findbar-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  width: 360px;
+  max-width: 100%;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.55);
+  border: 1px solid rgba(255,255,255,0.30);
+  box-shadow: var(--shadow-pop);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+}
+[data-mode="dark"] .kb-findbar-pill {
+  background: rgba(28,28,34,0.55);
+  border-color: rgba(255,255,255,0.10);
+}
+
+.kb-findbar-icon { width: 14px; height: 14px; opacity: 0.6; flex-shrink: 0; }
+.kb-findbar-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+.kb-findbar-input::placeholder { color: var(--text-tertiary); }
+[data-mode="dark"] .kb-findbar-input { color: rgba(255,255,255,0.92); }
+.kb-findbar-status {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  padding-left: 4px;
+}
+.kb-findbar-status.is-no-match { color: var(--text-secondary); }
+
+/* Slight red tint on the search field when the query has no matches. */
+.kb-findbar-pill.is-no-match {
+  background: rgba(255, 86, 86, 0.18);
+  border-color: rgba(255, 86, 86, 0.45);
+}
+[data-mode="dark"] .kb-findbar-pill.is-no-match {
+  background: rgba(255, 86, 86, 0.22);
+  border-color: rgba(255, 86, 86, 0.40);
+}
+
+/* Floating glass circles for prev / next / close, sitting to the right
+   of the pill. */
+.kb-findbar-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,0.30);
+  background: rgba(255,255,255,0.55);
+  color: var(--text-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-pop);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  transition: background .12s, color .12s, transform .12s;
+}
+.kb-findbar-circle:hover {
+  background: rgba(255,255,255,0.78);
+  transform: translateY(-1px);
+}
+[data-mode="dark"] .kb-findbar-circle {
+  background: rgba(28,28,34,0.65);
+  border-color: rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.92);
+}
+[data-mode="dark"] .kb-findbar-circle:hover {
+  background: rgba(40,40,48,0.85);
+}
+
 .kb-window {
   position: relative;
   width: 100%;

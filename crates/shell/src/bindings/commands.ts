@@ -217,6 +217,35 @@ export const commands = {
   async refreshFilterLists(): Promise<number> {
     return invoke('refresh_filter_lists')
   },
+
+  /**
+   * Find a string in the tab's webview. `backwards = false` searches
+   * forward (Cmd+G); `backwards = true` searches backward (Cmd+Shift+G).
+   * Match status is published asynchronously via the `wis-find-result`
+   * Tauri event.
+   */
+  async tabFindString(
+    id: TabId,
+    query: string,
+    backwards: boolean,
+    caseSensitive: boolean,
+  ): Promise<void> {
+    return invoke('tab_find_string', { id, query, backwards, caseSensitive })
+  },
+
+  /** Clear the tab's find highlights. */
+  async tabFindClear(id: TabId): Promise<void> {
+    return invoke('tab_find_clear', { id })
+  },
+
+  /**
+   * Promote the chrome (main) WKWebView to the window's first responder so a
+   * subsequent DOM `.focus()` on chrome UI (e.g. the FindBar input) receives
+   * keystrokes even when a page webview currently has focus.
+   */
+  async focusChromeWebview(): Promise<void> {
+    return invoke('focus_chrome_webview')
+  },
 } as const
 
 export type Commands = typeof commands
