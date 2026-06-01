@@ -33,6 +33,40 @@ export type ThemeMode = 'light' | 'dark' | 'system'
 
 export type PrivacyMode = 'strict' | 'balanced' | 'permissive'
 
+/**
+ * Mirror of `wis_core::KeyAction`. Wire format is snake_case.
+ * Two variants per "alternate" action so users can rebind primary
+ * and alt independently in the configurable-shortcuts pass.
+ */
+export type KeyAction =
+  | 'new_tab'
+  | 'new_workspace'
+  | 'close_tab'
+  | 'focus_url_bar'
+  | 'focus_url_bar_alt'
+  | 'reload'
+  | 'go_back'
+  | 'go_back_alt'
+  | 'go_forward'
+  | 'go_forward_alt'
+  | 'switch_to_tab1'
+  | 'switch_to_tab2'
+  | 'switch_to_tab3'
+  | 'switch_to_tab4'
+  | 'switch_to_tab5'
+  | 'switch_to_tab6'
+  | 'switch_to_tab7'
+  | 'switch_to_tab8'
+  | 'switch_to_tab9'
+  | 'switch_to_last_tab'
+  | 'find_in_page'
+  | 'find_next'
+  | 'find_previous'
+  | 'open_command_palette'
+  | 'open_settings'
+  | 'new_private_window'
+  | 'new_window'
+
 export type AccentColor =
   | 'primary'
   | 'mint'

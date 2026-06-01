@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent, type RefObject } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type RefObject } from 'react'
 
 import type { BrowserState, Tab, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
@@ -38,10 +38,29 @@ export function Sidebar({
   const showUrlBar = settings.url_bar_position === 'sidebar'
   const collapsible = settings.sidebar_collapsible
 
+  const asideRef = useRef<HTMLElement>(null)
+
   const [workspacePopoverOpen, setWorkspacePopoverOpen] = useState(false)
   useEffect(() => {
     if (workspacePopoverOpen) setExpanded(true)
   }, [workspacePopoverOpen, setExpanded])
+
+  useEffect(() => {
+    if (!collapsible || !expanded) return
+    const collapse = () => {
+      if (!workspacePopoverOpen) setExpanded(false)
+    }
+    const onPointerDown = (e: PointerEvent) => {
+      const aside = asideRef.current
+      if (aside && !aside.contains(e.target as Node)) collapse()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('blur', collapse)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('blur', collapse)
+    }
+  }, [collapsible, expanded, workspacePopoverOpen, setExpanded])
 
   const handleAsideClick = (e: MouseEvent<HTMLElement>) => {
     if (!collapsible || expanded) return
@@ -61,6 +80,7 @@ export function Sidebar({
 
   return (
     <aside
+      ref={asideRef}
       className={cx('kb-side', { 'is-expanded': expanded })}
       onMouseLeave={() => collapsible && !workspacePopoverOpen && setExpanded(false)}
       onClick={handleAsideClick}
@@ -79,6 +99,7 @@ export function Sidebar({
           fallbackWorkspaceId={activeWorkspace?.id ?? null}
           inputRef={urlInputRef}
           onActivate={handleUrlBarActivate}
+          onEscape={() => collapsible && setExpanded(false)}
         />
       )}
       <WorkspacePill state={state} onOpenChange={setWorkspacePopoverOpen} />

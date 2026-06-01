@@ -4,6 +4,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type KeyboardEvent,
   type MouseEvent,
   type RefObject,
 } from 'react'
@@ -15,6 +16,7 @@ import { cx } from '@/lib/cx'
 import { SearchIcon } from '@/lib/icons'
 import { normaliseUrl } from '@/lib/url'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import { FOCUS_URLBAR_EVENT } from '@/hooks/useKeyActions'
 
 /** Hide the http(s):// prefix in the address bar. */
 function displayUrl(url: string): string {
@@ -59,6 +61,43 @@ function useUrlBarForm(activeTab: Tab | null, fallbackWorkspaceId: WorkspaceId |
   return { value, onChange, onSubmit }
 }
 
+/**
+ * Focus + select-all the URL bar input on receipt of the `wis-focus-urlbar`
+ * window event (Cmd+L / Cmd+E). Mounted by each visible URL-bar variant; if
+ * both are mounted simultaneously the first one wins.
+ *
+ * `beforeFocus` lets the sidebar variant expand its collapsed shell first
+ * so the input has somewhere visible to land. The actual focus is deferred
+ * to the next animation frame to give layout time to settle.
+ */
+function useFocusOnEvent(
+  inputRef: RefObject<HTMLInputElement>,
+  beforeFocus?: () => void,
+) {
+  useEffect(() => {
+    const onFocus = (event: Event) => {
+      const select = (event as CustomEvent<{ select?: boolean }>).detail?.select ?? true
+      beforeFocus?.()
+
+      let attempts = 0
+      const tryFocus = () => {
+        const input = inputRef.current
+        if (!input) return
+        if (input.offsetParent === null && attempts < 20) {
+          attempts += 1
+          requestAnimationFrame(tryFocus)
+          return
+        }
+        input.focus()
+        if (select) input.select()
+      }
+      requestAnimationFrame(tryFocus)
+    }
+    window.addEventListener(FOCUS_URLBAR_EVENT, onFocus as EventListener)
+    return () => window.removeEventListener(FOCUS_URLBAR_EVENT, onFocus as EventListener)
+  }, [inputRef, beforeFocus])
+}
+
 function useSelectAllOnChromeClick(inputRef: RefObject<HTMLInputElement>) {
   const focusedRef = useRef(false)
 
@@ -101,6 +140,8 @@ export interface SidebarUrlBarProps {
   inputRef: RefObject<HTMLInputElement>
   /** Fired on click or focus. */
   onActivate: () => void
+  /** Fired after the input blurs on Escape, so the sidebar can collapse. */
+  onEscape?: () => void
 }
 
 export function SidebarUrlBar({
@@ -108,12 +149,20 @@ export function SidebarUrlBar({
   fallbackWorkspaceId,
   inputRef,
   onActivate,
+  onEscape,
 }: SidebarUrlBarProps) {
   const form = useUrlBarForm(activeTab, fallbackWorkspaceId)
   const selectAll = useSelectAllOnChromeClick(inputRef)
+  useFocusOnEvent(inputRef, onActivate)
   const handleMouseDown = (e: MouseEvent<HTMLElement>) => {
     onActivate()
     selectAll(e)
+  }
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      e.currentTarget.blur()
+      onEscape?.()
+    }
   }
   return (
     <form
@@ -130,6 +179,7 @@ export function SidebarUrlBar({
         value={form.value}
         onChange={form.onChange}
         onFocus={onActivate}
+        onKeyDown={handleKeyDown}
         placeholder="Enter search or web address"
         spellCheck={false}
       />
@@ -156,6 +206,10 @@ export function FloatingUrlBar({
   const form = useUrlBarForm(activeTab, fallbackWorkspaceId)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const handleMouseDown = useSelectAllOnChromeClick(inputRef)
+  useFocusOnEvent(inputRef)
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') e.currentTarget.blur()
+  }
   return (
     <form
       className={cx('kb-urlpill-inline', { inline })}
@@ -170,6 +224,7 @@ export function FloatingUrlBar({
         type="text"
         value={form.value}
         onChange={form.onChange}
+        onKeyDown={handleKeyDown}
         placeholder="Enter search or web address"
         spellCheck={false}
       />

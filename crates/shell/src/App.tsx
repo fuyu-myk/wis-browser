@@ -1,6 +1,7 @@
 import { Window } from '@/components/Window'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
+import { PendingRenameProvider } from '@/hooks/usePendingRename'
 import { useThemeApply } from '@/hooks/useThemeApply'
 
 export default function App() {
@@ -27,5 +28,9 @@ export default function App() {
     )
   }
 
-  return <Window state={state} settings={state.settings} />
+  return (
+    <PendingRenameProvider>
+      <Window state={state} settings={state.settings} />
+    </PendingRenameProvider>
+  )
 }

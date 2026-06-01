@@ -1,6 +1,7 @@
 mod commands;
 mod content_filter;
 mod error_compat;
+mod menu;
 mod state;
 
 use std::sync::Arc;
@@ -95,6 +96,11 @@ pub fn run() {
 
             #[cfg(target_os = "macos")]
             apply_transparent_chrome_webview(app);
+
+            // Native menu + accelerator wiring.
+            if let Err(err) = menu::install_menu(app, &wis_core::default_keymap()) {
+                log::error!("menu install failed: {err}");
+            }
 
             Ok(())
         })

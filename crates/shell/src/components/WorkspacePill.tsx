@@ -13,6 +13,7 @@ import type { AccentColor, BrowserState, Workspace, WorkspaceId } from '@/bindin
 import { cx } from '@/lib/cx'
 import { PlusIcon, XIcon } from '@/lib/icons'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import { usePendingRename } from '@/hooks/usePendingRename'
 
 interface WorkspacePillProps {
   state: BrowserState
@@ -39,12 +40,24 @@ export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
   const anchorRef = useRef<HTMLButtonElement | null>(null)
   const [style, setStyle] = useState<CSSProperties>({})
   const [placed, setPlaced] = useState(false)
+  const { pendingRenameWorkspaceId, clearRename } = usePendingRename()
 
   const active = state.workspaces.find((w) => w.id === state.active_workspace_id)
 
   useEffect(() => {
     onOpenChange?.(open)
   }, [open, onOpenChange])
+
+  // Cmd+N (and any other "rename this workspace" trigger) sets a pending
+  // rename in context. Open the popover so the rename input is visible.
+  useEffect(() => {
+    if (pendingRenameWorkspaceId && !open) setOpen(true)
+  }, [pendingRenameWorkspaceId, open])
+
+  // Drop the pending rename when the popover closes by any path.
+  useEffect(() => {
+    if (!open && pendingRenameWorkspaceId) clearRename()
+  }, [open, pendingRenameWorkspaceId, clearRename])
 
   useLayoutEffect(() => {
     if (!open) {
@@ -137,6 +150,8 @@ export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
             workspaces={state.workspaces}
             activeId={state.active_workspace_id}
             onPick={() => setOpen(false)}
+            initialEditingId={pendingRenameWorkspaceId}
+            onEditingFinished={clearRename}
           />,
           document.body,
         )}
@@ -150,6 +165,10 @@ interface WorkspacePopoverProps {
   onPick: () => void
   popRef: (el: HTMLDivElement | null) => void
   style: CSSProperties
+  /** Workspace id to mount in rename mode, e.g. just-created via Cmd+N. */
+  initialEditingId?: WorkspaceId | null
+  /** Called when rename mode exits (commit, cancel, or row change). */
+  onEditingFinished?: () => void
 }
 
 function WorkspacePopover({
@@ -158,9 +177,11 @@ function WorkspacePopover({
   onPick,
   popRef,
   style,
+  initialEditingId,
+  onEditingFinished,
 }: WorkspacePopoverProps) {
   const qc = useQueryClient()
-  const [editingId, setEditingId] = useState<WorkspaceId | null>(null)
+  const [editingId, setEditingId] = useState<WorkspaceId | null>(initialEditingId ?? null)
   const [recoloringId, setRecoloringId] = useState<WorkspaceId | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<WorkspaceId | null>(null)
 
@@ -180,6 +201,7 @@ function WorkspacePopover({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
       setEditingId(null)
+      onEditingFinished?.()
     },
   })
 

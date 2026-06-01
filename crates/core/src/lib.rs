@@ -6,6 +6,7 @@
 
 pub mod error;
 pub mod ids;
+pub mod keybinding;
 pub mod layout;
 pub mod privacy;
 pub mod settings;
@@ -16,6 +17,7 @@ pub mod workspace;
 
 pub use error::{WisError, WisResult};
 pub use ids::{TabId, WidgetId, WorkspaceId};
+pub use keybinding::{default_keymap, effective_keymap, KeyAction};
 pub use layout::{LayoutMode, RailSide, ThemeMode, UrlBarPosition};
 pub use privacy::{PerSitePolicy, PrivacyMode};
 pub use settings::{UserSettings, UserSettingsPatch};
