@@ -30,6 +30,7 @@ export function useThemeApply(settings: UserSettings | undefined) {
     body.setAttribute('data-accent', settings.accent)
     body.classList.toggle('glass-on', settings.glass_enabled)
     body.classList.toggle('compact', settings.compact)
+    body.classList.toggle('url-glow-on', settings.url_bar_focus_glow)
 
     if (settings.theme !== 'system') return
     const media = window.matchMedia('(prefers-color-scheme: dark)')

@@ -29,6 +29,10 @@ pub struct UserSettings {
     /// running tracker engine. When false, the bundled list is used.
     #[serde(default = "default_filter_list_auto_update")]
     pub filter_list_auto_update: bool,
+    /// When true, focusing the URL bar lights its border in the accent
+    /// colour. Off by default; the LaunchPad omnisearch always glows.
+    #[serde(default)]
+    pub url_bar_focus_glow: bool,
 }
 
 fn default_filter_list_auto_update() -> bool {
@@ -50,6 +54,7 @@ impl Default for UserSettings {
             doh_resolver: Some(DEFAULT_DOH_RESOLVER.to_string()),
             homepage: None,
             filter_list_auto_update: true,
+            url_bar_focus_glow: false,
         }
     }
 }
@@ -84,6 +89,8 @@ pub struct UserSettingsPatch {
     pub homepage: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter_list_auto_update: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url_bar_focus_glow: Option<bool>,
 }
 
 impl UserSettings {
@@ -108,6 +115,9 @@ impl UserSettings {
             filter_list_auto_update: patch
                 .filter_list_auto_update
                 .unwrap_or(self.filter_list_auto_update),
+            url_bar_focus_glow: patch
+                .url_bar_focus_glow
+                .unwrap_or(self.url_bar_focus_glow),
         }
     }
 }

@@ -197,6 +197,17 @@ export function SettingsPage() {
             label="Liquid glass"
           />
         </div>
+        <div className="row">
+          <div className="l">
+            <span>URL bar focus glow</span>
+            <span>Outline the address bar in the accent colour when focused</span>
+          </div>
+          <Switch
+            checked={settings.url_bar_focus_glow}
+            onChange={(url_bar_focus_glow) => update.mutate({ url_bar_focus_glow })}
+            label="URL bar focus glow"
+          />
+        </div>
       </section>
 
       <section id="layout" className="sec">

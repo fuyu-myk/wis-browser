@@ -232,9 +232,16 @@
   color: var(--text-secondary);
   font-size: 12.5px;
   cursor: text;
-  transition: background .2s;
+  transition: background .2s, box-shadow .15s;
 }
 .kb-urlbar:hover { background: var(--surface-raised); }
+
+/* Optional focus glow. Gated on `url-glow-on` (toggled by
+   `useThemeApply`) so the default appearance stays muted. */
+.url-glow-on .kb-urlbar:focus-within,
+.url-glow-on .kb-urlpill-inline:focus-within {
+  box-shadow: 0 0 0 1.5px var(--primary-400);
+}
 .kb-urlbar .ico  { width: 14px; height: 14px; opacity: 0.7; flex-shrink: 0; display: none; }
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-urlbar .ico {
   display: inline-block;

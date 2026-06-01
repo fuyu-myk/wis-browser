@@ -141,6 +141,7 @@ export interface UserSettings {
   doh_resolver: string | null
   homepage: string | null
   filter_list_auto_update: boolean
+  url_bar_focus_glow: boolean
 }
 
 /**
@@ -160,6 +161,7 @@ export interface UserSettingsPatch {
   doh_resolver?: string
   homepage?: string
   filter_list_auto_update?: boolean
+  url_bar_focus_glow?: boolean
 }
 
 export interface PerSitePolicy {
