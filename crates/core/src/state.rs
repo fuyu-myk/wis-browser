@@ -411,6 +411,21 @@ impl BrowserState {
         Ok(self.replace_tab(id, &updated))
     }
 
+    /// Update a tab's favicon reference. Idempotent when the value doesn't change.
+    pub fn with_tab_favicon(
+        &self,
+        id: TabId,
+        favicon: Option<crate::tab::FaviconRef>,
+    ) -> WisResult<Self> {
+        let current = self.tab(id)?;
+        if current.favicon == favicon {
+            return Ok(self.clone());
+        }
+        let updated = current.with_favicon(favicon);
+
+        Ok(self.replace_tab(id, &updated))
+    }
+
     /// Internal helper: produce a new state with the tab at `id` swapped for
     /// `updated`. Caller must guarantee `id == updated.id`.
     fn replace_tab(&self, id: TabId, updated: &Tab) -> Self {

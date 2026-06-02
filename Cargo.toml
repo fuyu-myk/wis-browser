@@ -52,6 +52,10 @@ hickory-resolver = { version = "0.25", default-features = false, features = ["to
 adblock = { version = "0.12", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling", "content-blocking"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
+# Crypto / encoding (favicon cache: SHA-256 origin hash, base64 data URLs)
+sha2 = "0.10"
+base64 = "0.22"
+
 # Internal crates
 wis-core = { path = "crates/core" }
 wis-storage = { path = "crates/storage" }

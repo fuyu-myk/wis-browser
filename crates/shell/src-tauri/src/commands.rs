@@ -82,7 +82,7 @@ where
 }
 
 /// Convenience for transitions that don't have an additional return value.
-async fn mutate_unit<F>(
+pub(crate) async fn mutate_unit<F>(
     app: &AppHandle,
     state: &State<'_, AppState>,
     transition: F,
@@ -91,6 +91,18 @@ where
     F: FnOnce(&BrowserState) -> WisResult<BrowserState>,
 {
     mutate(app, state, |s| transition(s).map(|next| (next, ()))).await
+}
+
+/// Favicon attach helper exposed to [`crate::favicons`] so the capture
+/// pipeline can persist `tab.favicon = Some(ref)` through the same
+/// transaction the rest of the chrome uses.
+pub(crate) async fn mutate_unit_for_favicon(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    tab_id: wis_core::TabId,
+    favicon: Option<wis_core::FaviconRef>,
+) -> WisResult<()> {
+    mutate_unit(app, state, |s| s.with_tab_favicon(tab_id, favicon.clone())).await
 }
 
 // ---------------------------------------------------------------------------
@@ -369,12 +381,15 @@ pub async fn create_tab_webview(
     {
         let app = app.clone();
         builder = builder.on_page_load(move |_webview, payload: PageLoadPayload<'_>| {
-            let app = app.clone();
-            let loading = matches!(payload.event(), PageLoadEvent::Started);
+            let event = payload.event();
+            let loading = matches!(event, PageLoadEvent::Started);
             let url_string = payload.url().to_string();
+            let page_url = payload.url().clone();
+
+            let app_for_state = app.clone();
             tauri::async_runtime::spawn(async move {
-                let state = app.state::<AppState>();
-                let result = mutate_unit(&app, &state, |s| {
+                let state = app_for_state.state::<AppState>();
+                let result = mutate_unit(&app_for_state, &state, |s| {
                     s.with_tab_loading(tab_id, loading)
                         .and_then(|next| next.with_tab_url_synced(tab_id, &url_string))
                 })
@@ -383,6 +398,19 @@ pub async fn create_tab_webview(
                     log::warn!("page load update for {tab_id} failed: {err}");
                 }
             });
+
+            if matches!(event, PageLoadEvent::Finished) {
+                let app_for_favicon = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    crate::favicons::capture_favicon(
+                        app_for_favicon,
+                        tab_id,
+                        workspace_id,
+                        page_url,
+                    )
+                    .await;
+                });
+            }
         });
     }
 

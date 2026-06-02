@@ -272,6 +272,36 @@ export const commands = {
   async hideOverlay(name: string): Promise<void> {
     return invoke('hide_overlay', { name })
   },
+
+  // -- favicons -------------------------------------------------------------
+
+  /**
+   * Return a `data:` URL for the cached favicon, or `null` when the
+   * hash isn't in the cache. The hash is the SHA-256 prefix of the
+   * page's canonical origin — same algorithm as
+   * `favicons::favicon_origin_hash`.
+   */
+  async getFaviconDataUrl(hash: string): Promise<string | null> {
+    return invoke('get_favicon_data_url', { hash })
+  },
+
+  /**
+   * Compute the origin hash for an arbitrary URL. Used by NewTabPage
+   * quicklinks.
+   */
+  async faviconOriginHash(url: string): Promise<string | null> {
+    return invoke('favicon_origin_hash', { url })
+  },
+
+  /**
+   * Fetch + cache the favicon for `url` if it isn't already cached.
+   * Used to pre-warm the launchpad quicklink icons on first boot.
+   * Returns the origin hash on success, or null on parse / network
+   * failure. Cache-hit fast path is a no-op.
+   */
+  async prefetchFavicon(url: string): Promise<string | null> {
+    return invoke('prefetch_favicon', { url })
+  },
 } as const
 
 export type Commands = typeof commands

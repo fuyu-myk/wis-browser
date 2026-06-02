@@ -1,6 +1,7 @@
 mod commands;
 mod content_filter;
 mod error_compat;
+mod favicons;
 mod find;
 mod menu;
 mod overlay;
@@ -143,6 +144,9 @@ pub fn run() {
             overlay::ensure_overlay,
             overlay::set_overlay_bounds,
             overlay::hide_overlay,
+            favicons::get_favicon_data_url,
+            favicons::favicon_origin_hash,
+            favicons::prefetch_favicon,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

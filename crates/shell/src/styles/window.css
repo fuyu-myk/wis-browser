@@ -1728,6 +1728,8 @@
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-ws-name,
 .kb-side.kb-rail:not(.is-expanded) .kb-ws-name { display: none; }
 
+.kb-side .kb-brand { padding-left: 6px; }
+
 .kb-ws-pop {
   position: fixed;
   z-index: 200;

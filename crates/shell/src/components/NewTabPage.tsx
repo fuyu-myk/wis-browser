@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
+import { commands } from '@/bindings/commands'
 import type { Tab } from '@/bindings/types'
+
+const FAVICON_CACHED_EVENT = 'favicon-cached'
 import { SearchIcon } from '@/lib/icons'
 import { normaliseUrl } from '@/lib/url'
 import { useBrowserState } from '@/hooks/useBrowserState'
@@ -53,14 +57,6 @@ function pickPrompt(): string {
   return LAUNCH_PROMPTS[index]
 }
 
-function faviconFor(url: string): string {
-  try {
-    const host = new URL(url).hostname
-    return `https://www.google.com/s2/favicons?domain=${host}&sz=128`
-  } catch {
-    return ''
-  }
-}
 
 interface NewTabPageProps {
   /** The tab currently showing this page. */
@@ -151,9 +147,66 @@ interface QuickLinkBubbleProps {
   onNavigate: (url: string) => void
 }
 
+type QuickLinkStatus = 'pending' | 'loaded' | 'failed'
+
 function QuickLinkBubble({ link, onNavigate }: QuickLinkBubbleProps) {
-  const [iconFailed, setIconFailed] = useState(false)
-  const icon = faviconFor(link.url)
+  const [icon, setIcon] = useState<string | null>(null)
+  // Three-state status so the letter fallback only appears once we know
+  // the cache + prefetch round-trip has definitively failed.
+  const [status, setStatus] = useState<QuickLinkStatus>('pending')
+  const ownHashRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    setStatus('pending')
+    let cancelled = false
+    const lookup = async () => {
+      const hash = await commands.faviconOriginHash(link.url).catch(() => null)
+      if (cancelled) return
+      if (!hash) {
+        setStatus('failed')
+        return
+      }
+      ownHashRef.current = hash
+      let url = await commands.getFaviconDataUrl(hash).catch(() => null)
+      if (!url) {
+        const writeHash = await commands.prefetchFavicon(link.url).catch(() => null)
+        if (cancelled) return
+        if (writeHash) {
+          url = await commands.getFaviconDataUrl(writeHash).catch(() => null)
+        }
+      }
+      if (cancelled) return
+      setIcon(url)
+      setStatus(url ? 'loaded' : 'failed')
+    }
+    void lookup()
+    return () => {
+      cancelled = true
+    }
+  }, [link.url])
+
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null
+    let cancelled = false
+    void listen<string>(FAVICON_CACHED_EVENT, (e) => {
+      if (e.payload !== ownHashRef.current) return
+      void commands
+        .getFaviconDataUrl(e.payload)
+        .then((url) => {
+          if (cancelled) return
+          setIcon(url)
+          setStatus(url ? 'loaded' : 'failed')
+        })
+        .catch(() => undefined)
+    }).then((fn) => {
+      if (cancelled) fn()
+      else unlisten = fn
+    })
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [])
 
   return (
     <button
@@ -163,14 +216,16 @@ function QuickLinkBubble({ link, onNavigate }: QuickLinkBubbleProps) {
       title={link.label}
     >
       <span className="ql-tile">
-        {icon && !iconFailed ? (
+        {status === 'loaded' && icon ? (
           <img
             src={icon}
             alt=""
             width={28}
             height={28}
-            onError={() => setIconFailed(true)}
+            onError={() => setStatus('failed')}
           />
+        ) : status === 'pending' ? (
+          <span className="ql-pending" aria-hidden />
         ) : (
           <span className={`ql-fallback ${link.fallbackClass}`}>{link.initial}</span>
         )}

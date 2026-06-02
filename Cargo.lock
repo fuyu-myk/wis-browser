@@ -5418,11 +5418,14 @@ dependencies = [
 name = "wis-browser-app"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "block2 0.5.1",
  "log",
  "objc2 0.5.2",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-log",
