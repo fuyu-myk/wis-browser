@@ -1,0 +1,334 @@
+/**
+ * Command palette domain layer.
+ *
+ * A palette source maps a query to a ranked list of items. The panel
+ * renders sections in a fixed order; each section sorts internally by
+ * score. A future history source plugs in as one more entry with no
+ * change to the panel.
+ */
+
+import type { ReactNode } from 'react'
+
+import type {
+  AccentColor,
+  BrowserState,
+  KeyAction,
+  Tab,
+  UserSettings,
+  UserSettingsPatch,
+} from '@/bindings/types'
+import { normaliseUrl } from '@/lib/url'
+
+export type PaletteSection = 'tabs' | 'actions' | 'settings' | 'open'
+
+export interface TabMeta {
+  workspaceName: string
+  workspaceAccent: AccentColor
+  /** True when the tab belongs to a workspace other than the active one. */
+  crossWorkspace: boolean
+}
+
+export interface SecondaryAction {
+  /** Short label shown in tooltip / footer hint, e.g. "Close tab". */
+  label: string
+  /** Pretty shortcut string shown on the row, e.g. "⌘⌫". */
+  shortcut: string
+  /** Invoked when the user triggers the shortcut from the highlighted row. */
+  run: () => void | Promise<void>
+}
+
+export interface PaletteItem {
+  id: string
+  section: PaletteSection
+  score: number
+  title: string
+  subtitle?: string
+  accessory?: ReactNode
+  icon?: ReactNode
+  /** Indices into `title` that matched the query; used for highlighting. */
+  titleMatches?: number[]
+  /** Indices into `subtitle` that matched the query. */
+  subtitleMatches?: number[]
+  /**
+   * Tab-only metadata.
+   */
+  tabMeta?: TabMeta
+  /**
+   * Optional companion action invoked by a row-scoped shortcut (e.g.
+   * Cmd+Backspace closes a tab from the palette without dismissing it).
+   */
+  secondaryAction?: SecondaryAction
+  activate: () => void | Promise<void>
+}
+
+export type PaletteSource = (query: string) => PaletteItem[]
+
+// Mirror of `default_keymap()` in crates/core/src/keybinding.rs.
+export const DEFAULT_KEYMAP: Partial<Record<KeyAction, string>> = {
+  new_tab: 'Cmd+T',
+  new_workspace: 'Cmd+N',
+  close_tab: 'Cmd+W',
+  focus_url_bar: 'Cmd+E',
+  reload: 'Cmd+R',
+  go_back: 'Cmd+[',
+  go_back_alt: 'Cmd+Left',
+  go_forward: 'Cmd+]',
+  go_forward_alt: 'Cmd+Right',
+  switch_to_tab1: 'Cmd+1',
+  switch_to_tab2: 'Cmd+2',
+  switch_to_tab3: 'Cmd+3',
+  switch_to_tab4: 'Cmd+4',
+  switch_to_tab5: 'Cmd+5',
+  switch_to_tab6: 'Cmd+6',
+  switch_to_tab7: 'Cmd+7',
+  switch_to_tab8: 'Cmd+8',
+  switch_to_tab9: 'Cmd+9',
+  switch_to_last_tab: 'Cmd+0',
+  find_in_page: 'Cmd+F',
+  find_next: 'Cmd+G',
+  find_previous: 'Cmd+Shift+G',
+  open_command_palette: 'Cmd+L',
+  open_settings: 'Cmd+,',
+  new_private_window: 'Cmd+Shift+N',
+}
+
+const ACTION_LABELS: Record<KeyAction, string> = {
+  new_tab: 'New tab',
+  new_workspace: 'New workspace',
+  close_tab: 'Close tab',
+  focus_url_bar: 'Focus address bar',
+  focus_url_bar_alt: 'Focus address bar (alt)',
+  reload: 'Reload tab',
+  go_back: 'Back',
+  go_back_alt: 'Back (alt)',
+  go_forward: 'Forward',
+  go_forward_alt: 'Forward (alt)',
+  switch_to_tab1: 'Switch to tab 1',
+  switch_to_tab2: 'Switch to tab 2',
+  switch_to_tab3: 'Switch to tab 3',
+  switch_to_tab4: 'Switch to tab 4',
+  switch_to_tab5: 'Switch to tab 5',
+  switch_to_tab6: 'Switch to tab 6',
+  switch_to_tab7: 'Switch to tab 7',
+  switch_to_tab8: 'Switch to tab 8',
+  switch_to_tab9: 'Switch to tab 9',
+  switch_to_last_tab: 'Switch to last tab',
+  find_in_page: 'Find in page',
+  find_next: 'Find next match',
+  find_previous: 'Find previous match',
+  open_command_palette: 'Open command palette',
+  open_settings: 'Open settings',
+  new_private_window: 'New private window',
+  new_window: 'New window',
+}
+
+const ALL_ACTIONS = Object.keys(ACTION_LABELS) as KeyAction[]
+
+export function actionLabel(action: KeyAction): string {
+  return ACTION_LABELS[action]
+}
+
+export interface FuzzyMatch {
+  score: number
+  /** Indices into `haystack` where each query char matched. Empty on miss. */
+  indices: number[]
+}
+
+/**
+ * Subsequence-aware fuzzy match. Returns each query char's position in
+ * the haystack so the renderer can highlight them.
+ *
+ * Score combines three signals:
+ *   - earlier start (later starts get a lower bonus),
+ *   - contiguous matches (a tight cluster outranks scattered chars),
+ *   - exact-substring presence (substring matches dominate scattered).
+ *
+ * Eg: "youtube" + "out" beats "youtube" + "ye" (contiguous substring
+ * vs scattered), and "DuckDuckGo" + "ddg" still scores positively while
+ * staying behind a contiguous match against "DuckDuckGo" + "duck".
+ */
+export function fuzzyMatch(haystack: string, query: string): FuzzyMatch {
+  if (!query) return { score: 1, indices: [] }
+  if (!haystack) return { score: 0, indices: [] }
+  const h = haystack.toLowerCase()
+  const q = query.toLowerCase()
+
+  let qi = 0
+  const indices: number[] = []
+  for (let i = 0; i < h.length && qi < q.length; i++) {
+    if (h[i] === q[qi]) {
+      indices.push(i)
+      qi++
+    }
+  }
+  if (qi < q.length) return { score: 0, indices: [] }
+
+  const startBonus = Math.max(0, 50 - indices[0])
+  const span = indices[indices.length - 1] - indices[0] + 1
+  const contiguityBonus = Math.floor((q.length / span) * 50)
+  const substringBonus = h.includes(q) ? 50 : 0
+  const score = Math.max(1, startBonus + contiguityBonus + substringBonus)
+  return { score, indices }
+}
+
+interface TabsSourceArgs {
+  state: BrowserState
+  onActivate: (tab: Tab) => void | Promise<void>
+  onClose: (tab: Tab) => void | Promise<void>
+}
+
+export function makeTabsSource({ state, onActivate, onClose }: TabsSourceArgs): PaletteSource {
+  const workspaceByTab = new Map<string, { name: string; accent: AccentColor; id: string }>()
+  for (const ws of state.workspaces) {
+    for (const tabId of ws.tab_order) {
+      workspaceByTab.set(tabId, { name: ws.name, accent: ws.accent, id: ws.id })
+    }
+  }
+
+  return (query) => {
+    const items = state.tabs.map((tab) => {
+      const title = tab.title && tab.title !== tab.url ? tab.title : tab.url
+      const ws = workspaceByTab.get(tab.id)
+      const titleMatch = fuzzyMatch(title, query)
+      const urlMatch = fuzzyMatch(tab.url, query)
+      const workspaceMatch = ws ? fuzzyMatch(ws.name, query) : { score: 0, indices: [] }
+      const score = Math.max(titleMatch.score, urlMatch.score, workspaceMatch.score)
+      const item: PaletteItem = {
+        id: `tab:${tab.id}`,
+        section: 'tabs',
+        score,
+        title,
+        subtitle: tab.url,
+        titleMatches: titleMatch.score > 0 ? titleMatch.indices : undefined,
+        subtitleMatches: urlMatch.score > 0 ? urlMatch.indices : undefined,
+        tabMeta: ws
+          ? {
+              workspaceName: ws.name,
+              workspaceAccent: ws.accent,
+              crossWorkspace: ws.id !== state.active_workspace_id,
+            }
+          : undefined,
+        secondaryAction: {
+          label: 'Close tab',
+          shortcut: '⌘⌫',
+          run: () => onClose(tab),
+        },
+        activate: () => onActivate(tab),
+      }
+      return item
+    })
+    return items.filter((it) => it.score > 0).sort((a, b) => b.score - a.score)
+  }
+}
+
+interface ActionsSourceArgs {
+  keymap: Partial<Record<KeyAction, string>>
+  onDispatch: (action: KeyAction) => void | Promise<void>
+}
+
+export function makeActionsSource({ keymap, onDispatch }: ActionsSourceArgs): PaletteSource {
+  return (query) => {
+    const items = ALL_ACTIONS.map((action) => {
+      const label = actionLabel(action)
+      const match = fuzzyMatch(label, query)
+      const item: PaletteItem = {
+        id: `action:${action}`,
+        section: 'actions',
+        score: match.score,
+        title: label,
+        titleMatches: match.score > 0 ? match.indices : undefined,
+        accessory: keymap[action] ?? '—',
+        activate: () => onDispatch(action),
+      }
+      return item
+    })
+    return items.filter((it) => it.score > 0).sort((a, b) => b.score - a.score)
+  }
+}
+
+interface NavigateSourceArgs {
+  onOpen: (url: string) => void | Promise<void>
+}
+
+/**
+ * Type-to-navigate fallback. Whenever the query is non-empty, emit a
+ * single row that resolves the query through `normaliseUrl` and opens
+ * it as a tab. Lets the palette act as a launcher when nothing matches
+ * (and as a quick "open this" when something does). Always sorts last
+ * because of the dedicated 'open' section in the surface.
+ */
+export function makeNavigateSource({ onOpen }: NavigateSourceArgs): PaletteSource {
+  return (query) => {
+    const trimmed = query.trim()
+    if (!trimmed) return []
+    const url = normaliseUrl(trimmed)
+    if (!url) return []
+    const isSearch = url.startsWith('https://duckduckgo.com/?q=')
+    const title = isSearch ? `Search for "${trimmed}"` : `Go to ${url}`
+    const subtitle = isSearch ? 'via DuckDuckGo' : undefined
+    return [
+      {
+        id: 'open:current',
+        section: 'open',
+        score: 1,
+        title,
+        subtitle,
+        activate: () => onOpen(url),
+      },
+    ]
+  }
+}
+
+interface SettingsTogglesSourceArgs {
+  settings: UserSettings
+  onChange: (patch: UserSettingsPatch) => void | Promise<void>
+}
+
+// Each entry maps a human-readable label to one boolean field on
+// `UserSettings`.
+interface ToggleSpec {
+  key:
+    | 'glass_enabled'
+    | 'sidebar_collapsible'
+    | 'url_bar_focus_glow'
+    | 'filter_list_auto_update'
+  label: string
+}
+
+const SETTINGS_TOGGLES: ToggleSpec[] = [
+  { key: 'glass_enabled', label: 'Liquid glass' },
+  { key: 'sidebar_collapsible', label: 'Collapsible sidebar' },
+  { key: 'url_bar_focus_glow', label: 'URL bar focus glow' },
+  { key: 'filter_list_auto_update', label: 'Auto-update filter lists' },
+]
+
+/**
+ * Boolean-only settings toggles surfaced as palette rows.
+ *
+ * The accessory shows the current state ("On"/"Off"), so users see the
+ * direction the activation will move the setting before they fire it.
+ */
+export function makeSettingsTogglesSource({
+  settings,
+  onChange,
+}: SettingsTogglesSourceArgs): PaletteSource {
+  return (query) => {
+    const items = SETTINGS_TOGGLES.map((spec) => {
+      const current = settings[spec.key]
+      const labelMatch = fuzzyMatch(spec.label, query)
+      const verbMatch = fuzzyMatch(`Toggle ${spec.label}`, query)
+      const score = Math.max(labelMatch.score, verbMatch.score)
+      const item: PaletteItem = {
+        id: `settings:${spec.key}`,
+        section: 'settings',
+        score,
+        title: spec.label,
+        titleMatches: labelMatch.score > 0 ? labelMatch.indices : undefined,
+        accessory: current ? 'On' : 'Off',
+        activate: () => onChange({ [spec.key]: !current }),
+      }
+      return item
+    })
+    return items.filter((it) => it.score > 0).sort((a, b) => b.score - a.score)
+  }
+}

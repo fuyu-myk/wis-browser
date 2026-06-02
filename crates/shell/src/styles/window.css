@@ -45,7 +45,7 @@
   to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
-/* Search input is a single liquid-glass pill. */
+/* Search input. */
 .kb-findbar-pill {
   display: flex;
   align-items: center;
@@ -55,13 +55,21 @@
   max-width: 100%;
   padding: 0 16px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.55);
-  border: 1px solid rgba(255,255,255,0.30);
+  background: var(--chrome-bg);
+  border: 1px solid rgba(0,0,0,0.08);
   box-shadow: var(--shadow-pop);
+}
+[data-mode="dark"] .kb-findbar-pill {
+  background: #1f1f26;
+  border-color: rgba(255,255,255,0.08);
+}
+.kb-findbar-pill.glass-on {
+  background: rgba(255,255,255,0.55);
+  border-color: rgba(255,255,255,0.30);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
   backdrop-filter: blur(28px) saturate(180%);
 }
-[data-mode="dark"] .kb-findbar-pill {
+[data-mode="dark"] .kb-findbar-pill.glass-on {
   background: rgba(28,28,34,0.55);
   border-color: rgba(255,255,255,0.10);
 }
@@ -98,8 +106,7 @@
   border-color: rgba(255, 86, 86, 0.40);
 }
 
-/* Floating glass circles for prev / next / close, sitting to the right
-   of the pill. */
+/* Prev / next / close circles sitting to the right of the pill. */
 .kb-findbar-circle {
   width: 36px;
   height: 36px;
@@ -107,27 +114,275 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255,255,255,0.30);
-  background: rgba(255,255,255,0.55);
+  border: 1px solid rgba(0,0,0,0.08);
+  background: var(--chrome-bg);
   color: var(--text-primary);
   cursor: pointer;
   flex-shrink: 0;
   box-shadow: var(--shadow-pop);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
   transition: background .12s, color .12s, transform .12s;
 }
 .kb-findbar-circle:hover {
-  background: rgba(255,255,255,0.78);
+  background: color-mix(in oklab, var(--chrome-bg) 80%, white 20%);
   transform: translateY(-1px);
 }
 [data-mode="dark"] .kb-findbar-circle {
-  background: rgba(28,28,34,0.65);
-  border-color: rgba(255,255,255,0.10);
+  background: #1f1f26;
+  border-color: rgba(255,255,255,0.08);
   color: rgba(255,255,255,0.92);
 }
 [data-mode="dark"] .kb-findbar-circle:hover {
+  background: #2a2a32;
+}
+.kb-findbar-wrap.glass-on .kb-findbar-circle {
+  background: rgba(255,255,255,0.55);
+  border-color: rgba(255,255,255,0.30);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+}
+.kb-findbar-wrap.glass-on .kb-findbar-circle:hover {
+  background: rgba(255,255,255,0.78);
+}
+[data-mode="dark"] .kb-findbar-wrap.glass-on .kb-findbar-circle {
+  background: rgba(28,28,34,0.65);
+  border-color: rgba(255,255,255,0.10);
+}
+[data-mode="dark"] .kb-findbar-wrap.glass-on .kb-findbar-circle:hover {
   background: rgba(40,40,48,0.85);
+}
+
+/* ---------------------------------------------------------------------
+ * Command palette (Cmd+L)
+ * Hosted by the `overlay-palette` webview; the backdrop fills the
+ * webview and dims the page beneath. The panel is a centered floating
+ * card.
+ * ------------------------------------------------------------------- */
+.kb-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background: rgba(20,20,28,0.55);
+  animation: kb-palette-fade-in 120ms ease-out;
+}
+[data-mode="dark"] .kb-palette-backdrop {
+  background: rgba(0,0,0,0.55);
+}
+.kb-palette-backdrop.glass-on {
+  background: rgba(0,0,0,0.18);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+[data-mode="dark"] .kb-palette-backdrop.glass-on {
+  background: rgba(0,0,0,0.35);
+}
+
+.kb-palette {
+  width: 560px;
+  max-width: calc(100% - 32px);
+  max-height: 480px;
+  display: flex;
+  flex-direction: column;
+  /* Default (glass off): opaque surface picked from chrome tokens so it
+     matches the rest of the non-glass UI. */
+  background: var(--chrome-bg);
+  border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.25);
+  overflow: hidden;
+  animation: kb-palette-scale-in 120ms ease-out;
+}
+[data-mode="dark"] .kb-palette {
+  background: #1f1f26;
+  border-color: rgba(255,255,255,0.08);
+}
+.kb-palette.glass-on {
+  background: rgba(255,255,255,0.78);
+  border-color: rgba(255,255,255,0.30);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+}
+[data-mode="dark"] .kb-palette.glass-on {
+  background: rgba(28,28,34,0.78);
+  border-color: rgba(255,255,255,0.10);
+}
+
+.kb-palette-input-wrap {
+  display: flex;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+[data-mode="dark"] .kb-palette-input-wrap {
+  border-bottom-color: rgba(255,255,255,0.08);
+}
+
+.kb-palette-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 15px;
+}
+.kb-palette-input::placeholder { color: var(--text-tertiary); }
+[data-mode="dark"] .kb-palette-input { color: rgba(255,255,255,0.92); }
+
+.kb-palette-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.kb-palette-section { padding: 4px 0; }
+
+.kb-palette-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: 6px 18px 4px;
+}
+
+.kb-palette-section-body { display: flex; flex-direction: column; }
+
+.kb-palette-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 18px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  transition: background 80ms ease;
+}
+.kb-palette-row.highlighted {
+  background: color-mix(in oklab, var(--primary-500) 18%, transparent);
+}
+[data-mode="dark"] .kb-palette-row { color: rgba(255,255,255,0.92); }
+
+.kb-palette-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.kb-palette-row-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-palette-row-subtitle {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-palette-row-accessory {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.05);
+}
+[data-mode="dark"] .kb-palette-row-accessory {
+  background: rgba(255,255,255,0.08);
+}
+
+.kb-palette-row-workspace {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.05);
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-width: 160px;
+}
+[data-mode="dark"] .kb-palette-row-workspace {
+  background: rgba(255,255,255,0.08);
+}
+.kb-palette-row-workspace.is-cross {
+  background: color-mix(in oklab, var(--primary-500) 14%, transparent);
+  color: var(--text-primary);
+}
+.kb-palette-row-workspace-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.kb-palette-row-workspace-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Matched-character highlighting from the subsequence fuzzy scorer. */
+.kb-palette-mark {
+  background: transparent;
+  color: var(--primary-500);
+  font-weight: 600;
+}
+[data-mode="dark"] .kb-palette-mark {
+  color: color-mix(in oklab, var(--primary-500) 80%, white 20%);
+}
+
+/* Row-scoped secondary action chip (e.g. ⌘⌫ Close tab). Only shown on
+   the highlighted row so the right edge stays calm otherwise. */
+.kb-palette-row-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.05);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+[data-mode="dark"] .kb-palette-row-secondary {
+  background: rgba(255,255,255,0.08);
+}
+.kb-palette-row-secondary-label {
+  white-space: nowrap;
+}
+.kb-palette-row-secondary-shortcut {
+  font-family: var(--font-mono);
+  opacity: 0.85;
+}
+
+.kb-palette-empty {
+  padding: 28px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+@keyframes kb-palette-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes kb-palette-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .kb-window {
@@ -221,7 +476,8 @@
   background: var(--chrome-tint);
   transition: background 0.35s, border-color 0.35s;
 }
-.layout-sidebar-left .kb-side { padding-top: 34px; }
+.layout-sidebar-left  .kb-side,
+.layout-sidebar-right .kb-side { padding-top: 34px; }
 .layout-sidebar-right .kb-main { padding-top: 32px; }
 .layout-top-tabs .kb-main { padding-top: 0; }
 
@@ -714,33 +970,24 @@
   z-index: 30;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 12px 0;
+  padding: 12px 10px;
   gap: 10px;
   background: var(--chrome-tint);
   transition: width 0.26s cubic-bezier(.2,.7,.3,1), background 0.3s;
   overflow: hidden;
 }
-.kb-side.kb-rail.is-left  { left: 0; padding-top: 34px; }
-.kb-side.kb-rail.is-right { right: 0; padding-top: 12px; }
+.kb-side.kb-rail.is-left  { left: 0; padding-top: 56px; }
+.kb-side.kb-rail.is-right { right: 0; padding-top: 56px; }
 .kb-side.kb-rail.is-expanded { width: var(--sb-w); }
-
-.kb-side.kb-rail.is-left.is-expanded {
-  align-items: flex-start;
-  padding-left: 10px;
-}
-.kb-side.kb-rail.is-right.is-expanded {
-  align-items: flex-end;
-  padding-right: 10px;
-}
-.kb-side.kb-rail.is-expanded .kb-ws-pill-wrap {
-  width: 100%;
-  padding: 0;
-}
 
 .kb-rail-spacer { flex: 1; }
 
-.kb-rail-settings { width: 32px; height: 32px; }
+.kb-rail-settings {
+  width: 32px;
+  height: 32px;
+}
+.kb-side.kb-rail.is-left  .kb-rail-settings { align-self: flex-start; }
+.kb-side.kb-rail.is-right .kb-rail-settings { align-self: flex-end; }
 
 .kb-window.has-rail.rail-right .kb-topbar { padding-right: 64px; }
 .kb-window.has-rail.rail-left  .kb-main { padding-left: 52px; }
@@ -1433,6 +1680,8 @@
   align-items: center;
   gap: 8px;
   width: 100%;
+  max-width: 210px;
+  margin: 0 auto;
   height: 30px;
   padding: 0 12px;
   border-radius: 999px;

@@ -6,6 +6,7 @@
  */
 
 import { FindSurface } from '@/overlay/surfaces/FindSurface'
+import { PaletteSurface } from '@/overlay/surfaces/PaletteSurface'
 
 interface OverlayRootProps {
   surface: string
@@ -13,6 +14,7 @@ interface OverlayRootProps {
 
 export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'find') return <FindSurface />
+  if (surface === 'palette') return <PaletteSurface />
   // eslint-disable-next-line no-console
   console.warn(`Unknown overlay surface: ${surface}`)
   return null

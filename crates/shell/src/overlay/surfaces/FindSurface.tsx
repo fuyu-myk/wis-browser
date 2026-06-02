@@ -143,11 +143,14 @@ export function FindSurface() {
     }
   }, [])
 
+  const glassOn = state?.settings.glass_enabled ?? true
+
   return (
-    <div className="kb-findbar-wrap" role="search">
+    <div className={cx('kb-findbar-wrap', { 'glass-on': glassOn })} role="search">
       <div
         className={cx('kb-findbar-pill', {
           'is-no-match': status === 'no_match',
+          'glass-on': glassOn,
         })}
       >
         <SearchIcon className="kb-findbar-icon" />

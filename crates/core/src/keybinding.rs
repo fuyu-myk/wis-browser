@@ -130,8 +130,7 @@ pub fn default_keymap() -> HashMap<KeyAction, String> {
         (KeyAction::NewTab, "Cmd+T"),
         (KeyAction::NewWorkspace, "Cmd+N"),
         (KeyAction::CloseTab, "Cmd+W"),
-        (KeyAction::FocusUrlBar, "Cmd+L"),
-        (KeyAction::FocusUrlBarAlt, "Cmd+E"),
+        (KeyAction::FocusUrlBar, "Cmd+E"),
         (KeyAction::Reload, "Cmd+R"),
         (KeyAction::GoBack, "Cmd+["),
         (KeyAction::GoBackAlt, "Cmd+Left"),
@@ -150,7 +149,7 @@ pub fn default_keymap() -> HashMap<KeyAction, String> {
         (KeyAction::FindInPage, "Cmd+F"),
         (KeyAction::FindNext, "Cmd+G"),
         (KeyAction::FindPrevious, "Cmd+Shift+G"),
-        (KeyAction::OpenCommandPalette, "Cmd+K"),
+        (KeyAction::OpenCommandPalette, "Cmd+L"),
         (KeyAction::OpenSettings, "Cmd+,"),
         (KeyAction::NewPrivateWindow, "Cmd+Shift+N"),
     ];
@@ -182,11 +181,17 @@ mod tests {
     }
 
     #[test]
-    fn default_keymap_includes_every_action_except_new_window() {
+    fn default_keymap_includes_every_action_except_reserved() {
+        // `NewWindow` is reserved for multi-window support in future.
+        const UNBOUND: &[KeyAction] = &[KeyAction::NewWindow, KeyAction::FocusUrlBarAlt];
         let map = default_keymap();
         for action in KeyAction::all() {
-            if *action == KeyAction::NewWindow {
-                assert!(!map.contains_key(action), "NewWindow must stay unbound");
+            if UNBOUND.contains(action) {
+                assert!(
+                    !map.contains_key(action),
+                    "{} must stay unbound",
+                    action.id()
+                );
             } else {
                 assert!(map.contains_key(action), "{} is unbound", action.id());
             }

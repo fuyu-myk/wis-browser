@@ -1,0 +1,79 @@
+/**
+ * Chrome-side orchestration for the command palette overlay.
+ *
+ * Cmd+L (or any other handler that dispatches the
+ * `wis-command-palette-open` DOM event) toggles a full-window overlay
+ * webview that hosts `PaletteSurface`. The palette closes itself by
+ * calling `hideOverlay('palette')` and broadcasts a Tauri event so this
+ * hook resets the toggle state.
+ */
+
+import { useCallback, useEffect, useRef } from 'react'
+import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
+
+import { useOverlay } from '@/hooks/useOverlay'
+import { COMMAND_PALETTE_OPEN_EVENT } from '@/hooks/useKeyActions'
+
+const PALETTE_FOCUS_EVENT = 'wis-overlay-palette-focus'
+const PALETTE_CLOSED_EVENT = 'wis-overlay-palette-closed'
+
+export function useCommandPaletteOverlay(): void {
+  const overlay = useOverlay('palette')
+  const openRef = useRef(false)
+
+  const open = useCallback(async () => {
+    await overlay.show({
+      x: 0,
+      y: 0,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    })
+    openRef.current = true
+    await emit(PALETTE_FOCUS_EVENT).catch(() => undefined)
+  }, [overlay])
+
+  const close = useCallback(async () => {
+    await overlay.hide()
+    openRef.current = false
+  }, [overlay])
+
+  const toggle = useCallback(() => {
+    if (openRef.current) void close()
+    else void open()
+  }, [open, close])
+
+  useEffect(() => {
+    const handler = () => toggle()
+    window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, handler)
+    return () => window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, handler)
+  }, [toggle])
+
+  useEffect(() => {
+    const onResize = () => {
+      if (!openRef.current) return
+      void overlay.show({
+        x: 0,
+        y: 0,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      })
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [overlay])
+
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null
+    let cancelled = false
+    void listen<void>(PALETTE_CLOSED_EVENT, () => {
+      openRef.current = false
+    }).then((fn) => {
+      if (cancelled) fn()
+      else unlisten = fn
+    })
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [])
+}
