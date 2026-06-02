@@ -67,8 +67,7 @@ pub async fn tab_find_string(
                     msg_send![objc2::class!(NSString), stringWithUTF8String: q_c.as_ptr()];
 
                 // Build WKFindConfiguration with backwards + case sensitivity.
-                let config: *mut AnyObject =
-                    msg_send![objc2::class!(WKFindConfiguration), new];
+                let config: *mut AnyObject = msg_send![objc2::class!(WKFindConfiguration), new];
                 let _: () = msg_send![config, setBackwards: Bool::new(backwards)];
                 let _: () = msg_send![config, setCaseSensitive: Bool::new(case_sensitive)];
 
@@ -139,8 +138,7 @@ pub async fn tab_find_clear(app: AppHandle, id: TabId) -> WisResult<()> {
                 let empty_c = std::ffi::CString::new("").unwrap();
                 let ns_empty: *mut AnyObject =
                     msg_send![objc2::class!(NSString), stringWithUTF8String: empty_c.as_ptr()];
-                let config: *mut AnyObject =
-                    msg_send![objc2::class!(WKFindConfiguration), new];
+                let config: *mut AnyObject = msg_send![objc2::class!(WKFindConfiguration), new];
                 let _: () = msg_send![config, setBackwards: Bool::NO];
                 let _: () = msg_send![config, setCaseSensitive: Bool::NO];
                 let noop = RcBlock::new(|_result: *mut AnyObject| {});

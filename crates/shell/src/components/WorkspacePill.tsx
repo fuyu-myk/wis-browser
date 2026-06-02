@@ -129,6 +129,20 @@ export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
     return () => document.removeEventListener('mousedown', onDown)
   }, [open, popEl])
 
+  // Always-active dismiss listeners.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    const onCloseRequest = () => setOpen(false)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('wis-close-workspace-popover', onCloseRequest)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('wis-close-workspace-popover', onCloseRequest)
+    }
+  }, [])
+
   return (
     <div className="kb-ws-pill-wrap">
       <button

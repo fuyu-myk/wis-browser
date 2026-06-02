@@ -161,7 +161,7 @@ impl AppState {
             *guard = rules;
         }
         self.clear_proxies().await;
-        
+
         log::info!("filter engine rebuilt from {size} bytes of filter text");
         Ok(size)
     }

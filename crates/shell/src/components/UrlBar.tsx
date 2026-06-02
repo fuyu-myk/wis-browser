@@ -63,8 +63,8 @@ function useUrlBarForm(activeTab: Tab | null, fallbackWorkspaceId: WorkspaceId |
 
 /**
  * Focus + select-all the URL bar input on receipt of the `wis-focus-urlbar`
- * window event (Cmd+L / Cmd+E). Mounted by each visible URL-bar variant; if
- * both are mounted simultaneously the first one wins.
+ * window event (Cmd+L / Cmd+E). Mounted by each visible URL-bar variant;
+ * if both are mounted simultaneously the first one wins.
  *
  * `beforeFocus` lets the sidebar variant expand its collapsed shell first
  * so the input has somewhere visible to land. The actual focus is deferred

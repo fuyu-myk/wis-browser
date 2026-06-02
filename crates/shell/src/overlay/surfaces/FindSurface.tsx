@@ -20,6 +20,8 @@ import type { KeyAction, Tab } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { SearchIcon, XIcon } from '@/lib/icons'
 import { useBrowserState } from '@/hooks/useBrowserState'
+import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
+import { useThemeApply } from '@/hooks/useThemeApply'
 
 const KEYACTION_EVENT = 'wis-keyaction'
 const FIND_RESULT_EVENT = 'wis-find-result'
@@ -41,6 +43,8 @@ type Status = 'idle' | 'searching' | 'match' | 'no_match'
 
 export function FindSurface() {
   const { data: state } = useBrowserState()
+  useBrowserStateEvents()
+  useThemeApply(state?.settings)
   const activeWorkspace = state?.workspaces.find((w) => w.id === state.active_workspace_id)
   const activeTab =
     activeWorkspace?.active_tab_id != null

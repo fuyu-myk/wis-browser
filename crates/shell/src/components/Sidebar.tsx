@@ -47,20 +47,36 @@ export function Sidebar({
 
   useEffect(() => {
     if (!collapsible || !expanded) return
+    // Esc and explicit click-out close the workspace popover and
+    // collapse the sidebar in a single gesture.
     const collapse = () => {
-      if (!workspacePopoverOpen) setExpanded(false)
+      window.dispatchEvent(new CustomEvent('wis-close-workspace-popover'))
+      setWorkspacePopoverOpen(false)
+      setExpanded(false)
     }
     const onPointerDown = (e: PointerEvent) => {
       const aside = asideRef.current
-      if (aside && !aside.contains(e.target as Node)) collapse()
+      if (!aside) return
+      const target = e.target as Element | null
+      if (aside.contains(target)) return
+      if (target?.closest?.('.kb-ws-pop')) return
+      collapse()
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        collapse()
+      }
     }
     document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
     window.addEventListener('blur', collapse)
     return () => {
       document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('blur', collapse)
     }
-  }, [collapsible, expanded, workspacePopoverOpen, setExpanded])
+  }, [collapsible, expanded, setExpanded])
 
   const handleAsideClick = (e: MouseEvent<HTMLElement>) => {
     if (!collapsible || expanded) return

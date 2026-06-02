@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { listen } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { AccentColor, BrowserState, KeyAction, Tab, TabId, Workspace, WorkspaceId } from '@/bindings/types'
@@ -25,10 +25,8 @@ import { useQueryClient } from '@tanstack/react-query'
 
 const KEYACTION_EVENT = 'wis-keyaction'
 
-/** Custom DOM events the chrome components listen for.
- *  Find / palette actions are routed via the `wis-keyaction` Tauri event
- *  (so the dedicated overlay surfaces can hear them too), so only the
- *  URL-bar focus signal lives as a DOM event. */
+/** Custom DOM events the chrome components listen for. The sidebar now
+ *  lives in chrome HTML. */
 export const FOCUS_URLBAR_EVENT = 'wis-focus-urlbar'
 export const COMMAND_PALETTE_OPEN_EVENT = 'wis-command-palette-open'
 
@@ -71,31 +69,57 @@ export function useKeyActions(): void {
     }
   }, [activeTab?.id])
 
-  useEffect(() => {
-    let unlisten: UnlistenFn | null = null
-    let cancelled = false
+  // Refs hold the latest dispatch context so the Tauri listener
+  // always sees current state.
+  const stateRef = useRef(state)
+  stateRef.current = state
+  const activeWorkspaceRef = useRef(activeWorkspace)
+  activeWorkspaceRef.current = activeWorkspace
+  const tabsRef = useRef(tabs)
+  tabsRef.current = tabs
+  const activeTabRef = useRef(activeTab)
+  activeTabRef.current = activeTab
+  const qcRef = useRef(qc)
+  qcRef.current = qc
+  const requestRenameRef = useRef(requestRename)
+  requestRenameRef.current = requestRename
 
-    void listen<KeyActionEvent>(KEYACTION_EVENT, (e) => {
-      void handle(e.payload.action, {
-        state,
-        activeWorkspace,
-        tabs,
-        activeTab,
-        previousTabId: previousTabRef.current,
-        invalidate: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
-        requestRename,
-        newWorkspaceInFlight,
-      })
-    }).then((fn) => {
-      if (cancelled) fn()
-      else unlisten = fn
+  activeDispatchRef.current = (action) => {
+    void handle(action, {
+      state: stateRef.current,
+      activeWorkspace: activeWorkspaceRef.current,
+      tabs: tabsRef.current,
+      activeTab: activeTabRef.current,
+      previousTabId: previousTabRef.current,
+      invalidate: () =>
+        qcRef.current.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
+      requestRename: requestRenameRef.current,
+      newWorkspaceInFlight,
     })
+  }
 
-    return () => {
-      cancelled = true
-      unlisten?.()
-    }
-  }, [state, activeWorkspace, tabs, activeTab, qc, requestRename])
+  useEffect(() => {
+    ensureKeyActionListener()
+  }, [])
+}
+
+// ---------------------------------------------------------------------------
+// Module-level singleton listener to prevent React 18 StrictMode
+// double-mount race.
+// ---------------------------------------------------------------------------
+
+const activeDispatchRef: { current: ((action: KeyAction) => void) | null } = {
+  current: null,
+}
+
+let keyActionListenerEnsured = false
+
+function ensureKeyActionListener(): void {
+  if (keyActionListenerEnsured) return
+  keyActionListenerEnsured = true
+  void listen<KeyActionEvent>(KEYACTION_EVENT, (e) => {
+    activeDispatchRef.current?.(e.payload.action)
+  })
 }
 
 interface DispatchContext {
@@ -155,9 +179,12 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       return
     }
     case 'focus_url_bar':
-    case 'focus_url_bar_alt':
+    case 'focus_url_bar_alt': {
+      // The URL bar lives in the chrome, so a DOM CustomEvent reaches it.
+      await commands.focusWebview('main')
       window.dispatchEvent(new CustomEvent(FOCUS_URLBAR_EVENT, { detail: { select: true } }))
       return
+    }
     case 'reload':
       if (ctx.activeTab) await commands.tabReload(ctx.activeTab.id)
       return

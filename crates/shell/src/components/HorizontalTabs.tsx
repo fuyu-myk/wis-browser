@@ -19,26 +19,62 @@ interface HorizontalTabsProps {
   compact?: boolean
 }
 
+/* Phase boundary: active tab can't shrink below this (in px). */
+const MINIMUM_CURRENT_TAB_SIZE = 260
+const COMPACT_MINIMUM_CURRENT_TAB_SIZE = 180
+/* Final floor: inactive tabs can't shrink below this (favicon visible). */
+const MINIMUM_TAB_SIZE = 44
+const COMPACT_MINIMUM_TAB_SIZE = 40
+const GAP_PX = 4
+
+interface SizingResult {
+  activeSize: number
+  inactiveSize: number
+  /** True when total content exceeds the strip and scrolling is needed. */
+  scrolling: boolean
+}
+
 /**
  * Horizontal tab strip.
- *
  * Layout rules:
- *   • 1 tab → fills the row.
- *   • n ≤ MAX_EVEN tabs → each takes 1/n of the row.
- *   • n > MAX_EVEN tabs → active tab gets ACTIVE_PRESET_PX, others
- *     share the remaining space evenly down to INACTIVE_MIN_PX.
- *
- * Overflow: once pills can't honour their min width the
- * strip becomes horizontally scrollable with a fade-mask at each edge.
- *
- * When `integrateUrlBar` is true the active tab renders the URL parts
- * instead of the title.
+ *   • One tab fills the row, two tabs each fill half,
+ *     n tabs each fill 1/n. Active and inactive same size.
+ *   • If 1/n would be smaller than the active tab's
+ *     MINIMUM_CURRENT_TAB_SIZE, the active tab pins to that
+ *     minimum and the remaining width is split equally across inactives.
+ *   • Once the inactive share would be smaller than MINIMUM_TAB_SIZE
+ *     (the favicon-only floor), inactives pin to that floor and the strip scrolls.
+ *     The active tab is always scrolled into view.
  */
-const MAX_EVEN = 5
-const ACTIVE_PRESET_PX = 260
-const INACTIVE_MIN_PX = 56
-const COMPACT_ACTIVE_PRESET_PX = 180
-const COMPACT_INACTIVE_MIN_PX = 52
+function computeSizing(
+  n: number,
+  stripWidth: number,
+  minActive: number,
+  minInactive: number,
+): SizingResult {
+  if (n <= 0 || stripWidth <= 0) {
+    return { activeSize: minActive, inactiveSize: minInactive, scrolling: false }
+  }
+  const budget = stripWidth - (n - 1) * GAP_PX
+
+  const equalSize = budget / n
+  if (equalSize >= minActive) {
+    return { activeSize: equalSize, inactiveSize: equalSize, scrolling: false }
+  }
+
+  if (n === 1) {
+    return { activeSize: minActive, inactiveSize: minInactive, scrolling: false }
+  }
+  const widthForInactives = budget - minActive
+  const inactiveCount = n - 1
+  const calcInactiveSize = widthForInactives / inactiveCount
+
+  if (calcInactiveSize >= minInactive) {
+    return { activeSize: minActive, inactiveSize: calcInactiveSize, scrolling: false }
+  }
+
+  return { activeSize: minActive, inactiveSize: minInactive, scrolling: true }
+}
 
 export function HorizontalTabs({
   tabs,
@@ -58,19 +94,30 @@ export function HorizontalTabs({
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const stripRef = useRef<HTMLDivElement>(null)
-  const [scrollable, setScrollable] = useState(false)
+  const activeRef = useRef<HTMLDivElement>(null)
+  const [stripWidth, setStripWidth] = useState(0)
 
   useLayoutEffect(() => {
     const strip = stripRef.current
     if (!strip) return
-    const update = () => setScrollable(strip.scrollWidth > strip.clientWidth + 1)
+    const update = () => setStripWidth(strip.clientWidth)
     update()
     const ro = new ResizeObserver(update)
     ro.observe(strip)
     return () => ro.disconnect()
-  }, [tabs.length, compact])
+  }, [])
+
+  // Scroll the active pill into view whenever the active id changes
+  useLayoutEffect(() => {
+    const el = activeRef.current
+    if (!el) return
+    el.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+  }, [activeTabId])
 
   const n = tabs.length
+  const minActive = compact ? COMPACT_MINIMUM_CURRENT_TAB_SIZE : MINIMUM_CURRENT_TAB_SIZE
+  const minInactive = compact ? COMPACT_MINIMUM_TAB_SIZE : MINIMUM_TAB_SIZE
+
   if (n === 0) {
     return (
       <div className={cx('kb-tabs-h-wrap', { compact })} ref={wrapRef}>
@@ -79,32 +126,37 @@ export function HorizontalTabs({
     )
   }
 
-  const useEven = n <= MAX_EVEN
-  const evenPct = useEven ? 100 / n : 0
-  const activePresetPx = compact ? COMPACT_ACTIVE_PRESET_PX : ACTIVE_PRESET_PX
-  const inactiveMinPx = compact ? COMPACT_INACTIVE_MIN_PX : INACTIVE_MIN_PX
+  const sizing = computeSizing(n, stripWidth, minActive, minInactive)
+
+  const isMany = sizing.activeSize !== sizing.inactiveSize
+  const inactiveCloseThreshold = compact ? 90 : 130
+  const inactiveCompact = isMany && sizing.inactiveSize < inactiveCloseThreshold
 
   return (
-    <div className={cx('kb-tabs-h-wrap', { compact, 'is-scrollable': scrollable })} ref={wrapRef}>
+    <div
+      className={cx('kb-tabs-h-wrap', {
+        compact,
+        'is-many': isMany,
+        'is-scrolling': sizing.scrolling,
+        'is-inactive-compact': inactiveCompact,
+      })}
+      ref={wrapRef}
+    >
       <div className={cx('tabs-h', { compact })} ref={stripRef}>
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId
-          const style = useEven
-            ? { flex: `1 1 ${evenPct}%`, maxWidth: `${evenPct}%`, minWidth: `${inactiveMinPx}px` }
-            : isActive
-              ? { flex: `0 0 ${activePresetPx}px` }
-              : { flex: `1 1 ${inactiveMinPx}px`, minWidth: `${inactiveMinPx}px` }
-
+          const size = isActive ? sizing.activeSize : sizing.inactiveSize
           return (
             <div
               key={tab.id}
+              ref={isActive ? activeRef : undefined}
               role="button"
               tabIndex={0}
               className={cx('h-tab', {
                 active: isActive,
                 'as-urlbar': isActive && integrateUrlBar,
               })}
-              style={style}
+              style={{ flex: `0 0 ${size}px` }}
               onClick={() => setActive.mutate(tab.id)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -168,4 +220,3 @@ function UrlContent({ tab }: { tab: Tab }) {
     </>
   )
 }
-

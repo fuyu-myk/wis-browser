@@ -29,7 +29,7 @@ pub fn load_cached_or_default(cache_dir: &Path) -> (String, FilterSource) {
         tracing::info!("filter_lists: cache stale or missing, using bundled fallback");
         return (DEFAULT_TRACKER_LIST.to_string(), FilterSource::Bundled);
     }
-    
+
     match std::fs::read_to_string(&path) {
         Ok(body) => {
             tracing::info!(

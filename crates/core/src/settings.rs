@@ -115,9 +115,7 @@ impl UserSettings {
             filter_list_auto_update: patch
                 .filter_list_auto_update
                 .unwrap_or(self.filter_list_auto_update),
-            url_bar_focus_glow: patch
-                .url_bar_focus_glow
-                .unwrap_or(self.url_bar_focus_glow),
+            url_bar_focus_glow: patch.url_bar_focus_glow.unwrap_or(self.url_bar_focus_glow),
         }
     }
 }

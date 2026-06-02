@@ -77,7 +77,6 @@ export function Window({ state, settings }: WindowProps) {
             side={railSide}
             onOpenSettings={openSettings}
           />
-          <Content state={state} />
         </>
       ) : (
         <>
@@ -88,7 +87,6 @@ export function Window({ state, settings }: WindowProps) {
             setExpanded={setSidebarExpanded}
             urlInputRef={sidebarUrlInputRef}
           />
-          <Content state={state} />
           <button
             type="button"
             className={cx('kb-settings-fixed', `is-${fixedSettingsAnchor}`)}
@@ -99,6 +97,7 @@ export function Window({ state, settings }: WindowProps) {
           </button>
         </>
       )}
+      <Content state={state} />
     </div>
   )
 }

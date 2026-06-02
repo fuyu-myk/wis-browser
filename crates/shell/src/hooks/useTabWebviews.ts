@@ -7,7 +7,7 @@ import { commands } from '@/bindings/commands'
 import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { isChromeUrl } from '@/lib/url'
 
-const WEBVIEW_CORNER_RADIUS = 14
+const WEBVIEW_CORNER_RADIUS = 12
 
 const LABEL_PREFIX = 'tab-'
 const PENDING = Symbol('pending-webview')
@@ -40,8 +40,11 @@ async function createWebviewFor(
   window: Window,
   tab: Tab,
   workspaceId: WorkspaceId,
+  initialSize: { width: number; height: number } | null,
 ): Promise<Webview> {
   const label = labelFor(tab.id)
+  const width = initialSize?.width ?? PLACEHOLDER_BOUNDS.width
+  const height = initialSize?.height ?? PLACEHOLDER_BOUNDS.height
   await commands.createTabWebview({
     windowLabel: window.label,
     label,
@@ -50,8 +53,8 @@ async function createWebviewFor(
     tabId: tab.id,
     x: PLACEHOLDER_BOUNDS.x,
     y: PLACEHOLDER_BOUNDS.y,
-    width: PLACEHOLDER_BOUNDS.width,
-    height: PLACEHOLDER_BOUNDS.height,
+    width,
+    height,
   })
 
   const wv = await Webview.getByLabel(label)
@@ -119,11 +122,14 @@ export function useTabWebviews({
     }
 
     // Create webviews for tabs that don't have one yet.
+    const initialSize = boundsRef.current
+      ? { width: boundsRef.current.width, height: boundsRef.current.height }
+      : null
     for (const tab of targetTabs) {
       if (map.has(tab.id)) continue
       map.set(tab.id, PENDING as unknown as Webview)
 
-      void createWebviewFor(window, tab, activeWorkspaceId).then(
+      void createWebviewFor(window, tab, activeWorkspaceId, initialSize).then(
         (wv) => {
           if (!targetIds.has(tab.id)) {
             map.delete(tab.id)
@@ -134,13 +140,13 @@ export function useTabWebviews({
           void commands
             .setWebviewCornerRadius(labelFor(tab.id), WEBVIEW_CORNER_RADIUS)
             .catch(() => undefined)
-          void wv.show().catch(() => undefined)
           if (tab.id === activeTabIdRef.current) {
             applyBounds(wv, boundsRef.current)
+            void wv.show().catch(() => undefined)
             void wv.setFocus().catch(() => undefined)
             visibilityRef.current.set(tab.id, true)
           } else {
-            applyBounds(wv, OFFSCREEN_BOUNDS)
+            void wv.hide().catch(() => undefined)
             visibilityRef.current.set(tab.id, false)
           }
         },
@@ -159,17 +165,18 @@ export function useTabWebviews({
 
     for (const [id, wv] of entries) {
       if ((wv as unknown) === PENDING) continue
-      if (id === activeTabId && visibility.get(id) !== true) {
-        applyBounds(wv, boundsRef.current)
-        void wv.setFocus().catch(() => undefined)
-        visibility.set(id, true)
+      if (id !== activeTabId && visibility.get(id) !== false) {
+        void wv.hide().catch(() => undefined)
+        visibility.set(id, false)
       }
     }
     for (const [id, wv] of entries) {
       if ((wv as unknown) === PENDING) continue
-      if (id !== activeTabId && visibility.get(id) !== false) {
-        applyBounds(wv, OFFSCREEN_BOUNDS)
-        visibility.set(id, false)
+      if (id === activeTabId && visibility.get(id) !== true) {
+        applyBounds(wv, boundsRef.current)
+        void wv.show().catch(() => undefined)
+        void wv.setFocus().catch(() => undefined)
+        visibility.set(id, true)
       }
     }
   }, [activeTabId, tabs])

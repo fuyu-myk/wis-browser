@@ -45,11 +45,12 @@ async fn read_state(state: &State<'_, AppState>) -> BrowserState {
 }
 
 /// Drive a state-mutating transition end-to-end: compute → persist → commit
-/// (or revert on persist failure).
+/// (or revert on persist failure), then broadcast `browser-state-changed`
+/// invalidates its React-Query cache.
 ///
 /// `transition` is a pure function from the current state to `(next_state,
 /// return_value)`. It must not perform I/O.
-async fn mutate<R, F>(state: &State<'_, AppState>, transition: F) -> WisResult<R>
+async fn mutate<R, F>(app: &AppHandle, state: &State<'_, AppState>, transition: F) -> WisResult<R>
 where
     F: FnOnce(&BrowserState) -> WisResult<(BrowserState, R)>,
 {
@@ -74,15 +75,22 @@ where
         });
     }
 
+    drop(guard);
+    emit_state_changed(app);
+
     Ok(value)
 }
 
 /// Convenience for transitions that don't have an additional return value.
-async fn mutate_unit<F>(state: &State<'_, AppState>, transition: F) -> WisResult<()>
+async fn mutate_unit<F>(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    transition: F,
+) -> WisResult<()>
 where
     F: FnOnce(&BrowserState) -> WisResult<BrowserState>,
 {
-    mutate(state, |s| transition(s).map(|next| (next, ()))).await
+    mutate(app, state, |s| transition(s).map(|next| (next, ()))).await
 }
 
 // ---------------------------------------------------------------------------
@@ -115,20 +123,22 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<UserSettings, Wi
 
 #[tauri::command]
 pub async fn create_workspace(
+    app: AppHandle,
     state: State<'_, AppState>,
     name: String,
     accent: AccentColor,
 ) -> WisResult<Workspace> {
-    mutate(&state, |s| Ok(s.with_new_workspace(name, accent))).await
+    mutate(&app, &state, |s| Ok(s.with_new_workspace(name, accent))).await
 }
 
 #[tauri::command]
 pub async fn rename_workspace(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: WorkspaceId,
     name: String,
 ) -> WisResult<Workspace> {
-    mutate(&state, |s| {
+    mutate(&app, &state, |s| {
         let next = s.with_renamed_workspace(id, name)?;
         let renamed = next.workspace(id)?.clone();
 
@@ -138,17 +148,22 @@ pub async fn rename_workspace(
 }
 
 #[tauri::command]
-pub async fn delete_workspace(state: State<'_, AppState>, id: WorkspaceId) -> WisResult<()> {
-    mutate_unit(&state, |s| s.with_workspace_removed(id)).await
+pub async fn delete_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: WorkspaceId,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| s.with_workspace_removed(id)).await
 }
 
 #[tauri::command]
 pub async fn recolor_workspace(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: WorkspaceId,
     accent: AccentColor,
 ) -> WisResult<Workspace> {
-    mutate(&state, |s| {
+    mutate(&app, &state, |s| {
         let next = s.with_recoloured_workspace(id, accent)?;
         let recoloured = next.workspace(id)?.clone();
 
@@ -158,8 +173,12 @@ pub async fn recolor_workspace(
 }
 
 #[tauri::command]
-pub async fn set_active_workspace(state: State<'_, AppState>, id: WorkspaceId) -> WisResult<()> {
-    mutate_unit(&state, |s| s.with_active_workspace(id)).await
+pub async fn set_active_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: WorkspaceId,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| s.with_active_workspace(id)).await
 }
 
 /// Change the privacy mode for a specific workspace. The workspace proxy is
@@ -172,7 +191,7 @@ pub async fn set_workspace_privacy_mode(
     id: WorkspaceId,
     mode: PrivacyMode,
 ) -> WisResult<Workspace> {
-    let workspace = mutate(&state, |s| {
+    let workspace = mutate(&app, &state, |s| {
         let next = s.with_workspace_privacy_mode(id, mode)?;
         let updated = next.workspace(id)?.clone();
         Ok((next, updated))
@@ -207,9 +226,7 @@ pub async fn set_workspace_privacy_mode(
             }
         }
     }
-    log::info!(
-        "workspace {id} privacy mode now {mode:?}: re-attached {reattached}/{total} tabs"
-    );
+    log::info!("workspace {id} privacy mode now {mode:?}: re-attached {reattached}/{total} tabs");
 
     Ok(workspace)
 }
@@ -220,35 +237,46 @@ pub async fn set_workspace_privacy_mode(
 
 #[tauri::command]
 pub async fn create_tab(
+    app: AppHandle,
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     url: String,
 ) -> WisResult<Tab> {
-    mutate(&state, |s| s.with_new_tab(workspace_id, &url)).await
+    mutate(&app, &state, |s| s.with_new_tab(workspace_id, &url)).await
 }
 
 #[tauri::command]
-pub async fn close_tab(state: State<'_, AppState>, id: TabId) -> WisResult<()> {
-    mutate_unit(&state, |s| s.with_tab_closed(id)).await
+pub async fn close_tab(app: AppHandle, state: State<'_, AppState>, id: TabId) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| s.with_tab_closed(id)).await
 }
 
 #[tauri::command]
 pub async fn reorder_tabs(
+    app: AppHandle,
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     order: Vec<TabId>,
 ) -> WisResult<()> {
-    mutate_unit(&state, |s| s.with_tab_order(workspace_id, order)).await
+    mutate_unit(&app, &state, |s| s.with_tab_order(workspace_id, order)).await
 }
 
 #[tauri::command]
-pub async fn pin_tab(state: State<'_, AppState>, id: TabId, pinned: bool) -> WisResult<Tab> {
-    mutate(&state, |s| s.with_tab_pinned(id, pinned)).await
+pub async fn pin_tab(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: TabId,
+    pinned: bool,
+) -> WisResult<Tab> {
+    mutate(&app, &state, |s| s.with_tab_pinned(id, pinned)).await
 }
 
 #[tauri::command]
-pub async fn set_active_tab(state: State<'_, AppState>, id: TabId) -> WisResult<()> {
-    mutate_unit(&state, |s| s.with_active_tab(id)).await
+pub async fn set_active_tab(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: TabId,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| s.with_active_tab(id)).await
 }
 
 /// Navigate an existing tab's child webview to `url`, and persist the new URL
@@ -263,7 +291,7 @@ pub async fn navigate_tab(
     url: String,
 ) -> WisResult<()> {
     // Update in-memory + persisted state.
-    mutate_unit(&state, |s| {
+    mutate_unit(&app, &state, |s| {
         s.with_navigated_tab(id, &url).map(|(next, _)| next)
     })
     .await?;
@@ -329,10 +357,10 @@ pub async fn create_tab_webview(
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<AppState>();
-                let result = mutate_unit(&state, |s| s.with_tab_title(tab_id, title.clone())).await;
-                match result {
-                    Ok(()) => emit_state_changed(&app),
-                    Err(err) => log::warn!("title update for {tab_id} failed: {err}"),
+                let result =
+                    mutate_unit(&app, &state, |s| s.with_tab_title(tab_id, title.clone())).await;
+                if let Err(err) = result {
+                    log::warn!("title update for {tab_id} failed: {err}");
                 }
             });
         });
@@ -346,14 +374,13 @@ pub async fn create_tab_webview(
             let url_string = payload.url().to_string();
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<AppState>();
-                let result = mutate_unit(&state, |s| {
+                let result = mutate_unit(&app, &state, |s| {
                     s.with_tab_loading(tab_id, loading)
                         .and_then(|next| next.with_tab_url_synced(tab_id, &url_string))
                 })
                 .await;
-                match result {
-                    Ok(()) => emit_state_changed(&app),
-                    Err(err) => log::warn!("page load update for {tab_id} failed: {err}"),
+                if let Err(err) = result {
+                    log::warn!("page load update for {tab_id} failed: {err}");
                 }
             });
         });
@@ -414,8 +441,13 @@ pub async fn webview_url(app: AppHandle, label: String) -> WisResult<Option<Stri
 /// the webview (in-page link clicks, history hops). Unlike `navigate_tab`
 /// this does not call `webview.navigate(...)`.
 #[tauri::command]
-pub async fn sync_tab_url(state: State<'_, AppState>, id: TabId, url: String) -> WisResult<()> {
-    mutate_unit(&state, |s| s.with_tab_url_synced(id, &url)).await
+pub async fn sync_tab_url(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: TabId,
+    url: String,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| s.with_tab_url_synced(id, &url)).await
 }
 
 // ---------------------------------------------------------------------------
@@ -426,21 +458,23 @@ pub async fn sync_tab_url(state: State<'_, AppState>, id: TabId, url: String) ->
 /// rename).
 #[tauri::command]
 pub async fn update_tab_title(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: TabId,
     title: String,
 ) -> WisResult<()> {
-    mutate_unit(&state, |s| s.with_tab_title(id, title)).await
+    mutate_unit(&app, &state, |s| s.with_tab_title(id, title)).await
 }
 
 /// Set a tab's `loading` flag explicitly.
 #[tauri::command]
 pub async fn update_tab_loading(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: TabId,
     loading: bool,
 ) -> WisResult<()> {
-    mutate_unit(&state, |s| s.with_tab_loading(id, loading)).await
+    mutate_unit(&app, &state, |s| s.with_tab_loading(id, loading)).await
 }
 
 /// Reload a tab's webview.
@@ -550,10 +584,11 @@ pub async fn set_webview_corner_radius(
 
 #[tauri::command]
 pub async fn update_settings(
+    app: AppHandle,
     state: State<'_, AppState>,
     patch: UserSettingsPatch,
 ) -> WisResult<UserSettings> {
-    mutate(&state, |s| {
+    mutate(&app, &state, |s| {
         let next = s.with_settings(patch);
         let settings = next.settings.clone();
 
@@ -658,10 +693,7 @@ pub async fn set_window_icon(
 /// Returns the number of bytes in the new filter text so the UI can confirm
 /// the swap happened.
 #[tauri::command]
-pub async fn refresh_filter_lists(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> WisResult<u32> {
+pub async fn refresh_filter_lists(app: AppHandle, state: State<'_, AppState>) -> WisResult<u32> {
     let cache_dir = state.filter_cache_dir.clone();
     let text = wis_network::filter_lists::fetch::refresh_easyprivacy(&cache_dir)
         .await

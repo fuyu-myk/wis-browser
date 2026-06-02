@@ -165,7 +165,7 @@ pub fn effective_keymap(overrides: &HashMap<KeyAction, String>) -> HashMap<KeyAc
     for (action, accel) in overrides {
         map.insert(*action, accel.clone());
     }
-    
+
     map
 }
 

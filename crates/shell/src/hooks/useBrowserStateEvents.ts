@@ -8,8 +8,7 @@
  * the entire `BrowserState` on every mutation.
  *
  * Mount this hook exactly once at the top of the React tree (see
- * `App.tsx`). Listening more than once would just multiply the same
- * invalidation work.
+ * `App.tsx`).
  */
 
 import { useEffect } from 'react'
@@ -25,9 +24,14 @@ export function useBrowserStateEvents(): void {
   useEffect(() => {
     let unlisten: UnlistenFn | null = null
     let cancelled = false
+    let frame: number | null = null
 
     void listen<void>(EVENT_NAME, () => {
-      qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
+      if (frame !== null) return
+      frame = requestAnimationFrame(() => {
+        frame = null
+        qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
+      })
     }).then((fn) => {
       if (cancelled) {
         fn()
@@ -38,6 +42,7 @@ export function useBrowserStateEvents(): void {
 
     return () => {
       cancelled = true
+      if (frame !== null) cancelAnimationFrame(frame)
       unlisten?.()
     }
   }, [qc])

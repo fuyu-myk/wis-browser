@@ -37,7 +37,12 @@ fn dispatch_menu_event(app: &AppHandle, item_id: &str) {
     let Some(action) = KeyAction::from_id(item_id) else {
         return;
     };
-    if let Err(err) = app.emit(KEYACTION_EVENT, KeyActionPayload { action: action.id() }) {
+    if let Err(err) = app.emit(
+        KEYACTION_EVENT,
+        KeyActionPayload {
+            action: action.id(),
+        },
+    ) {
         log::warn!("emit {KEYACTION_EVENT} for {item_id} failed: {err}");
     }
 }
@@ -53,7 +58,12 @@ fn build_menu(
     )?;
     let app_menu = SubmenuBuilder::new(app, "Wis")
         .item(&about)
-        .item(&action_item(app, keymap, KeyAction::OpenSettings, "Settings.")?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::OpenSettings,
+            "Settings.",
+        )?)
         .separator()
         .item(&PredefinedMenuItem::hide(app, None)?)
         .item(&PredefinedMenuItem::hide_others(app, None)?)
@@ -70,7 +80,12 @@ fn build_menu(
             KeyAction::NewWorkspace,
             "New Workspace",
         )?)
-        .item(&action_item(app, keymap, KeyAction::NewWindow, "New Window")?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::NewWindow,
+            "New Window",
+        )?)
         .item(&action_item(
             app,
             keymap,
@@ -133,7 +148,12 @@ fn build_menu(
         .item(&action_item(app, keymap, KeyAction::GoBack, "Back")?)
         .item(&action_item(app, keymap, KeyAction::GoForward, "Forward")?)
         .separator()
-        .item(&action_item(app, keymap, KeyAction::GoBackAlt, "Back (alt)")?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::GoBackAlt,
+            "Back (alt)",
+        )?)
         .item(&action_item(
             app,
             keymap,
