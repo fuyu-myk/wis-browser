@@ -143,6 +143,21 @@ pub async fn create_workspace(
     mutate(&app, &state, |s| Ok(s.with_new_workspace(name, accent))).await
 }
 
+/// Create a private (ephemeral) workspace. Its tabs use a non-persistent
+/// WebView data store and the workspace is never written to disk.
+#[tauri::command]
+pub async fn create_private_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+    accent: AccentColor,
+) -> WisResult<Workspace> {
+    mutate(&app, &state, |s| {
+        Ok(s.with_new_private_workspace(name, accent))
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn rename_workspace(
     app: AppHandle,
@@ -346,7 +361,13 @@ pub async fn create_tab_webview(
 
     let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
 
-    let bytes = workspace_id_to_data_store_bytes(workspace_id);
+    let ephemeral = {
+        let browser = state.browser.lock().await;
+        browser
+            .workspace(workspace_id)
+            .map(|w| w.ephemeral)
+            .unwrap_or(false)
+    };
 
     let proxy_port = state
         .ensure_proxy_for(workspace_id)
@@ -359,7 +380,11 @@ pub async fn create_tab_webview(
     let mut builder = WebviewBuilder::new(label, WebviewUrl::External(parsed))
         .focused(false)
         .proxy_url(proxy_url);
-    builder = builder.data_store_identifier(bytes);
+    if ephemeral {
+        builder = builder.incognito(true);
+    } else {
+        builder = builder.data_store_identifier(workspace_id_to_data_store_bytes(workspace_id));
+    }
 
     // Document title changes: fires when the page sets `<title>` or
     // mutates `document.title` from JS.

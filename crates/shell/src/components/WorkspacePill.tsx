@@ -12,6 +12,7 @@ import { commands } from '@/bindings/commands'
 import type { AccentColor, BrowserState, Workspace, WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { PlusIcon, XIcon } from '@/lib/icons'
+import { WisMark } from '@/components/WisMark'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { usePendingRename } from '@/hooks/usePendingRename'
 
@@ -148,12 +149,18 @@ export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
       <button
         ref={anchorRef}
         type="button"
-        className="kb-ws-pill"
+        className={cx('kb-ws-pill', { 'is-private': active?.ephemeral })}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className={cx('kb-ws-dot', `accent-${active?.accent ?? 'primary'}`)} />
+        {active?.ephemeral ? (
+          <span className="kb-ws-private-badge" aria-hidden="true">
+            <WisMark variant="solid-closed" size={16} />
+          </span>
+        ) : (
+          <span className={cx('kb-ws-dot', `accent-${active?.accent ?? 'primary'}`)} />
+        )}
         <span className="kb-ws-name">{active?.name ?? 'Workspace'}</span>
       </button>
       {open &&
@@ -204,6 +211,18 @@ function WorkspacePopover({
     onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
   })
 
+  const createPrivate = useMutation({
+    mutationFn: async () => {
+      const ws = await commands.createPrivateWorkspace('Private', 'ink')
+      await commands.setActiveWorkspace(ws.id)
+      return ws
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
+      onPick()
+    },
+  })
+
   const switchTo = useMutation({
     mutationFn: (id: WorkspaceId) => commands.setActiveWorkspace(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
@@ -248,15 +267,27 @@ function WorkspacePopover({
     >
       <div className="kb-ws-pop-head">
         <span className="kb-ws-pop-title">Workspaces</span>
-        <button
-          type="button"
-          className="kb-ws-pop-add"
-          aria-label="New workspace"
-          onClick={() => create.mutate()}
-          disabled={create.isPending}
-        >
-          <PlusIcon />
-        </button>
+        <div className="kb-ws-pop-actions">
+          <button
+            type="button"
+            className="kb-ws-pop-add is-private"
+            aria-label="New private workspace"
+            title="New private workspace"
+            onClick={() => createPrivate.mutate()}
+            disabled={createPrivate.isPending}
+          >
+            <WisMark variant="solid-closed" size={15} />
+          </button>
+          <button
+            type="button"
+            className="kb-ws-pop-add"
+            aria-label="New workspace"
+            onClick={() => create.mutate()}
+            disabled={create.isPending}
+          >
+            <PlusIcon />
+          </button>
+        </div>
       </div>
       <ul className="kb-ws-list">
         {workspaces.map((w) => (
@@ -350,17 +381,23 @@ function WorkspaceRow({
   }
 
   return (
-    <li className={cx('kb-ws-row', { active: isActive })}>
+    <li className={cx('kb-ws-row', { active: isActive, 'is-private': ws.ephemeral })}>
       <div className="kb-ws-row-main">
-        <button
-          type="button"
-          className={cx('kb-ws-dot-btn', `accent-${ws.accent}`, { active: isRecoloring })}
-          aria-label={`Recolor ${ws.name}`}
-          onClick={(e) => {
-            e.stopPropagation()
-            onRecolorToggle()
-          }}
-        />
+        {ws.ephemeral ? (
+          <span className="kb-ws-row-private" aria-label="Private workspace" title="Private workspace">
+            <WisMark variant="solid-closed" size={15} />
+          </span>
+        ) : (
+          <button
+            type="button"
+            className={cx('kb-ws-dot-btn', `accent-${ws.accent}`, { active: isRecoloring })}
+            aria-label={`Recolor ${ws.name}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              onRecolorToggle()
+            }}
+          />
+        )}
         {isEditing ? (
           <input
             ref={inputRef}

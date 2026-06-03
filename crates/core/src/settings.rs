@@ -36,6 +36,10 @@ pub struct UserSettings {
     /// colour. Off by default; the LaunchPad omnisearch always glows.
     #[serde(default)]
     pub url_bar_focus_glow: bool,
+    /// When true, the browser opens directly into a private (ephemeral)
+    /// workspace on launch instead of restoring the persisted session.
+    #[serde(default)]
+    pub always_private: bool,
     /// User-supplied accelerator overrides keyed by [`KeyAction`]. Each
     /// entry replaces the corresponding entry from [`crate::default_keymap`]
     /// at runtime (see [`crate::effective_keymap`]). Absent entries fall
@@ -65,6 +69,7 @@ impl Default for UserSettings {
             homepage: None,
             filter_list_auto_update: true,
             url_bar_focus_glow: false,
+            always_private: false,
             keybindings: HashMap::new(),
         }
     }
@@ -102,6 +107,8 @@ pub struct UserSettingsPatch {
     pub filter_list_auto_update: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url_bar_focus_glow: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub always_private: Option<bool>,
     /// Merged onto the existing `keybindings` map. Sparse entries replace
     /// just those actions; absent actions keep their current binding.
     /// `Some(empty_map)` is a no-op (the patch is sparse, not a wipe).
@@ -132,6 +139,7 @@ impl UserSettings {
                 .filter_list_auto_update
                 .unwrap_or(self.filter_list_auto_update),
             url_bar_focus_glow: patch.url_bar_focus_glow.unwrap_or(self.url_bar_focus_glow),
+            always_private: patch.always_private.unwrap_or(self.always_private),
             keybindings: match patch.keybindings {
                 None => self.keybindings.clone(),
                 Some(overrides) => {

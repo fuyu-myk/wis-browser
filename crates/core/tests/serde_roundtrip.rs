@@ -98,6 +98,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
         homepage: Some("https://start.example".into()),
         filter_list_auto_update: Some(false),
         url_bar_focus_glow: Some(true),
+        always_private: Some(true),
         keybindings: Some(HashMap::from([
             (KeyAction::NewTab, "Ctrl+T".into()),
             (KeyAction::CloseTab, "Ctrl+W".into()),

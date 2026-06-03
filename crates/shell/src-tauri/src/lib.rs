@@ -115,6 +115,7 @@ pub fn run() {
             commands::get_tab,
             commands::get_settings,
             commands::create_workspace,
+            commands::create_private_workspace,
             commands::rename_workspace,
             commands::delete_workspace,
             commands::recolor_workspace,
@@ -190,6 +191,19 @@ fn hydrate_state(storage: &SqliteStorage) -> BrowserState {
         match healed.with_new_tab(ws_id, "about:blank") {
             Ok((next, _)) => healed = next,
             Err(err) => log::warn!("could not seed tab for workspace {ws_id}: {err}"),
+        }
+    }
+
+    if healed.settings.always_private {
+        let (next, private_ws) =
+            healed.with_new_private_workspace("Private".to_string(), wis_core::AccentColor::Ink);
+        healed = next;
+        match healed.with_new_tab(private_ws.id, "about:blank") {
+            Ok((next, _)) => healed = next,
+            Err(err) => log::warn!("could not seed tab for private workspace: {err}"),
+        }
+        if let Ok(next) = healed.with_active_workspace(private_ws.id) {
+            healed = next;
         }
     }
 

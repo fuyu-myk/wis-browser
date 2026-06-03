@@ -45,6 +45,14 @@ export const commands = {
     return invoke('create_workspace', { name, accent })
   },
 
+  /**
+   * Create a private (ephemeral) workspace. Its tabs use a non-persistent data
+   * store and the workspace is never written to disk.
+   */
+  async createPrivateWorkspace(name: string, accent: AccentColor): Promise<Workspace> {
+    return invoke('create_private_workspace', { name, accent })
+  },
+
   async renameWorkspace(id: WorkspaceId, name: string): Promise<Workspace> {
     return invoke('rename_workspace', { id, name })
   },

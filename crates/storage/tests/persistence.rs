@@ -167,6 +167,44 @@ fn saving_state_with_a_dangling_tab_id_is_rejected() {
 }
 
 #[test]
+fn ephemeral_workspaces_are_not_persisted() {
+    // A private (ephemeral) workspace and its tabs must never hit disk.
+    let store = fresh_store();
+    let s0 = BrowserState::new_with_defaults();
+    let persistent_id = s0.workspaces[0].id;
+    let (s1, private_ws) = s0.with_new_private_workspace("Private".into(), AccentColor::Ink);
+    let (s2, _t) = s1
+        .with_new_tab(private_ws.id, "https://secret.example/")
+        .unwrap();
+
+    store.save_state(&s2).expect("save");
+    let loaded = store.load_state().expect("load").unwrap();
+
+    assert_eq!(loaded.workspaces.len(), 1, "private workspace must be dropped");
+    assert_eq!(loaded.workspaces[0].id, persistent_id);
+    assert!(
+        loaded.tabs.iter().all(|t| t.workspace_id == persistent_id),
+        "no tabs from the private workspace may survive"
+    );
+    assert!(!loaded.workspaces[0].ephemeral);
+}
+
+#[test]
+fn active_pointer_falls_back_when_active_workspace_is_ephemeral() {
+    // If the live active workspace is private, hydration must fall back to a
+    // persisted workspace rather than producing an invalid state.
+    let store = fresh_store();
+    let s0 = BrowserState::new_with_defaults();
+    let persistent_id = s0.workspaces[0].id;
+    let (s1, private_ws) = s0.with_new_private_workspace("Private".into(), AccentColor::Ink);
+    let s2 = s1.with_active_workspace(private_ws.id).unwrap();
+
+    store.save_state(&s2).expect("save");
+    let loaded = store.load_state().expect("load").unwrap();
+    assert_eq!(loaded.active_workspace_id, persistent_id);
+}
+
+#[test]
 fn settings_default_to_userdefaults_when_meta_row_missing() {
     // Even after an empty save, settings come back as `UserSettings::default()`
     // rather than panicking.

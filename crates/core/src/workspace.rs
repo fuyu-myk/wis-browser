@@ -42,10 +42,25 @@ pub struct Workspace {
     pub essentials: Vec<EssentialPin>,
     pub active_tab_id: Option<TabId>,
     pub privacy_mode: PrivacyMode,
+    /// When true this is a private / incognito workspace: its tabs use a
+    /// non-persistent WebView data store and the workspace (and its tabs,
+    /// essentials, history) is never written to disk. Defaults to `false` so
+    /// existing persisted state deserialises unchanged.
+    #[serde(default)]
+    pub ephemeral: bool,
 }
 
 impl Workspace {
     pub fn new(name: String, accent: AccentColor) -> Self {
+        Self::new_inner(name, accent, false)
+    }
+
+    /// Construct a private / incognito workspace (see [`Workspace::ephemeral`]).
+    pub fn new_private(name: String, accent: AccentColor) -> Self {
+        Self::new_inner(name, accent, true)
+    }
+
+    fn new_inner(name: String, accent: AccentColor, ephemeral: bool) -> Self {
         Self {
             id: WorkspaceId::new(),
             name,
@@ -56,6 +71,7 @@ impl Workspace {
             essentials: Vec::new(),
             active_tab_id: None,
             privacy_mode: PrivacyMode::default(),
+            ephemeral,
         }
     }
 
@@ -142,6 +158,13 @@ impl Workspace {
     pub fn with_privacy_mode(&self, mode: PrivacyMode) -> Self {
         Self {
             privacy_mode: mode,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_ephemeral(&self, ephemeral: bool) -> Self {
+        Self {
+            ephemeral,
             ..self.clone()
         }
     }

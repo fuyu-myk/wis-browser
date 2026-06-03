@@ -24,7 +24,9 @@ const SETTINGS_KEY: &str = "user_settings";
 pub fn save(tx: &Transaction<'_>, state: &BrowserState) -> StorageResult<()> {
     clear_all(tx)?;
 
-    for (position, workspace) in state.workspaces.iter().enumerate() {
+    let persisted: Vec<&Workspace> = state.workspaces.iter().filter(|w| !w.ephemeral).collect();
+
+    for (position, workspace) in persisted.iter().enumerate() {
         insert_workspace(tx, workspace, position as i64)?;
 
         for pin in &workspace.essentials {
@@ -43,11 +45,15 @@ pub fn save(tx: &Transaction<'_>, state: &BrowserState) -> StorageResult<()> {
     }
 
     save_settings(tx, &state.settings)?;
-    upsert_meta(
-        tx,
-        META_ACTIVE_WORKSPACE,
-        &uuid_string(state.active_workspace_id.into()),
-    )?;
+
+    let persisted_active = persisted
+        .iter()
+        .any(|w| w.id == state.active_workspace_id)
+        .then_some(state.active_workspace_id)
+        .or_else(|| persisted.first().map(|w| w.id));
+    if let Some(active) = persisted_active {
+        upsert_meta(tx, META_ACTIVE_WORKSPACE, &uuid_string(active.into()))?;
+    }
 
     Ok(())
 }
@@ -213,6 +219,7 @@ fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
             tab_order: Vec::new(),
             pinned_tab_ids: Vec::new(),
             essentials: Vec::new(),
+            ephemeral: false,
         });
     }
 

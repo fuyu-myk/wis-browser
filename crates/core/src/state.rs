@@ -90,7 +90,21 @@ impl BrowserState {
     }
 
     pub fn with_new_workspace(&self, name: String, accent: AccentColor) -> (Self, Workspace) {
-        let workspace = Workspace::new(name, accent);
+        self.with_appended_workspace(Workspace::new(name, accent))
+    }
+
+    /// Append a private (ephemeral) workspace. Its tabs use a non-persistent
+    /// data store and it is excluded from disk persistence (see the storage
+    /// layer). Returns the new state and the created workspace.
+    pub fn with_new_private_workspace(
+        &self,
+        name: String,
+        accent: AccentColor,
+    ) -> (Self, Workspace) {
+        self.with_appended_workspace(Workspace::new_private(name, accent))
+    }
+
+    fn with_appended_workspace(&self, workspace: Workspace) -> (Self, Workspace) {
         let mut workspaces = self.workspaces.clone();
         workspaces.push(workspace.clone());
 

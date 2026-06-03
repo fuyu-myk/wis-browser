@@ -126,6 +126,8 @@ export interface Workspace {
   essentials: EssentialPin[]
   active_tab_id: TabId | null
   privacy_mode: PrivacyMode
+  /** Private/incognito workspace: non-persistent data store, never saved. */
+  ephemeral: boolean
 }
 
 export interface UserSettings {
@@ -142,6 +144,8 @@ export interface UserSettings {
   homepage: string | null
   filter_list_auto_update: boolean
   url_bar_focus_glow: boolean
+  /** Launch directly into a private (ephemeral) workspace. */
+  always_private: boolean
   /** User-supplied accelerator overrides, sparse. Keyed by `KeyAction`. */
   keybindings: Partial<Record<KeyAction, string>>
 }
@@ -164,6 +168,7 @@ export interface UserSettingsPatch {
   homepage?: string
   filter_list_auto_update?: boolean
   url_bar_focus_glow?: boolean
+  always_private?: boolean
   /**
    * Sparse map of accelerator overrides. An entry replaces just that
    * action's binding; an empty string acts as "reset to default".

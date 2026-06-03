@@ -231,10 +231,22 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
     case 'open_command_palette':
       window.dispatchEvent(new CustomEvent(COMMAND_PALETTE_OPEN_EVENT))
       return
-    case 'new_private_window':
-      // eslint-disable-next-line no-console
-      console.warn('Wis: private window coming soon')
+    case 'new_private_window': {
+      // TODO: separate OS window
+      if (!ctx.state) return
+      if (ctx.newWorkspaceInFlight.current) return
+      ctx.newWorkspaceInFlight.current = true
+      try {
+        const accent = nextAccent(ctx.state.workspaces.map((w) => w.accent))
+        const ws = await commands.createPrivateWorkspace('Private', accent)
+        await commands.createTab(ws.id, NEW_TAB_URL)
+        await commands.setActiveWorkspace(ws.id)
+        ctx.invalidate()
+      } finally {
+        ctx.newWorkspaceInFlight.current = false
+      }
       return
+    }
     case 'new_window':
       // eslint-disable-next-line no-console
       console.warn('Wis: new OS window coming soon')

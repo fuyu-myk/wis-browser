@@ -326,6 +326,17 @@ export function SettingsPage() {
         </div>
         <div className="row">
           <div className="l">
+            <span>Always launch private</span>
+            <span>Open into a private (ephemeral) workspace on startup. Nothing is saved to disk.</span>
+          </div>
+          <Switch
+            checked={settings.always_private}
+            onChange={(always_private) => update.mutate({ always_private })}
+            label="Always launch private"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
             <span>Auto-update filter lists</span>
             <span>Fetch EasyPrivacy on launch, cache for 24 hours.</span>
           </div>

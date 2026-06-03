@@ -75,6 +75,9 @@ export function useTabWebviews({
   const activeTabIdRef = useRef<TabId | null>(activeTabId)
   activeTabIdRef.current = activeTabId
   const visibilityRef = useRef<Map<TabId, boolean>>(new Map())
+  const rafRef = useRef<number | null>(null)
+  const pendingBoundsRef = useRef<Bounds | null>(null)
+  const lastAppliedRef = useRef<{ id: TabId; bounds: Bounds } | null>(null)
 
   if (windowRef.current === null) {
     windowRef.current = getCurrentWindow()
@@ -181,15 +184,48 @@ export function useTabWebviews({
     }
   }, [activeTabId, tabs])
 
-  const setBounds = useCallback((bounds: Bounds) => {
-    boundsRef.current = bounds
+  const flushBounds = useCallback(() => {
+    rafRef.current = null
+    const bounds = pendingBoundsRef.current
     const id = activeTabIdRef.current
-    if (!id) return
+    if (!bounds || !id) return
     const wv = webviewsRef.current.get(id)
-    if (wv && (wv as unknown) !== PENDING) applyBounds(wv, bounds)
+    if (!wv || (wv as unknown) === PENDING) return
+
+    // Drop no-op updates
+    const last = lastAppliedRef.current
+    if (last && last.id === id && boundsEqual(last.bounds, bounds)) return
+    lastAppliedRef.current = { id, bounds }
+    applyBounds(wv, bounds)
+  }, [])
+
+  const setBounds = useCallback(
+    (bounds: Bounds) => {
+      boundsRef.current = bounds
+      pendingBoundsRef.current = bounds
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(flushBounds)
+      }
+    },
+    [flushBounds],
+  )
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+    }
   }, [])
 
   return { setBounds }
+}
+
+function boundsEqual(a: Bounds, b: Bounds): boolean {
+  return (
+    Math.abs(a.x - b.x) < 0.5 &&
+    Math.abs(a.y - b.y) < 0.5 &&
+    Math.abs(a.width - b.width) < 0.5 &&
+    Math.abs(a.height - b.height) < 0.5
+  )
 }
 
 function applyBounds(wv: Webview, bounds: Bounds | null): void {
