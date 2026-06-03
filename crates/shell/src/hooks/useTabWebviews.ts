@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
 import { Webview } from '@tauri-apps/api/webview'
 import { Window, getCurrentWindow } from '@tauri-apps/api/window'
 
@@ -25,6 +24,11 @@ interface UseTabWebviewsArgs {
   tabs: Tab[]
   activeTabId: TabId | null
   activeWorkspaceId: WorkspaceId | null
+  /**
+   * Every tab across all workspaces. A webview is only destroyed when its tab
+   * disappears from this set (a real close).
+   */
+  allTabs: Tab[]
 }
 
 interface UseTabWebviewsReturn {
@@ -68,6 +72,7 @@ export function useTabWebviews({
   tabs,
   activeTabId,
   activeWorkspaceId,
+  allTabs,
 }: UseTabWebviewsArgs): UseTabWebviewsReturn {
   const webviewsRef = useRef<Map<TabId, Webview>>(new Map())
   const boundsRef = useRef<Bounds | null>(null)
@@ -75,9 +80,6 @@ export function useTabWebviews({
   const activeTabIdRef = useRef<TabId | null>(activeTabId)
   activeTabIdRef.current = activeTabId
   const visibilityRef = useRef<Map<TabId, boolean>>(new Map())
-  const rafRef = useRef<number | null>(null)
-  const pendingBoundsRef = useRef<Bounds | null>(null)
-  const lastAppliedRef = useRef<{ id: TabId; bounds: Bounds } | null>(null)
 
   if (windowRef.current === null) {
     windowRef.current = getCurrentWindow()
@@ -107,12 +109,14 @@ export function useTabWebviews({
     if (!activeWorkspaceId || !windowRef.current) return
     const window = windowRef.current
     const map = webviewsRef.current
-    const targetTabs = tabs.filter((t) => !isChromeUrl(t.url))
-    const targetIds = new Set(targetTabs.map((t) => t.id))
+    const createTabs = tabs.filter((t) => !isChromeUrl(t.url))
+    const liveIds = new Set(
+      allTabs.filter((t) => !isChromeUrl(t.url)).map((t) => t.id),
+    )
 
-    // Destroy any webviews whose tab no longer wants one.
+    // Destroy only webviews whose tab was actually closed (gone everywhere).
     for (const [id, wv] of Array.from(map.entries())) {
-      if (!targetIds.has(id)) {
+      if (!liveIds.has(id)) {
         if ((wv as unknown) !== PENDING) {
           void wv.close().catch((err: unknown) => {
             // eslint-disable-next-line no-console
@@ -124,17 +128,17 @@ export function useTabWebviews({
       }
     }
 
-    // Create webviews for tabs that don't have one yet.
+    // Create webviews for active-workspace tabs that don't have one yet.
     const initialSize = boundsRef.current
       ? { width: boundsRef.current.width, height: boundsRef.current.height }
       : null
-    for (const tab of targetTabs) {
+    for (const tab of createTabs) {
       if (map.has(tab.id)) continue
       map.set(tab.id, PENDING as unknown as Webview)
 
       void createWebviewFor(window, tab, activeWorkspaceId, initialSize).then(
         (wv) => {
-          if (!targetIds.has(tab.id)) {
+          if (!liveIds.has(tab.id)) {
             map.delete(tab.id)
             void wv.close().catch(() => undefined)
             return
@@ -144,8 +148,7 @@ export function useTabWebviews({
             .setWebviewCornerRadius(labelFor(tab.id), WEBVIEW_CORNER_RADIUS)
             .catch(() => undefined)
           if (tab.id === activeTabIdRef.current) {
-            applyBounds(wv, boundsRef.current)
-            void wv.show().catch(() => undefined)
+            showWithBounds(wv, boundsRef)
             void wv.setFocus().catch(() => undefined)
             visibilityRef.current.set(tab.id, true)
           } else {
@@ -160,7 +163,7 @@ export function useTabWebviews({
         },
       )
     }
-  }, [tabs, activeWorkspaceId])
+  }, [tabs, allTabs, activeWorkspaceId])
 
   useEffect(() => {
     const entries = Array.from(webviewsRef.current.entries())
@@ -176,62 +179,39 @@ export function useTabWebviews({
     for (const [id, wv] of entries) {
       if ((wv as unknown) === PENDING) continue
       if (id === activeTabId && visibility.get(id) !== true) {
-        applyBounds(wv, boundsRef.current)
-        void wv.show().catch(() => undefined)
+        showWithBounds(wv, boundsRef)
         void wv.setFocus().catch(() => undefined)
         visibility.set(id, true)
       }
     }
   }, [activeTabId, tabs])
 
-  const flushBounds = useCallback(() => {
-    rafRef.current = null
-    const bounds = pendingBoundsRef.current
+  const setBounds = useCallback((bounds: Bounds) => {
+    boundsRef.current = bounds
     const id = activeTabIdRef.current
-    if (!bounds || !id) return
+    if (!id) return
     const wv = webviewsRef.current.get(id)
-    if (!wv || (wv as unknown) === PENDING) return
-
-    // Drop no-op updates
-    const last = lastAppliedRef.current
-    if (last && last.id === id && boundsEqual(last.bounds, bounds)) return
-    lastAppliedRef.current = { id, bounds }
-    applyBounds(wv, bounds)
-  }, [])
-
-  const setBounds = useCallback(
-    (bounds: Bounds) => {
-      boundsRef.current = bounds
-      pendingBoundsRef.current = bounds
-      if (rafRef.current === null) {
-        rafRef.current = requestAnimationFrame(flushBounds)
-      }
-    },
-    [flushBounds],
-  )
-
-  useEffect(() => {
-    return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
-    }
+    if (wv && (wv as unknown) !== PENDING) applyBounds(wv, bounds)
   }, [])
 
   return { setBounds }
 }
 
-function boundsEqual(a: Bounds, b: Bounds): boolean {
-  return (
-    Math.abs(a.x - b.x) < 0.5 &&
-    Math.abs(a.y - b.y) < 0.5 &&
-    Math.abs(a.width - b.width) < 0.5 &&
-    Math.abs(a.height - b.height) < 0.5
-  )
+/**
+ * Reveal a (possibly previously-hidden) webview and size it to the *current*
+ * content bounds.
+ */
+function showWithBounds(wv: Webview, boundsRef: { current: Bounds | null }): void {
+  applyBounds(wv, boundsRef.current)
+  void wv
+    .show()
+    .then(() => applyBounds(wv, boundsRef.current))
+    .catch(() => undefined)
 }
 
 function applyBounds(wv: Webview, bounds: Bounds | null): void {
   if (!bounds) return
-  void wv
-    .setPosition(new LogicalPosition(bounds.x, bounds.y))
+  void commands
+    .setTabWebviewBounds(wv.label, bounds.x, bounds.y, bounds.width, bounds.height)
     .catch(() => undefined)
-  void wv.setSize(new LogicalSize(bounds.width, bounds.height)).catch(() => undefined)
 }

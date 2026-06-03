@@ -134,6 +134,19 @@ export const commands = {
     return invoke('create_tab_webview', args)
   },
 
+  /**
+   * Set a tab webview's position and size atomically in one IPC round-trip.
+   */
+  async setTabWebviewBounds(
+    label: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): Promise<void> {
+    return invoke('set_tab_webview_bounds', { label, x, y, width, height })
+  },
+
   /** Read the current URL of a tab's native webview by label. */
   async webviewUrl(label: string): Promise<string | null> {
     return invoke('webview_url', { label })

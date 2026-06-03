@@ -48,6 +48,7 @@ export function TabWebViewHost({ state }: TabWebViewHostProps) {
     tabs: workspaceTabs,
     activeTabId: isChrome ? null : activeTab?.id ?? null,
     activeWorkspaceId: activeWorkspace?.id ?? null,
+    allTabs: state.tabs,
   })
 
   useLayoutEffect(() => {
@@ -63,14 +64,34 @@ export function TabWebViewHost({ state }: TabWebViewHostProps) {
       })
     }
     push()
+    const onResize = () => push()
     const obs = new ResizeObserver(push)
     obs.observe(el)
-    window.addEventListener('resize', push)
+    window.addEventListener('resize', onResize)
+    const onTransitionEnd = (e: TransitionEvent) => {
+      const t = e.target as HTMLElement | null
+      if (!t?.classList) return
+      if (
+        (t.classList.contains('kb-side') || t.classList.contains('kb-main')) &&
+        (e.propertyName === 'width' || e.propertyName.startsWith('padding'))
+      ) {
+        push()
+      }
+    }
+    document.addEventListener('transitionend', onTransitionEnd, true)
     return () => {
       obs.disconnect()
-      window.removeEventListener('resize', push)
+      window.removeEventListener('resize', onResize)
+      document.removeEventListener('transitionend', onTransitionEnd, true)
     }
   }, [setBounds])
+
+  useLayoutEffect(() => {
+    const el = hostRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    setBounds({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })
+  }, [activeTab?.id, setBounds])
 
   // Compute the bottom strip's bounds in window coordinates from the
   // content host. The find overlay surface fills this strip.

@@ -129,6 +129,7 @@ pub fn run() {
             commands::navigate_tab,
             commands::set_webview_corner_radius,
             commands::create_tab_webview,
+            commands::set_tab_webview_bounds,
             commands::webview_url,
             commands::sync_tab_url,
             commands::update_tab_title,

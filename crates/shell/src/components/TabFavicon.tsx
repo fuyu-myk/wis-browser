@@ -10,6 +10,30 @@ import { WisMark } from '@/components/WisMark'
 
 const FAVICON_CACHED_EVENT = 'favicon-cached'
 
+// Process-wide favicon caches.
+const dataUrlCache = new Map<string, string>()
+const dataUrlInflight = new Map<string, Promise<string | null>>()
+const originHashCache = new Map<string, string | null>()
+
+/** Resolve a favicon hash to a data URL once, deduping concurrent lookups. */
+function resolveDataUrl(hash: string): Promise<string | null> {
+  const cached = dataUrlCache.get(hash)
+  if (cached !== undefined) return Promise.resolve(cached)
+  let inflight = dataUrlInflight.get(hash)
+  if (!inflight) {
+    inflight = commands
+      .getFaviconDataUrl(hash)
+      .catch(() => null)
+      .then((url) => {
+        dataUrlInflight.delete(hash)
+        if (url) dataUrlCache.set(hash, url)
+        return url
+      })
+    dataUrlInflight.set(hash, inflight)
+  }
+  return inflight
+}
+
 interface TabFaviconProps {
   tab: Tab
   /** Extra class to apply to the wrapping element (e.g. `fav` vs sizing). */
@@ -38,8 +62,9 @@ const FAVICON_PENDING_TIMEOUT_MS = 6500
 
 export function TabFavicon({ tab, className }: TabFaviconProps) {
   const explicitHash = tab.favicon?.hash ?? null
-  const [iconUrl, setIconUrl] = useState<string | null>(null)
-  const [status, setStatus] = useState<Status>('pending')
+  const cachedInitial = explicitHash ? dataUrlCache.get(explicitHash) ?? null : null
+  const [iconUrl, setIconUrl] = useState<string | null>(cachedInitial)
+  const [status, setStatus] = useState<Status>(cachedInitial ? 'loaded' : 'pending')
   const ownHashRef = useRef<string | null>(explicitHash)
   const failTimerRef = useRef<number | null>(null)
 
@@ -59,13 +84,27 @@ export function TabFavicon({ tab, className }: TabFaviconProps) {
   }
 
   useEffect(() => {
+    const cacheHit = explicitHash ? dataUrlCache.get(explicitHash) : undefined
+    if (cacheHit !== undefined) {
+      ownHashRef.current = explicitHash
+      setIconUrl(cacheHit)
+      setStatus('loaded')
+      return
+    }
+
     setStatus('pending')
     clearFailTimer()
     let cancelled = false
     const lookup = async () => {
       let hash = explicitHash
       if (!hash) {
-        hash = await commands.faviconOriginHash(tab.url).catch(() => null)
+        const memo = originHashCache.get(tab.url)
+        if (memo !== undefined) {
+          hash = memo
+        } else {
+          hash = await commands.faviconOriginHash(tab.url).catch(() => null)
+          if (!cancelled) originHashCache.set(tab.url, hash)
+        }
       }
       ownHashRef.current = hash
       if (cancelled) return
@@ -74,7 +113,7 @@ export function TabFavicon({ tab, className }: TabFaviconProps) {
         setStatus('failed')
         return
       }
-      const url = await commands.getFaviconDataUrl(hash).catch(() => null)
+      const url = await resolveDataUrl(hash)
       if (cancelled) return
       if (url) {
         setIconUrl(url)
@@ -95,8 +134,7 @@ export function TabFavicon({ tab, className }: TabFaviconProps) {
     const hash = ownHashRef.current
     if (!hash) return
     let cancelled = false
-    void commands
-      .getFaviconDataUrl(hash)
+    void resolveDataUrl(hash)
       .then((url) => {
         if (cancelled || !url) return
         clearFailTimer()
@@ -117,6 +155,7 @@ export function TabFavicon({ tab, className }: TabFaviconProps) {
       void commands
         .getFaviconDataUrl(e.payload)
         .then((url) => {
+          if (url) dataUrlCache.set(e.payload, url)
           if (cancelled) return
           clearFailTimer()
           setIconUrl(url)

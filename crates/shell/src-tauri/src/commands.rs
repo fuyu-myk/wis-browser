@@ -474,6 +474,35 @@ fn workspace_id_to_data_store_bytes(workspace_id: WorkspaceId) -> [u8; 16] {
     *workspace_id.as_uuid().as_bytes()
 }
 
+/// Set a tab webview's position and size in a single IPC round-trip, applying
+/// both atomically. Resolving the webview is best-effort: a not-yet-created webview is
+/// a silent no-op.
+#[tauri::command]
+pub async fn set_tab_webview_bounds(
+    app: AppHandle,
+    label: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> WisResult<()> {
+    let Some(webview) = app.webviews().get(&label).cloned() else {
+        return Ok(());
+    };
+    webview
+        .set_position(tauri::LogicalPosition::new(x, y))
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("set webview position failed: {err}"),
+        })?;
+    webview
+        .set_size(tauri::LogicalSize::new(width, height))
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("set webview size failed: {err}"),
+        })?;
+
+    Ok(())
+}
+
 /// Read the current URL of a tab's native webview. Returns `None` if the
 /// webview hasn't been created yet (chrome tab or not yet reconciled).
 #[tauri::command]
