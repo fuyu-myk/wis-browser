@@ -25,7 +25,7 @@ import { commands } from '@/bindings/commands'
 import type { KeyAction, Tab, UserSettingsPatch } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import {
-  DEFAULT_KEYMAP,
+  effectiveKeymap,
   makeActionsSource,
   makeNavigateSource,
   makeSettingsTogglesSource,
@@ -113,7 +113,10 @@ export function PaletteSurface() {
     if (!state) return []
     return [
       makeTabsSource({ state, onActivate: activateTab, onClose: closeTab }),
-      makeActionsSource({ keymap: DEFAULT_KEYMAP, onDispatch: dispatchAction }),
+      makeActionsSource({
+        keymap: effectiveKeymap(state.settings.keybindings),
+        onDispatch: dispatchAction,
+      }),
       makeSettingsTogglesSource({ settings: state.settings, onChange: updateSettings }),
       makeNavigateSource({ onOpen: openUrl }),
     ]

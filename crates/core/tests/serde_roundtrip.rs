@@ -1,8 +1,11 @@
 //! Integration tests for JSON serde round-tripping. Anything that crosses
 //! the Tauri IPC boundary must survive serialise → deserialise unchanged.
 
+use std::collections::HashMap;
+
 use wis_core::{
-    AccentColor, BrowserState, LayoutMode, PrivacyMode, ThemeMode, UserSettings, UserSettingsPatch,
+    AccentColor, BrowserState, KeyAction, LayoutMode, PrivacyMode, ThemeMode, UserSettings,
+    UserSettingsPatch,
 };
 
 fn roundtrip<T>(value: &T) -> T
@@ -95,6 +98,13 @@ fn settings_patch_round_trips_when_all_fields_set() {
         homepage: Some("https://start.example".into()),
         filter_list_auto_update: Some(false),
         url_bar_focus_glow: Some(true),
+        keybindings: Some(HashMap::from([
+            (KeyAction::NewTab, "Ctrl+T".into()),
+            (KeyAction::CloseTab, "Ctrl+W".into()),
+            (KeyAction::FindInPage, "Ctrl+F".into()),
+            (KeyAction::FindNext, "Ctrl+G".into()),
+            (KeyAction::FindPrevious, "Ctrl+Shift+G".into()),
+        ])),
     };
     let after: UserSettingsPatch = roundtrip(&patch);
     assert_eq!(patch, after);

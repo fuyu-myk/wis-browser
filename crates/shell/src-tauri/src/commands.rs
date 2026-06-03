@@ -616,13 +616,23 @@ pub async fn update_settings(
     state: State<'_, AppState>,
     patch: UserSettingsPatch,
 ) -> WisResult<UserSettings> {
-    mutate(&app, &state, |s| {
+    let keybindings_touched = patch.keybindings.is_some();
+    let settings = mutate(&app, &state, |s| {
         let next = s.with_settings(patch);
         let settings = next.settings.clone();
 
         Ok((next, settings))
     })
-    .await
+    .await?;
+
+    if keybindings_touched {
+        let effective = wis_core::effective_keymap(&settings.keybindings);
+        if let Err(err) = crate::menu::apply_menu(&app, &effective) {
+            log::warn!("menu rebuild after keybindings change failed: {err}");
+        }
+    }
+
+    Ok(settings)
 }
 
 // ---------------------------------------------------------------------------

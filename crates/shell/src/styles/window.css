@@ -1488,6 +1488,146 @@
   color: var(--text-tertiary);
 }
 
+/* ─── keybinding editor ───────────────────────────────────────── */
+.kb-keybind-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-subtle);
+}
+.kb-keybind-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.kb-keybind-row:last-child { border-bottom: 0; }
+.kb-keybind-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.kb-keybind-row-label {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.kb-keybind-row-conflict {
+  font-size: 11px;
+  color: color-mix(in oklab, var(--destructive, #c9636f) 70%, var(--text-tertiary) 30%);
+}
+
+.kb-keybind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.kb-keybind-pill {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  min-width: 64px;
+  text-align: center;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.kb-keybind-pill:hover {
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
+}
+.kb-keybind-pill.recording {
+  background: color-mix(in oklab, var(--primary-500) 18%, transparent);
+  border-color: var(--primary-500);
+  color: var(--text-primary);
+}
+.kb-keybind-pill.unbound {
+  color: var(--text-tertiary);
+}
+.kb-keybind-pill.conflicting {
+  border-color: color-mix(in oklab, var(--destructive, #c9636f) 70%, var(--border) 30%);
+}
+.kb-keybind-reset {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .12s, color .12s;
+}
+.kb-keybind-reset:hover {
+  background: var(--overlay);
+  color: var(--text-primary);
+}
+
+/* Glass-on variants. */
+.glass-on .kb-keybind-list {
+  background: rgba(0,0,0,0.06);
+  border-color: rgba(0,0,0,0.08);
+}
+.glass-on .kb-keybind-row { border-bottom-color: rgba(0,0,0,0.06); }
+.glass-on .kb-keybind-row-label { color: rgba(20,20,28,0.92); }
+.glass-on .kb-keybind-pill {
+  background: rgba(255,255,255,0.55);
+  border-color: rgba(255,255,255,0.30);
+  color: rgba(20,20,28,0.95);
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  backdrop-filter: blur(14px) saturate(180%);
+}
+.glass-on .kb-keybind-pill:hover {
+  background: rgba(255,255,255,0.78);
+  border-color: rgba(255,255,255,0.45);
+}
+.glass-on .kb-keybind-pill.recording {
+  background: color-mix(in oklab, var(--primary-500) 22%, rgba(255,255,255,0.55));
+  border-color: var(--primary-500);
+}
+.glass-on .kb-keybind-pill.unbound { color: rgba(20,20,28,0.55); }
+.glass-on .kb-keybind-reset { color: rgba(20,20,28,0.62); }
+.glass-on .kb-keybind-reset:hover {
+  background: rgba(0,0,0,0.06);
+  color: rgba(20,20,28,0.92);
+}
+
+[data-mode="dark"].glass-on .kb-keybind-list {
+  background: rgba(0,0,0,0.28);
+  border-color: rgba(255,255,255,0.08);
+}
+[data-mode="dark"].glass-on .kb-keybind-row { border-bottom-color: rgba(255,255,255,0.06); }
+[data-mode="dark"].glass-on .kb-keybind-row-label { color: rgba(255,255,255,0.92); }
+[data-mode="dark"].glass-on .kb-keybind-pill {
+  background: rgba(28,28,34,0.65);
+  border-color: rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.92);
+}
+[data-mode="dark"].glass-on .kb-keybind-pill:hover {
+  background: rgba(40,40,48,0.85);
+  border-color: rgba(255,255,255,0.18);
+}
+[data-mode="dark"].glass-on .kb-keybind-pill.recording {
+  background: color-mix(in oklab, var(--primary-500) 28%, rgba(28,28,34,0.65));
+}
+[data-mode="dark"].glass-on .kb-keybind-pill.unbound { color: rgba(255,255,255,0.48); }
+[data-mode="dark"].glass-on .kb-keybind-reset { color: rgba(255,255,255,0.55); }
+[data-mode="dark"].glass-on .kb-keybind-reset:hover {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.92);
+}
+
 /* ─── controls: segmented switch ──────────────────────────────── */
 .kb-segmented {
   display: inline-flex;

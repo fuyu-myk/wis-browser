@@ -23,13 +23,27 @@ struct KeyActionPayload<'a> {
     action: &'a str,
 }
 
-/// Install the menu and register the dispatch handler. Safe to call again
-/// later with a different keymap to apply user overrides.
+/// One-time install at app setup: builds the native menu from `keymap`,
+/// installs it, and registers the menu-event dispatch handler. The
+/// handler stays live for the app's lifetime; subsequent keymap changes
+/// go through [`apply_menu`] which only swaps the menu itself.
 pub fn install_menu(app: &App, keymap: &HashMap<KeyAction, String>) -> tauri::Result<()> {
+    let handle = app.handle().clone();
+    apply_menu(&handle, keymap)?;
+    let dispatch_handle = handle.clone();
+    app.on_menu_event(move |_app, event| {
+        dispatch_menu_event(&dispatch_handle, event.id().as_ref())
+    });
+
+    Ok(())
+}
+
+/// Rebuild the menu in place using a fresh keymap. Called when the user
+/// updates `settings.keybindings`. Does not register the menu-event
+/// handler (done once by [`install_menu`]).
+pub fn apply_menu(app: &AppHandle, keymap: &HashMap<KeyAction, String>) -> tauri::Result<()> {
     let menu = build_menu(app, keymap)?;
     app.set_menu(menu)?;
-    let handle = app.handle().clone();
-    app.on_menu_event(move |_app, event| dispatch_menu_event(&handle, event.id().as_ref()));
     Ok(())
 }
 
@@ -48,7 +62,7 @@ fn dispatch_menu_event(app: &AppHandle, item_id: &str) {
 }
 
 fn build_menu(
-    app: &App,
+    app: &AppHandle,
     keymap: &HashMap<KeyAction, String>,
 ) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let about = PredefinedMenuItem::about(
@@ -246,7 +260,7 @@ fn build_menu(
 }
 
 fn action_item(
-    app: &App,
+    app: &AppHandle,
     keymap: &HashMap<KeyAction, String>,
     action: KeyAction,
     label: &str,

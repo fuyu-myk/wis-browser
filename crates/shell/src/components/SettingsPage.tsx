@@ -23,8 +23,11 @@ import {
   SidebarRightIcon,
   SunIcon,
 } from '@/lib/icons'
+import { DEFAULT_KEYMAP, actionLabel, allActions, effectiveKeymap } from '@/lib/palette'
+import type { KeyAction } from '@/bindings/types'
 
 import { Segmented, SwatchRow, Switch } from '@/components/controls'
+import { KeybindingInput } from '@/components/KeybindingInput'
 
 interface NavSection {
   id: string
@@ -36,7 +39,27 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'appearance', label: 'Appearance', icon: <SunIcon /> },
   { id: 'layout', label: 'Layout', icon: <PanelTopIcon /> },
   { id: 'privacy', label: 'Privacy', icon: <LockIcon /> },
+  { id: 'shortcuts', label: 'Shortcuts', icon: <KeyboardIcon /> },
 ]
+
+function KeyboardIcon() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" />
+    </svg>
+  )
+}
 
 const THEME_OPTIONS = [
   { value: 'light' as const, label: 'Light', icon: <SunIcon /> },
@@ -334,8 +357,71 @@ export function SettingsPage() {
           </button>
         </div>
       </section>
+
+      <KeyboardShortcutsSection
+        keybindings={settings.keybindings}
+        onChange={(patch) => update.mutate({ keybindings: patch })}
+      />
       </div>
     </div>
+  )
+}
+
+interface KeyboardShortcutsSectionProps {
+  keybindings: Partial<Record<KeyAction, string>>
+  onChange: (patch: Partial<Record<KeyAction, string>>) => void
+}
+
+function KeyboardShortcutsSection({
+  keybindings,
+  onChange,
+}: KeyboardShortcutsSectionProps) {
+  const effective = effectiveKeymap(keybindings)
+  const accelToActions = new Map<string, KeyAction[]>()
+  for (const action of allActions()) {
+    const accel = effective[action]
+    if (!accel) continue
+    const list = accelToActions.get(accel) ?? []
+    list.push(action)
+    accelToActions.set(accel, list)
+  }
+
+  return (
+    <section id="shortcuts" className="sec">
+      <div className="sec-h">Keyboard shortcuts</div>
+      <div className="kb-keybind-list">
+        {allActions().map((action) => {
+          const current = effective[action] ?? null
+          const fallback = DEFAULT_KEYMAP[action] ?? null
+          const conflictGroup = current ? accelToActions.get(current) ?? [] : []
+          const conflicts = conflictGroup.filter((a) => a !== action)
+          const isConflicting = conflicts.length > 0
+          return (
+            <div className="kb-keybind-row" key={action}>
+              <div className="kb-keybind-row-main">
+                <span className="kb-keybind-row-label">{actionLabel(action)}</span>
+                {isConflicting && (
+                  <span className="kb-keybind-row-conflict">
+                    Also bound to{' '}
+                    {conflicts.map(actionLabel).join(', ')}
+                  </span>
+                )}
+              </div>
+              <KeybindingInput
+                value={current}
+                defaultValue={fallback}
+                conflicting={isConflicting}
+                ariaLabel={actionLabel(action)}
+                onChange={(next) => {
+                  // `null` from the input means "reset to default".
+                  onChange({ [action]: next ?? '' })
+                }}
+              />
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 

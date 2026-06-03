@@ -67,6 +67,7 @@ pub fn run() {
             };
             let resolver = state::build_resolver(browser_state.settings.doh_resolver.as_deref());
             let auto_update = browser_state.settings.filter_list_auto_update;
+            let initial_keybindings = browser_state.settings.keybindings.clone();
 
             app.manage(AppState::new(
                 browser_state,
@@ -101,7 +102,8 @@ pub fn run() {
             apply_transparent_chrome_webview(app);
 
             // Native menu + accelerator wiring.
-            if let Err(err) = menu::install_menu(app, &wis_core::default_keymap()) {
+            let effective_keymap = wis_core::effective_keymap(&initial_keybindings);
+            if let Err(err) = menu::install_menu(app, &effective_keymap) {
                 log::error!("menu install failed: {err}");
             }
 

@@ -63,6 +63,32 @@ export interface PaletteItem {
 
 export type PaletteSource = (query: string) => PaletteItem[]
 
+/**
+ * Overlay user-supplied accelerator overrides on top of `DEFAULT_KEYMAP`.
+ * Mirrors `wis_core::effective_keymap` on the Rust side, so the palette
+ * and any UI that wants to render the current accelerator pill stays in
+ * sync with the native menu.
+ *
+ * `overrides` is typically `settings.keybindings`. An entry whose value
+ * is the empty string is treated as "no binding".
+ */
+export function effectiveKeymap(
+  overrides: Partial<Record<KeyAction, string>> | undefined,
+): Partial<Record<KeyAction, string>> {
+  if (!overrides) return DEFAULT_KEYMAP
+  const merged: Partial<Record<KeyAction, string>> = { ...DEFAULT_KEYMAP }
+  for (const [action, accel] of Object.entries(overrides) as Array<
+    [KeyAction, string]
+  >) {
+    if (accel === '') {
+      delete merged[action]
+    } else {
+      merged[action] = accel
+    }
+  }
+  return merged
+}
+
 // Mirror of `default_keymap()` in crates/core/src/keybinding.rs.
 export const DEFAULT_KEYMAP: Partial<Record<KeyAction, string>> = {
   new_tab: 'Cmd+T',
@@ -123,6 +149,12 @@ const ACTION_LABELS: Record<KeyAction, string> = {
 }
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS) as KeyAction[]
+
+/** Stable ordered list of every bindable action. Used by the
+ *  Settings page's keyboard-shortcuts editor. */
+export function allActions(): readonly KeyAction[] {
+  return ALL_ACTIONS
+}
 
 export function actionLabel(action: KeyAction): string {
   return ACTION_LABELS[action]

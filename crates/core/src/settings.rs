@@ -1,5 +1,8 @@
 //! User-controlled settings and an immutable patch type for partial updates.
 
+use std::collections::HashMap;
+
+use crate::keybinding::KeyAction;
 use crate::layout::{LayoutMode, RailSide, ThemeMode, UrlBarPosition};
 use crate::privacy::PrivacyMode;
 use crate::workspace::AccentColor;
@@ -33,6 +36,13 @@ pub struct UserSettings {
     /// colour. Off by default; the LaunchPad omnisearch always glows.
     #[serde(default)]
     pub url_bar_focus_glow: bool,
+    /// User-supplied accelerator overrides keyed by [`KeyAction`]. Each
+    /// entry replaces the corresponding entry from [`crate::default_keymap`]
+    /// at runtime (see [`crate::effective_keymap`]). Absent entries fall
+    /// back to the default. A serde-default empty map means existing
+    /// persisted settings deserialise unchanged.
+    #[serde(default)]
+    pub keybindings: HashMap<KeyAction, String>,
 }
 
 fn default_filter_list_auto_update() -> bool {
@@ -55,6 +65,7 @@ impl Default for UserSettings {
             homepage: None,
             filter_list_auto_update: true,
             url_bar_focus_glow: false,
+            keybindings: HashMap::new(),
         }
     }
 }
@@ -91,6 +102,11 @@ pub struct UserSettingsPatch {
     pub filter_list_auto_update: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url_bar_focus_glow: Option<bool>,
+    /// Merged onto the existing `keybindings` map. Sparse entries replace
+    /// just those actions; absent actions keep their current binding.
+    /// `Some(empty_map)` is a no-op (the patch is sparse, not a wipe).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keybindings: Option<HashMap<KeyAction, String>>,
 }
 
 impl UserSettings {
@@ -116,6 +132,21 @@ impl UserSettings {
                 .filter_list_auto_update
                 .unwrap_or(self.filter_list_auto_update),
             url_bar_focus_glow: patch.url_bar_focus_glow.unwrap_or(self.url_bar_focus_glow),
+            keybindings: match patch.keybindings {
+                None => self.keybindings.clone(),
+                Some(overrides) => {
+                    let mut merged = self.keybindings.clone();
+                    for (action, accel) in overrides {
+                        if accel.is_empty() {
+                            merged.remove(&action);
+                        } else {
+                            merged.insert(action, accel);
+                        }
+                    }
+
+                    merged
+                }
+            },
         }
     }
 }
