@@ -76,6 +76,7 @@ export type KeyAction =
   | 'find_previous'
   | 'open_command_palette'
   | 'open_settings'
+  | 'open_history'
   | 'new_private_window'
   | 'new_window'
   | 'split_pane_horizontal'
@@ -259,6 +260,29 @@ export type Decision =
   | { kind: 'allow' }
   | { kind: 'rewrite'; url: string }
   | { kind: 'block'; reason: string }
+
+// ---------------------------------------------------------------------------
+// Browsing history (mirror of `wis_storage::history`).
+// ---------------------------------------------------------------------------
+
+/** One deduplicated history row (one per URL per workspace). */
+export interface HistoryEntry {
+  id: number
+  workspace_id: WorkspaceId
+  url: string
+  title: string
+  visited_at: string // ISO 8601 from chrono::DateTime<Utc>
+  visit_count: number
+}
+
+/** Query for `getHistory`: substring filter (empty = all), newest-first. */
+export interface HistoryQuery {
+  search: string
+  /** Restrict to one workspace; null returns all workspaces. */
+  workspace_id: WorkspaceId | null
+  limit: number
+  offset: number
+}
 
 export function isWisError(value: unknown): value is WisError {
   return (

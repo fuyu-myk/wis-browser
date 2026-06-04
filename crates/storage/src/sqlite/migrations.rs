@@ -57,8 +57,49 @@ const M0002_PANE_TREE: &str = r#"
 ALTER TABLE workspaces ADD COLUMN pane_tree TEXT;
 "#;
 
+// Append-style browsing history, deduplicated by URL: each visit bumps
+// `visit_count` and refreshes `visited_at`/`title`. Independent of
+// `BrowserState` (it is never loaded into the in-memory model). Ephemeral
+// (private) workspaces never write here.
+const M0003_HISTORY: &str = r#"
+CREATE TABLE history (
+    id           INTEGER NOT NULL PRIMARY KEY,
+    url          TEXT    NOT NULL UNIQUE,
+    title        TEXT    NOT NULL,
+    visited_at   TEXT    NOT NULL,
+    visit_count  INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX idx_history_visited_at ON history(visited_at);
+CREATE INDEX idx_history_url ON history(url);
+"#;
+
+// Scope history per workspace. Dedup becomes (workspace_id, url) so the same
+// page visited in two workspaces keeps an independent count/timestamp. The
+// table is recreated rather than altered because SQLite can't drop the old
+// `url UNIQUE` constraint in place; history introduced in M0003 is recent
+// enough that resetting it on upgrade is acceptable.
+const M0004_HISTORY_PER_WORKSPACE: &str = r#"
+DROP TABLE history;
+CREATE TABLE history (
+    id           INTEGER NOT NULL PRIMARY KEY,
+    workspace_id TEXT    NOT NULL,
+    url          TEXT    NOT NULL,
+    title        TEXT    NOT NULL,
+    visited_at   TEXT    NOT NULL,
+    visit_count  INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (workspace_id, url)
+);
+CREATE INDEX idx_history_ws_visited_at ON history(workspace_id, visited_at);
+CREATE INDEX idx_history_url ON history(url);
+"#;
+
 fn all() -> Migrations<'static> {
-    Migrations::new(vec![M::up(M0001_INITIAL), M::up(M0002_PANE_TREE)])
+    Migrations::new(vec![
+        M::up(M0001_INITIAL),
+        M::up(M0002_PANE_TREE),
+        M::up(M0003_HISTORY),
+        M::up(M0004_HISTORY_PER_WORKSPACE),
+    ])
 }
 
 pub fn run(conn: &mut Connection) -> StorageResult<()> {

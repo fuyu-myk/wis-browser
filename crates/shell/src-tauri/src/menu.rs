@@ -174,6 +174,13 @@ fn build_menu(
             KeyAction::GoForwardAlt,
             "Forward (alt)",
         )?)
+        .separator()
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::OpenHistory,
+            "Show All History",
+        )?)
         .build()?;
 
     let tabs_menu = SubmenuBuilder::new(app, "Tabs")

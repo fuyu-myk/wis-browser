@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
+import { commands } from '@/bindings/commands'
 import type { BrowserState, Tab, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { SettingsIcon } from '@/lib/icons'
@@ -47,6 +48,11 @@ export function Window({ state, settings }: WindowProps) {
 
   const navigateOrCreate = useNavigateOrCreateTab(activeWorkspace?.id ?? null, activeTab)
   const openSettings = () => navigateOrCreate(SETTINGS_URL)
+
+  const isPrivate = activeWorkspace?.ephemeral ?? false
+  useEffect(() => {
+    void commands.setDockIcon(isPrivate ? 'closed' : 'open').catch(() => undefined)
+  }, [isPrivate])
 
   return (
     <div

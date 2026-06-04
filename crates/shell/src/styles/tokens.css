@@ -149,20 +149,20 @@
 
 /* ─── DARK MODE ────────────────────────────────────────────────── */
 .dark, [data-mode="dark"] {
-  --bg:             #0F0F12;
-  --bg-subtle:      #151519;
-  --surface:        #2A2A33;
-  --surface-raised: #36363F;
-  --border:         #2C2C34;
-  --border-strong:  #3E3E4A;
+  --bg:             #1B1B21;
+  --bg-subtle:      #222229;
+  --surface:        #33333D;
+  --surface-raised: #41414C;
+  --border:         #3A3A43;
+  --border-strong:  #4E4E5A;
   --text-primary:   #EEEDF0;
-  --text-secondary: #9998A8;
-  --text-tertiary:  #5E5D6E;
+  --text-secondary: #A4A3B2;
+  --text-tertiary:  #6E6D7E;
   --text-on-accent: #FFFFFF;
-  --overlay:        rgba(238,237,240,0.04);
-  --chrome-bg:      #1B1B22;
-  --chrome-tint:    rgba(34,34,42,0.92);
-  --content-bg:     #1A1A20;
+  --overlay:        rgba(238,237,240,0.06);
+  --chrome-bg:      #26262E;
+  --chrome-tint:    rgba(48,48,58,0.92);
+  --content-bg:     #24242C;
   --wp-grad:        linear-gradient(160deg, #1A1730 0%, #14182E 45%, #0F0F12 100%);
   --shadow-soft:    0 1px 0 rgba(255,255,255,.04) inset, 0 8px 32px rgba(0,0,0,0.35);
   --shadow-pop:     0 12px 40px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3);

@@ -5,7 +5,7 @@ import { commands } from '@/bindings/commands'
 import type { Tab } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { SettingsIcon } from '@/lib/icons'
-import { isChromeUrl, SETTINGS_URL } from '@/lib/url'
+import { HISTORY_URL, isChromeUrl, SETTINGS_URL } from '@/lib/url'
 import { WisMark } from '@/components/WisMark'
 
 const FAVICON_CACHED_EVENT = 'favicon-cached'
@@ -183,6 +183,25 @@ export function TabFavicon({ tab, className }: TabFaviconProps) {
         aria-label="settings"
       >
         <SettingsIcon />
+      </span>
+    )
+  }
+
+  if (tab.url === HISTORY_URL) {
+    return (
+      <span className={cx('fav', 'fav-history', className)} aria-label="history">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </svg>
       </span>
     )
   }

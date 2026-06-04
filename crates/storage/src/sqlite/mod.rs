@@ -10,6 +10,7 @@
 //! shell can log and fall back to defaults rather than crash.
 
 mod convert;
+mod history;
 mod migrations;
 mod repo;
 
@@ -74,6 +75,44 @@ impl Storage for SqliteStorage {
         tx.commit()?;
 
         Ok(())
+    }
+
+    fn record_visit(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+        url: &str,
+        title: &str,
+    ) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        history::record_visit(&conn, workspace_id, url, title)
+    }
+
+    fn update_visit_title(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+        url: &str,
+        title: &str,
+    ) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        history::update_title(&conn, workspace_id, url, title)
+    }
+
+    fn query_history(
+        &self,
+        query: &crate::history::HistoryQuery,
+    ) -> StorageResult<Vec<crate::history::HistoryEntry>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        history::query_history(&conn, query)
+    }
+
+    fn delete_history_entries(&self, ids: &[i64]) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        history::delete_entries(&conn, ids)
+    }
+
+    fn clear_history(&self, workspace_id: Option<wis_core::WorkspaceId>) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        history::clear(&conn, workspace_id)
     }
 }
 

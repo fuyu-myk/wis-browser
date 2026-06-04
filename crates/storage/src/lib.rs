@@ -5,9 +5,11 @@
 //! (and, later, replaced with an encrypted variant).
 
 pub mod error;
+pub mod history;
 pub mod sqlite;
 pub mod traits;
 
 pub use error::{StorageError, StorageResult};
+pub use history::{HistoryEntry, HistoryQuery};
 pub use sqlite::SqliteStorage;
 pub use traits::Storage;

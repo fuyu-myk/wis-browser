@@ -266,6 +266,7 @@ export function TabWebViewHost({ state }: TabWebViewHostProps) {
     let cancelled = false
     let unlisten: UnlistenFn | null = null
     void listen<string>('wis-pane-focus', (e) => {
+      window.dispatchEvent(new CustomEvent('wis-close-workspace-popover'))
       const id = e.payload as TabId
       if (id === activeIdRef.current) return
       void commands.setActiveTab(id).catch(() => undefined)

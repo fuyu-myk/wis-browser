@@ -18,7 +18,7 @@ import { listen } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { AccentColor, BrowserState, KeyAction, PaneNode, Tab, TabId, Workspace, WorkspaceId } from '@/bindings/types'
-import { NEW_TAB_URL, SETTINGS_URL } from '@/lib/url'
+import { HISTORY_URL, NEW_TAB_URL, SETTINGS_URL } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { usePendingRename } from '@/hooks/usePendingRename'
 import { useQueryClient } from '@tanstack/react-query'
@@ -153,6 +153,21 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
         }
       } else {
         await commands.createTab(ctx.activeWorkspace.id, SETTINGS_URL)
+        ctx.invalidate()
+      }
+      return
+    }
+    case 'open_history': {
+      // Switch to an existing history tab if one is open, else spawn one.
+      if (!ctx.activeWorkspace) return
+      const existing = ctx.tabs.find((t) => t.url === HISTORY_URL)
+      if (existing) {
+        if (existing.id !== ctx.activeTab?.id) {
+          await commands.setActiveTab(existing.id)
+          ctx.invalidate()
+        }
+      } else {
+        await commands.createTab(ctx.activeWorkspace.id, HISTORY_URL)
         ctx.invalidate()
       }
       return

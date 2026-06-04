@@ -144,6 +144,11 @@ export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
     }
   }, [])
 
+  useEffect(() => {
+    if (!open) return
+    void commands.focusWebview('main').catch(() => undefined)
+  }, [open])
+
   return (
     <div className="kb-ws-pill-wrap">
       <button

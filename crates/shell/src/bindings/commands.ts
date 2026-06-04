@@ -10,6 +10,8 @@ import type {
   AccentColor,
   BrowserState,
   Decision,
+  HistoryEntry,
+  HistoryQuery,
   PaneBranch,
   PrivacyMode,
   RequestType,
@@ -35,6 +37,28 @@ export const commands = {
 
   async getTab(id: TabId): Promise<Tab> {
     return invoke('get_tab', { id })
+  },
+
+  /** Query browsing history, newest-first. `query` filters and paginates;
+   *  `workspace_id` scopes to one workspace (null = all). */
+  async getHistory(query: Partial<HistoryQuery> = {}): Promise<HistoryEntry[]> {
+    const full: HistoryQuery = {
+      search: query.search ?? '',
+      workspace_id: query.workspace_id ?? null,
+      limit: query.limit ?? 0,
+      offset: query.offset ?? 0,
+    }
+    return invoke('get_history', { query: full })
+  },
+
+  /** Delete specific history rows by id. */
+  async deleteHistory(ids: number[]): Promise<void> {
+    return invoke('delete_history', { ids })
+  },
+
+  /** Remove browsing history; `workspaceId` scopes the wipe (omit = all). */
+  async clearHistory(workspaceId?: WorkspaceId): Promise<void> {
+    return invoke('clear_history', { workspaceId: workspaceId ?? null })
   },
 
   async getSettings(): Promise<UserSettings> {
@@ -285,6 +309,14 @@ export const commands = {
    */
   async setWindowIcon(windowLabel: string, variant: 'open' | 'closed'): Promise<void> {
     return invoke('set_window_icon', { windowLabel, variant })
+  },
+
+  /**
+   * Set the macOS Dock (application) icon. `'closed'` shows the private-mode
+   * owl; `'open'` clears the override so the system restores the bundled icon.
+   */
+  async setDockIcon(variant: 'open' | 'closed'): Promise<void> {
+    return invoke('set_dock_icon', { variant })
   },
 
   /**
