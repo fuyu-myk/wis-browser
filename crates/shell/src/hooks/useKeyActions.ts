@@ -17,7 +17,7 @@ import { useEffect, useRef } from 'react'
 import { listen } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
-import type { AccentColor, BrowserState, KeyAction, Tab, TabId, Workspace, WorkspaceId } from '@/bindings/types'
+import type { AccentColor, BrowserState, KeyAction, PaneNode, Tab, TabId, Workspace, WorkspaceId } from '@/bindings/types'
 import { NEW_TAB_URL, SETTINGS_URL } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { usePendingRename } from '@/hooks/usePendingRename'
@@ -251,7 +251,115 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       // eslint-disable-next-line no-console
       console.warn('Wis: new OS window coming soon')
       return
+    case 'split_pane_horizontal':
+    case 'split_pane_vertical': {
+      if (!ctx.activeWorkspace || !ctx.activeTab) return
+      const dir = action === 'split_pane_horizontal' ? 'horizontal' : 'vertical'
+      await commands.splitPane(ctx.activeWorkspace.id, dir, false, NEW_TAB_URL)
+      ctx.invalidate()
+      return
+    }
+    case 'close_pane': {
+      if (!ctx.activeTab) return
+      await commands.closeTab(ctx.activeTab.id)
+      ctx.invalidate()
+      return
+    }
+    case 'focus_next_pane': {
+      const tree = ctx.activeWorkspace?.pane_tree
+      if (!tree) return
+      const leaves = paneLeaves(tree)
+      if (leaves.length < 2) return
+      const current = ctx.activeTab?.id ?? null
+      const idx = current ? leaves.indexOf(current) : -1
+      const next = leaves[(idx + 1) % leaves.length]
+      await commands.setActiveTab(next)
+      ctx.invalidate()
+      return
+    }
+    case 'focus_pane_left':
+    case 'focus_pane_right':
+    case 'focus_pane_up':
+    case 'focus_pane_down': {
+      if (!ctx.activeWorkspace?.pane_tree) return
+      const current = ctx.activeTab?.id ?? null
+      if (!current) return
+      const dir = action.replace('focus_pane_', '') as PaneDirection
+      const target = pickPaneInDirection(current, dir)
+      if (target && target !== current) {
+        await commands.setActiveTab(target)
+        ctx.invalidate()
+      }
+      return
+    }
+    case 'unsplit_panes': {
+      if (!ctx.activeWorkspace) return
+      await commands.unsplitPanes(ctx.activeWorkspace.id)
+      ctx.invalidate()
+      return
+    }
   }
+}
+
+type PaneDirection = 'left' | 'right' | 'up' | 'down'
+
+/**
+ * Pick the nearest pane in `dir` from the focused pane, using the rendered
+ * `[data-pane-leaf]` rects. Favours panes directly in the direction (small
+ * perpendicular offset). Returns null if none lie that way.
+ */
+function pickPaneInDirection(currentId: TabId, dir: PaneDirection): TabId | null {
+  const rects = Array.from(
+    document.querySelectorAll<HTMLElement>('[data-pane-leaf]'),
+  )
+    .map((el) => ({ id: el.getAttribute('data-pane-leaf') as TabId | null, rect: el.getBoundingClientRect() }))
+    .filter((r): r is { id: TabId; rect: DOMRect } => r.id !== null)
+
+  const cur = rects.find((r) => r.id === currentId)
+  if (!cur) return null
+  const fx = cur.rect.left + cur.rect.width / 2
+  const fy = cur.rect.top + cur.rect.height / 2
+
+  let best: TabId | null = null
+  let bestScore = Infinity
+  for (const r of rects) {
+    if (r.id === currentId) continue
+    const dx = r.rect.left + r.rect.width / 2 - fx
+    const dy = r.rect.top + r.rect.height / 2 - fy
+    let inDir = false
+    let primary = 0
+    let secondary = 0
+    if (dir === 'left') {
+      inDir = dx < -1
+      primary = -dx
+      secondary = Math.abs(dy)
+    } else if (dir === 'right') {
+      inDir = dx > 1
+      primary = dx
+      secondary = Math.abs(dy)
+    } else if (dir === 'up') {
+      inDir = dy < -1
+      primary = -dy
+      secondary = Math.abs(dx)
+    } else {
+      inDir = dy > 1
+      primary = dy
+      secondary = Math.abs(dx)
+    }
+    if (!inDir) continue
+    const score = primary + secondary * 2
+    if (score < bestScore) {
+      bestScore = score
+      best = r.id
+    }
+  }
+  return best
+}
+
+/** Pane leaves left-to-right / top-to-bottom (mirrors `PaneNode::leaves`). */
+function paneLeaves(node: PaneNode): TabId[] {
+  if (node.kind === 'leaf') return [node.tab]
+  return [...paneLeaves(node.first), ...paneLeaves(node.second)]
 }
 
 function tabsFor(state: BrowserState, workspace: Workspace): Tab[] {

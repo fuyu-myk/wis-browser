@@ -10,8 +10,10 @@ import type {
   AccentColor,
   BrowserState,
   Decision,
+  PaneBranch,
   PrivacyMode,
   RequestType,
+  SplitDir,
   Tab,
   TabId,
   UserSettings,
@@ -81,6 +83,61 @@ export const commands = {
 
   async createTab(workspaceId: WorkspaceId, url: string): Promise<Tab> {
     return invoke('create_tab', { workspaceId, url })
+  },
+
+  /**
+   * Split the workspace's focused pane along `dir`, opening `url` in the new
+   * pane and focusing it. `placeNewFirst` puts the new pane in the left/top
+   * slot. Returns the created tab.
+   */
+  async splitPane(
+    workspaceId: WorkspaceId,
+    dir: SplitDir,
+    placeNewFirst: boolean,
+    url: string,
+  ): Promise<Tab> {
+    return invoke('split_pane', { workspaceId, dir, placeNewFirst, url })
+  },
+
+  /**
+   * Set the divider ratio (permille, 0..1000) of the split reached by `path`
+   * from the workspace's pane-tree root.
+   */
+  async setPaneRatio(workspaceId: WorkspaceId, path: PaneBranch[], ratio: number): Promise<void> {
+    return invoke('set_pane_ratio', { workspaceId, path, ratio })
+  },
+
+  /** Collapse all splits in a workspace back to a single pane (focused tab). */
+  async unsplitPanes(workspaceId: WorkspaceId): Promise<void> {
+    return invoke('unsplit_panes', { workspaceId })
+  },
+
+  /**
+   * Split the `targetTab` pane along `dir` with the already-open `movedTab`
+   * (dragged from the tab list onto a pane). `placeNewFirst` puts the moved tab
+   * in the left/top slot.
+   */
+  async splitPaneWith(
+    workspaceId: WorkspaceId,
+    targetTab: TabId,
+    dir: SplitDir,
+    placeNewFirst: boolean,
+    movedTab: TabId,
+  ): Promise<void> {
+    return invoke('split_pane_with', { workspaceId, targetTab, dir, placeNewFirst, movedTab })
+  },
+
+  /**
+   * Replace the `targetTab` pane's tab with the already-open `movedTab`
+   * (dragged onto a pane's centre). A throwaway placeholder in that pane is
+   * closed; a real page is kept as a background tab.
+   */
+  async replacePaneLeaf(
+    workspaceId: WorkspaceId,
+    targetTab: TabId,
+    movedTab: TabId,
+  ): Promise<void> {
+    return invoke('replace_pane_leaf', { workspaceId, targetTab, movedTab })
   },
 
   async closeTab(id: TabId): Promise<void> {

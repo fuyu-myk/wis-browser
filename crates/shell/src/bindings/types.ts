@@ -33,6 +33,18 @@ export type ThemeMode = 'light' | 'dark' | 'system'
 
 export type PrivacyMode = 'strict' | 'balanced' | 'permissive'
 
+export type SplitDir = 'horizontal' | 'vertical'
+
+export type PaneBranch = 'first' | 'second'
+
+/**
+ * Mirror of `wis_core::PaneNode` (serde-tagged by `kind`). `ratio` is permille
+ * (0..1000) of the space given to `first`.
+ */
+export type PaneNode =
+  | { kind: 'leaf'; tab: TabId }
+  | { kind: 'split'; dir: SplitDir; ratio: number; first: PaneNode; second: PaneNode }
+
 /**
  * Mirror of `wis_core::KeyAction`. Wire format is snake_case.
  * Two variants per "alternate" action so users can rebind primary
@@ -66,6 +78,15 @@ export type KeyAction =
   | 'open_settings'
   | 'new_private_window'
   | 'new_window'
+  | 'split_pane_horizontal'
+  | 'split_pane_vertical'
+  | 'close_pane'
+  | 'focus_next_pane'
+  | 'focus_pane_left'
+  | 'focus_pane_right'
+  | 'focus_pane_up'
+  | 'focus_pane_down'
+  | 'unsplit_panes'
 
 export type AccentColor =
   | 'primary'
@@ -126,6 +147,8 @@ export interface Workspace {
   essentials: EssentialPin[]
   active_tab_id: TabId | null
   privacy_mode: PrivacyMode
+  /** In-window split layout; null = single pane (active tab). */
+  pane_tree: PaneNode | null
   /** Private/incognito workspace: non-persistent data store, never saved. */
   ephemeral: boolean
 }

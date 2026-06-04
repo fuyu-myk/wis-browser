@@ -41,9 +41,10 @@ export function Sidebar({
   const asideRef = useRef<HTMLElement>(null)
 
   const [workspacePopoverOpen, setWorkspacePopoverOpen] = useState(false)
+  const [tabMenuOpen, setTabMenuOpen] = useState(false)
   useEffect(() => {
-    if (workspacePopoverOpen) setExpanded(true)
-  }, [workspacePopoverOpen, setExpanded])
+    if (workspacePopoverOpen || tabMenuOpen) setExpanded(true)
+  }, [workspacePopoverOpen, tabMenuOpen, setExpanded])
 
   useEffect(() => {
     if (!collapsible || !expanded) return
@@ -60,6 +61,7 @@ export function Sidebar({
       const target = e.target as Element | null
       if (aside.contains(target)) return
       if (target?.closest?.('.kb-ws-pop')) return
+      if (target?.closest?.('.kb-split-menu')) return
       collapse()
     }
     const onKeyDown = (e: KeyboardEvent) => {
@@ -98,7 +100,9 @@ export function Sidebar({
     <aside
       ref={asideRef}
       className={cx('kb-side', { 'is-expanded': expanded })}
-      onMouseLeave={() => collapsible && !workspacePopoverOpen && setExpanded(false)}
+      onMouseLeave={() =>
+        collapsible && !workspacePopoverOpen && !tabMenuOpen && setExpanded(false)
+      }
       onClick={handleAsideClick}
     >
       {collapsible && (
@@ -123,6 +127,7 @@ export function Sidebar({
         workspaceId={activeWorkspace?.id ?? ('' as never)}
         tabs={tabs}
         activeTabId={activeTab?.id ?? null}
+        onSplitMenuOpenChange={setTabMenuOpen}
       />
     </aside>
   )

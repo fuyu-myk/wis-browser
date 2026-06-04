@@ -116,6 +116,14 @@ export const DEFAULT_KEYMAP: Partial<Record<KeyAction, string>> = {
   open_command_palette: 'Cmd+L',
   open_settings: 'Cmd+,',
   new_private_window: 'Cmd+Shift+N',
+  split_pane_horizontal: 'Cmd+D',
+  split_pane_vertical: 'Cmd+Shift+D',
+  close_pane: 'Alt+Cmd+W',
+  focus_pane_left: 'Alt+Cmd+Left',
+  focus_pane_right: 'Alt+Cmd+Right',
+  focus_pane_up: 'Alt+Cmd+Up',
+  focus_pane_down: 'Alt+Cmd+Down',
+  unsplit_panes: 'Alt+Cmd+U',
 }
 
 const ACTION_LABELS: Record<KeyAction, string> = {
@@ -146,6 +154,15 @@ const ACTION_LABELS: Record<KeyAction, string> = {
   open_settings: 'Open settings',
   new_private_window: 'New private window',
   new_window: 'New window',
+  split_pane_horizontal: 'Split pane right',
+  split_pane_vertical: 'Split pane down',
+  close_pane: 'Close pane',
+  focus_next_pane: 'Focus next pane',
+  focus_pane_left: 'Focus pane left',
+  focus_pane_right: 'Focus pane right',
+  focus_pane_up: 'Focus pane up',
+  focus_pane_down: 'Focus pane down',
+  unsplit_panes: 'Unsplit panes',
 }
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS) as KeyAction[]

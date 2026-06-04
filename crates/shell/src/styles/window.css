@@ -27,6 +27,248 @@
   flex-direction: column;
 }
 
+/* ─── Split panes ─────────────────────────────────────────────── */
+.kb-content-host > .pane-leaf,
+.kb-content-host > .pane-split {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+}
+.pane-split {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.pane-split.is-row { flex-direction: row; }
+.pane-split.is-col { flex-direction: column; }
+.pane-slot {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.pane-slot > .pane-leaf,
+.pane-slot > .pane-split {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+}
+.pane-leaf {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.pane-leaf {
+  box-sizing: border-box;
+}
+.pane-leaf > .pane-surface {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pane-split .pane-leaf {
+  border: 2px solid color-mix(in oklab, var(--primary-400) 22%, transparent);
+  border-radius: 10px;
+}
+.pane-split .pane-leaf > .pane-surface {
+  border-radius: 8px;
+  overflow: hidden;
+}
+.pane-split .pane-leaf.is-focused {
+  border-color: var(--primary-400);
+}
+.pane-divider {
+  flex: 0 0 8px;
+  align-self: stretch;
+  position: relative;
+  z-index: 5;
+}
+.pane-divider.is-vertical { cursor: col-resize; }
+.pane-divider.is-horizontal { cursor: row-resize; }
+.pane-divider::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.12s;
+}
+.pane-divider.is-vertical::after { width: 2px; height: 92%; }
+.pane-divider.is-horizontal::after { width: 92%; height: 2px; }
+.pane-divider:hover::after {
+  background: color-mix(in oklab, var(--primary-400) 65%, transparent);
+}
+.pane-divider.is-vertical { flex-basis: 10px; }
+.pane-divider.is-horizontal { flex-basis: 10px; }
+
+/* ─── Drag-a-tab-onto-a-pane to split ─────────────────────────── */
+.pane-drop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--primary-400) 6%, transparent);
+}
+.pane-drop {
+  /* the overlay itself must receive the pointer drag */
+  touch-action: none;
+}
+.pane-drop-title {
+  font-size: 12px;
+  color: var(--text-secondary);
+  pointer-events: none;
+  max-width: 80%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pane-drop-hint {
+  position: absolute;
+  background: color-mix(in oklab, var(--primary-400) 26%, transparent);
+  border: 2px solid var(--primary-400);
+  border-radius: 8px;
+  pointer-events: none;
+  transition: left 0.08s ease, right 0.08s ease, top 0.08s ease,
+    bottom 0.08s ease, width 0.08s ease, height 0.08s ease;
+}
+.pane-drop-hint.is-hidden { display: none; }
+.pane-drop-hint.side-left { left: 0; top: 0; bottom: 0; width: 50%; }
+.pane-drop-hint.side-right { right: 0; top: 0; bottom: 0; width: 50%; }
+.pane-drop-hint.side-top { left: 0; right: 0; top: 0; height: 50%; }
+.pane-drop-hint.side-bottom { left: 0; right: 0; bottom: 0; height: 50%; }
+.pane-drop-hint.side-center { inset: 0; }
+
+.is-tab-dragging,
+.is-tab-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  cursor: grabbing !important;
+}
+
+/* Floating drag image: a clone of the grabbed tab pinned to the cursor. */
+.kb-drag-ghost {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  margin: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  border: 2px solid var(--primary-400);
+  background: color-mix(in oklab, var(--primary-500) 28%, transparent);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  opacity: 0.95;
+  transform: scale(0.97);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.kb-drag-ghost.h-tab {
+  justify-content: center;
+  padding: 0 14px;
+  border-radius: 999px;
+}
+.kb-drag-ghost.h-tab .fav { width: 14px; height: 14px; font-size: 8px; }
+.kb-drag-ghost.h-tab .ttl { flex: 0 1 auto; text-align: center; }
+.kb-drag-ghost.kb-tab {
+  justify-content: flex-start;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: var(--text-primary);
+}
+.kb-drag-ghost.kb-tab .fav { width: 16px; height: 16px; font-size: 9px; }
+.kb-drag-ghost.kb-tab .ttl { flex: 1; text-align: left; }
+.kb-drag-ghost .fav {
+  flex-shrink: 0;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: white;
+}
+.kb-drag-ghost .fav img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.kb-drag-ghost .ttl {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-drag-ghost .close { display: none !important; }
+.kb-drag-ghost::after { display: none !important; }
+
+/* Tab reorder drop indicator (insertion line, no layout shift). */
+.kb-tab.drop-before { box-shadow: inset 0 2px 0 0 var(--primary-400); }
+.kb-tab.drop-after { box-shadow: inset 0 -2px 0 0 var(--primary-400); }
+.h-tab.drop-before { box-shadow: inset 2px 0 0 0 var(--primary-400); }
+.h-tab.drop-after { box-shadow: inset -2px 0 0 0 var(--primary-400); }
+
+/* Window resize handles (perimeter). */
+.kb-resize { position: fixed; z-index: 60; }
+.kb-resize-n { top: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.kb-resize-s { bottom: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.kb-resize-w { left: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.kb-resize-e { right: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.kb-resize-nw { left: 0; top: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+.kb-resize-ne { right: 0; top: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+.kb-resize-sw { left: 0; bottom: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+.kb-resize-se { right: 0; bottom: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+
+body.is-overlay-surface,
+body.is-overlay-surface:not(.glass-on) {
+  background: transparent !important;
+}
+
+.kb-panemenu {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--surface) 96%, transparent);
+  border: 1px solid var(--border);
+}
+.kb-panemenu.glass-on {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(255, 255, 255, 0.35);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+}
+[data-mode='dark'] .kb-panemenu.glass-on {
+  background: rgba(28, 28, 34, 0.7);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.kb-panemenu-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.kb-panemenu-btn:hover {
+  background: color-mix(in oklab, var(--primary-400) 18%, transparent);
+  color: var(--primary-400);
+}
+
 /* ─── Find-in-page overlay (bottom-centred glass pill) ─────────── */
 .kb-findbar-wrap {
   position: absolute;
@@ -595,9 +837,14 @@
   box-shadow: 0 0 0 1.5px var(--primary-400);
 }
 .kb-urlbar .ico  { width: 14px; height: 14px; opacity: 0.7; flex-shrink: 0; display: none; }
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-urlbar {
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-urlbar .ico {
-  display: inline-block;
-  margin: 0 auto;
+  display: block;
+  margin: 0;
 }
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-urlbar .kb-urlbar-input {
   display: none;
@@ -774,7 +1021,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px 8px 80px;
+  padding: 8px 12px;
   background: var(--chrome-bg);
   height: 52px;
 }
@@ -790,7 +1037,7 @@
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
-  padding: 8px 12px 8px 80px;
+  padding: 8px 12px;
   min-width: 0;
   contain: layout style;
 }
@@ -989,9 +1236,14 @@
 .kb-side.kb-rail.is-left  .kb-rail-settings { align-self: flex-start; }
 .kb-side.kb-rail.is-right .kb-rail-settings { align-self: flex-end; }
 
-.kb-window.has-rail.rail-right .kb-topbar { padding-right: 64px; }
 .kb-window.has-rail.rail-left  .kb-main { padding-left: 52px; }
 .kb-window.has-rail.rail-right .kb-main { padding-right: 52px; }
+
+.kb-window.has-rail.rail-left  .kb-topbar { padding-left: 52px; padding-right: 10px; }
+.kb-window.has-rail.rail-right .kb-topbar { padding-left: 10px; padding-right: 52px; }
+
+.kb-window.has-rail.rail-left  .kb-topbar-row.primary { padding-left: 28px; }
+.kb-window.has-rail.rail-right .kb-topbar-row.primary { padding-left: 70px; }
 
 .kb-window.has-rail .kb-main,
 .kb-window.has-rail .kb-topbar {
@@ -1008,6 +1260,9 @@
 }
 .kb-window.has-rail.rail-right:has(.kb-side.kb-rail.is-expanded) .kb-topbar {
   padding-right: var(--sb-w);
+}
+.kb-window.has-rail.rail-left:has(.kb-side.kb-rail.is-expanded) .kb-topbar-row.primary {
+  padding-left: 0;
 }
 
 .kb-window:not(.glass-on) .kb-side.kb-rail { background: var(--chrome-bg); }
@@ -1045,6 +1300,11 @@
   background: transparent;
   box-shadow: none;
 }
+
+.kb-content.is-split {
+  border-color: transparent;
+}
+[data-mode="dark"] .kb-content.is-split { box-shadow: none; }
 
 .kb-urlpill-inline {
   width: 100%;

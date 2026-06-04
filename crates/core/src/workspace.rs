@@ -2,6 +2,7 @@
 //! essentials, and privacy preset.
 
 use crate::ids::{TabId, WorkspaceId};
+use crate::pane::{PaneBranch, PaneNode, SplitDir};
 use crate::privacy::PrivacyMode;
 use serde::{Deserialize, Serialize};
 
@@ -42,6 +43,12 @@ pub struct Workspace {
     pub essentials: Vec<EssentialPin>,
     pub active_tab_id: Option<TabId>,
     pub privacy_mode: PrivacyMode,
+    /// In-window split layout. `None` shows a single tab (`active_tab_id`);
+    /// `Some(tree)` tiles the leaf tabs side-by-side with `active_tab_id` as
+    /// the focused pane. Serde-defaults to `None` so existing state loads
+    /// unchanged. See [`crate::pane`].
+    #[serde(default)]
+    pub pane_tree: Option<PaneNode>,
     /// When true this is a private / incognito workspace: its tabs use a
     /// non-persistent WebView data store and the workspace (and its tabs,
     /// essentials, history) is never written to disk. Defaults to `false` so
@@ -71,6 +78,7 @@ impl Workspace {
             essentials: Vec::new(),
             active_tab_id: None,
             privacy_mode: PrivacyMode::default(),
+            pane_tree: None,
             ephemeral,
         }
     }
@@ -166,6 +174,181 @@ impl Workspace {
         Self {
             ephemeral,
             ..self.clone()
+        }
+    }
+
+    // -- panes --------------------------------------------------------------
+
+    /// Tabs currently displayed: the pane leaves when split, otherwise just the
+    /// active tab (or nothing when the workspace is empty).
+    pub fn displayed_tab_ids(&self) -> Vec<TabId> {
+        match &self.pane_tree {
+            Some(tree) => tree.leaves(),
+            None => self.active_tab_id.into_iter().collect(),
+        }
+    }
+
+    /// Replace the whole pane layout.
+    pub fn with_pane_tree(&self, pane_tree: Option<PaneNode>) -> Self {
+        Self {
+            pane_tree,
+            ..self.clone()
+        }
+    }
+
+    /// Focus `tab` as the active pane. When split and `tab` isn't already a
+    /// displayed leaf, it takes over the currently-focused pane (the page in
+    /// the focused viewport is swapped for `tab`). When not split this is a
+    /// plain active-tab change.
+    pub fn with_focused_tab(&self, tab: TabId) -> Self {
+        match &self.pane_tree {
+            Some(tree) if !tree.contains(tab) => {
+                let focused = self.active_tab_id.unwrap_or_else(|| tree.first_leaf());
+                Self {
+                    pane_tree: Some(tree.with_leaf_replaced(focused, tab)),
+                    active_tab_id: Some(tab),
+                    ..self.clone()
+                }
+            }
+            _ => Self {
+                active_tab_id: Some(tab),
+                ..self.clone()
+            },
+        }
+    }
+
+    /// Split the focused pane along `dir`, placing `new_tab` in the new pane and
+    /// focusing it. `place_new_first` puts `new_tab` in the left/top slot.
+    /// Starts a fresh tree from the active tab when not yet split. `new_tab`
+    /// must already be present in `tab_order` (the caller adds it).
+    pub fn with_active_pane_split(
+        &self,
+        dir: SplitDir,
+        new_tab: TabId,
+        place_new_first: bool,
+    ) -> Self {
+        let Some(focused) = self.active_tab_id else {
+            return self.clone();
+        };
+        let base = self
+            .pane_tree
+            .clone()
+            .unwrap_or_else(|| PaneNode::leaf(focused));
+
+        Self {
+            pane_tree: Some(base.with_split(focused, dir, new_tab, place_new_first)),
+            active_tab_id: Some(new_tab),
+            ..self.clone()
+        }
+    }
+
+    /// Swap the tab shown by the `target` pane leaf for `replacement`, focusing
+    /// it. If `replacement` is already shown elsewhere it's removed from there
+    /// first (so it appears once). No-op if `target == replacement`.
+    pub fn with_pane_leaf_swapped(&self, target: TabId, replacement: TabId) -> Self {
+        if target == replacement {
+            return self.clone();
+        }
+        let Some(tree) = &self.pane_tree else {
+            return Self {
+                active_tab_id: Some(replacement),
+                ..self.clone()
+            };
+        };
+        let base = if tree.contains(replacement) {
+            tree.with_closed_leaf(replacement)
+                .unwrap_or_else(|| PaneNode::leaf(target))
+        } else {
+            tree.clone()
+        };
+
+        Self {
+            pane_tree: Some(base.with_leaf_replaced(target, replacement)),
+            active_tab_id: Some(replacement),
+            ..self.clone()
+        }
+    }
+
+    /// Split the `target` pane along `dir`, placing the already-open `moved` tab
+    /// in the new pane (and focusing it). If `moved` is currently shown in
+    /// another pane it is first removed from there so it appears exactly once.
+    /// `place_new_first` puts `moved` in the left/top slot. No-op if
+    /// `target == moved`.
+    pub fn with_pane_split_with(
+        &self,
+        target: TabId,
+        dir: SplitDir,
+        place_new_first: bool,
+        moved: TabId,
+    ) -> Self {
+        if target == moved {
+            return self.clone();
+        }
+
+        let anchor = self.active_tab_id.unwrap_or(target);
+        let mut base = self
+            .pane_tree
+            .clone()
+            .unwrap_or_else(|| PaneNode::leaf(anchor));
+        if base.contains(moved) {
+            base = base
+                .with_closed_leaf(moved)
+                .unwrap_or_else(|| PaneNode::leaf(target));
+        }
+        if !base.contains(target) {
+            base = PaneNode::leaf(target);
+        }
+
+        Self {
+            pane_tree: Some(base.with_split(target, dir, moved, place_new_first)),
+            active_tab_id: Some(moved),
+            ..self.clone()
+        }
+    }
+
+    /// Reconcile the pane layout after `removed` has left `tab_order`. Collapses
+    /// the split when only one leaf remains and keeps `active_tab_id` pointing at
+    /// a surviving leaf.
+    pub fn with_pane_after_removed(&self, removed: TabId) -> Self {
+        let Some(tree) = &self.pane_tree else {
+            return self.clone();
+        };
+        if !tree.contains(removed) {
+            return self.clone();
+        }
+
+        match tree.with_closed_leaf(removed) {
+            None => Self {
+                pane_tree: None,
+                ..self.clone()
+            },
+            Some(t) if t.is_leaf() => Self {
+                pane_tree: None,
+                active_tab_id: Some(t.first_leaf()),
+                ..self.clone()
+            },
+            Some(t) => {
+                let active = match self.active_tab_id {
+                    Some(a) if t.contains(a) => Some(a),
+                    _ => Some(t.first_leaf()),
+                };
+                Self {
+                    pane_tree: Some(t),
+                    active_tab_id: active,
+                    ..self.clone()
+                }
+            }
+        }
+    }
+
+    /// Set the ratio (permille) of the split reached by `path`.
+    pub fn with_pane_ratio(&self, path: &[PaneBranch], ratio: u16) -> Self {
+        match &self.pane_tree {
+            Some(tree) => Self {
+                pane_tree: Some(tree.with_ratio_at(path, ratio)),
+                ..self.clone()
+            },
+            None => self.clone(),
         }
     }
 }

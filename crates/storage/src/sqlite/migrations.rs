@@ -53,8 +53,12 @@ CREATE TABLE meta (
 );
 "#;
 
+const M0002_PANE_TREE: &str = r#"
+ALTER TABLE workspaces ADD COLUMN pane_tree TEXT;
+"#;
+
 fn all() -> Migrations<'static> {
-    Migrations::new(vec![M::up(M0001_INITIAL)])
+    Migrations::new(vec![M::up(M0001_INITIAL), M::up(M0002_PANE_TREE)])
 }
 
 pub fn run(conn: &mut Connection) -> StorageResult<()> {

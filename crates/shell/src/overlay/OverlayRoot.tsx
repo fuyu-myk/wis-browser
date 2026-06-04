@@ -7,6 +7,7 @@
 
 import { FindSurface } from '@/overlay/surfaces/FindSurface'
 import { PaletteSurface } from '@/overlay/surfaces/PaletteSurface'
+import { PaneSplitMenuSurface } from '@/overlay/surfaces/PaneSplitMenuSurface'
 
 interface OverlayRootProps {
   surface: string
@@ -15,6 +16,7 @@ interface OverlayRootProps {
 export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'find') return <FindSurface />
   if (surface === 'palette') return <PaletteSurface />
+  if (surface === 'tabmenu') return <PaneSplitMenuSurface />
   // eslint-disable-next-line no-console
   console.warn(`Unknown overlay surface: ${surface}`)
   return null

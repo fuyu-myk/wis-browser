@@ -239,6 +239,65 @@ fn build_menu(
         )?)
         .build()?;
 
+    let panes_menu = SubmenuBuilder::new(app, "Panes")
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::SplitPaneHorizontal,
+            "Split Right",
+        )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::SplitPaneVertical,
+            "Split Down",
+        )?)
+        .separator()
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::FocusPaneLeft,
+            "Focus Pane Left",
+        )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::FocusPaneRight,
+            "Focus Pane Right",
+        )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::FocusPaneUp,
+            "Focus Pane Up",
+        )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::FocusPaneDown,
+            "Focus Pane Down",
+        )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::FocusNextPane,
+            "Focus Next Pane",
+        )?)
+        .separator()
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::UnsplitPanes,
+            "Unsplit (Single Pane)",
+        )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::ClosePane,
+            "Close Pane",
+        )?)
+        .build()?;
+
     let window_menu = SubmenuBuilder::new(app, "Window")
         .item(&PredefinedMenuItem::minimize(app, None)?)
         .item(&PredefinedMenuItem::maximize(app, None)?)
@@ -254,6 +313,7 @@ fn build_menu(
             &view_menu,
             &history_menu,
             &tabs_menu,
+            &panes_menu,
             &window_menu,
         ])
         .build()

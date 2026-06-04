@@ -17,8 +17,8 @@ use tauri::webview::{PageLoadEvent, PageLoadPayload, WebviewBuilder};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
 use url::Url;
 use wis_core::{
-    AccentColor, BrowserState, PrivacyMode, Tab, TabId, UserSettings, UserSettingsPatch, WisError,
-    WisResult, Workspace, WorkspaceId,
+    AccentColor, BrowserState, PaneBranch, PrivacyMode, SplitDir, Tab, TabId, UserSettings,
+    UserSettingsPatch, WisError, WisResult, Workspace, WorkspaceId,
 };
 use wis_network::{Decision, OutboundRequest, RequestType};
 
@@ -272,6 +272,86 @@ pub async fn create_tab(
     mutate(&app, &state, |s| s.with_new_tab(workspace_id, &url)).await
 }
 
+/// Split the workspace's focused pane along `dir`, opening `url` in the new
+/// pane and focusing it. Returns the newly created tab. The frontend's webview
+/// reconciler then spins up its native webview and tiles it into the pane.
+#[tauri::command]
+pub async fn split_pane(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    dir: SplitDir,
+    place_new_first: bool,
+    url: String,
+) -> WisResult<Tab> {
+    mutate(&app, &state, |s| {
+        s.with_pane_split(workspace_id, dir, place_new_first, &url)
+    })
+    .await
+}
+
+/// Replace a pane's tab with an already-open `moved_tab` (drag to pane centre).
+/// A throwaway placeholder in that pane is closed.
+#[tauri::command]
+pub async fn replace_pane_leaf(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    target_tab: TabId,
+    moved_tab: TabId,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| {
+        s.with_pane_leaf_replaced(workspace_id, target_tab, moved_tab)
+    })
+    .await
+}
+
+/// Split the `target_tab` pane along `dir` with the already-open `moved_tab`
+/// (dragged from the tab list onto a pane). `place_new_first` puts the moved
+/// tab in the left/top slot.
+#[tauri::command]
+pub async fn split_pane_with(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    target_tab: TabId,
+    dir: SplitDir,
+    place_new_first: bool,
+    moved_tab: TabId,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| {
+        s.with_pane_split_with(workspace_id, target_tab, dir, place_new_first, moved_tab)
+    })
+    .await
+}
+
+/// Collapse all splits in a workspace back to a single pane (the focused tab).
+/// Other panes' tabs remain open as background tabs.
+#[tauri::command]
+pub async fn unsplit_panes(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| s.with_panes_unsplit(workspace_id)).await
+}
+
+/// Set the divider ratio (permille, 0..=1000) of the split reached by `path`
+/// from the workspace's pane-tree root.
+#[tauri::command]
+pub async fn set_pane_ratio(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    path: Vec<PaneBranch>,
+    ratio: u16,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| {
+        s.with_pane_ratio(workspace_id, &path, ratio)
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn close_tab(app: AppHandle, state: State<'_, AppState>, id: TabId) -> WisResult<()> {
     mutate_unit(&app, &state, |s| s.with_tab_closed(id)).await
@@ -360,6 +440,8 @@ pub async fn create_tab_webview(
         })?;
 
     let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
+
+    let label_ident = label.clone();
 
     let ephemeral = {
         let browser = state.browser.lock().await;
@@ -451,6 +533,29 @@ pub async fn create_tab_webview(
 
     // Move every overlay back to the top of the subview stack.
     crate::overlay::promote_overlays_to_front(&app);
+
+    // Stamp the native WKWebView so the pane-focus mouse monitor can identify
+    // which tab a click landed in (see `pane_focus`).
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
+        let ident = label_ident.clone();
+        let _ = child.with_webview(move |w| unsafe {
+            let wk: *mut AnyObject = w.inner() as *mut AnyObject;
+            if wk.is_null() {
+                return;
+            }
+            let Ok(c) = std::ffi::CString::new(ident.as_str()) else {
+                return;
+            };
+            let ns: *mut AnyObject =
+                msg_send![objc2::class!(NSString), stringWithUTF8String: c.as_ptr()];
+            let _: () = msg_send![wk, setAccessibilityIdentifier: ns];
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = label_ident;
 
     let privacy_mode = {
         let browser = state.browser.lock().await;

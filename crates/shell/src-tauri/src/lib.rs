@@ -5,6 +5,7 @@ mod favicons;
 mod find;
 mod menu;
 mod overlay;
+mod pane_focus;
 mod state;
 
 use std::sync::Arc;
@@ -107,6 +108,9 @@ pub fn run() {
                 log::error!("menu install failed: {err}");
             }
 
+            // Native click-to-focus for split panes.
+            pane_focus::install(app.handle());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -122,6 +126,11 @@ pub fn run() {
             commands::set_active_workspace,
             commands::set_workspace_privacy_mode,
             commands::create_tab,
+            commands::split_pane,
+            commands::split_pane_with,
+            commands::replace_pane_leaf,
+            commands::set_pane_ratio,
+            commands::unsplit_panes,
             commands::close_tab,
             commands::reorder_tabs,
             commands::pin_tab,

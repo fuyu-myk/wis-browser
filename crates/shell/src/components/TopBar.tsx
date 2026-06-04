@@ -44,7 +44,7 @@ export function TopBar({ state }: TopBarProps) {
 
   return (
     <div className="kb-topbar">
-      <div className="kb-topbar-row primary">
+      <div className="kb-topbar-row primary" data-tauri-drag-region>
         <NavRow activeTab={activeTab} circular />
         <div className="kb-urlpill-wrap">
           <FloatingUrlBar
@@ -65,6 +65,7 @@ export function TopBar({ state }: TopBarProps) {
       </div>
       <div className="kb-topbar-row tabs">
         <HorizontalTabs
+          workspaceId={activeWorkspace?.id ?? ('' as never)}
           tabs={tabs}
           activeTabId={activeTab?.id ?? null}
           integrateUrlBar={false}

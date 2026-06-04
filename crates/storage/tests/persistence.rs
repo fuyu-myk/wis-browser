@@ -167,6 +167,31 @@ fn saving_state_with_a_dangling_tab_id_is_rejected() {
 }
 
 #[test]
+fn pane_layout_round_trips() {
+    use wis_core::SplitDir;
+
+    let store = fresh_store();
+    let s0 = BrowserState::new_with_defaults();
+    let ws_id = s0.workspaces[0].id;
+    let (s1, _t1) = s0.with_new_tab(ws_id, "https://a.example/").unwrap();
+    // Split the active pane: opens a second tab side-by-side.
+    let (s2, _t2) = s1
+        .with_pane_split(ws_id, SplitDir::Horizontal, false, "https://b.example/")
+        .unwrap();
+
+    assert!(
+        s2.workspaces[0].pane_tree.is_some(),
+        "precondition: split set"
+    );
+
+    store.save_state(&s2).expect("save");
+    let loaded = store.load_state().expect("load").unwrap();
+
+    assert_eq!(loaded.workspaces[0].pane_tree, s2.workspaces[0].pane_tree);
+    assert_eq!(loaded, s2);
+}
+
+#[test]
 fn ephemeral_workspaces_are_not_persisted() {
     // A private (ephemeral) workspace and its tabs must never hit disk.
     let store = fresh_store();
@@ -180,7 +205,11 @@ fn ephemeral_workspaces_are_not_persisted() {
     store.save_state(&s2).expect("save");
     let loaded = store.load_state().expect("load").unwrap();
 
-    assert_eq!(loaded.workspaces.len(), 1, "private workspace must be dropped");
+    assert_eq!(
+        loaded.workspaces.len(),
+        1,
+        "private workspace must be dropped"
+    );
     assert_eq!(loaded.workspaces[0].id, persistent_id);
     assert!(
         loaded.tabs.iter().all(|t| t.workspace_id == persistent_id),

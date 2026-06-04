@@ -43,6 +43,24 @@ pub enum KeyAction {
     OpenSettings,
     NewPrivateWindow,
     NewWindow,
+    /// Split the focused pane horizontally (side-by-side), opening a new tab in
+    /// the new pane.
+    SplitPaneHorizontal,
+    /// Split the focused pane vertically (top/bottom), opening a new tab in the
+    /// new pane.
+    SplitPaneVertical,
+    /// Close the focused pane (and its tab), collapsing the split.
+    ClosePane,
+    /// Move focus to the next pane in the split.
+    FocusNextPane,
+    /// Move focus to the pane to the left / right / above / below the focused
+    /// one. No-op when not split.
+    FocusPaneLeft,
+    FocusPaneRight,
+    FocusPaneUp,
+    FocusPaneDown,
+    /// Collapse all splits back to a single pane (the focused tab).
+    UnsplitPanes,
 }
 
 impl KeyAction {
@@ -77,6 +95,15 @@ impl KeyAction {
             Self::OpenSettings => "open_settings",
             Self::NewPrivateWindow => "new_private_window",
             Self::NewWindow => "new_window",
+            Self::SplitPaneHorizontal => "split_pane_horizontal",
+            Self::SplitPaneVertical => "split_pane_vertical",
+            Self::ClosePane => "close_pane",
+            Self::FocusNextPane => "focus_next_pane",
+            Self::FocusPaneLeft => "focus_pane_left",
+            Self::FocusPaneRight => "focus_pane_right",
+            Self::FocusPaneUp => "focus_pane_up",
+            Self::FocusPaneDown => "focus_pane_down",
+            Self::UnsplitPanes => "unsplit_panes",
         }
     }
 
@@ -93,7 +120,7 @@ impl KeyAction {
     }
 }
 
-const ALL_ACTIONS: [KeyAction; 27] = [
+const ALL_ACTIONS: [KeyAction; 36] = [
     KeyAction::NewTab,
     KeyAction::NewWorkspace,
     KeyAction::CloseTab,
@@ -121,6 +148,15 @@ const ALL_ACTIONS: [KeyAction; 27] = [
     KeyAction::OpenSettings,
     KeyAction::NewPrivateWindow,
     KeyAction::NewWindow,
+    KeyAction::SplitPaneHorizontal,
+    KeyAction::SplitPaneVertical,
+    KeyAction::ClosePane,
+    KeyAction::FocusNextPane,
+    KeyAction::FocusPaneLeft,
+    KeyAction::FocusPaneRight,
+    KeyAction::FocusPaneUp,
+    KeyAction::FocusPaneDown,
+    KeyAction::UnsplitPanes,
 ];
 
 /// Default keyboard accelerators. `NewWindow` has no entry on purpose: the
@@ -152,6 +188,14 @@ pub fn default_keymap() -> HashMap<KeyAction, String> {
         (KeyAction::OpenCommandPalette, "Cmd+L"),
         (KeyAction::OpenSettings, "Cmd+,"),
         (KeyAction::NewPrivateWindow, "Cmd+Shift+N"),
+        (KeyAction::SplitPaneHorizontal, "Cmd+D"),
+        (KeyAction::SplitPaneVertical, "Cmd+Shift+D"),
+        (KeyAction::ClosePane, "Alt+Cmd+W"),
+        (KeyAction::FocusPaneLeft, "Alt+Cmd+Left"),
+        (KeyAction::FocusPaneRight, "Alt+Cmd+Right"),
+        (KeyAction::FocusPaneUp, "Alt+Cmd+Up"),
+        (KeyAction::FocusPaneDown, "Alt+Cmd+Down"),
+        (KeyAction::UnsplitPanes, "Alt+Cmd+U"),
     ];
     pairs.iter().map(|(a, s)| (*a, (*s).to_string())).collect()
 }
@@ -183,7 +227,11 @@ mod tests {
     #[test]
     fn default_keymap_includes_every_action_except_reserved() {
         // `NewWindow` is reserved for multi-window support in future.
-        const UNBOUND: &[KeyAction] = &[KeyAction::NewWindow, KeyAction::FocusUrlBarAlt];
+        const UNBOUND: &[KeyAction] = &[
+            KeyAction::NewWindow,
+            KeyAction::FocusUrlBarAlt,
+            KeyAction::FocusNextPane,
+        ];
         let map = default_keymap();
         for action in KeyAction::all() {
             if UNBOUND.contains(action) {

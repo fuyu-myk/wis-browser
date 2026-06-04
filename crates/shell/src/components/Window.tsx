@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import type { BrowserState, Tab, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
@@ -57,7 +58,7 @@ export function Window({ state, settings }: WindowProps) {
       })}
     >
       {isSidebar && (
-        <div className="kb-window-top">
+        <div className="kb-window-top" data-tauri-drag-region>
           <NavRow activeTab={activeTab} circular />
           {urlAtTop && (
             <div className="kb-urlpill-wrap">
@@ -100,6 +101,47 @@ export function Window({ state, settings }: WindowProps) {
         </>
       )}
       <Content state={state} />
+      <WindowResizeEdges />
     </div>
+  )
+}
+
+// Thin resize handles around the window perimeter.
+const RESIZE_EDGES = [
+  'North',
+  'South',
+  'East',
+  'West',
+  'NorthEast',
+  'NorthWest',
+  'SouthEast',
+  'SouthWest',
+] as const
+
+const EDGE_CLASS: Record<(typeof RESIZE_EDGES)[number], string> = {
+  North: 'n',
+  South: 's',
+  East: 'e',
+  West: 'w',
+  NorthEast: 'ne',
+  NorthWest: 'nw',
+  SouthEast: 'se',
+  SouthWest: 'sw',
+}
+
+function WindowResizeEdges() {
+  return (
+    <>
+      {RESIZE_EDGES.map((dir) => (
+        <div
+          key={dir}
+          className={`kb-resize kb-resize-${EDGE_CLASS[dir]}`}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return
+            void getCurrentWindow().startResizeDragging(dir).catch(() => undefined)
+          }}
+        />
+      ))}
+    </>
   )
 }

@@ -2,15 +2,23 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
-import type { Tab, TabId } from '@/bindings/types'
+import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { LockIcon, XIcon } from '@/lib/icons'
 import { tabDisplayName } from '@/lib/url'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import {
+  useTabSplit,
+  tabDropTarget,
+  reorderedTabIds,
+  type TabReorder,
+  type DropTarget,
+} from '@/hooks/useTabSplit'
 
 import { TabFavicon } from '@/components/TabFavicon'
 
 interface HorizontalTabsProps {
+  workspaceId: WorkspaceId
   tabs: Tab[]
   activeTabId: TabId | null
   /** When true, render the URL inside the active tab. */
@@ -77,6 +85,7 @@ function computeSizing(
 }
 
 export function HorizontalTabs({
+  workspaceId,
   tabs,
   activeTabId,
   integrateUrlBar,
@@ -91,11 +100,34 @@ export function HorizontalTabs({
     mutationFn: (id: TabId) => commands.closeTab(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
   })
+  const reorder = useMutation({
+    mutationFn: (order: TabId[]) => commands.reorderTabs(workspaceId, order),
+    onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
+  })
+  const { startTabDrag, draggedRef, openSplitMenu } = useTabSplit({
+    workspaceId,
+    activeTabId,
+  })
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const stripRef = useRef<HTMLDivElement>(null)
   const activeRef = useRef<HTMLDivElement>(null)
   const [stripWidth, setStripWidth] = useState(0)
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
+
+  const makeReorder = (tabId: TabId): TabReorder => ({
+    targetAtPoint: (x, y) =>
+      stripRef.current ? tabDropTarget(stripRef.current, 'x', x, y) : null,
+    onTarget: setDropTarget,
+    onDrop: (idx) => {
+      const next = reorderedTabIds(
+        tabs.map((t) => t.id),
+        tabId,
+        idx,
+      )
+      if (next) reorder.mutate(next)
+    },
+  })
 
   useLayoutEffect(() => {
     const strip = stripRef.current
@@ -143,21 +175,32 @@ export function HorizontalTabs({
       ref={wrapRef}
     >
       <div className={cx('tabs-h', { compact })} ref={stripRef}>
-        {tabs.map((tab) => {
+        {tabs.map((tab, i) => {
           const isActive = tab.id === activeTabId
           const size = isActive ? sizing.activeSize : sizing.inactiveSize
           return (
             <div
               key={tab.id}
               ref={isActive ? activeRef : undefined}
+              data-tab-id={tab.id}
               role="button"
               tabIndex={0}
               className={cx('h-tab', {
                 active: isActive,
                 'as-urlbar': isActive && integrateUrlBar,
+                'drop-before': dropTarget?.anchorIndex === i && dropTarget.side === 'before',
+                'drop-after': dropTarget?.anchorIndex === i && dropTarget.side === 'after',
               })}
               style={{ flex: `0 0 ${size}px` }}
-              onClick={() => setActive.mutate(tab.id)}
+              onPointerDown={(e) => startTabDrag(e, tab.id, makeReorder(tab.id))}
+              onClick={() => {
+                if (draggedRef.current) {
+                  draggedRef.current = false
+                  return
+                }
+                setActive.mutate(tab.id)
+              }}
+              onContextMenu={(e) => openSplitMenu(e, tab.id)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()

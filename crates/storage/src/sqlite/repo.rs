@@ -71,9 +71,14 @@ fn insert_workspace(
     workspace: &Workspace,
     position: i64,
 ) -> StorageResult<()> {
+    let pane_tree_json = workspace
+        .pane_tree
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
     tx.execute(
-        "INSERT INTO workspaces (id, position, name, accent, icon, privacy_mode, active_tab_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO workspaces (id, position, name, accent, icon, privacy_mode, active_tab_id, pane_tree)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![
             uuid_string(workspace.id.into()),
             position,
@@ -82,6 +87,7 @@ fn insert_workspace(
             workspace.icon,
             enum_to_text(&workspace.privacy_mode)?,
             workspace.active_tab_id.map(|id| uuid_string(id.into())),
+            pane_tree_json,
         ],
     )?;
 
@@ -195,7 +201,7 @@ pub fn load(conn: &Connection) -> StorageResult<Option<BrowserState>> {
 /// [`assemble_workspaces`].
 fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, accent, icon, privacy_mode, active_tab_id
+        "SELECT id, name, accent, icon, privacy_mode, active_tab_id, pane_tree
          FROM workspaces ORDER BY position ASC",
     )?;
     let mut rows = stmt.query([])?;
@@ -204,6 +210,11 @@ fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
     while let Some(row) = rows.next()? {
         let id_str: String = row.get(0)?;
         let active_tab_id_str: Option<String> = row.get(5)?;
+        let pane_tree_json: Option<String> = row.get(6)?;
+        let pane_tree = pane_tree_json
+            .as_deref()
+            .map(serde_json::from_str)
+            .transpose()?;
 
         out.push(Workspace {
             id: WorkspaceId::from(parse_uuid(&id_str)?),
@@ -216,6 +227,7 @@ fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
                 .map(parse_uuid)
                 .transpose()?
                 .map(TabId::from),
+            pane_tree,
             tab_order: Vec::new(),
             pinned_tab_ids: Vec::new(),
             essentials: Vec::new(),

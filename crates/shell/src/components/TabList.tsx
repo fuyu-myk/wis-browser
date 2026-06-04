@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
@@ -6,6 +7,13 @@ import { cx } from '@/lib/cx'
 import { PlusIcon, XIcon } from '@/lib/icons'
 import { tabDisplayName } from '@/lib/url'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import {
+  useTabSplit,
+  tabDropTarget,
+  reorderedTabIds,
+  type TabReorder,
+  type DropTarget,
+} from '@/hooks/useTabSplit'
 
 import { TabFavicon } from '@/components/TabFavicon'
 
@@ -13,6 +21,8 @@ interface TabListProps {
   workspaceId: WorkspaceId
   tabs: Tab[]
   activeTabId: TabId | null
+  /** Notified when the right-click split menu opens/closes (expand sidebar). */
+  onSplitMenuOpenChange?: (open: boolean) => void
 }
 
 /**
@@ -21,7 +31,7 @@ interface TabListProps {
  * renders a coloured "fav" tile (favicon placeholder), title, and a
  * close affordance on hover.
  */
-export function TabList({ workspaceId, tabs, activeTabId }: TabListProps) {
+export function TabList({ workspaceId, tabs, activeTabId, onSplitMenuOpenChange }: TabListProps) {
   const qc = useQueryClient()
   const setActive = useMutation({
     mutationFn: (id: TabId) => commands.setActiveTab(id),
@@ -35,9 +45,36 @@ export function TabList({ workspaceId, tabs, activeTabId }: TabListProps) {
     mutationFn: () => commands.createTab(workspaceId, 'about:blank'),
     onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
   })
+  const reorder = useMutation({
+    mutationFn: (order: TabId[]) => commands.reorderTabs(workspaceId, order),
+    onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
+  })
+
+  const { startTabDrag, draggedRef, openSplitMenu } = useTabSplit({
+    workspaceId,
+    activeTabId,
+    onMenuOpenChange: onSplitMenuOpenChange,
+  })
+
+  const listRef = useRef<HTMLDivElement>(null)
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
+
+  const makeReorder = (tabId: TabId): TabReorder => ({
+    targetAtPoint: (x, y) =>
+      listRef.current ? tabDropTarget(listRef.current, 'y', x, y) : null,
+    onTarget: setDropTarget,
+    onDrop: (idx) => {
+      const next = reorderedTabIds(
+        tabs.map((t) => t.id),
+        tabId,
+        idx,
+      )
+      if (next) reorder.mutate(next)
+    },
+  })
 
   return (
-    <div className="kb-tabs">
+    <div className="kb-tabs" ref={listRef}>
       <div className="group-label">tabs</div>
       <button
         type="button"
@@ -48,13 +85,27 @@ export function TabList({ workspaceId, tabs, activeTabId }: TabListProps) {
         <PlusIcon />
         <span>New tab</span>
       </button>
-      {tabs.map((tab) => (
+      {tabs.map((tab, i) => (
         <div
           key={tab.id}
-          className={cx('kb-tab', { active: tab.id === activeTabId, pinned: tab.pinned })}
+          data-tab-id={tab.id}
+          className={cx('kb-tab', {
+            active: tab.id === activeTabId,
+            pinned: tab.pinned,
+            'drop-before': dropTarget?.anchorIndex === i && dropTarget.side === 'before',
+            'drop-after': dropTarget?.anchorIndex === i && dropTarget.side === 'after',
+          })}
           role="button"
           tabIndex={0}
-          onClick={() => setActive.mutate(tab.id)}
+          onPointerDown={(e) => startTabDrag(e, tab.id, makeReorder(tab.id))}
+          onClick={() => {
+            if (draggedRef.current) {
+              draggedRef.current = false
+              return
+            }
+            setActive.mutate(tab.id)
+          }}
+          onContextMenu={(e) => openSplitMenu(e, tab.id)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault()

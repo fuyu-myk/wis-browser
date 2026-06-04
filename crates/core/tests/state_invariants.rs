@@ -2,7 +2,8 @@
 //! preserves the structural invariant defined by `invariant_violations`.
 
 use wis_core::{
-    AccentColor, BrowserState, PrivacyMode, ThemeMode, UserSettingsPatch, WisError, Workspace,
+    AccentColor, BrowserState, PrivacyMode, SplitDir, ThemeMode, UserSettingsPatch, WisError,
+    Workspace,
 };
 
 fn assert_clean(state: &BrowserState) {
@@ -11,6 +12,117 @@ fn assert_clean(state: &BrowserState) {
         violations.is_empty(),
         "expected no invariant violations, got: {:#?}",
         violations
+    );
+}
+
+#[test]
+fn pane_split_close_unsplit_preserve_invariants() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s2, _b) = s1
+        .with_pane_split(ws, SplitDir::Horizontal, false, "https://b.example/")
+        .unwrap();
+    assert!(s2.workspaces[0].pane_tree.is_some());
+    assert_clean(&s2);
+
+    // Drag a third (background) tab onto pane `a`, placing it below.
+    let (s3, c) = s2.with_new_tab(ws, "https://c.example/").unwrap();
+    let s4 = s3
+        .with_pane_split_with(ws, a.id, SplitDir::Vertical, false, c.id)
+        .unwrap();
+    assert_clean(&s4);
+    let leaves = s4.workspaces[0].pane_tree.as_ref().unwrap().leaves();
+    assert!(leaves.contains(&a.id) && leaves.contains(&c.id));
+    assert_eq!(s4.workspaces[0].active_tab_id, Some(c.id));
+
+    // Unsplit collapses to a single pane but keeps the tabs open.
+    let s5 = s4.with_panes_unsplit(ws).unwrap();
+    assert!(s5.workspaces[0].pane_tree.is_none());
+    assert_eq!(s5.tabs.len(), s4.tabs.len());
+    assert_clean(&s5);
+}
+
+#[test]
+fn center_drop_replaces_a_placeholder_pane_and_closes_it() {
+    // Right-click-the-active-tab split leaves an `about:blank` placeholder in the
+    // complement pane; dropping a (pre-existing, background) tab on its centre
+    // must swap it in and close the throwaway.
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s2, b) = s1.with_new_tab(ws, "https://b.example/").unwrap();
+    // `b` is now a background tab; re-focus `a`, then split it against a blank.
+    let s3 = s2.with_active_tab(a.id).unwrap();
+    let (s4, placeholder) = s3
+        .with_pane_split(ws, SplitDir::Horizontal, false, "about:blank")
+        .unwrap();
+    assert_clean(&s4);
+
+    let s5 = s4
+        .with_pane_leaf_replaced(ws, placeholder.id, b.id)
+        .unwrap();
+    assert_clean(&s5);
+
+    let leaves = s5.workspaces[0].pane_tree.as_ref().unwrap().leaves();
+    assert!(leaves.contains(&a.id) && leaves.contains(&b.id));
+    assert!(
+        !leaves.contains(&placeholder.id),
+        "placeholder left the layout"
+    );
+    assert!(
+        s5.tabs.iter().all(|t| t.id != placeholder.id),
+        "placeholder tab was closed"
+    );
+    assert_eq!(s5.workspaces[0].active_tab_id, Some(b.id));
+}
+
+#[test]
+fn center_drop_onto_a_real_pane_keeps_the_displaced_tab() {
+    // Replacing a pane that shows a real page keeps that page as a background tab.
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s2, c) = s1.with_new_tab(ws, "https://c.example/").unwrap();
+    // `c` is a background tab; re-focus `a`, then split it against a real page `b`.
+    let s3 = s2.with_active_tab(a.id).unwrap();
+    let (s4, b) = s3
+        .with_pane_split(ws, SplitDir::Horizontal, false, "https://b.example/")
+        .unwrap();
+    assert_clean(&s4);
+
+    let s5 = s4.with_pane_leaf_replaced(ws, b.id, c.id).unwrap();
+    assert_clean(&s5);
+
+    let leaves = s5.workspaces[0].pane_tree.as_ref().unwrap().leaves();
+    assert!(leaves.contains(&c.id) && !leaves.contains(&b.id));
+    assert!(
+        s5.tabs.iter().any(|t| t.id == b.id),
+        "displaced real page stays open as a background tab"
+    );
+    assert_eq!(s5.workspaces[0].active_tab_id, Some(c.id));
+}
+
+#[test]
+fn center_drop_onto_settings_keeps_it_open() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s2, c) = s1.with_new_tab(ws, "https://c.example/").unwrap();
+    let s3 = s2.with_active_tab(a.id).unwrap();
+    let (s4, settings) = s3
+        .with_pane_split(ws, SplitDir::Horizontal, false, "about:settings")
+        .unwrap();
+    assert_clean(&s4);
+
+    let s5 = s4.with_pane_leaf_replaced(ws, settings.id, c.id).unwrap();
+    assert_clean(&s5);
+
+    let leaves = s5.workspaces[0].pane_tree.as_ref().unwrap().leaves();
+    assert!(leaves.contains(&c.id) && !leaves.contains(&settings.id));
+    assert!(
+        s5.tabs.iter().any(|t| t.id == settings.id),
+        "about:settings stays open as a background tab"
     );
 }
 

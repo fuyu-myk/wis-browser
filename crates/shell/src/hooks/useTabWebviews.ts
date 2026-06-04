@@ -13,27 +13,38 @@ const PENDING = Symbol('pending-webview')
 const OFFSCREEN_BOUNDS: Bounds = { x: 100000, y: 100000, width: 800, height: 600 }
 const PLACEHOLDER_BOUNDS: Bounds = OFFSCREEN_BOUNDS
 
-interface Bounds {
+export interface Bounds {
   x: number
   y: number
   width: number
   height: number
 }
 
+/**
+ * The set of webview tabs that should be visible right now, each mapped to the
+ * pane rect it should fill. Tabs not present are hidden. In single-pane mode
+ * this has one entry (the active tab); in split mode one per visible pane leaf.
+ */
+export type WebviewLayout = Map<TabId, Bounds>
+
 interface UseTabWebviewsArgs {
-  tabs: Tab[]
-  activeTabId: TabId | null
+  /** Non-chrome tabs of the active workspace to drive webview creation. */
+  createTabs: Tab[]
   activeWorkspaceId: WorkspaceId | null
   /**
    * Every tab across all workspaces. A webview is only destroyed when its tab
-   * disappears from this set (a real close).
+   * disappears from this set (a real close); switching workspaces keeps the
+   * others' webviews alive (hidden) so their pages don't reload.
    */
   allTabs: Tab[]
 }
 
 interface UseTabWebviewsReturn {
-  /** Forward the content area's bounds to the active webview. */
-  setBounds: (bounds: Bounds) => void
+  /**
+   * Reconcile native webview visibility/position to `layout` and move native
+   * focus to `focusedTabId`. Called directly from the host's measurement effects.
+   */
+  syncLayout: (layout: WebviewLayout, focusedTabId: TabId | null) => void
 }
 
 function labelFor(tabId: TabId): string {
@@ -69,22 +80,40 @@ async function createWebviewFor(
 }
 
 export function useTabWebviews({
-  tabs,
-  activeTabId,
+  createTabs,
   activeWorkspaceId,
   allTabs,
 }: UseTabWebviewsArgs): UseTabWebviewsReturn {
   const webviewsRef = useRef<Map<TabId, Webview>>(new Map())
-  const boundsRef = useRef<Bounds | null>(null)
   const windowRef = useRef<Window | null>(null)
-  const activeTabIdRef = useRef<TabId | null>(activeTabId)
-  activeTabIdRef.current = activeTabId
   const visibilityRef = useRef<Map<TabId, boolean>>(new Map())
+  // Latest desired layout + focus.
+  const layoutRef = useRef<WebviewLayout>(new Map())
+  const focusedRef = useRef<TabId | null>(null)
+  const lastFocusAppliedRef = useRef<TabId | null>(null)
 
   if (windowRef.current === null) {
     windowRef.current = getCurrentWindow()
   }
 
+  // Reconcile a single webview's visibility/position against the desired layout.
+  const reconcileOne = useCallback((id: TabId, wv: Webview) => {
+    const rect = layoutRef.current.get(id)
+    const vis = visibilityRef.current
+    if (rect) {
+      if (vis.get(id) !== true) {
+        vis.set(id, true)
+        showWithBounds(wv, rect)
+      } else {
+        applyBounds(wv, rect)
+      }
+    } else if (vis.get(id) !== false) {
+      vis.set(id, false)
+      void wv.hide().catch(() => undefined)
+    }
+  }, [])
+
+  // Close any leftover webviews from a previous run on first mount.
   useEffect(() => {
     let cancelled = false
     void Webview.getAll().then(async (all) => {
@@ -104,12 +133,11 @@ export function useTabWebviews({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Reconcile webview set against target tabs.
+  // Create/destroy webviews to match the live tab set.
   useEffect(() => {
     if (!activeWorkspaceId || !windowRef.current) return
     const window = windowRef.current
     const map = webviewsRef.current
-    const createTabs = tabs.filter((t) => !isChromeUrl(t.url))
     const liveIds = new Set(
       allTabs.filter((t) => !isChromeUrl(t.url)).map((t) => t.id),
     )
@@ -129,8 +157,9 @@ export function useTabWebviews({
     }
 
     // Create webviews for active-workspace tabs that don't have one yet.
-    const initialSize = boundsRef.current
-      ? { width: boundsRef.current.width, height: boundsRef.current.height }
+    const firstRect = layoutRef.current.values().next().value as Bounds | undefined
+    const initialSize = firstRect
+      ? { width: firstRect.width, height: firstRect.height }
       : null
     for (const tab of createTabs) {
       if (map.has(tab.id)) continue
@@ -147,13 +176,10 @@ export function useTabWebviews({
           void commands
             .setWebviewCornerRadius(labelFor(tab.id), WEBVIEW_CORNER_RADIUS)
             .catch(() => undefined)
-          if (tab.id === activeTabIdRef.current) {
-            showWithBounds(wv, boundsRef)
+          reconcileOne(tab.id, wv)
+          if (tab.id === focusedRef.current) {
             void wv.setFocus().catch(() => undefined)
-            visibilityRef.current.set(tab.id, true)
-          } else {
-            void wv.hide().catch(() => undefined)
-            visibilityRef.current.set(tab.id, false)
+            lastFocusAppliedRef.current = tab.id
           }
         },
         (err: unknown) => {
@@ -163,54 +189,42 @@ export function useTabWebviews({
         },
       )
     }
-  }, [tabs, allTabs, activeWorkspaceId])
+  }, [createTabs, allTabs, activeWorkspaceId, reconcileOne])
 
-  useEffect(() => {
-    const entries = Array.from(webviewsRef.current.entries())
-    const visibility = visibilityRef.current
-
-    for (const [id, wv] of entries) {
-      if ((wv as unknown) === PENDING) continue
-      if (id !== activeTabId && visibility.get(id) !== false) {
-        void wv.hide().catch(() => undefined)
-        visibility.set(id, false)
+  const syncLayout = useCallback(
+    (layout: WebviewLayout, focusedTabId: TabId | null) => {
+      layoutRef.current = layout
+      focusedRef.current = focusedTabId
+      for (const [id, wv] of webviewsRef.current) {
+        if ((wv as unknown) === PENDING) continue
+        reconcileOne(id, wv)
       }
-    }
-    for (const [id, wv] of entries) {
-      if ((wv as unknown) === PENDING) continue
-      if (id === activeTabId && visibility.get(id) !== true) {
-        showWithBounds(wv, boundsRef)
-        void wv.setFocus().catch(() => undefined)
-        visibility.set(id, true)
+      if (focusedTabId && focusedTabId !== lastFocusAppliedRef.current) {
+        const wv = webviewsRef.current.get(focusedTabId)
+        if (wv && (wv as unknown) !== PENDING) {
+          void wv.setFocus().catch(() => undefined)
+          lastFocusAppliedRef.current = focusedTabId
+        }
       }
-    }
-  }, [activeTabId, tabs])
+    },
+    [reconcileOne],
+  )
 
-  const setBounds = useCallback((bounds: Bounds) => {
-    boundsRef.current = bounds
-    const id = activeTabIdRef.current
-    if (!id) return
-    const wv = webviewsRef.current.get(id)
-    if (wv && (wv as unknown) !== PENDING) applyBounds(wv, bounds)
-  }, [])
-
-  return { setBounds }
+  return { syncLayout }
 }
 
 /**
- * Reveal a (possibly previously-hidden) webview and size it to the *current*
- * content bounds.
+ * Reveal a (possibly previously-hidden) webview and size it to `bounds`.
  */
-function showWithBounds(wv: Webview, boundsRef: { current: Bounds | null }): void {
-  applyBounds(wv, boundsRef.current)
+function showWithBounds(wv: Webview, bounds: Bounds): void {
+  applyBounds(wv, bounds)
   void wv
     .show()
-    .then(() => applyBounds(wv, boundsRef.current))
+    .then(() => applyBounds(wv, bounds))
     .catch(() => undefined)
 }
 
-function applyBounds(wv: Webview, bounds: Bounds | null): void {
-  if (!bounds) return
+function applyBounds(wv: Webview, bounds: Bounds): void {
   void commands
     .setTabWebviewBounds(wv.label, bounds.x, bounds.y, bounds.width, bounds.height)
     .catch(() => undefined)
