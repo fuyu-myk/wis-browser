@@ -27,6 +27,8 @@ import { DEFAULT_KEYMAP, actionLabel, allActions, effectiveKeymap } from '@/lib/
 import type { KeyAction } from '@/bindings/types'
 
 import { Segmented, SwatchRow, Switch } from '@/components/controls'
+import { SiteDataSection } from '@/components/SiteDataSection'
+import { OPEN_CLEAR_DATA_EVENT } from '@/hooks/useClearDataOverlay'
 import { KeybindingInput } from '@/components/KeybindingInput'
 
 interface NavSection {
@@ -39,6 +41,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'appearance', label: 'Appearance', icon: <SunIcon /> },
   { id: 'layout', label: 'Layout', icon: <PanelTopIcon /> },
   { id: 'privacy', label: 'Privacy', icon: <LockIcon /> },
+  { id: 'sitedata', label: 'Site data', icon: <LockIcon /> },
   { id: 'shortcuts', label: 'Shortcuts', icon: <KeyboardIcon /> },
 ]
 
@@ -367,7 +370,25 @@ export function SettingsPage() {
             {refreshLists.isPending ? 'Refreshing.' : 'Refresh'}
           </button>
         </div>
+        <div className="row">
+          <div className="l">
+            <span>Clear browsing data</span>
+            <span>Remove history, cookies, cache and local storage.</span>
+          </div>
+          <button
+            type="button"
+            className="kb-btn"
+            onClick={() => window.dispatchEvent(new CustomEvent(OPEN_CLEAR_DATA_EVENT))}
+          >
+            Clear…
+          </button>
+        </div>
       </section>
+
+      <SiteDataSection
+        workspaceId={activeWorkspace?.id ?? null}
+        workspaceName={activeWorkspace?.name ?? 'workspace'}
+      />
 
       <KeyboardShortcutsSection
         keybindings={settings.keybindings}

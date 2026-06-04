@@ -5,6 +5,7 @@
  * nothing (the overlay stays transparent and click-through).
  */
 
+import { ClearDataSurface } from '@/overlay/surfaces/ClearDataSurface'
 import { FindSurface } from '@/overlay/surfaces/FindSurface'
 import { PaletteSurface } from '@/overlay/surfaces/PaletteSurface'
 import { PaneSplitMenuSurface } from '@/overlay/surfaces/PaneSplitMenuSurface'
@@ -17,6 +18,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'find') return <FindSurface />
   if (surface === 'palette') return <PaletteSurface />
   if (surface === 'tabmenu') return <PaneSplitMenuSurface />
+  if (surface === 'cleardata') return <ClearDataSurface />
   // eslint-disable-next-line no-console
   console.warn(`Unknown overlay surface: ${surface}`)
   return null

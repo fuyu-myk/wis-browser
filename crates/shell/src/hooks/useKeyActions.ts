@@ -172,6 +172,10 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       }
       return
     }
+    case 'clear_browsing_data': {
+      window.dispatchEvent(new CustomEvent('wis-open-clear-data'))
+      return
+    }
     case 'close_tab': {
       if (!ctx.activeTab) return
       await commands.closeTab(ctx.activeTab.id)

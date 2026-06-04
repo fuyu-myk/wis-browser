@@ -77,6 +77,7 @@ export type KeyAction =
   | 'open_command_palette'
   | 'open_settings'
   | 'open_history'
+  | 'clear_browsing_data'
   | 'new_private_window'
   | 'new_window'
   | 'split_pane_horizontal'
@@ -273,6 +274,11 @@ export interface HistoryEntry {
   title: string
   visited_at: string // ISO 8601 from chrono::DateTime<Utc>
   visit_count: number
+}
+
+/** A domain with stored site data (cookies/cache/storage) in a workspace. */
+export interface SiteDataEntry {
+  domain: string
 }
 
 /** Query for `getHistory`: substring filter (empty = all), newest-first. */

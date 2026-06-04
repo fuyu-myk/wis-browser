@@ -13,6 +13,7 @@ import type {
   HistoryEntry,
   HistoryQuery,
   PaneBranch,
+  SiteDataEntry,
   PrivacyMode,
   RequestType,
   SplitDir,
@@ -59,6 +60,24 @@ export const commands = {
   /** Remove browsing history; `workspaceId` scopes the wipe (omit = all). */
   async clearHistory(workspaceId?: WorkspaceId): Promise<void> {
     return invoke('clear_history', { workspaceId: workspaceId ?? null })
+  },
+
+  /**
+   * Wipe a workspace's cookies, cache and local storage (all site data) from
+   * its persistent WebKit data store.
+   */
+  async clearSiteData(workspaceId: WorkspaceId): Promise<void> {
+    return invoke('clear_site_data', { workspaceId })
+  },
+
+  /** List the domains with stored site data in a workspace, sorted. */
+  async listSiteData(workspaceId: WorkspaceId): Promise<SiteDataEntry[]> {
+    return invoke('list_site_data', { workspaceId })
+  },
+
+  /** Remove all stored site data for one `domain` in a workspace. */
+  async deleteSiteData(workspaceId: WorkspaceId, domain: string): Promise<void> {
+    return invoke('delete_site_data', { workspaceId, domain })
   },
 
   async getSettings(): Promise<UserSettings> {

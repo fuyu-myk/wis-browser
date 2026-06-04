@@ -181,6 +181,12 @@ fn build_menu(
             KeyAction::OpenHistory,
             "Show All History",
         )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::ClearBrowsingData,
+            "Clear Browsing Data…",
+        )?)
         .build()?;
 
     let tabs_menu = SubmenuBuilder::new(app, "Tabs")

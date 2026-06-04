@@ -299,8 +299,8 @@ function HistoryRow({
           </span>
         ) : null}
         <span className="kb-history-time">{formatTime(entry.visited_at)}</span>
-        <span className="kb-history-title">{title}</span>
         <span className="kb-history-url">{host}</span>
+        <span className="kb-history-title">{title}</span>
         {workspaceLabel ? <span className="kb-history-ws">{workspaceLabel}</span> : null}
       </button>
       {selectMode ? null : (

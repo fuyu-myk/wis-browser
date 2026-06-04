@@ -42,6 +42,7 @@ pub enum KeyAction {
     OpenCommandPalette,
     OpenSettings,
     OpenHistory,
+    ClearBrowsingData,
     NewPrivateWindow,
     NewWindow,
     /// Split the focused pane horizontally (side-by-side), opening a new tab in
@@ -95,6 +96,7 @@ impl KeyAction {
             Self::OpenCommandPalette => "open_command_palette",
             Self::OpenSettings => "open_settings",
             Self::OpenHistory => "open_history",
+            Self::ClearBrowsingData => "clear_browsing_data",
             Self::NewPrivateWindow => "new_private_window",
             Self::NewWindow => "new_window",
             Self::SplitPaneHorizontal => "split_pane_horizontal",
@@ -122,7 +124,7 @@ impl KeyAction {
     }
 }
 
-const ALL_ACTIONS: [KeyAction; 37] = [
+const ALL_ACTIONS: [KeyAction; 38] = [
     KeyAction::NewTab,
     KeyAction::NewWorkspace,
     KeyAction::CloseTab,
@@ -149,6 +151,7 @@ const ALL_ACTIONS: [KeyAction; 37] = [
     KeyAction::OpenCommandPalette,
     KeyAction::OpenSettings,
     KeyAction::OpenHistory,
+    KeyAction::ClearBrowsingData,
     KeyAction::NewPrivateWindow,
     KeyAction::NewWindow,
     KeyAction::SplitPaneHorizontal,
@@ -191,6 +194,7 @@ pub fn default_keymap() -> HashMap<KeyAction, String> {
         (KeyAction::OpenCommandPalette, "Cmd+L"),
         (KeyAction::OpenSettings, "Cmd+,"),
         (KeyAction::OpenHistory, "Cmd+Shift+H"),
+        (KeyAction::ClearBrowsingData, "Cmd+Shift+Backspace"),
         (KeyAction::NewPrivateWindow, "Cmd+Shift+N"),
         (KeyAction::SplitPaneHorizontal, "Cmd+D"),
         (KeyAction::SplitPaneVertical, "Cmd+Shift+D"),

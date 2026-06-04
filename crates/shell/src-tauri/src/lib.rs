@@ -1,5 +1,6 @@
 mod commands;
 mod content_filter;
+mod cookies;
 mod error_compat;
 mod favicons;
 mod find;
@@ -121,6 +122,9 @@ pub fn run() {
             commands::get_history,
             commands::delete_history,
             commands::clear_history,
+            cookies::clear_site_data,
+            cookies::list_site_data,
+            cookies::delete_site_data,
             commands::create_workspace,
             commands::create_private_workspace,
             commands::rename_workspace,

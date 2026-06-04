@@ -6,6 +6,7 @@ import type { BrowserState, Tab, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { SettingsIcon } from '@/lib/icons'
 import { SETTINGS_URL } from '@/lib/url'
+import { useClearDataOverlay } from '@/hooks/useClearDataOverlay'
 import { useCommandPaletteOverlay } from '@/hooks/useCommandPaletteOverlay'
 import { useKeyActions } from '@/hooks/useKeyActions'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
@@ -27,6 +28,7 @@ export function Window({ state, settings }: WindowProps) {
   const sidebarUrlInputRef = useRef<HTMLInputElement>(null)
   useKeyActions()
   useCommandPaletteOverlay()
+  useClearDataOverlay()
 
   const layoutClass = `layout-${settings.layout.replace('_', '-')}`
   const isSidebar = settings.layout !== 'top_tabs'
