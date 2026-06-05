@@ -28,6 +28,7 @@ import type { KeyAction } from '@/bindings/types'
 
 import { Segmented, SwatchRow, Switch } from '@/components/controls'
 import { SiteDataSection } from '@/components/SiteDataSection'
+import { PasswordsSection } from '@/components/PasswordsSection'
 import { OPEN_CLEAR_DATA_EVENT } from '@/hooks/useClearDataOverlay'
 import { KeybindingInput } from '@/components/KeybindingInput'
 
@@ -42,6 +43,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'layout', label: 'Layout', icon: <PanelTopIcon /> },
   { id: 'privacy', label: 'Privacy', icon: <LockIcon /> },
   { id: 'sitedata', label: 'Site data', icon: <LockIcon /> },
+  { id: 'passwords', label: 'Passwords', icon: <LockIcon /> },
   { id: 'shortcuts', label: 'Shortcuts', icon: <KeyboardIcon /> },
 ]
 
@@ -389,6 +391,8 @@ export function SettingsPage() {
         workspaceId={activeWorkspace?.id ?? null}
         workspaceName={activeWorkspace?.name ?? 'workspace'}
       />
+
+      <PasswordsSection />
 
       <KeyboardShortcutsSection
         keybindings={settings.keybindings}

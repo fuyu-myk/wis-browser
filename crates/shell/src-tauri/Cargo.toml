@@ -1,5 +1,5 @@
 [package]
-name = "wis-browser-app"
+name = "wis-browser"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -30,6 +30,7 @@ base64 = { workspace = true }
 wis-core = { workspace = true }
 wis-storage = { workspace = true }
 wis-network = { workspace = true }
+wis-secrets = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5"

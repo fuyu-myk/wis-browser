@@ -10,6 +10,7 @@
 //! shell can log and fall back to defaults rather than crash.
 
 mod convert;
+mod credentials;
 mod history;
 mod migrations;
 mod repo;
@@ -113,6 +114,38 @@ impl Storage for SqliteStorage {
     fn clear_history(&self, workspace_id: Option<wis_core::WorkspaceId>) -> StorageResult<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         history::clear(&conn, workspace_id)
+    }
+
+    fn save_credential(
+        &self,
+        host: &str,
+        username: &str,
+        ciphertext: &[u8],
+        nonce: &[u8],
+    ) -> StorageResult<i64> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        credentials::save(&conn, host, username, ciphertext, nonce)
+    }
+
+    fn list_credentials(
+        &self,
+        host: Option<&str>,
+    ) -> StorageResult<Vec<crate::credentials::CredentialRecord>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        credentials::list(&conn, host)
+    }
+
+    fn get_credential(
+        &self,
+        id: i64,
+    ) -> StorageResult<Option<crate::credentials::CredentialRecord>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        credentials::get(&conn, id)
+    }
+
+    fn delete_credential(&self, id: i64) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        credentials::delete(&conn, id)
     }
 }
 

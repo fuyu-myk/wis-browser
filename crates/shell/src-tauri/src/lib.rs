@@ -1,3 +1,4 @@
+mod biometrics;
 mod commands;
 mod content_filter;
 mod cookies;
@@ -8,6 +9,7 @@ mod menu;
 mod overlay;
 mod pane_focus;
 mod state;
+mod vault;
 
 use std::sync::Arc;
 
@@ -125,6 +127,15 @@ pub fn run() {
             cookies::clear_site_data,
             cookies::list_site_data,
             cookies::delete_site_data,
+            vault::vault_status,
+            vault::vault_unlock,
+            vault::vault_lock,
+            vault::vault_list,
+            vault::vault_save,
+            vault::vault_reveal,
+            vault::vault_delete,
+            vault::vault_has_credentials,
+            vault::autofill_fill,
             commands::create_workspace,
             commands::create_private_workspace,
             commands::rename_workspace,

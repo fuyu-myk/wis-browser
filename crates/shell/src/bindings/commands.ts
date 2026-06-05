@@ -9,6 +9,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type {
   AccentColor,
   BrowserState,
+  CredentialSummary,
   Decision,
   HistoryEntry,
   HistoryQuery,
@@ -21,6 +22,7 @@ import type {
   TabId,
   UserSettings,
   UserSettingsPatch,
+  VaultStatus,
   Workspace,
   WorkspaceId,
 } from '@/bindings/types'
@@ -78,6 +80,54 @@ export const commands = {
   /** Remove all stored site data for one `domain` in a workspace. */
   async deleteSiteData(workspaceId: WorkspaceId, domain: string): Promise<void> {
     return invoke('delete_site_data', { workspaceId, domain })
+  },
+
+  // -- password vault -------------------------------------------------------
+
+  /** Vault lock/setup/support status. */
+  async vaultStatus(): Promise<VaultStatus> {
+    return invoke('vault_status')
+  },
+
+  /** Touch ID unlock (creates the vault on first use). Returns unlocked state. */
+  async vaultUnlock(): Promise<boolean> {
+    return invoke('vault_unlock')
+  },
+
+  /** Drop the in-memory master key (re-lock). */
+  async vaultLock(): Promise<void> {
+    return invoke('vault_lock')
+  },
+
+  /** List saved credentials (no passwords), optionally filtered to one host. */
+  async vaultList(host?: string): Promise<CredentialSummary[]> {
+    return invoke('vault_list', { host: host ?? null })
+  },
+
+  /** Save or update a credential (encrypts the password). */
+  async vaultSave(host: string, username: string, password: string): Promise<void> {
+    return invoke('vault_save', { host, username, password })
+  },
+
+  /** Decrypt and return one saved password (vault must be unlocked). */
+  async vaultReveal(id: number): Promise<string> {
+    return invoke('vault_reveal', { id })
+  },
+
+  /** Delete a saved credential. */
+  async vaultDelete(id: number): Promise<void> {
+    return invoke('vault_delete', { id })
+  },
+
+  /** Whether a login is saved for `host`. */
+  async vaultHasCredentials(host: string): Promise<boolean> {
+    return invoke('vault_has_credentials', { host })
+  },
+
+  /** Fill a tab's login form with a saved credential (password injected
+   *  backend-side; vault must be unlocked and the host must match). */
+  async autofillFill(tabId: TabId, credentialId: number): Promise<void> {
+    return invoke('autofill_fill', { tabId, credentialId })
   },
 
   async getSettings(): Promise<UserSettings> {

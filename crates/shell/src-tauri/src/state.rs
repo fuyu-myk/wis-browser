@@ -38,6 +38,9 @@ pub struct AppState {
     pub content_rules: RwLock<HashMap<PrivacyMode, Option<RuleSpec>>>,
     pub filter_cache_dir: PathBuf,
     pub proxies: Mutex<HashMap<WorkspaceId, ProxyServer>>,
+    /// Password-vault master key, present only while the vault is unlocked.
+    /// Cleared on lock/idle; zeroized on drop (see [`wis_secrets::MasterKey`]).
+    pub vault_key: Mutex<Option<wis_secrets::MasterKey>>,
 }
 
 impl AppState {
@@ -57,6 +60,7 @@ impl AppState {
             content_rules: RwLock::new(build_rule_specs_from(initial_filter_text)),
             filter_cache_dir,
             proxies: Mutex::new(HashMap::new()),
+            vault_key: Mutex::new(None),
         }
     }
 

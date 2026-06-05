@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
 import type { WorkspaceId } from '@/bindings/types'
+import { cx } from '@/lib/cx'
 import { SearchIcon, XIcon } from '@/lib/icons'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
@@ -22,6 +23,8 @@ export function SiteDataSection({ workspaceId, workspaceName }: SiteDataSectionP
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
+  const [hovered, setHovered] = useState<string | null>(null)
+  const [hoveredDel, setHoveredDel] = useState<string | null>(null)
 
   const { data: entries = [], isLoading } = useQuery({
     queryKey: [...SITE_DATA_KEY, workspaceId],
@@ -86,13 +89,30 @@ export function SiteDataSection({ workspaceId, workspaceName }: SiteDataSectionP
             {entries.length === 0 ? 'No stored site data.' : 'No matching sites.'}
           </p>
         ) : (
-          <ul className="kb-sitedata-list">
+          <ul
+            className="kb-sitedata-list"
+            onMouseOver={(e) => {
+              const target = e.target as HTMLElement
+              const li = target.closest('[data-sd-domain]') as HTMLElement | null
+              const domain = li?.dataset.sdDomain ?? null
+              setHovered(domain)
+              setHoveredDel(target.closest('.kb-sitedata-del') ? domain : null)
+            }}
+            onMouseLeave={() => {
+              setHovered(null)
+              setHoveredDel(null)
+            }}
+          >
             {filtered.map((entry) => (
-              <li key={entry.domain} className="kb-sitedata-row">
+              <li
+                key={entry.domain}
+                data-sd-domain={entry.domain}
+                className={cx('kb-sitedata-row', { 'is-hover': hovered === entry.domain })}
+              >
                 <span className="kb-sitedata-domain">{entry.domain}</span>
                 <button
                   type="button"
-                  className="kb-sitedata-del"
+                  className={cx('kb-sitedata-del', { 'is-hot': hoveredDel === entry.domain })}
                   aria-label={`Remove data for ${entry.domain}`}
                   title={`Remove data for ${entry.domain}`}
                   onClick={() => deleteOne.mutate(entry.domain)}

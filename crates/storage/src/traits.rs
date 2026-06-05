@@ -1,5 +1,6 @@
 //! The [`Storage`] trait: the contract the rest of the app codes against.
 
+use crate::credentials::CredentialRecord;
 use crate::error::StorageResult;
 use crate::history::{HistoryEntry, HistoryQuery};
 use wis_core::{BrowserState, WorkspaceId};
@@ -54,4 +55,26 @@ pub trait Storage: Send + Sync {
 
     /// Remove history rows, scoped to `workspace_id` when set, else all of it.
     fn clear_history(&self, workspace_id: Option<WorkspaceId>) -> StorageResult<()>;
+
+    // -- password vault (see [`crate::credentials`]) -----------------------
+
+    /// Upsert a credential (dedup by host+username); returns its row id. The
+    /// `ciphertext`/`nonce` are produced by `wis-secrets`; this layer never
+    /// sees the plaintext or the key.
+    fn save_credential(
+        &self,
+        host: &str,
+        username: &str,
+        ciphertext: &[u8],
+        nonce: &[u8],
+    ) -> StorageResult<i64>;
+
+    /// List credentials, optionally filtered to one host.
+    fn list_credentials(&self, host: Option<&str>) -> StorageResult<Vec<CredentialRecord>>;
+
+    /// Fetch one credential by id.
+    fn get_credential(&self, id: i64) -> StorageResult<Option<CredentialRecord>>;
+
+    /// Delete one credential by id.
+    fn delete_credential(&self, id: i64) -> StorageResult<()>;
 }

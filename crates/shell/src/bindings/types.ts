@@ -281,6 +281,25 @@ export interface SiteDataEntry {
   domain: string
 }
 
+// ---------------------------------------------------------------------------
+// Password vault (mirror of `vault.rs`).
+// ---------------------------------------------------------------------------
+
+/** Vault lock state + whether it's been set up / supported on this platform. */
+export interface VaultStatus {
+  unlocked: boolean
+  has_master_key: boolean
+  supported: boolean
+}
+
+/** A saved credential without its password (safe to list). */
+export interface CredentialSummary {
+  id: number
+  host: string
+  username: string
+  updated_at: string
+}
+
 /** Query for `getHistory`: substring filter (empty = all), newest-first. */
 export interface HistoryQuery {
   search: string

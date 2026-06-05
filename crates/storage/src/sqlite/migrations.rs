@@ -93,12 +93,32 @@ CREATE INDEX idx_history_ws_visited_at ON history(workspace_id, visited_at);
 CREATE INDEX idx_history_url ON history(url);
 "#;
 
+// Password vault. Only the password is encrypted (AEAD ciphertext + nonce,
+// sealed under the Keychain master key, see `wis-secrets`); host and username
+// are stored in the clear so the list can render and search without unlocking.
+// Deduplicated per (host, username). Independent of `BrowserState` and never
+// touched by "clear browsing data".
+const M0005_CREDENTIALS: &str = r#"
+CREATE TABLE credentials (
+    id           INTEGER NOT NULL PRIMARY KEY,
+    host         TEXT    NOT NULL,
+    username     TEXT    NOT NULL,
+    ciphertext   BLOB    NOT NULL,
+    nonce        BLOB    NOT NULL,
+    created_at   TEXT    NOT NULL,
+    updated_at   TEXT    NOT NULL,
+    UNIQUE (host, username)
+);
+CREATE INDEX idx_credentials_host ON credentials(host);
+"#;
+
 fn all() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(M0001_INITIAL),
         M::up(M0002_PANE_TREE),
         M::up(M0003_HISTORY),
         M::up(M0004_HISTORY_PER_WORKSPACE),
+        M::up(M0005_CREDENTIALS),
     ])
 }
 

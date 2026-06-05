@@ -5,6 +5,7 @@ members = [
     "crates/core",
     "crates/storage",
     "crates/network",
+    "crates/secrets",
 ]
 
 [workspace.package]
@@ -56,10 +57,17 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 sha2 = "0.10"
 base64 = "0.22"
 
+# Password vault: AEAD for entry encryption, OS keychain for the master key.
+chacha20poly1305 = "0.10"
+rand = "0.8"
+zeroize = { version = "1", features = ["derive"] }
+security-framework = "2.11"
+
 # Internal crates
 wis-core = { path = "crates/core" }
 wis-storage = { path = "crates/storage" }
 wis-network = { path = "crates/network" }
+wis-secrets = { path = "crates/secrets" }
 
 [profile.release]
 opt-level = 3

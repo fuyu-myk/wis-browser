@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Shown in the system biometric sheet when unlocking the password vault.
+       Required for Face ID; also used as a courtesy on Touch ID Macs. -->
+  <key>NSFaceIDUsageDescription</key>
+  <string>Wis uses Touch ID to unlock your saved passwords.</string>
+</dict>
+</plist>
