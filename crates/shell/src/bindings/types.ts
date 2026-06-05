@@ -27,7 +27,7 @@ export type LayoutMode = 'sidebar_left' | 'sidebar_right' | 'top_tabs'
 
 export type RailSide = 'left' | 'right'
 
-export type UrlBarPosition = 'sidebar' | 'top'
+export type SearchEngine = 'duckduckgo' | 'google' | 'bing'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -158,7 +158,6 @@ export interface Workspace {
 export interface UserSettings {
   layout: LayoutMode
   top_tabs_rail_side: RailSide
-  url_bar_position: UrlBarPosition
   theme: ThemeMode
   accent: AccentColor
   glass_enabled: boolean
@@ -167,6 +166,7 @@ export interface UserSettings {
   default_privacy_mode: PrivacyMode
   doh_resolver: string | null
   homepage: string | null
+  search_engine: SearchEngine
   filter_list_auto_update: boolean
   url_bar_focus_glow: boolean
   /** Launch directly into a private (ephemeral) workspace. */
@@ -182,7 +182,6 @@ export interface UserSettings {
 export interface UserSettingsPatch {
   layout?: LayoutMode
   top_tabs_rail_side?: RailSide
-  url_bar_position?: UrlBarPosition
   theme?: ThemeMode
   accent?: AccentColor
   glass_enabled?: boolean
@@ -191,6 +190,7 @@ export interface UserSettingsPatch {
   default_privacy_mode?: PrivacyMode
   doh_resolver?: string
   homepage?: string
+  search_engine?: SearchEngine
   filter_list_auto_update?: boolean
   url_bar_focus_glow?: boolean
   always_private?: boolean
@@ -298,6 +298,26 @@ export interface CredentialSummary {
   host: string
   username: string
   updated_at: string
+}
+
+// ---------------------------------------------------------------------------
+// URL-bar suggestions (mirror of `suggest.rs`).
+// ---------------------------------------------------------------------------
+
+export interface SearchSuggestion {
+  query: string
+  count: number
+}
+
+export interface SiteSuggestion {
+  id: number
+  url: string
+  title: string
+}
+
+export interface UrlSuggestions {
+  searches: SearchSuggestion[]
+  sites: SiteSuggestion[]
 }
 
 /** Query for `getHistory`: substring filter (empty = all), newest-first. */

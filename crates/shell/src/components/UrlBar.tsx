@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -12,12 +13,22 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
-import type { Tab, WorkspaceId } from '@/bindings/types'
+import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { SearchIcon } from '@/lib/icons'
-import { isChromeUrl, normaliseUrl } from '@/lib/url'
-import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import { isChromeUrl, isSearchQuery, normaliseUrl, SEARCH_ENGINES } from '@/lib/url'
+import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { FOCUS_URLBAR_EVENT } from '@/hooks/useKeyActions'
+import { useUrlbarSuggest } from '@/hooks/useUrlbarSuggest'
+
+/** Canonical form for matching a suggestion URL against an open tab's URL. */
+function canonUrl(url: string): string {
+  return url
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/$/, '')
+    .toLowerCase()
+}
 
 /** Hide the http(s):// prefix in the address bar. */
 function displayUrl(url: string): string {
@@ -104,7 +115,11 @@ function KeyGlyph() {
   )
 }
 
-function useUrlBarForm(activeTab: Tab | null, fallbackWorkspaceId: WorkspaceId | null) {
+function useUrlBarForm(
+  activeTab: Tab | null,
+  fallbackWorkspaceId: WorkspaceId | null,
+  inputRef: RefObject<HTMLInputElement>,
+) {
   const qc = useQueryClient()
   const [value, setValue] = useState(displayUrl(activeTab?.url ?? ''))
 
@@ -124,22 +139,76 @@ function useUrlBarForm(activeTab: Tab | null, fallbackWorkspaceId: WorkspaceId |
     onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
   })
 
+  const workspaceId = activeTab?.workspace_id ?? fallbackWorkspaceId
+
+  const { data: state } = useBrowserState()
+  const engine = state?.settings.search_engine ?? 'duckduckgo'
+  const engineLabel = SEARCH_ENGINES[engine].label
+
+  /** Navigate (or search) for a raw address-bar string, remembering searches. */
+  const go = useCallback(
+    (raw: string) => {
+      const target = normaliseUrl(raw, engine)
+      if (!target) return
+      if (isSearchQuery(raw)) {
+        void commands.recordSearch(raw.trim()).catch(() => undefined)
+      }
+      if (activeTab) {
+        navigate.mutate({ id: activeTab.id, url: target })
+      } else if (workspaceId) {
+        create.mutate({ workspaceId, url: target })
+      }
+    },
+    [activeTab, workspaceId, navigate, create, engine],
+  )
+
+  /** Resolve a suggestion URL to an already-open tab id, or null. */
+  const findOpenTab = useCallback(
+    (url: string): TabId | null => {
+      const target = canonUrl(url)
+      return state?.tabs.find((t) => canonUrl(t.url) === target)?.id ?? null
+    },
+    [state?.tabs],
+  )
+
+  const switchToTab = useCallback(
+    (id: TabId) => {
+      const tab = state?.tabs.find((t) => t.id === id)
+      if (!tab) return
+      const run = async () => {
+        if (tab.workspace_id !== state?.active_workspace_id) {
+          await commands.setActiveWorkspace(tab.workspace_id).catch(() => undefined)
+        }
+        await commands.setActiveTab(id).catch(() => undefined)
+        void qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
+      }
+      void run()
+    },
+    [state?.tabs, state?.active_workspace_id, qc],
+  )
+
+  const suggest = useUrlbarSuggest({
+    inputRef,
+    workspaceId,
+    tabId: activeTab?.id ?? null,
+    commit: go,
+    setValue,
+    switchToTab,
+    findOpenTab,
+    engineLabel,
+  })
+
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    const target = normaliseUrl(value)
-    if (!target) return
-    if (activeTab) {
-      navigate.mutate({ id: activeTab.id, url: target })
-    } else if (fallbackWorkspaceId) {
-      create.mutate({ workspaceId: fallbackWorkspaceId, url: target })
-    }
+    suggest.reset()
+    go(value)
   }
 
   function onChange(e: ChangeEvent<HTMLInputElement>) {
-    setValue(e.target.value)
+    suggest.onInput(e.target.value)
   }
 
-  return { value, onChange, onSubmit }
+  return { value, onChange, onSubmit, suggest }
 }
 
 /**
@@ -212,63 +281,6 @@ function useSelectAllOnChromeClick(inputRef: RefObject<HTMLInputElement>) {
   }
 }
 
-// ─── Sidebar variant ─────────────────────────────────────────────────────
-
-export interface SidebarUrlBarProps {
-  activeTab: Tab | null
-  fallbackWorkspaceId: WorkspaceId | null
-  /** Forwarded to the inner <input> so click-to-expand can focus it. */
-  inputRef: RefObject<HTMLInputElement>
-  /** Fired on click or focus. */
-  onActivate: () => void
-  /** Fired after the input blurs on Escape, so the sidebar can collapse. */
-  onEscape?: () => void
-}
-
-export function SidebarUrlBar({
-  activeTab,
-  fallbackWorkspaceId,
-  inputRef,
-  onActivate,
-  onEscape,
-}: SidebarUrlBarProps) {
-  const form = useUrlBarForm(activeTab, fallbackWorkspaceId)
-  const selectAll = useSelectAllOnChromeClick(inputRef)
-  useFocusOnEvent(inputRef, onActivate)
-  const handleMouseDown = (e: MouseEvent<HTMLElement>) => {
-    onActivate()
-    selectAll(e)
-  }
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Escape') {
-      e.currentTarget.blur()
-      onEscape?.()
-    }
-  }
-  return (
-    <form
-      className="kb-urlbar"
-      aria-label="Address bar"
-      onMouseDown={handleMouseDown}
-      onSubmit={form.onSubmit}
-    >
-      <SearchIcon className="ico" />
-      <input
-        ref={inputRef}
-        className="kb-urlbar-input"
-        type="text"
-        value={form.value}
-        onChange={form.onChange}
-        onFocus={onActivate}
-        onKeyDown={handleKeyDown}
-        placeholder="Enter search or web address"
-        spellCheck={false}
-      />
-      <AutofillKey activeTab={activeTab} />
-    </form>
-  )
-}
-
 // ─── Floating / horizontal-pill variant ──────────────────────────────────
 
 export interface FloatingUrlBarProps {
@@ -285,11 +297,12 @@ export function FloatingUrlBar({
   fallbackWorkspaceId,
   inline = false,
 }: FloatingUrlBarProps) {
-  const form = useUrlBarForm(activeTab, fallbackWorkspaceId)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const form = useUrlBarForm(activeTab, fallbackWorkspaceId, inputRef)
   const handleMouseDown = useSelectAllOnChromeClick(inputRef)
   useFocusOnEvent(inputRef)
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (form.suggest.onKeyDown(e)) return
     if (e.key === 'Escape') e.currentTarget.blur()
   }
   return (
@@ -306,6 +319,8 @@ export function FloatingUrlBar({
         type="text"
         value={form.value}
         onChange={form.onChange}
+        onFocus={form.suggest.onFocus}
+        onBlur={form.suggest.onBlur}
         onKeyDown={handleKeyDown}
         placeholder="Enter search or web address"
         spellCheck={false}

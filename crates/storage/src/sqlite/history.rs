@@ -79,6 +79,44 @@ pub fn query_history(conn: &Connection, query: &HistoryQuery) -> StorageResult<V
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
+/// Recommend revisit-worthy sites for the URL-bar suggestions: rows in one
+/// workspace matching `query` (substring over url+title; empty matches all),
+/// ranked by visit count then recency.
+pub fn recommend(
+    conn: &Connection,
+    workspace_id: WorkspaceId,
+    query: &str,
+    limit: u32,
+) -> StorageResult<Vec<HistoryEntry>> {
+    let pattern = format!("%{query}%");
+    let ws = workspace_id.as_uuid().to_string();
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT id, workspace_id, url, title, visited_at, visit_count
+        FROM history
+        WHERE workspace_id = ?1 AND (url LIKE ?2 OR title LIKE ?2)
+        ORDER BY visit_count DESC, visited_at DESC
+        LIMIT ?3
+        "#,
+    )?;
+    let rows = stmt.query_map(params![ws, pattern, limit], |row| {
+        let ws_str: String = row.get(1)?;
+        let workspace_id = parse_workspace_id(&ws_str).map_err(|err| {
+            rusqlite::Error::FromSqlConversionFailure(1, rusqlite::types::Type::Text, Box::new(err))
+        })?;
+        Ok(HistoryEntry {
+            id: row.get(0)?,
+            workspace_id,
+            url: row.get(2)?,
+            title: row.get(3)?,
+            visited_at: row.get(4)?,
+            visit_count: row.get(5)?,
+        })
+    })?;
+
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
 /// Update the title of an existing `(workspace_id, url)` row without touching
 /// its visit count. Used when a page's real title arrives after the visit was
 /// first recorded (e.g. a YouTube video whose title loads late). No-op for an
@@ -106,7 +144,7 @@ pub fn delete_entries(conn: &Connection, ids: &[i64]) -> StorageResult<()> {
     if ids.is_empty() {
         return Ok(());
     }
-    let placeholders = std::iter::repeat("?")
+    let placeholders = std::iter::repeat_n("?", ids.len())
         .take(ids.len())
         .collect::<Vec<_>>()
         .join(", ");

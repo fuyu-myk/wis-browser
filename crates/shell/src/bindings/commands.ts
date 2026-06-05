@@ -20,6 +20,7 @@ import type {
   SplitDir,
   Tab,
   TabId,
+  UrlSuggestions,
   UserSettings,
   UserSettingsPatch,
   VaultStatus,
@@ -128,6 +129,24 @@ export const commands = {
    *  backend-side; vault must be unlocked and the host must match). */
   async autofillFill(tabId: TabId, credentialId: number): Promise<void> {
     return invoke('autofill_fill', { tabId, credentialId })
+  },
+
+  // -- URL-bar suggestions --------------------------------------------------
+
+  /** Suggestions for the address bar: past searches + ranked sites for the
+   *  workspace, both filtered by `query`. */
+  async getUrlSuggestions(query: string, workspaceId: WorkspaceId): Promise<UrlSuggestions> {
+    return invoke('get_url_suggestions', { query, workspaceId })
+  },
+
+  /** Remember a search (no-op in private workspaces). */
+  async recordSearch(query: string): Promise<void> {
+    return invoke('record_search', { query })
+  },
+
+  /** Forget a remembered search. */
+  async deleteSearch(query: string): Promise<void> {
+    return invoke('delete_search', { query })
   },
 
   async getSettings(): Promise<UserSettings> {

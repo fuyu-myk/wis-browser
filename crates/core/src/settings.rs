@@ -3,8 +3,9 @@
 use std::collections::HashMap;
 
 use crate::keybinding::KeyAction;
-use crate::layout::{LayoutMode, RailSide, ThemeMode, UrlBarPosition};
+use crate::layout::{LayoutMode, RailSide, ThemeMode};
 use crate::privacy::PrivacyMode;
+use crate::search::SearchEngine;
 use crate::workspace::AccentColor;
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +19,6 @@ pub struct UserSettings {
     /// switching to TopTabs feels continuous.
     #[serde(default)]
     pub top_tabs_rail_side: RailSide,
-    pub url_bar_position: UrlBarPosition,
     pub theme: ThemeMode,
     pub accent: AccentColor,
     pub glass_enabled: bool,
@@ -27,6 +27,10 @@ pub struct UserSettings {
     pub default_privacy_mode: PrivacyMode,
     pub doh_resolver: Option<String>,
     pub homepage: Option<String>,
+    /// Default search engine for non-URL address-bar input. Serde-default so
+    /// existing persisted settings deserialise to DuckDuckGo.
+    #[serde(default)]
+    pub search_engine: SearchEngine,
     /// When true, the shell fetches the EasyPrivacy filter list on launch
     /// (and on demand) into the per-user cache, then hot-swaps it into the
     /// running tracker engine. When false, the bundled list is used.
@@ -58,7 +62,6 @@ impl Default for UserSettings {
         Self {
             layout: LayoutMode::SidebarLeft,
             top_tabs_rail_side: RailSide::Left,
-            url_bar_position: UrlBarPosition::Sidebar,
             theme: ThemeMode::System,
             accent: AccentColor::Primary,
             glass_enabled: true,
@@ -67,6 +70,7 @@ impl Default for UserSettings {
             default_privacy_mode: PrivacyMode::Balanced,
             doh_resolver: Some(DEFAULT_DOH_RESOLVER.to_string()),
             homepage: None,
+            search_engine: SearchEngine::default(),
             filter_list_auto_update: true,
             url_bar_focus_glow: false,
             always_private: false,
@@ -86,8 +90,6 @@ pub struct UserSettingsPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top_tabs_rail_side: Option<RailSide>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub url_bar_position: Option<UrlBarPosition>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<ThemeMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accent: Option<AccentColor>,
@@ -103,6 +105,8 @@ pub struct UserSettingsPatch {
     pub doh_resolver: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub homepage: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_engine: Option<SearchEngine>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter_list_auto_update: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -122,7 +126,6 @@ impl UserSettings {
         Self {
             layout: patch.layout.unwrap_or(self.layout),
             top_tabs_rail_side: patch.top_tabs_rail_side.unwrap_or(self.top_tabs_rail_side),
-            url_bar_position: patch.url_bar_position.unwrap_or(self.url_bar_position),
             theme: patch.theme.unwrap_or(self.theme),
             accent: patch.accent.unwrap_or(self.accent),
             glass_enabled: patch.glass_enabled.unwrap_or(self.glass_enabled),
@@ -135,6 +138,7 @@ impl UserSettings {
                 .unwrap_or(self.default_privacy_mode),
             doh_resolver: patch.doh_resolver.or_else(|| self.doh_resolver.clone()),
             homepage: patch.homepage.or_else(|| self.homepage.clone()),
+            search_engine: patch.search_engine.unwrap_or(self.search_engine),
             filter_list_auto_update: patch
                 .filter_list_auto_update
                 .unwrap_or(self.filter_list_auto_update),

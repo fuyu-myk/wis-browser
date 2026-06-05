@@ -2,8 +2,7 @@
 //!
 //! Each row stores a site `host` and `username` in the clear (so the list is
 //! searchable without unlocking) plus the password sealed as AEAD `ciphertext`
-//! + `nonce` (sealed by the `wis-secrets` crate). The decryption key never
-//! lives here.
+//! + `nonce` (sealed by the `wis-secrets` crate). The decryption key never lives here.
 
 use chrono::{DateTime, Utc};
 

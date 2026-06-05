@@ -155,7 +155,6 @@ pub(crate) async fn record_history_visit(
         storage.record_visit(workspace_id, &url_string, &title)
     })
     .await
-
     {
         Ok(Ok(())) => {
             let _ = app.emit(HISTORY_CHANGED_EVENT, ());
@@ -205,8 +204,10 @@ pub(crate) async fn note_in_page_navigation(
     }
 
     if changed {
-        if let Err(err) =
-            mutate_unit(&app, &state, |s| s.with_tab_url_synced(tab_id, live_url.as_str())).await
+        if let Err(err) = mutate_unit(app, &state, |s| {
+            s.with_tab_url_synced(tab_id, live_url.as_str())
+        })
+        .await
         {
             log::warn!("url sync for {tab_id} failed: {err}");
             return;

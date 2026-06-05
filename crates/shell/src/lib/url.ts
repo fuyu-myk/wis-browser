@@ -1,4 +1,27 @@
-export function normaliseUrl(input: string): string | null {
+import type { SearchEngine } from '@/bindings/types'
+
+/** Per-engine metadata: display label + query-URL builder. */
+export const SEARCH_ENGINES: Record<
+  SearchEngine,
+  { label: string; search: (query: string) => string }
+> = {
+  duckduckgo: {
+    label: 'DuckDuckGo',
+    search: (q) => `https://duckduckgo.com/?q=${encodeURIComponent(q)}`,
+  },
+  google: {
+    label: 'Google',
+    search: (q) => `https://www.google.com/search?q=${encodeURIComponent(q)}`,
+  },
+  bing: {
+    label: 'Bing',
+    search: (q) => `https://www.bing.com/search?q=${encodeURIComponent(q)}`,
+  },
+}
+
+const DEFAULT_ENGINE: SearchEngine = 'duckduckgo'
+
+export function normaliseUrl(input: string, engine: SearchEngine = DEFAULT_ENGINE): string | null {
   const trimmed = input.trim()
   if (!trimmed) return null
 
@@ -16,7 +39,7 @@ export function normaliseUrl(input: string): string | null {
     return `https://${trimmed}`
   }
 
-  return `https://duckduckgo.com/?q=${encodeURIComponent(trimmed)}`
+  return (SEARCH_ENGINES[engine] ?? SEARCH_ENGINES[DEFAULT_ENGINE]).search(trimmed)
 }
 
 const HOST_RE = /^[A-Za-z0-9.\-_]+(:\d+)?(\/.*)?$/
@@ -25,6 +48,24 @@ function looksLikeHost(input: string): boolean {
   if (input.includes(' ')) return false
   if (!input.includes('.')) return false
   return HOST_RE.test(input)
+}
+
+/**
+ * True when `normaliseUrl` would treat `input` as a search query (rather than
+ * a navigable URL/host). Used to decide whether to remember it as a search.
+ */
+export function isSearchQuery(input: string): boolean {
+  const trimmed = input.trim()
+  if (!trimmed) return false
+  try {
+    const u = new URL(trimmed)
+    if (u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'about:') {
+      return false
+    }
+  } catch {
+    /* not a URL */
+  }
+  return !looksLikeHost(trimmed)
 }
 
 /** Truthy when a tab's URL should not cause a native webview to be created. */

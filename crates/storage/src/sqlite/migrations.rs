@@ -112,6 +112,20 @@ CREATE TABLE credentials (
 CREATE INDEX idx_credentials_host ON credentials(host);
 "#;
 
+// Address-bar search history: the non-URL queries the user typed (deduplicated
+// by query text, each repeat bumps `count` and refreshes `searched_at`). Powers
+// the "Search history" section of the URL-bar suggestions. Independent of
+// `BrowserState`; private workspaces never write here.
+const M0006_SEARCHES: &str = r#"
+CREATE TABLE searches (
+    id           INTEGER NOT NULL PRIMARY KEY,
+    query        TEXT    NOT NULL UNIQUE,
+    searched_at  TEXT    NOT NULL,
+    count        INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX idx_searches_searched_at ON searches(searched_at);
+"#;
+
 fn all() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(M0001_INITIAL),
@@ -119,6 +133,7 @@ fn all() -> Migrations<'static> {
         M::up(M0003_HISTORY),
         M::up(M0004_HISTORY_PER_WORKSPACE),
         M::up(M0005_CREDENTIALS),
+        M::up(M0006_SEARCHES),
     ])
 }
 

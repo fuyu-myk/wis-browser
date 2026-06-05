@@ -9,6 +9,7 @@ import { ClearDataSurface } from '@/overlay/surfaces/ClearDataSurface'
 import { FindSurface } from '@/overlay/surfaces/FindSurface'
 import { PaletteSurface } from '@/overlay/surfaces/PaletteSurface'
 import { PaneSplitMenuSurface } from '@/overlay/surfaces/PaneSplitMenuSurface'
+import { UrlbarSuggestSurface } from '@/overlay/surfaces/UrlbarSuggestSurface'
 
 interface OverlayRootProps {
   surface: string
@@ -19,6 +20,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'palette') return <PaletteSurface />
   if (surface === 'tabmenu') return <PaneSplitMenuSurface />
   if (surface === 'cleardata') return <ClearDataSurface />
+  if (surface === 'urlbar') return <UrlbarSuggestSurface />
   // eslint-disable-next-line no-console
   console.warn(`Unknown overlay surface: ${surface}`)
   return null

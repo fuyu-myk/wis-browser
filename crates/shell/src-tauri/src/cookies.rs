@@ -34,7 +34,10 @@ pub async fn list_site_data(
         let domains = list_site_data_mac(&app, bytes)
             .await
             .map_err(|message| WisError::InvalidInput { message })?;
-        return Ok(domains.into_iter().map(|domain| SiteDataEntry { domain }).collect());
+        Ok(domains
+            .into_iter()
+            .map(|domain| SiteDataEntry { domain })
+            .collect())
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -141,7 +144,9 @@ unsafe fn ns_string(ptr: *mut objc2::runtime::AnyObject) -> String {
         return String::new();
     }
 
-    std::ffi::CStr::from_ptr(utf8).to_string_lossy().into_owned()
+    std::ffi::CStr::from_ptr(utf8)
+        .to_string_lossy()
+        .into_owned()
 }
 
 #[cfg(target_os = "macos")]
@@ -248,7 +253,6 @@ async fn delete_site_data_mac(
                         }
                     })
                 };
-
 
                 let rm_types: *mut AnyObject =
                     msg_send![class!(WKWebsiteDataStore), allWebsiteDataTypes];

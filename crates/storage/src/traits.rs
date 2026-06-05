@@ -3,6 +3,7 @@
 use crate::credentials::CredentialRecord;
 use crate::error::StorageResult;
 use crate::history::{HistoryEntry, HistoryQuery};
+use crate::searches::SearchEntry;
 use wis_core::{BrowserState, WorkspaceId};
 
 /// A pluggable persistent store for the browser's state.
@@ -29,12 +30,7 @@ pub trait Storage: Send + Sync {
     /// `visited_at`; a non-empty `title` replaces the stored one. Callers must
     /// skip private/ephemeral workspaces and non-recordable URLs (chrome pages,
     /// non-http(s)).
-    fn record_visit(
-        &self,
-        workspace_id: WorkspaceId,
-        url: &str,
-        title: &str,
-    ) -> StorageResult<()>;
+    fn record_visit(&self, workspace_id: WorkspaceId, url: &str, title: &str) -> StorageResult<()>;
 
     /// Update the title of an existing visit (matched by workspace + url)
     /// without changing its visit count. No-op for an empty title or a URL not
@@ -77,4 +73,27 @@ pub trait Storage: Send + Sync {
 
     /// Delete one credential by id.
     fn delete_credential(&self, id: i64) -> StorageResult<()>;
+
+    // -- URL-bar suggestions ------------------------------------------------
+
+    /// Record an address-bar search query (deduped by text; bumps its count).
+    fn record_search(&self, query: &str) -> StorageResult<()>;
+
+    /// Past searches matching `query`, most-used/recent first.
+    fn suggest_searches(&self, query: &str, limit: u32) -> StorageResult<Vec<SearchEntry>>;
+
+    /// The most recent searches, newest first (empty address-bar dropdown).
+    fn recent_searches(&self, limit: u32) -> StorageResult<Vec<SearchEntry>>;
+
+    /// Forget a remembered search query.
+    fn delete_search(&self, query: &str) -> StorageResult<()>;
+
+    /// Revisit-worthy sites for `query` in a workspace, ranked by visit count
+    /// then recency (the "Wis Recommendations" section).
+    fn recommend_sites(
+        &self,
+        workspace_id: WorkspaceId,
+        query: &str,
+        limit: u32,
+    ) -> StorageResult<Vec<HistoryEntry>>;
 }

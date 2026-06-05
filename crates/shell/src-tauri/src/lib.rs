@@ -9,6 +9,7 @@ mod menu;
 mod overlay;
 mod pane_focus;
 mod state;
+mod suggest;
 mod vault;
 
 use std::sync::Arc;
@@ -136,6 +137,9 @@ pub fn run() {
             vault::vault_delete,
             vault::vault_has_credentials,
             vault::autofill_fill,
+            suggest::get_url_suggestions,
+            suggest::record_search,
+            suggest::delete_search,
             commands::create_workspace,
             commands::create_private_workspace,
             commands::rename_workspace,

@@ -37,7 +37,9 @@ pub async fn vault_status(state: State<'_, AppState>) -> WisResult<VaultStatus> 
     let supported = cfg!(target_os = "macos");
     let has_master_key = if supported {
         // No biometric prompt: this only checks for the item's existence.
-        wis_secrets::keychain_load().map(|k| k.is_some()).unwrap_or(false)
+        wis_secrets::keychain_load()
+            .map(|k| k.is_some())
+            .unwrap_or(false)
     } else {
         false
     };

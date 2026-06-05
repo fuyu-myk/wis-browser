@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { commands } from '@/bindings/commands'
@@ -25,7 +25,6 @@ interface WindowProps {
 
 export function Window({ state, settings }: WindowProps) {
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
-  const sidebarUrlInputRef = useRef<HTMLInputElement>(null)
   useKeyActions()
   useCommandPaletteOverlay()
   useClearDataOverlay()
@@ -34,8 +33,7 @@ export function Window({ state, settings }: WindowProps) {
   const isSidebar = settings.layout !== 'top_tabs'
   const collapsible = isSidebar && settings.sidebar_collapsible
   const glassOn = settings.glass_enabled
-  const urlAtTop = settings.url_bar_position === 'top'
-  const showWindowTopUrl = isSidebar && urlAtTop
+  const showWindowTopUrl = isSidebar
   const railSide = settings.top_tabs_rail_side
   const railClass = !isSidebar ? `has-rail rail-${railSide}` : ''
 
@@ -68,15 +66,13 @@ export function Window({ state, settings }: WindowProps) {
       {isSidebar && (
         <div className="kb-window-top" data-tauri-drag-region>
           <NavRow activeTab={activeTab} circular />
-          {urlAtTop && (
-            <div className="kb-urlpill-wrap">
-              <FloatingUrlBar
-                activeTab={activeTab}
-                fallbackWorkspaceId={activeWorkspace?.id ?? null}
-                inline
-              />
-            </div>
-          )}
+          <div className="kb-urlpill-wrap">
+            <FloatingUrlBar
+              activeTab={activeTab}
+              fallbackWorkspaceId={activeWorkspace?.id ?? null}
+              inline
+            />
+          </div>
         </div>
       )}
 
@@ -96,7 +92,6 @@ export function Window({ state, settings }: WindowProps) {
             settings={settings}
             expanded={sidebarExpanded}
             setExpanded={setSidebarExpanded}
-            urlInputRef={sidebarUrlInputRef}
           />
           <button
             type="button"

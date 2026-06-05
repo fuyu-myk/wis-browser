@@ -87,7 +87,6 @@ fn settings_patch_round_trips_when_all_fields_set() {
     let patch = UserSettingsPatch {
         layout: Some(LayoutMode::TopTabs),
         top_tabs_rail_side: Some(wis_core::RailSide::Right),
-        url_bar_position: Some(wis_core::UrlBarPosition::Top),
         theme: Some(ThemeMode::Light),
         accent: Some(wis_core::AccentColor::Mint),
         glass_enabled: Some(true),
@@ -96,6 +95,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
         default_privacy_mode: Some(PrivacyMode::Strict),
         doh_resolver: Some("https://dns.example/dns-query".into()),
         homepage: Some("https://start.example".into()),
+        search_engine: Some(wis_core::SearchEngine::Google),
         filter_list_auto_update: Some(false),
         url_bar_focus_glow: Some(true),
         always_private: Some(true),
@@ -119,21 +119,17 @@ fn user_settings_roundtrips() {
 }
 
 #[test]
-fn url_bar_position_roundtrips_as_snake_case() {
-    for variant in [
-        wis_core::UrlBarPosition::Sidebar,
-        wis_core::UrlBarPosition::Top,
+fn search_engine_roundtrips_as_lowercase() {
+    for (variant, expected) in [
+        (wis_core::SearchEngine::DuckDuckGo, "\"duckduckgo\""),
+        (wis_core::SearchEngine::Google, "\"google\""),
+        (wis_core::SearchEngine::Bing, "\"bing\""),
     ] {
         let json = serde_json::to_string(&variant).unwrap();
-        let parsed: wis_core::UrlBarPosition = serde_json::from_str(&json).unwrap();
+        assert_eq!(json, expected);
+        let parsed: wis_core::SearchEngine = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, variant);
     }
-}
-
-#[test]
-fn url_bar_position_rejects_unknown_variants() {
-    let result: Result<wis_core::UrlBarPosition, _> = serde_json::from_str("\"diagonal\"");
-    assert!(result.is_err(), "unknown variant must error");
 }
 
 #[test]

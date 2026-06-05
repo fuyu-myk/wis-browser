@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState, type MouseEvent, type RefObject } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 
 import type { BrowserState, Tab, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 
 import { Brand } from '@/components/Brand'
-import { SidebarUrlBar } from '@/components/UrlBar'
 import { TabList } from '@/components/TabList'
 import { WorkspacePill } from '@/components/WorkspacePill'
 
@@ -14,8 +13,6 @@ interface SidebarProps {
   /** Lifted to <Window> so the URL bar can also request expansion. */
   expanded: boolean
   setExpanded: (v: boolean) => void
-  /** Forwarded to <SidebarUrlBar> so click-to-expand can also focus the input. */
-  urlInputRef: RefObject<HTMLInputElement>
 }
 
 // Expands on edge hover, empty-area click, or URL bar activation when
@@ -25,7 +22,6 @@ export function Sidebar({
   settings,
   expanded,
   setExpanded,
-  urlInputRef,
 }: SidebarProps) {
   const activeWorkspace = state.workspaces.find((w) => w.id === state.active_workspace_id)
   const tabs: Tab[] = activeWorkspace
@@ -35,7 +31,6 @@ export function Sidebar({
     : []
   const activeTab = tabs.find((t) => t.id === activeWorkspace?.active_tab_id) ?? null
 
-  const showUrlBar = settings.url_bar_position === 'sidebar'
   const collapsible = settings.sidebar_collapsible
 
   const asideRef = useRef<HTMLElement>(null)
@@ -87,15 +82,6 @@ export function Sidebar({
     }
   }
 
-  const handleUrlBarActivate = () => {
-    if (collapsible && !expanded) {
-      setExpanded(true)
-      requestAnimationFrame(() => urlInputRef.current?.focus())
-    } else {
-      urlInputRef.current?.focus()
-    }
-  }
-
   return (
     <aside
       ref={asideRef}
@@ -113,15 +99,6 @@ export function Sidebar({
         />
       )}
       <Brand />
-      {showUrlBar && (
-        <SidebarUrlBar
-          activeTab={activeTab}
-          fallbackWorkspaceId={activeWorkspace?.id ?? null}
-          inputRef={urlInputRef}
-          onActivate={handleUrlBarActivate}
-          onEscape={() => collapsible && setExpanded(false)}
-        />
-      )}
       <WorkspacePill state={state} onOpenChange={setWorkspacePopoverOpen} />
       <TabList
         workspaceId={activeWorkspace?.id ?? ('' as never)}

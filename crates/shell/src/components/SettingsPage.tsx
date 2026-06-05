@@ -7,8 +7,8 @@ import type {
   LayoutMode,
   PrivacyMode,
   RailSide,
+  SearchEngine,
   ThemeMode,
-  UrlBarPosition,
   UserSettingsPatch,
   WorkspaceId,
 } from '@/bindings/types'
@@ -83,10 +83,11 @@ const RAIL_SIDE_OPTIONS = [
   { value: 'right' as const, label: 'Right', icon: <SidebarRightIcon /> },
 ] satisfies ReadonlyArray<{ value: RailSide; label: string; icon: React.ReactNode }>
 
-const URL_BAR_OPTIONS = [
-  { value: 'sidebar' as const, label: 'Side' },
-  { value: 'top' as const, label: 'Top' },
-] satisfies ReadonlyArray<{ value: UrlBarPosition; label: string }>
+const SEARCH_ENGINE_OPTIONS = [
+  { value: 'duckduckgo' as const, label: 'DuckDuckGo' },
+  { value: 'google' as const, label: 'Google' },
+  { value: 'bing' as const, label: 'Bing' },
+] satisfies ReadonlyArray<{ value: SearchEngine; label: string }>
 
 const ACCENT_OPTIONS = [
   { value: 'primary' as const, swatchClass: 'fav-pri', label: 'Periwinkle' },
@@ -276,18 +277,6 @@ export function SettingsPage() {
         )}
         <div className="row">
           <div className="l">
-            <span>Address bar</span>
-            <span>Inline in sidebar, or pinned at the top</span>
-          </div>
-          <Segmented
-            value={settings.url_bar_position}
-            onChange={(url_bar_position) => update.mutate({ url_bar_position })}
-            options={URL_BAR_OPTIONS}
-            ariaLabel="Address bar position"
-          />
-        </div>
-        <div className="row">
-          <div className="l">
             <span>Collapsible sidebar</span>
             <span>Expand on edge hover or click</span>
           </div>
@@ -295,6 +284,18 @@ export function SettingsPage() {
             checked={settings.sidebar_collapsible}
             onChange={(sidebar_collapsible) => update.mutate({ sidebar_collapsible })}
             label="Collapsible sidebar"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
+            <span>Search engine</span>
+            <span>Used for address-bar searches and suggestions</span>
+          </div>
+          <Segmented
+            value={settings.search_engine}
+            onChange={(search_engine) => update.mutate({ search_engine })}
+            options={SEARCH_ENGINE_OPTIONS}
+            ariaLabel="Default search engine"
           />
         </div>
       </section>

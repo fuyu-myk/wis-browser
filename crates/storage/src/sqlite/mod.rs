@@ -14,6 +14,7 @@ mod credentials;
 mod history;
 mod migrations;
 mod repo;
+mod searches;
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -146,6 +147,40 @@ impl Storage for SqliteStorage {
     fn delete_credential(&self, id: i64) -> StorageResult<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         credentials::delete(&conn, id)
+    }
+
+    fn record_search(&self, query: &str) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        searches::record(&conn, query)
+    }
+
+    fn suggest_searches(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> StorageResult<Vec<crate::searches::SearchEntry>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        searches::suggest(&conn, query, limit)
+    }
+
+    fn recent_searches(&self, limit: u32) -> StorageResult<Vec<crate::searches::SearchEntry>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        searches::recent(&conn, limit)
+    }
+
+    fn delete_search(&self, query: &str) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        searches::delete(&conn, query)
+    }
+
+    fn recommend_sites(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+        query: &str,
+        limit: u32,
+    ) -> StorageResult<Vec<crate::history::HistoryEntry>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        history::recommend(&conn, workspace_id, query, limit)
     }
 }
 

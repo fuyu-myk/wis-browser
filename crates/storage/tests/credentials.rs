@@ -28,8 +28,12 @@ fn save_then_list_and_get() {
 #[test]
 fn saving_same_host_user_updates_in_place() {
     let s = store();
-    let id1 = s.save_credential("example.com", "bob", b"old", b"n1").unwrap();
-    let id2 = s.save_credential("example.com", "bob", b"new", b"n2").unwrap();
+    let id1 = s
+        .save_credential("example.com", "bob", b"old", b"n1")
+        .unwrap();
+    let id2 = s
+        .save_credential("example.com", "bob", b"new", b"n2")
+        .unwrap();
     assert_eq!(id1, id2, "same (host, username) updates the same row");
 
     let all = s.list_credentials(None).unwrap();

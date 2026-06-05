@@ -50,7 +50,9 @@ pub fn encrypt(key: &MasterKey, plaintext: &[u8]) -> Result<EncryptedBlob, Vault
     let mut nonce_bytes = [0u8; 12];
     rand::rngs::OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let ciphertext = cipher.encrypt(nonce, plaintext).map_err(|_| VaultError::Crypto)?;
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext)
+        .map_err(|_| VaultError::Crypto)?;
 
     Ok(EncryptedBlob {
         ciphertext,

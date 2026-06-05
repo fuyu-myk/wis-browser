@@ -19,14 +19,17 @@ fn ws_rows(store: &SqliteStorage, ws: WorkspaceId) -> Vec<HistoryEntry> {
 
 /// All rows across every workspace.
 fn all_rows(store: &SqliteStorage) -> Vec<HistoryEntry> {
-    store.query_history(&HistoryQuery::default()).expect("query")
+    store
+        .query_history(&HistoryQuery::default())
+        .expect("query")
 }
 
 #[test]
 fn recording_a_visit_makes_it_queryable_in_its_workspace() {
     let s = store();
     let ws = WorkspaceId::new();
-    s.record_visit(ws, "https://example.com/", "Example").unwrap();
+    s.record_visit(ws, "https://example.com/", "Example")
+        .unwrap();
 
     let rows = ws_rows(&s, ws);
     assert_eq!(rows.len(), 1);
@@ -40,9 +43,12 @@ fn recording_a_visit_makes_it_queryable_in_its_workspace() {
 fn revisiting_a_url_dedups_within_a_workspace() {
     let s = store();
     let ws = WorkspaceId::new();
-    s.record_visit(ws, "https://example.com/", "Example").unwrap();
-    s.record_visit(ws, "https://example.com/", "Example").unwrap();
-    s.record_visit(ws, "https://example.com/", "Example").unwrap();
+    s.record_visit(ws, "https://example.com/", "Example")
+        .unwrap();
+    s.record_visit(ws, "https://example.com/", "Example")
+        .unwrap();
+    s.record_visit(ws, "https://example.com/", "Example")
+        .unwrap();
 
     let rows = ws_rows(&s, ws);
     assert_eq!(rows.len(), 1, "one row per (workspace, url)");
@@ -54,13 +60,20 @@ fn the_same_url_in_two_workspaces_is_independent() {
     let s = store();
     let a = WorkspaceId::new();
     let b = WorkspaceId::new();
-    s.record_visit(a, "https://shared.example/", "Shared").unwrap();
-    s.record_visit(a, "https://shared.example/", "Shared").unwrap();
-    s.record_visit(b, "https://shared.example/", "Shared").unwrap();
+    s.record_visit(a, "https://shared.example/", "Shared")
+        .unwrap();
+    s.record_visit(a, "https://shared.example/", "Shared")
+        .unwrap();
+    s.record_visit(b, "https://shared.example/", "Shared")
+        .unwrap();
 
     assert_eq!(ws_rows(&s, a)[0].visit_count, 2);
     assert_eq!(ws_rows(&s, b)[0].visit_count, 1);
-    assert_eq!(all_rows(&s).len(), 2, "one row per workspace for the same URL");
+    assert_eq!(
+        all_rows(&s).len(),
+        2,
+        "one row per workspace for the same URL"
+    );
 }
 
 #[test]
@@ -82,7 +95,8 @@ fn querying_one_workspace_excludes_others() {
 fn a_blank_title_does_not_overwrite_a_known_one() {
     let s = store();
     let ws = WorkspaceId::new();
-    s.record_visit(ws, "https://example.com/", "Real Title").unwrap();
+    s.record_visit(ws, "https://example.com/", "Real Title")
+        .unwrap();
     s.record_visit(ws, "https://example.com/", "").unwrap();
 
     let rows = ws_rows(&s, ws);
@@ -113,7 +127,8 @@ fn results_are_newest_first() {
 fn search_filters_on_url_and_title_case_insensitively() {
     let s = store();
     let ws = WorkspaceId::new();
-    s.record_visit(ws, "https://rust-lang.org/", "Rust").unwrap();
+    s.record_visit(ws, "https://rust-lang.org/", "Rust")
+        .unwrap();
     s.record_visit(ws, "https://python.org/", "Python").unwrap();
 
     let by_title = s
@@ -178,13 +193,17 @@ fn deleting_entries_removes_only_those_ids() {
 fn update_visit_title_changes_title_without_bumping_count() {
     let s = store();
     let ws = WorkspaceId::new();
-    s.record_visit(ws, "https://v.example/", "youtube.com").unwrap();
+    s.record_visit(ws, "https://v.example/", "youtube.com")
+        .unwrap();
     s.update_visit_title(ws, "https://v.example/", "Real Video Title")
         .unwrap();
 
     let rows = ws_rows(&s, ws);
     assert_eq!(rows[0].title, "Real Video Title");
-    assert_eq!(rows[0].visit_count, 1, "a title patch must not bump the count");
+    assert_eq!(
+        rows[0].visit_count, 1,
+        "a title patch must not bump the count"
+    );
 }
 
 #[test]
@@ -193,7 +212,8 @@ fn update_visit_title_ignores_empty_and_unknown_urls() {
     let ws = WorkspaceId::new();
     s.record_visit(ws, "https://v.example/", "Keep").unwrap();
     s.update_visit_title(ws, "https://v.example/", "").unwrap();
-    s.update_visit_title(ws, "https://missing.example/", "X").unwrap();
+    s.update_visit_title(ws, "https://missing.example/", "X")
+        .unwrap();
 
     let rows = ws_rows(&s, ws);
     assert_eq!(rows.len(), 1);
