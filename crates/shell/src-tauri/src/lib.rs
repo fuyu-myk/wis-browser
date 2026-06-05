@@ -1,4 +1,5 @@
 mod biometrics;
+mod capture;
 mod commands;
 mod content_filter;
 mod cookies;
@@ -115,6 +116,9 @@ pub fn run() {
             // Native click-to-focus for split panes.
             pane_focus::install(app.handle());
 
+            // App handle for the native "Save password?" capture handler.
+            capture::set_app_handle(app.handle().clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -136,10 +140,14 @@ pub fn run() {
             vault::vault_reveal,
             vault::vault_delete,
             vault::vault_has_credentials,
+            vault::autofill_candidates,
             vault::autofill_fill,
             suggest::get_url_suggestions,
             suggest::record_search,
             suggest::delete_search,
+            capture::capture_save,
+            capture::capture_dismiss,
+            capture::capture_pending,
             commands::create_workspace,
             commands::create_private_workspace,
             commands::rename_workspace,

@@ -125,6 +125,11 @@ export const commands = {
     return invoke('vault_has_credentials', { host })
   },
 
+  /** Saved logins for `host` (id + username only, no unlock) for the picker. */
+  async autofillCandidates(host: string): Promise<CredentialSummary[]> {
+    return invoke('autofill_candidates', { host })
+  },
+
   /** Fill a tab's login form with a saved credential (password injected
    *  backend-side; vault must be unlocked and the host must match). */
   async autofillFill(tabId: TabId, credentialId: number): Promise<void> {
@@ -147,6 +152,23 @@ export const commands = {
   /** Forget a remembered search. */
   async deleteSearch(query: string): Promise<void> {
     return invoke('delete_search', { query })
+  },
+
+  // -- "Save password?" capture ----------------------------------
+
+  /** Encrypt + save the pending captured login (vault must be unlocked). */
+  async captureSave(): Promise<void> {
+    return invoke('capture_save')
+  },
+
+  /** Discard the pending captured login. */
+  async captureDismiss(): Promise<void> {
+    return invoke('capture_dismiss')
+  },
+
+  /** The pending captured login (host + username, no password), or null. */
+  async capturePending(): Promise<{ host: string; username: string } | null> {
+    return invoke('capture_pending')
   },
 
   async getSettings(): Promise<UserSettings> {

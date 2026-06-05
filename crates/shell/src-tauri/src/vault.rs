@@ -164,6 +164,29 @@ pub async fn vault_has_credentials(state: State<'_, AppState>, host: String) -> 
     Ok(!records.is_empty())
 }
 
+/// Saved logins for `host` (id + username only) for the URL-bar account picker.
+/// Unlike [`vault_list`], this does *not* require the vault to be unlocked: it
+/// exposes only the (non-secret) host/username so the picker can be shown
+/// before Touch ID; filling still unlocks + decrypts via [`autofill_fill`].
+#[tauri::command]
+pub async fn autofill_candidates(
+    state: State<'_, AppState>,
+    host: String,
+) -> WisResult<Vec<CredentialSummary>> {
+    let storage = state.storage.clone();
+    let records = run_blocking(move || storage.list_credentials(Some(&host))).await?;
+
+    Ok(records
+        .into_iter()
+        .map(|r| CredentialSummary {
+            id: r.id,
+            host: r.host,
+            username: r.username,
+            updated_at: r.updated_at.to_rfc3339(),
+        })
+        .collect())
+}
+
 /// Fill a tab's login form with a saved credential. The password is decrypted
 /// in the backend and injected straight into the page via `eval`.
 /// Refuses to fill unless the page's host matches the saved host.

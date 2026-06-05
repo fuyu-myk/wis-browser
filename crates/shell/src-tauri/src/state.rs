@@ -41,6 +41,9 @@ pub struct AppState {
     /// Password-vault master key, present only while the vault is unlocked.
     /// Cleared on lock/idle; zeroized on drop (see [`wis_secrets::MasterKey`]).
     pub vault_key: Mutex<Option<wis_secrets::MasterKey>>,
+    /// A login captured from a page, awaiting the user's save/dismiss decision.
+    /// The plaintext password lives here only; it never crosses back to a webview.
+    pub pending_capture: Mutex<Option<crate::capture::PendingCapture>>,
 }
 
 impl AppState {
@@ -61,6 +64,7 @@ impl AppState {
             filter_cache_dir,
             proxies: Mutex::new(HashMap::new()),
             vault_key: Mutex::new(None),
+            pending_capture: Mutex::new(None),
         }
     }
 

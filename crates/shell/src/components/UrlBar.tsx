@@ -11,14 +11,22 @@ import {
   type RefObject,
 } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { SearchIcon } from '@/lib/icons'
 import { isChromeUrl, isSearchQuery, normaliseUrl, SEARCH_ENGINES } from '@/lib/url'
+import {
+  CAPTURE_LOGIN_EVENT,
+  VAULTMENU_CLOSE_EVENT,
+  VAULTMENU_OPEN_EVENT,
+  type CaptureInfo,
+} from '@/lib/vaultMenu'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { FOCUS_URLBAR_EVENT } from '@/hooks/useKeyActions'
+import { useOverlay } from '@/hooks/useOverlay'
 import { useUrlbarSuggest } from '@/hooks/useUrlbarSuggest'
 
 /** Canonical form for matching a suggestion URL against an open tab's URL. */
@@ -46,50 +54,155 @@ function hostOf(tab: Tab | null): string | null {
   }
 }
 
+const VAULT_HAS_KEY = 'vault-has'
+
 /**
- * Key button shown inside the address bar when a login is saved for the current
- * site. Click unlocks the vault (Touch ID) if needed, then fills the page's
- * login form with the saved credential (the first match for now; the
- * multi-account picker arrives with the URL-bar suggestions work).
+ * Key button in the address bar, shown when a login is saved for the current
+ * site or a login was just captured there. It anchors the `overlay-vaultmenu`
+ * dropdown (the save prompt + saved-account picker) directly beneath itself, so
+ * the menu always drops below the header and never covers the tab strip. The
+ * chrome owns positioning + open/close; the surface renders + reports height.
  */
 function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
   const host = useMemo(() => hostOf(activeTab), [activeTab])
-  const [busy, setBusy] = useState(false)
+  const qc = useQueryClient()
+  const overlay = useOverlay('vaultmenu')
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const openRef = useRef(false)
+  const autoOpenRef = useRef(false)
+  const [pendingHost, setPendingHost] = useState<string | null>(null)
 
   const { data: hasCreds } = useQuery({
-    queryKey: ['vault-has', host],
+    queryKey: [VAULT_HAS_KEY, host],
     queryFn: () => (host ? commands.vaultHasCredentials(host) : Promise.resolve(false)),
     enabled: host !== null,
     staleTime: 30_000,
   })
 
-  if (!host || !hasCreds || !activeTab) return null
+  const pendingForHost = host != null && pendingHost === host
+  const visible = host != null && (hasCreds === true || pendingForHost)
 
-  const fill = async () => {
-    setBusy(true)
-    try {
-      const status = await commands.vaultStatus().catch(() => null)
-      if (status && !status.unlocked) {
-        const unlocked = await commands.vaultUnlock().catch(() => false)
-        if (!unlocked) return
-      }
-      const creds = await commands.vaultList(host).catch(() => [])
-      if (creds.length === 0) return
-      await commands.autofillFill(activeTab.id, creds[0].id).catch(() => undefined)
-    } finally {
-      setBusy(false)
+  const anchorRect = useCallback(() => {
+    const el = btnRef.current
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    const width = 300
+    return {
+      x: Math.round(Math.max(8, r.right - width)),
+      y: Math.round(r.bottom + 6),
+      width,
     }
+  }, [])
+
+  const open = useCallback(async () => {
+    const a = anchorRect()
+    if (!a) return
+    await overlay
+      .show({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight })
+      .catch(() => undefined)
+    openRef.current = true
+    await emit(VAULTMENU_OPEN_EVENT, a).catch(() => undefined)
+  }, [anchorRect, overlay])
+
+  const close = useCallback(async () => {
+    if (openRef.current) {
+      openRef.current = false
+      await overlay.hide().catch(() => undefined)
+    }
+    setPendingHost((p) => (p === host ? null : p))
+    void qc.invalidateQueries({ queryKey: [VAULT_HAS_KEY] })
+  }, [overlay, host, qc])
+
+  useEffect(() => {
+    void commands.ensureOverlay('vaultmenu').catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    if (!host) return
+    let cancelled = false
+    void commands.capturePending().then((p) => {
+      if (!cancelled && p && p.host === host) {
+        setPendingHost(host)
+        autoOpenRef.current = true
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [host])
+
+  useEffect(() => {
+    let un: UnlistenFn | null = null
+    let cancelled = false
+    void listen<CaptureInfo>(CAPTURE_LOGIN_EVENT, (e) => {
+      if (host && e.payload.host === host) {
+        setPendingHost(host)
+        autoOpenRef.current = true
+      }
+    }).then((fn) => (cancelled ? fn() : (un = fn)))
+    return () => {
+      cancelled = true
+      un?.()
+    }
+  }, [host])
+
+  useEffect(() => {
+    if (visible && autoOpenRef.current) {
+      autoOpenRef.current = false
+      void open()
+    }
+  }, [visible, open])
+
+  useEffect(() => {
+    let unC: UnlistenFn | null = null
+    let cancelled = false
+    void listen<void>(VAULTMENU_CLOSE_EVENT, () => void close()).then((fn) =>
+      cancelled ? fn() : (unC = fn),
+    )
+    return () => {
+      cancelled = true
+      unC?.()
+    }
+  }, [close])
+
+  useEffect(() => {
+    const onResize = () => {
+      if (!openRef.current) return
+      const a = anchorRect()
+      if (!a) return
+      void overlay
+        .show({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight })
+        .catch(() => undefined)
+      void emit(VAULTMENU_OPEN_EVENT, a).catch(() => undefined)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [anchorRect, overlay])
+
+  useEffect(() => {
+    void close()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab?.id])
+
+  if (!visible) return null
+
+  const toggle = () => {
+    if (openRef.current) void close()
+    else void open()
   }
 
   return (
     <button
+      ref={btnRef}
       type="button"
       className="kb-urlbar-key"
-      title="Fill saved login"
-      aria-label="Fill saved login"
-      disabled={busy}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={() => void fill()}
+      title="Saved logins"
+      aria-label="Saved logins"
+      onMouseDown={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }}
+      onClick={toggle}
     >
       <KeyGlyph />
     </button>

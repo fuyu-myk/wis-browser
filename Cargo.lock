@@ -5553,6 +5553,7 @@ dependencies = [
  "wis-network",
  "wis-secrets",
  "wis-storage",
+ "zeroize",
 ]
 
 [[package]]

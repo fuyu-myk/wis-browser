@@ -759,6 +759,11 @@ pub async fn create_tab_webview(
         }
     }
 
+    // "Save password?" capture.
+    if !ephemeral {
+        crate::capture::install(&child);
+    }
+
     Ok(())
 }
 

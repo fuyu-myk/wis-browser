@@ -606,6 +606,161 @@ body.is-overlay-surface:not(.glass-on) {
   color: color-mix(in oklab, var(--primary-500) 80%, white 20%);
 }
 
+/* ── URL-bar vault key dropdown (overlay-vaultmenu) ─────────────────────── */
+/* Full-window transparent backdrop captures the outside-click to dismiss; the
+   card is positioned at the key anchor. */
+.kb-vaultmenu-backdrop {
+  position: fixed;
+  inset: 0;
+}
+/* Save prompt + saved-account picker, anchored under the address-bar key. */
+.kb-vaultmenu {
+  position: absolute;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: var(--chrome-bg);
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.26);
+  animation: kb-palette-scale-in 110ms ease-out;
+  overflow: hidden;
+}
+[data-mode="dark"] .kb-vaultmenu {
+  background: #1f1f26;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.kb-vaultmenu.glass-on {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(255, 255, 255, 0.30);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+}
+[data-mode="dark"] .kb-vaultmenu.glass-on {
+  background: rgba(28, 28, 34, 0.72);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+
+.kb-vaultmenu-sep {
+  height: 1px;
+  margin: 6px 8px;
+  background: rgba(0, 0, 0, 0.08);
+}
+[data-mode="dark"] .kb-vaultmenu-sep { background: rgba(255, 255, 255, 0.10); }
+
+/* Save-password block */
+.kb-vaultmenu-save {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px;
+}
+.kb-vaultmenu-save-text { min-width: 0; }
+.kb-vaultmenu-save-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+[data-mode="dark"] .kb-vaultmenu-save-title { color: rgba(255, 255, 255, 0.92); }
+.kb-vaultmenu-save-sub {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-vaultmenu-save-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.kb-vaultmenu-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, opacity 0.12s;
+}
+[data-mode="dark"] .kb-vaultmenu-btn {
+  color: rgba(255, 255, 255, 0.92);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.kb-vaultmenu-btn:hover { background: rgba(0, 0, 0, 0.05); }
+[data-mode="dark"] .kb-vaultmenu-btn:hover { background: rgba(255, 255, 255, 0.08); }
+.kb-vaultmenu-btn:disabled { opacity: 0.5; cursor: default; }
+.kb-vaultmenu-btn-primary {
+  border-color: transparent;
+  background: var(--primary-500);
+  color: #fff;
+}
+.kb-vaultmenu-btn-primary:hover {
+  background: color-mix(in oklab, var(--primary-500) 88%, black 12%);
+}
+
+/* Account rows */
+.kb-vaultmenu-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-primary);
+  font: inherit;
+  transition: background 80ms ease;
+}
+[data-mode="dark"] .kb-vaultmenu-row { color: rgba(255, 255, 255, 0.92); }
+.kb-vaultmenu-row:hover { background: color-mix(in oklab, var(--primary-500) 14%, transparent); }
+.kb-vaultmenu-row:disabled { opacity: 0.6; cursor: default; }
+.kb-vaultmenu-ico {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: var(--text-tertiary);
+}
+.kb-vaultmenu-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.kb-vaultmenu-user {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-vaultmenu-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.kb-vaultmenu-manage {
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  transition: background 80ms ease;
+}
+[data-mode="dark"] .kb-vaultmenu-manage { color: rgba(255, 255, 255, 0.72); }
+.kb-vaultmenu-manage:hover { background: rgba(0, 0, 0, 0.05); }
+[data-mode="dark"] .kb-vaultmenu-manage:hover { background: rgba(255, 255, 255, 0.08); }
+
 /* ── Address-bar suggestions dropdown (overlay-urlbar) ──────────────────── */
 /* Sized to content by the chrome; fills its webview. Row/header heights here
    are mirrored by estimateHeight() in lib/urlbarSuggest.ts. */
