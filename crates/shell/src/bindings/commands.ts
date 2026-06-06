@@ -299,6 +299,21 @@ export const commands = {
     return invoke('close_tab', { id })
   },
 
+  /** Reopen the most-recently-closed tab (in its original workspace). */
+  async restoreClosedTab(): Promise<void> {
+    return invoke('restore_closed_tab')
+  },
+
+  /** Reload a tab bypassing the HTTP cache. */
+  async tabHardReload(id: TabId): Promise<void> {
+    return invoke('tab_hard_reload', { id })
+  },
+
+  /** Adjust a tab's page zoom: `'in' | 'out' | 'reset'`. */
+  async tabZoom(id: TabId, kind: 'in' | 'out' | 'reset'): Promise<void> {
+    return invoke('tab_zoom', { id, kind })
+  },
+
   async reorderTabs(workspaceId: WorkspaceId, order: TabId[]): Promise<void> {
     return invoke('reorder_tabs', { workspaceId, order })
   },

@@ -30,6 +30,12 @@ use wis_storage::Storage;
 use crate::content_filter::{build_rule_specs_from, RuleSpec};
 use crate::error_compat::WisShellError;
 
+/// A closed tab worth offering to reopen.
+pub struct ClosedTab {
+    pub workspace_id: WorkspaceId,
+    pub url: String,
+}
+
 pub struct AppState {
     pub browser: Mutex<BrowserState>,
     pub storage: Arc<dyn Storage>,
@@ -44,6 +50,9 @@ pub struct AppState {
     /// A login captured from a page, awaiting the user's save/dismiss decision.
     /// The plaintext password lives here only; it never crosses back to a webview.
     pub pending_capture: Mutex<Option<crate::capture::PendingCapture>>,
+    /// Most-recently-closed tabs (newest last), for "reopen closed tab". Capped
+    /// in-memory and per-session; private/ephemeral tabs are never recorded.
+    pub closed_tabs: Mutex<Vec<ClosedTab>>,
     /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
     /// Only present with the `tor` feature.
     #[cfg(feature = "tor")]
@@ -69,6 +78,7 @@ impl AppState {
             proxies: Mutex::new(HashMap::new()),
             vault_key: Mutex::new(None),
             pending_capture: Mutex::new(None),
+            closed_tabs: Mutex::new(Vec::new()),
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }

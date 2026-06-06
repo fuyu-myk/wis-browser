@@ -317,6 +317,48 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       ctx.invalidate()
       return
     }
+    case 'restore_closed_tab': {
+      await commands.restoreClosedTab()
+      ctx.invalidate()
+      return
+    }
+    case 'next_workspace':
+    case 'previous_workspace': {
+      const st = ctx.state
+      if (!st) return
+      const list = st.workspaces
+      const idx = list.findIndex((w) => w.id === st.active_workspace_id)
+      if (idx < 0) return
+      const target = action === 'next_workspace' ? idx + 1 : idx - 1
+      if (target < 0 || target >= list.length) return // clamp: no-op at the ends
+      await commands.setActiveWorkspace(list[target].id)
+      ctx.invalidate()
+      return
+    }
+    case 'next_tab':
+    case 'previous_tab': {
+      const list = ctx.tabs
+      const len = list.length
+      if (len === 0) return
+      const idx = ctx.activeTab ? list.findIndex((t) => t.id === ctx.activeTab!.id) : -1
+      const target = action === 'next_tab' ? (idx + 1) % len : (idx - 1 + len) % len
+      const tab = list[target]
+      if (!tab) return
+      await commands.setActiveTab(tab.id)
+      ctx.invalidate()
+      return
+    }
+    case 'hard_reload':
+      if (ctx.activeTab) await commands.tabHardReload(ctx.activeTab.id)
+      return
+    case 'zoom_in':
+    case 'zoom_out':
+    case 'zoom_reset': {
+      if (!ctx.activeTab) return
+      const kind = action === 'zoom_in' ? 'in' : action === 'zoom_out' ? 'out' : 'reset'
+      await commands.tabZoom(ctx.activeTab.id, kind)
+      return
+    }
   }
 }
 

@@ -108,8 +108,7 @@ export const DEFAULT_KEYMAP: Partial<Record<KeyAction, string>> = {
   switch_to_tab6: 'Cmd+6',
   switch_to_tab7: 'Cmd+7',
   switch_to_tab8: 'Cmd+8',
-  switch_to_tab9: 'Cmd+9',
-  switch_to_last_tab: 'Cmd+0',
+  switch_to_last_tab: 'Cmd+9',
   find_in_page: 'Cmd+F',
   find_next: 'Cmd+G',
   find_previous: 'Cmd+Shift+G',
@@ -126,6 +125,15 @@ export const DEFAULT_KEYMAP: Partial<Record<KeyAction, string>> = {
   focus_pane_up: 'Alt+Cmd+Up',
   focus_pane_down: 'Alt+Cmd+Down',
   unsplit_panes: 'Alt+Cmd+U',
+  restore_closed_tab: 'Cmd+Shift+T',
+  next_workspace: 'Alt+Cmd+E',
+  previous_workspace: 'Alt+Cmd+Q',
+  next_tab: 'Cmd+Shift+]',
+  previous_tab: 'Cmd+Shift+[',
+  hard_reload: 'Cmd+Shift+R',
+  zoom_in: 'Cmd+=',
+  zoom_out: 'Cmd+-',
+  zoom_reset: 'Cmd+0',
 }
 
 const ACTION_LABELS: Record<KeyAction, string> = {
@@ -167,6 +175,15 @@ const ACTION_LABELS: Record<KeyAction, string> = {
   focus_pane_up: 'Focus pane up',
   focus_pane_down: 'Focus pane down',
   unsplit_panes: 'Unsplit panes',
+  restore_closed_tab: 'Reopen closed tab',
+  next_workspace: 'Next workspace',
+  previous_workspace: 'Previous workspace',
+  next_tab: 'Next tab',
+  previous_tab: 'Previous tab',
+  hard_reload: 'Reload (bypass cache)',
+  zoom_in: 'Zoom in',
+  zoom_out: 'Zoom out',
+  zoom_reset: 'Reset zoom',
 }
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS) as KeyAction[]

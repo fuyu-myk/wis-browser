@@ -135,7 +135,10 @@ fn upstream_proxy_roundtrips_tagged() {
     // Tagged by `kind`, snake_case.
     let json = serde_json::to_string(&UpstreamProxy::tor_default()).unwrap();
     assert!(json.contains("\"kind\":\"socks5\""), "got {json}");
-    assert_eq!(serde_json::to_string(&UpstreamProxy::Tor).unwrap(), "{\"kind\":\"tor\"}");
+    assert_eq!(
+        serde_json::to_string(&UpstreamProxy::Tor).unwrap(),
+        "{\"kind\":\"tor\"}"
+    );
 }
 
 #[test]

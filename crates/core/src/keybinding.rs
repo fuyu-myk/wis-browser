@@ -63,6 +63,20 @@ pub enum KeyAction {
     FocusPaneDown,
     /// Collapse all splits back to a single pane (the focused tab).
     UnsplitPanes,
+    /// Reopen the most-recently-closed tab (repeat to go further back).
+    RestoreClosedTab,
+    /// Activate the next / previous workspace. No-op at the ends (no wrap).
+    NextWorkspace,
+    PreviousWorkspace,
+    /// Activate the next / previous tab in the current workspace (wraps).
+    NextTab,
+    PreviousTab,
+    /// Reload the active tab bypassing the cache.
+    HardReload,
+    /// Per-tab page zoom.
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
 }
 
 impl KeyAction {
@@ -108,6 +122,15 @@ impl KeyAction {
             Self::FocusPaneUp => "focus_pane_up",
             Self::FocusPaneDown => "focus_pane_down",
             Self::UnsplitPanes => "unsplit_panes",
+            Self::RestoreClosedTab => "restore_closed_tab",
+            Self::NextWorkspace => "next_workspace",
+            Self::PreviousWorkspace => "previous_workspace",
+            Self::NextTab => "next_tab",
+            Self::PreviousTab => "previous_tab",
+            Self::HardReload => "hard_reload",
+            Self::ZoomIn => "zoom_in",
+            Self::ZoomOut => "zoom_out",
+            Self::ZoomReset => "zoom_reset",
         }
     }
 
@@ -124,7 +147,7 @@ impl KeyAction {
     }
 }
 
-const ALL_ACTIONS: [KeyAction; 38] = [
+const ALL_ACTIONS: [KeyAction; 47] = [
     KeyAction::NewTab,
     KeyAction::NewWorkspace,
     KeyAction::CloseTab,
@@ -163,6 +186,15 @@ const ALL_ACTIONS: [KeyAction; 38] = [
     KeyAction::FocusPaneUp,
     KeyAction::FocusPaneDown,
     KeyAction::UnsplitPanes,
+    KeyAction::RestoreClosedTab,
+    KeyAction::NextWorkspace,
+    KeyAction::PreviousWorkspace,
+    KeyAction::NextTab,
+    KeyAction::PreviousTab,
+    KeyAction::HardReload,
+    KeyAction::ZoomIn,
+    KeyAction::ZoomOut,
+    KeyAction::ZoomReset,
 ];
 
 /// Default keyboard accelerators. `NewWindow` has no entry on purpose: the
@@ -186,8 +218,7 @@ pub fn default_keymap() -> HashMap<KeyAction, String> {
         (KeyAction::SwitchToTab6, "Cmd+6"),
         (KeyAction::SwitchToTab7, "Cmd+7"),
         (KeyAction::SwitchToTab8, "Cmd+8"),
-        (KeyAction::SwitchToTab9, "Cmd+9"),
-        (KeyAction::SwitchToLastTab, "Cmd+0"),
+        (KeyAction::SwitchToLastTab, "Cmd+9"),
         (KeyAction::FindInPage, "Cmd+F"),
         (KeyAction::FindNext, "Cmd+G"),
         (KeyAction::FindPrevious, "Cmd+Shift+G"),
@@ -204,6 +235,15 @@ pub fn default_keymap() -> HashMap<KeyAction, String> {
         (KeyAction::FocusPaneUp, "Alt+Cmd+Up"),
         (KeyAction::FocusPaneDown, "Alt+Cmd+Down"),
         (KeyAction::UnsplitPanes, "Alt+Cmd+U"),
+        (KeyAction::RestoreClosedTab, "Cmd+Shift+T"),
+        (KeyAction::NextWorkspace, "Alt+Cmd+E"),
+        (KeyAction::PreviousWorkspace, "Alt+Cmd+Q"),
+        (KeyAction::NextTab, "Cmd+Shift+]"),
+        (KeyAction::PreviousTab, "Cmd+Shift+["),
+        (KeyAction::HardReload, "Cmd+Shift+R"),
+        (KeyAction::ZoomIn, "Cmd+="),
+        (KeyAction::ZoomOut, "Cmd+-"),
+        (KeyAction::ZoomReset, "Cmd+0"),
     ];
     pairs.iter().map(|(a, s)| (*a, (*s).to_string())).collect()
 }
@@ -239,6 +279,7 @@ mod tests {
             KeyAction::NewWindow,
             KeyAction::FocusUrlBarAlt,
             KeyAction::FocusNextPane,
+            KeyAction::SwitchToTab9,
         ];
         let map = default_keymap();
         for action in KeyAction::all() {

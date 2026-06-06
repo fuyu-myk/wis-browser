@@ -94,6 +94,15 @@ export type KeyAction =
   | 'focus_pane_up'
   | 'focus_pane_down'
   | 'unsplit_panes'
+  | 'restore_closed_tab'
+  | 'next_workspace'
+  | 'previous_workspace'
+  | 'next_tab'
+  | 'previous_tab'
+  | 'hard_reload'
+  | 'zoom_in'
+  | 'zoom_out'
+  | 'zoom_reset'
 
 export type AccentColor =
   | 'primary'

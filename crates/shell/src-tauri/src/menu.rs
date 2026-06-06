@@ -136,6 +136,21 @@ fn build_menu(
 
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(&action_item(app, keymap, KeyAction::Reload, "Reload")?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::HardReload,
+            "Reload (Bypass Cache)",
+        )?)
+        .separator()
+        .item(&action_item(app, keymap, KeyAction::ZoomIn, "Zoom In")?)
+        .item(&action_item(app, keymap, KeyAction::ZoomOut, "Zoom Out")?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::ZoomReset,
+            "Actual Size",
+        )?)
         .separator()
         .item(&action_item(
             app,
@@ -241,14 +256,35 @@ fn build_menu(
         .item(&action_item(
             app,
             keymap,
-            KeyAction::SwitchToTab9,
-            "Switch to Tab 9",
+            KeyAction::SwitchToLastTab,
+            "Switch to Last Tab",
+        )?)
+        .separator()
+        .item(&action_item(app, keymap, KeyAction::NextTab, "Next Tab")?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::PreviousTab,
+            "Previous Tab",
         )?)
         .item(&action_item(
             app,
             keymap,
-            KeyAction::SwitchToLastTab,
-            "Switch to Last Tab",
+            KeyAction::RestoreClosedTab,
+            "Reopen Closed Tab",
+        )?)
+        .separator()
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::NextWorkspace,
+            "Next Workspace",
+        )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::PreviousWorkspace,
+            "Previous Workspace",
         )?)
         .build()?;
 

@@ -77,7 +77,10 @@ impl TorProxy {
 
 /// Handle one inbound SOCKS5 connection: negotiate no-auth, read the CONNECT
 /// target, dial it through Tor, then splice the two streams.
-async fn serve<R: Runtime>(mut inbound: TcpStream, client: Arc<TorClient<R>>) -> Result<(), String> {
+async fn serve<R: Runtime>(
+    mut inbound: TcpStream,
+    client: Arc<TorClient<R>>,
+) -> Result<(), String> {
     // Greeting: VER, NMETHODS, METHODS...
     let mut head = [0u8; 2];
     inbound.read_exact(&mut head).await.map_err(io)?;

@@ -483,13 +483,15 @@ pub(crate) fn is_chrome_url(url: &str) -> bool {
 #[tauri::command]
 pub async fn test_upstream(state: State<'_, AppState>, upstream: UpstreamProxy) -> WisResult<()> {
     match upstream {
-        UpstreamProxy::Tor => state
-            .ensure_tor()
-            .await
-            .map(|_| ())
-            .map_err(|e| WisError::InvalidInput {
-                message: e.to_string(),
-            }),
+        UpstreamProxy::Tor => {
+            state
+                .ensure_tor()
+                .await
+                .map(|_| ())
+                .map_err(|e| WisError::InvalidInput {
+                    message: e.to_string(),
+                })
+        }
         other => wis_network::probe_upstream(&other)
             .await
             .map_err(|reason| WisError::InvalidInput { message: reason }),
@@ -598,7 +600,138 @@ pub async fn set_pane_ratio(
 
 #[tauri::command]
 pub async fn close_tab(app: AppHandle, state: State<'_, AppState>, id: TabId) -> WisResult<()> {
+    /// Newest-first cap on the reopen-closed-tab ring.
+    const CLOSED_RING_CAP: usize = 25;
+
+    // Record the tab for "reopen closed tab" before it's removed.
+    {
+        let browser = state.browser.lock().await;
+        if let Ok(tab) = browser.tab(id) {
+            let url = tab.url.to_string();
+            let ephemeral = browser
+                .workspace(tab.workspace_id)
+                .map(|w| w.ephemeral)
+                .unwrap_or(true);
+            if !ephemeral && !url.starts_with("about:") {
+                let entry = crate::state::ClosedTab {
+                    workspace_id: tab.workspace_id,
+                    url,
+                };
+
+                drop(browser);
+                let mut ring = state.closed_tabs.lock().await;
+                ring.push(entry);
+
+                let overflow = ring.len().saturating_sub(CLOSED_RING_CAP);
+                if overflow > 0 {
+                    ring.drain(0..overflow);
+                }
+            }
+        }
+    }
+
     mutate_unit(&app, &state, |s| s.with_tab_closed(id)).await
+}
+
+/// Reopen the most-recently-closed tab in its original workspace, activating it.
+/// No-op when the ring is empty or that workspace no longer exists.
+#[tauri::command]
+pub async fn restore_closed_tab(app: AppHandle, state: State<'_, AppState>) -> WisResult<()> {
+    loop {
+        let entry = {
+            let mut ring = state.closed_tabs.lock().await;
+            ring.pop()
+        };
+        let Some(entry) = entry else {
+            return Ok(());
+        };
+
+        let exists = {
+            let browser = state.browser.lock().await;
+            browser.workspace(entry.workspace_id).is_ok()
+        };
+        if !exists {
+            continue;
+        }
+
+        return mutate_unit(&app, &state, |s| {
+            let (next, _tab) = s.with_new_tab(entry.workspace_id, &entry.url)?;
+            next.with_active_workspace(entry.workspace_id)
+        })
+        .await;
+    }
+}
+
+/// Reload a tab bypassing the HTTP cache (WKWebView `reloadFromOrigin`).
+#[tauri::command]
+pub async fn tab_hard_reload(app: AppHandle, id: TabId) -> WisResult<()> {
+    let label = format!("tab-{}", id.as_uuid());
+    let Some(webview) = app.webviews().get(&label).cloned() else {
+        return Ok(());
+    };
+
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
+        webview
+            .with_webview(|w| unsafe {
+                let wk: *mut AnyObject = w.inner() as *mut AnyObject;
+                if !wk.is_null() {
+                    let _: *mut AnyObject = msg_send![wk, reloadFromOrigin];
+                }
+            })
+            .map_err(|err| WisError::InvalidInput {
+                message: format!("hard reload failed: {err}"),
+            })?;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = webview.eval("window.location.reload()");
+    }
+
+    Ok(())
+}
+
+/// Adjust a tab's page zoom. `kind` is `"in"`, `"out"`, or `"reset"`.
+/// Read-modify-write of WKWebView `pageZoom` (clamped 0.5–3.0).
+#[tauri::command]
+pub async fn tab_zoom(app: AppHandle, id: TabId, kind: String) -> WisResult<()> {
+    let label = format!("tab-{}", id.as_uuid());
+    let Some(webview) = app.webviews().get(&label).cloned() else {
+        return Ok(());
+    };
+
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
+        webview
+            .with_webview(move |w| unsafe {
+                let wk: *mut AnyObject = w.inner() as *mut AnyObject;
+                if wk.is_null() {
+                    return;
+                }
+                let current: f64 = msg_send![wk, pageZoom];
+                let next = match kind.as_str() {
+                    "in" => (current * 1.1).min(3.0),
+                    "out" => (current / 1.1).max(0.5),
+                    _ => 1.0,
+                };
+                let _: () = msg_send![wk, setPageZoom: next];
+            })
+            .map_err(|err| WisError::InvalidInput {
+                message: format!("zoom failed: {err}"),
+            })?;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (webview, kind);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
