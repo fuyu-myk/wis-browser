@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { commands } from '@/bindings/commands'
-import type { BrowserState, Tab, UserSettings } from '@/bindings/types'
+import type { BrowserState, Tab, TabId, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { SettingsIcon } from '@/lib/icons'
 import { SETTINGS_URL } from '@/lib/url'
@@ -12,6 +12,7 @@ import { useKeyActions } from '@/hooks/useKeyActions'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 
 import { Content } from '@/components/Content'
+import { DiscardedTabsContext } from '@/components/DiscardedTabsContext'
 import { NavRow } from '@/components/NavRow'
 import { Sidebar } from '@/components/Sidebar'
 import { TopBar } from '@/components/TopBar'
@@ -26,6 +27,11 @@ interface WindowProps {
 
 export function Window({ state, settings }: WindowProps) {
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
+  const [discardedTabs, setDiscardedTabs] = useState<ReadonlySet<TabId>>(new Set())
+  const onDiscardedChange = useCallback(
+    (next: Set<TabId>) => setDiscardedTabs(next),
+    [],
+  )
   useKeyActions()
   useCommandPaletteOverlay()
   useClearDataOverlay()
@@ -56,6 +62,7 @@ export function Window({ state, settings }: WindowProps) {
   }, [isPrivate])
 
   return (
+    <DiscardedTabsContext.Provider value={discardedTabs}>
     <div
       className={cx('kb-window', layoutClass, railClass, {
         collapsible,
@@ -105,9 +112,10 @@ export function Window({ state, settings }: WindowProps) {
           </button>
         </>
       )}
-      <Content state={state} />
+      <Content state={state} onDiscardedChange={onDiscardedChange} />
       <WindowResizeEdges />
     </div>
+    </DiscardedTabsContext.Provider>
   )
 }
 

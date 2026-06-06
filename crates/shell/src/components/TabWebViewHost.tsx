@@ -18,9 +18,11 @@ const FIND_STRIP_HEIGHT_PX = 80
 
 interface TabWebViewHostProps {
   state: BrowserState
+  /** Reports the set of discarded ("asleep") tab ids when it changes. */
+  onDiscardedChange?: (discarded: Set<TabId>) => void
 }
 
-export function TabWebViewHost({ state }: TabWebViewHostProps) {
+export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const findOverlay = useOverlay('find')
   const findOpenRef = useRef(false)
@@ -66,6 +68,10 @@ export function TabWebViewHost({ state }: TabWebViewHostProps) {
     createTabs,
     activeWorkspaceId: activeWorkspace?.id ?? null,
     allTabs: state.tabs,
+    activeTabId: activeWorkspace?.active_tab_id ?? null,
+    sleepEnabled: state.settings.tab_sleep_enabled,
+    sleepMinutes: state.settings.tab_sleep_minutes,
+    onDiscardedChange,
   })
 
   const focusPane = useCallback(

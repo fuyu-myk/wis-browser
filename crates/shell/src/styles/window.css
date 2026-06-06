@@ -1252,6 +1252,11 @@ body.is-overlay-surface:not(.glass-on) {
   width: 100%;
 }
 .kb-tab:hover { background: var(--overlay); color: var(--text-primary); }
+/* Discarded ("asleep") background tab: dim favicon. */
+.kb-tab.asleep .fav { opacity: 0.45; filter: saturate(0.7); }
+.kb-tab.asleep:not(.active) .ttl { opacity: 0.7; }
+.h-tab.asleep .fav { opacity: 0.45; filter: saturate(0.7); }
+.h-tab.asleep:not(.active) .ttl { opacity: 0.7; }
 .kb-tab.active {
   color: var(--text-primary);
 }
@@ -1758,9 +1763,21 @@ body.is-overlay-surface:not(.glass-on) {
   align-items: center;
   gap: 8px;
   z-index: 25;
-  pointer-events: none;
+  pointer-events: auto;
 }
-.kb-window-top > * { pointer-events: auto; }
+/* Drag strips: the container carrying `data-tauri-drag-region` must be the hit
+   target over empty space so it can start a native window drag. */
+.kb-topbar-row.primary { pointer-events: auto; }
+.kb-window-top > *,
+.kb-topbar-row.primary > * { pointer-events: none; }
+.kb-window-top button,
+.kb-window-top input,
+.kb-window-top a,
+.kb-window-top .kb-urlpill-inline,
+.kb-topbar-row.primary button,
+.kb-topbar-row.primary input,
+.kb-topbar-row.primary a,
+.kb-topbar-row.primary .kb-urlpill-inline { pointer-events: auto; }
 
 .kb-urlpill-wrap {
   flex: 1;
@@ -2547,6 +2564,21 @@ body.is-overlay-surface:not(.glass-on) {
 .kb-net-input:focus { border-color: var(--primary-500); }
 .kb-net-input::placeholder { color: var(--text-tertiary); }
 .kb-net-port { width: 72px; }
+
+/* Numeric setting input (e.g. tab-sleep minutes) */
+.kb-num-input {
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 7px 10px;
+  width: 80px;
+  outline: none;
+  transition: border-color var(--transition-speed) ease, opacity var(--transition-speed) ease;
+}
+.kb-num-input:focus { border-color: var(--primary-500); }
+.kb-num-input:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .kb-net-status {
   display: inline-flex;

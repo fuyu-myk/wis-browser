@@ -189,6 +189,10 @@ export interface UserSettings {
   url_bar_focus_glow: boolean
   /** Launch directly into a private (ephemeral) workspace. */
   always_private: boolean
+  /** Discard background tab webviews after they idle. */
+  tab_sleep_enabled: boolean
+  /** Idle minutes before a hidden tab's webview is discarded. */
+  tab_sleep_minutes: number
   /** User-supplied accelerator overrides, sparse. Keyed by `KeyAction`. */
   keybindings: Partial<Record<KeyAction, string>>
 }
@@ -212,6 +216,8 @@ export interface UserSettingsPatch {
   filter_list_auto_update?: boolean
   url_bar_focus_glow?: boolean
   always_private?: boolean
+  tab_sleep_enabled?: boolean
+  tab_sleep_minutes?: number
   /**
    * Sparse map of accelerator overrides. An entry replaces just that
    * action's binding; an empty string acts as "reset to default".

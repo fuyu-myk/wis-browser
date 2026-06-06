@@ -42,6 +42,7 @@ interface NavSection {
 const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'appearance', label: 'Appearance', icon: <SunIcon /> },
   { id: 'layout', label: 'Layout', icon: <PanelTopIcon /> },
+  { id: 'performance', label: 'Performance', icon: <MonitorIcon /> },
   { id: 'privacy', label: 'Privacy', icon: <LockIcon /> },
   { id: 'network', label: 'Network', icon: <LockIcon /> },
   { id: 'sitedata', label: 'Site data', icon: <LockIcon /> },
@@ -298,6 +299,45 @@ export function SettingsPage() {
             onChange={(search_engine) => update.mutate({ search_engine })}
             options={SEARCH_ENGINE_OPTIONS}
             ariaLabel="Default search engine"
+          />
+        </div>
+      </section>
+
+      <section id="performance" className="sec">
+        <div className="sec-h">Performance</div>
+        <div className="row">
+          <div className="l">
+            <span>Sleep inactive tabs</span>
+            <span>
+              Discard background tabs after a while to free memory. They reload
+              when you switch back. The active tab and pinned tabs never sleep.
+            </span>
+          </div>
+          <Switch
+            checked={settings.tab_sleep_enabled}
+            onChange={(tab_sleep_enabled) => update.mutate({ tab_sleep_enabled })}
+            label="Sleep inactive tabs"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
+            <span>Sleep after</span>
+            <span>Idle minutes a background tab waits before sleeping.</span>
+          </div>
+          <input
+            type="number"
+            className="kb-num-input"
+            min={1}
+            max={1440}
+            step={1}
+            value={settings.tab_sleep_minutes}
+            disabled={!settings.tab_sleep_enabled}
+            onChange={(e) => {
+              const n = Math.round(Number(e.currentTarget.value))
+              if (!Number.isFinite(n)) return
+              update.mutate({ tab_sleep_minutes: Math.min(1440, Math.max(1, n)) })
+            }}
+            aria-label="Sleep after minutes"
           />
         </div>
       </section>

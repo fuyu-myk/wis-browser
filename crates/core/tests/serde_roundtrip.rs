@@ -99,6 +99,8 @@ fn settings_patch_round_trips_when_all_fields_set() {
         filter_list_auto_update: Some(false),
         url_bar_focus_glow: Some(true),
         always_private: Some(true),
+        tab_sleep_enabled: Some(false),
+        tab_sleep_minutes: Some(30),
         keybindings: Some(HashMap::from([
             (KeyAction::NewTab, "Ctrl+T".into()),
             (KeyAction::CloseTab, "Ctrl+W".into()),
@@ -116,6 +118,47 @@ fn user_settings_roundtrips() {
     let before = UserSettings::default();
     let after: UserSettings = roundtrip(&before);
     assert_eq!(before, after);
+}
+
+#[test]
+fn tab_sleep_defaults_are_enabled_at_fifteen_minutes() {
+    let s = UserSettings::default();
+    assert!(s.tab_sleep_enabled);
+    assert_eq!(s.tab_sleep_minutes, 15);
+}
+
+#[test]
+fn tab_sleep_patch_applies_and_leaves_others_untouched() {
+    let base = UserSettings::default();
+    let patched = base.with_patch(UserSettingsPatch {
+        tab_sleep_enabled: Some(false),
+        tab_sleep_minutes: Some(45),
+        ..Default::default()
+    });
+    assert!(!patched.tab_sleep_enabled);
+    assert_eq!(patched.tab_sleep_minutes, 45);
+    // Untouched fields keep their prior values.
+    assert_eq!(patched.layout, base.layout);
+    assert_eq!(patched.theme, base.theme);
+}
+
+#[test]
+fn user_settings_without_tab_sleep_fields_deserialises_to_defaults() {
+    // Settings persisted before tab-sleep existed must still load.
+    let json = r#"{
+        "layout": "sidebar_left",
+        "theme": "system",
+        "accent": "primary",
+        "glass_enabled": true,
+        "sidebar_collapsible": true,
+        "compact": false,
+        "default_privacy_mode": "balanced",
+        "doh_resolver": null,
+        "homepage": null
+    }"#;
+    let parsed: UserSettings = serde_json::from_str(json).unwrap();
+    assert!(parsed.tab_sleep_enabled);
+    assert_eq!(parsed.tab_sleep_minutes, 15);
 }
 
 #[test]

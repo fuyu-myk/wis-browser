@@ -16,6 +16,7 @@ import {
 } from '@/hooks/useTabSplit'
 
 import { TabFavicon } from '@/components/TabFavicon'
+import { useDiscardedTabs } from '@/components/DiscardedTabsContext'
 
 interface HorizontalTabsProps {
   workspaceId: WorkspaceId
@@ -109,6 +110,7 @@ export function HorizontalTabs({
     activeTabId,
   })
 
+  const discardedTabs = useDiscardedTabs()
   const wrapRef = useRef<HTMLDivElement>(null)
   const stripRef = useRef<HTMLDivElement>(null)
   const activeRef = useRef<HTMLDivElement>(null)
@@ -187,6 +189,7 @@ export function HorizontalTabs({
               tabIndex={0}
               className={cx('h-tab', {
                 active: isActive,
+                asleep: discardedTabs.has(tab.id) && !isActive,
                 'as-urlbar': isActive && integrateUrlBar,
                 'drop-before': dropTarget?.anchorIndex === i && dropTarget.side === 'before',
                 'drop-after': dropTarget?.anchorIndex === i && dropTarget.side === 'after',

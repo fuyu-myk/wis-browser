@@ -13,6 +13,9 @@ const PENDING = Symbol('pending-webview')
 const OFFSCREEN_BOUNDS: Bounds = { x: 100000, y: 100000, width: 800, height: 600 }
 const PLACEHOLDER_BOUNDS: Bounds = OFFSCREEN_BOUNDS
 
+// How often the idle sweep checks for background webviews to discard.
+const SWEEP_INTERVAL_MS = 60_000
+
 export interface Bounds {
   x: number
   y: number
@@ -28,21 +31,29 @@ export interface Bounds {
 export type WebviewLayout = Map<TabId, Bounds>
 
 interface UseTabWebviewsArgs {
-  /** Non-chrome tabs of the active workspace to drive webview creation. */
+  /** Non-chrome tabs of the active workspace; the pool a visible tab is drawn from. */
   createTabs: Tab[]
   activeWorkspaceId: WorkspaceId | null
   /**
-   * Every tab across all workspaces. A webview is only destroyed when its tab
-   * disappears from this set (a real close); switching workspaces keeps the
-   * others' webviews alive (hidden) so their pages don't reload.
+   * Every tab across all workspaces. A webview is only destroyed by close when
+   * its tab disappears from this set (a real close). Background webviews may
+   * still be discarded by the idle sweep and recreated on next focus.
    */
   allTabs: Tab[]
+  /** The active tab; never discarded by the sleep sweep. */
+  activeTabId: TabId | null
+  /** When true, background webviews idle past `sleepMinutes` are discarded. */
+  sleepEnabled: boolean
+  sleepMinutes: number
+  /** Reports the current set of discarded ("asleep") tab ids when it changes. */
+  onDiscardedChange?: (discarded: Set<TabId>) => void
 }
 
 interface UseTabWebviewsReturn {
   /**
    * Reconcile native webview visibility/position to `layout` and move native
    * focus to `focusedTabId`. Called directly from the host's measurement effects.
+   * Webviews for newly-visible tabs are created lazily here.
    */
   syncLayout: (layout: WebviewLayout, focusedTabId: TabId | null) => void
 }
@@ -83,6 +94,10 @@ export function useTabWebviews({
   createTabs,
   activeWorkspaceId,
   allTabs,
+  activeTabId,
+  sleepEnabled,
+  sleepMinutes,
+  onDiscardedChange,
 }: UseTabWebviewsArgs): UseTabWebviewsReturn {
   const webviewsRef = useRef<Map<TabId, Webview>>(new Map())
   const windowRef = useRef<Window | null>(null)
@@ -91,27 +106,127 @@ export function useTabWebviews({
   const layoutRef = useRef<WebviewLayout>(new Map())
   const focusedRef = useRef<TabId | null>(null)
   const lastFocusAppliedRef = useRef<TabId | null>(null)
+  // When each currently-hidden webview last went hidden (for the sleep sweep).
+  const hiddenSinceRef = useRef<Map<TabId, number>>(new Map())
+  // Tabs whose webview has been discarded ("asleep").
+  const discardedRef = useRef<Set<TabId>>(new Set())
+
+  // Mirror props into refs so the lazily-invoked callbacks stay current without
+  // re-subscribing the measurement effects.
+  const createTabsRef = useRef(createTabs)
+  createTabsRef.current = createTabs
+  const allTabsRef = useRef(allTabs)
+  allTabsRef.current = allTabs
+  const activeWorkspaceIdRef = useRef(activeWorkspaceId)
+  activeWorkspaceIdRef.current = activeWorkspaceId
+  const activeTabIdRef = useRef(activeTabId)
+  activeTabIdRef.current = activeTabId
+  const sleepEnabledRef = useRef(sleepEnabled)
+  sleepEnabledRef.current = sleepEnabled
+  const sleepMinutesRef = useRef(sleepMinutes)
+  sleepMinutesRef.current = sleepMinutes
+  const onDiscardedRef = useRef(onDiscardedChange)
+  onDiscardedRef.current = onDiscardedChange
 
   if (windowRef.current === null) {
     windowRef.current = getCurrentWindow()
   }
+
+  // Recompute the "asleep" set: every non-chrome tab that has no live webview
+  // (never loaded yet after a restart, or discarded by the sweep). Notifies the
+  // consumer only when the set actually changes.
+  const recomputeDiscarded = useCallback(() => {
+    const map = webviewsRef.current
+    const next = new Set<TabId>()
+    for (const t of allTabsRef.current) {
+      if (isChromeUrl(t.url)) continue
+      const wv = map.get(t.id)
+      const loaded = wv != null && (wv as unknown) !== PENDING
+      if (!loaded) next.add(t.id)
+    }
+    const prev = discardedRef.current
+    let changed = next.size !== prev.size
+    if (!changed) {
+      for (const id of next) {
+        if (!prev.has(id)) {
+          changed = true
+          break
+        }
+      }
+    }
+    if (changed) {
+      discardedRef.current = next
+      onDiscardedRef.current?.(new Set(next))
+    }
+  }, [])
 
   // Reconcile a single webview's visibility/position against the desired layout.
   const reconcileOne = useCallback((id: TabId, wv: Webview) => {
     const rect = layoutRef.current.get(id)
     const vis = visibilityRef.current
     if (rect) {
+      hiddenSinceRef.current.delete(id)
       if (vis.get(id) !== true) {
         vis.set(id, true)
         showWithBounds(wv, rect)
       } else {
         applyBounds(wv, rect)
       }
-    } else if (vis.get(id) !== false) {
-      vis.set(id, false)
-      void wv.hide().catch(() => undefined)
+    } else {
+      if (!hiddenSinceRef.current.has(id)) {
+        hiddenSinceRef.current.set(id, Date.now())
+      }
+      if (vis.get(id) !== false) {
+        vis.set(id, false)
+        void wv.hide().catch(() => undefined)
+      }
     }
   }, [])
+
+  // Create the webview for a tab that has become visible but has none yet.
+  const ensureWebview = useCallback(
+    (tabId: TabId) => {
+      const map = webviewsRef.current
+      const window = windowRef.current
+      const wsId = activeWorkspaceIdRef.current
+      if (!window || !wsId || map.has(tabId)) return
+      const tab = createTabsRef.current.find((t) => t.id === tabId)
+      if (!tab) return
+
+      map.set(tabId, PENDING as unknown as Webview)
+      const rect = layoutRef.current.get(tabId)
+      const initialSize = rect ? { width: rect.width, height: rect.height } : null
+
+      void createWebviewFor(window, tab, wsId, initialSize).then(
+        (wv) => {
+          const stillLive = allTabsRef.current.some(
+            (t) => t.id === tabId && !isChromeUrl(t.url),
+          )
+          if (!stillLive) {
+            map.delete(tabId)
+            void wv.close().catch(() => undefined)
+            return
+          }
+          map.set(tabId, wv)
+          recomputeDiscarded()
+          void commands
+            .setWebviewCornerRadius(labelFor(tabId), WEBVIEW_CORNER_RADIUS)
+            .catch(() => undefined)
+          reconcileOne(tabId, wv)
+          if (tabId === focusedRef.current) {
+            void wv.setFocus().catch(() => undefined)
+            lastFocusAppliedRef.current = tabId
+          }
+        },
+        (err: unknown) => {
+          map.delete(tabId)
+          // eslint-disable-next-line no-console
+          console.error(`create webview ${tabId}`, err)
+        },
+      )
+    },
+    [reconcileOne, recomputeDiscarded],
+  )
 
   // Close any leftover webviews from a previous run on first mount.
   useEffect(() => {
@@ -133,68 +248,68 @@ export function useTabWebviews({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Create/destroy webviews to match the live tab set.
+  // Destroy webviews whose tab was actually closed (gone from every workspace).
+  // Also refreshes the "asleep" set so newly-added tabs dim until first shown
+  // and closed tabs drop out of it.
   useEffect(() => {
-    if (!activeWorkspaceId || !windowRef.current) return
-    const window = windowRef.current
+    if (!activeWorkspaceId) return
     const map = webviewsRef.current
-    const liveIds = new Set(
-      allTabs.filter((t) => !isChromeUrl(t.url)).map((t) => t.id),
-    )
+    const liveIds = new Set(allTabs.filter((t) => !isChromeUrl(t.url)).map((t) => t.id))
 
-    // Destroy only webviews whose tab was actually closed (gone everywhere).
     for (const [id, wv] of Array.from(map.entries())) {
-      if (!liveIds.has(id)) {
-        if ((wv as unknown) !== PENDING) {
-          void wv.close().catch((err: unknown) => {
-            // eslint-disable-next-line no-console
-            console.error(`close webview ${id}`, err)
-          })
+      if (liveIds.has(id)) continue
+      if ((wv as unknown) !== PENDING) {
+        void wv.close().catch((err: unknown) => {
+          // eslint-disable-next-line no-console
+          console.error(`close webview ${id}`, err)
+        })
+      }
+      map.delete(id)
+      visibilityRef.current.delete(id)
+      hiddenSinceRef.current.delete(id)
+    }
+    recomputeDiscarded()
+  }, [allTabs, activeWorkspaceId, recomputeDiscarded])
+
+  // Idle sweep: discard background webviews hidden past the threshold.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!sleepEnabledRef.current) return
+      const map = webviewsRef.current
+      const now = Date.now()
+      const thresholdMs = Math.max(1, sleepMinutesRef.current) * 60_000
+      let changed = false
+      for (const [id, wv] of Array.from(map.entries())) {
+        if ((wv as unknown) === PENDING) continue
+        if (layoutRef.current.has(id)) continue // visible
+        if (id === activeTabIdRef.current) continue
+        const tab = allTabsRef.current.find((t) => t.id === id)
+        if (tab?.pinned) continue
+        const since = hiddenSinceRef.current.get(id)
+        if (since == null) {
+          hiddenSinceRef.current.set(id, now)
+          continue
         }
+        if (now - since < thresholdMs) continue
+        void wv.close().catch(() => undefined)
         map.delete(id)
         visibilityRef.current.delete(id)
+        hiddenSinceRef.current.delete(id)
+        changed = true
       }
-    }
-
-    // Create webviews for active-workspace tabs that don't have one yet.
-    const firstRect = layoutRef.current.values().next().value as Bounds | undefined
-    const initialSize = firstRect
-      ? { width: firstRect.width, height: firstRect.height }
-      : null
-    for (const tab of createTabs) {
-      if (map.has(tab.id)) continue
-      map.set(tab.id, PENDING as unknown as Webview)
-
-      void createWebviewFor(window, tab, activeWorkspaceId, initialSize).then(
-        (wv) => {
-          if (!liveIds.has(tab.id)) {
-            map.delete(tab.id)
-            void wv.close().catch(() => undefined)
-            return
-          }
-          map.set(tab.id, wv)
-          void commands
-            .setWebviewCornerRadius(labelFor(tab.id), WEBVIEW_CORNER_RADIUS)
-            .catch(() => undefined)
-          reconcileOne(tab.id, wv)
-          if (tab.id === focusedRef.current) {
-            void wv.setFocus().catch(() => undefined)
-            lastFocusAppliedRef.current = tab.id
-          }
-        },
-        (err: unknown) => {
-          map.delete(tab.id)
-          // eslint-disable-next-line no-console
-          console.error(`create webview ${tab.id}`, err)
-        },
-      )
-    }
-  }, [createTabs, allTabs, activeWorkspaceId, reconcileOne])
+      if (changed) recomputeDiscarded()
+    }, SWEEP_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [recomputeDiscarded])
 
   const syncLayout = useCallback(
     (layout: WebviewLayout, focusedTabId: TabId | null) => {
       layoutRef.current = layout
       focusedRef.current = focusedTabId
+      // Lazily create webviews for tabs that just became visible.
+      for (const id of layout.keys()) {
+        if (!webviewsRef.current.has(id)) ensureWebview(id)
+      }
       for (const [id, wv] of webviewsRef.current) {
         if ((wv as unknown) === PENDING) continue
         reconcileOne(id, wv)
@@ -207,7 +322,7 @@ export function useTabWebviews({
         }
       }
     },
-    [reconcileOne],
+    [reconcileOne, ensureWebview],
   )
 
   return { syncLayout }

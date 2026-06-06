@@ -16,6 +16,7 @@ import {
 } from '@/hooks/useTabSplit'
 
 import { TabFavicon } from '@/components/TabFavicon'
+import { useDiscardedTabs } from '@/components/DiscardedTabsContext'
 
 interface TabListProps {
   workspaceId: WorkspaceId
@@ -56,6 +57,7 @@ export function TabList({ workspaceId, tabs, activeTabId, onSplitMenuOpenChange 
     onMenuOpenChange: onSplitMenuOpenChange,
   })
 
+  const discardedTabs = useDiscardedTabs()
   const listRef = useRef<HTMLDivElement>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
 
@@ -92,6 +94,7 @@ export function TabList({ workspaceId, tabs, activeTabId, onSplitMenuOpenChange 
           className={cx('kb-tab', {
             active: tab.id === activeTabId,
             pinned: tab.pinned,
+            asleep: discardedTabs.has(tab.id) && tab.id !== activeTabId,
             'drop-before': dropTarget?.anchorIndex === i && dropTarget.side === 'before',
             'drop-after': dropTarget?.anchorIndex === i && dropTarget.side === 'after',
           })}

@@ -44,6 +44,15 @@ pub struct UserSettings {
     /// workspace on launch instead of restoring the persisted session.
     #[serde(default)]
     pub always_private: bool,
+    /// When true, background tab webviews are discarded after they have been
+    /// hidden for [`Self::tab_sleep_minutes`], freeing memory; they reload on
+    /// next focus. The active tab and pinned tabs are never slept.
+    #[serde(default = "default_tab_sleep_enabled")]
+    pub tab_sleep_enabled: bool,
+    /// Idle minutes a background tab stays hidden before its webview is
+    /// discarded. Only consulted when [`Self::tab_sleep_enabled`].
+    #[serde(default = "default_tab_sleep_minutes")]
+    pub tab_sleep_minutes: u32,
     /// User-supplied accelerator overrides keyed by [`KeyAction`]. Each
     /// entry replaces the corresponding entry from [`crate::default_keymap`]
     /// at runtime (see [`crate::effective_keymap`]). Absent entries fall
@@ -55,6 +64,14 @@ pub struct UserSettings {
 
 fn default_filter_list_auto_update() -> bool {
     true
+}
+
+fn default_tab_sleep_enabled() -> bool {
+    true
+}
+
+fn default_tab_sleep_minutes() -> u32 {
+    15
 }
 
 impl Default for UserSettings {
@@ -74,6 +91,8 @@ impl Default for UserSettings {
             filter_list_auto_update: true,
             url_bar_focus_glow: false,
             always_private: false,
+            tab_sleep_enabled: true,
+            tab_sleep_minutes: 15,
             keybindings: HashMap::new(),
         }
     }
@@ -113,6 +132,10 @@ pub struct UserSettingsPatch {
     pub url_bar_focus_glow: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub always_private: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab_sleep_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab_sleep_minutes: Option<u32>,
     /// Merged onto the existing `keybindings` map. Sparse entries replace
     /// just those actions; absent actions keep their current binding.
     /// `Some(empty_map)` is a no-op (the patch is sparse, not a wipe).
@@ -144,6 +167,8 @@ impl UserSettings {
                 .unwrap_or(self.filter_list_auto_update),
             url_bar_focus_glow: patch.url_bar_focus_glow.unwrap_or(self.url_bar_focus_glow),
             always_private: patch.always_private.unwrap_or(self.always_private),
+            tab_sleep_enabled: patch.tab_sleep_enabled.unwrap_or(self.tab_sleep_enabled),
+            tab_sleep_minutes: patch.tab_sleep_minutes.unwrap_or(self.tab_sleep_minutes),
             keybindings: match patch.keybindings {
                 None => self.keybindings.clone(),
                 Some(overrides) => {
