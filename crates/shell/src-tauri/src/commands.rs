@@ -694,44 +694,57 @@ pub async fn tab_hard_reload(app: AppHandle, id: TabId) -> WisResult<()> {
     Ok(())
 }
 
-/// Adjust a tab's page zoom. `kind` is `"in"`, `"out"`, or `"reset"`.
-/// Read-modify-write of WKWebView `pageZoom` (clamped 0.5–3.0).
+/// Adjust a tab's page zoom. `kind` is `"in"`, `"out"`, or `"reset"`. The new
+/// factor is computed from the persisted zoom, stored on the tab,
+/// then applied to the live webview.
 #[tauri::command]
-pub async fn tab_zoom(app: AppHandle, id: TabId, kind: String) -> WisResult<()> {
+pub async fn tab_zoom(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: TabId,
+    kind: String,
+) -> WisResult<()> {
+    let current = {
+        let browser = state.browser.lock().await;
+        browser.tab(id).map(|t| t.zoom).unwrap_or(1.0)
+    };
+    let next = match kind.as_str() {
+        "in" => (current * 1.1).min(3.0),
+        "out" => (current / 1.1).max(0.5),
+        _ => 1.0,
+    };
+    // Snap to 3 d.p. to minimize float drift.
+    let next = (next * 1000.0).round() / 1000.0;
+
+    mutate_unit(&app, &state, |s| s.with_tab_zoom(id, next)).await?;
+    apply_tab_zoom(&app, id, next);
+
+    Ok(())
+}
+
+/// Apply a page-zoom factor to a tab's live webview (no-op if it has no native
+/// webview yet, e.g. a chrome page). Shared by [`tab_zoom`] and tab-webview
+/// creation so a restored tab regains its zoom.
+pub(crate) fn apply_tab_zoom(app: &AppHandle, id: TabId, factor: f64) {
     let label = format!("tab-{}", id.as_uuid());
     let Some(webview) = app.webviews().get(&label).cloned() else {
-        return Ok(());
+        return;
     };
-
     #[cfg(target_os = "macos")]
     {
         use objc2::msg_send;
         use objc2::runtime::AnyObject;
-        webview
-            .with_webview(move |w| unsafe {
-                let wk: *mut AnyObject = w.inner() as *mut AnyObject;
-                if wk.is_null() {
-                    return;
-                }
-                let current: f64 = msg_send![wk, pageZoom];
-                let next = match kind.as_str() {
-                    "in" => (current * 1.1).min(3.0),
-                    "out" => (current / 1.1).max(0.5),
-                    _ => 1.0,
-                };
-                let _: () = msg_send![wk, setPageZoom: next];
-            })
-            .map_err(|err| WisError::InvalidInput {
-                message: format!("zoom failed: {err}"),
-            })?;
+        let _ = webview.with_webview(move |w| unsafe {
+            let wk: *mut AnyObject = w.inner() as *mut AnyObject;
+            if !wk.is_null() {
+                let _: () = msg_send![wk, setPageZoom: factor];
+            }
+        });
     }
-
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (webview, kind);
+        let _ = (webview, factor);
     }
-
-    Ok(())
 }
 
 #[tauri::command]
@@ -968,6 +981,15 @@ pub async fn create_tab_webview(
     // "Save password?" capture.
     if !ephemeral {
         crate::capture::install(&child);
+    }
+
+    // Restore the tab's persisted page zoom (if it isn't the default).
+    let zoom = {
+        let browser = state.browser.lock().await;
+        browser.tab(tab_id).map(|t| t.zoom).unwrap_or(1.0)
+    };
+    if (zoom - 1.0).abs() > f64::EPSILON {
+        apply_tab_zoom(&app, tab_id, zoom);
     }
 
     Ok(())

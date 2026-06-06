@@ -61,6 +61,21 @@ impl SqliteStorage {
 
         Ok(())
     }
+
+    /// Write a consistent standalone copy of the database to `dst`. Uses
+    /// `VACUUM INTO`, which snapshots the committed state correctly even with
+    /// WAL active and produces a single self-contained file (no `-wal`/`-shm` sidecars).
+    /// `dst` is replaced if it already exists.
+    pub fn backup_to(&self, dst: &Path) -> StorageResult<()> {
+        if dst.exists() {
+            let _ = std::fs::remove_file(dst);
+        }
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let target = dst.to_string_lossy().replace('\'', "''");
+
+        conn.execute_batch(&format!("VACUUM INTO '{target}'"))?;
+        Ok(())
+    }
 }
 
 impl Storage for SqliteStorage {

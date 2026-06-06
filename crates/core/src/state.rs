@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use url::Url;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BrowserState {
     pub workspaces: Vec<Workspace>,
     pub tabs: Vec<Tab>,
@@ -440,6 +440,14 @@ impl BrowserState {
         let updated = current.with_title(title);
 
         Ok(self.replace_tab(id, &updated))
+    }
+
+    pub fn with_tab_zoom(&self, id: TabId, zoom: f64) -> WisResult<Self> {
+        let current = self.tab(id)?;
+        if current.zoom == zoom {
+            return Ok(self.clone());
+        }
+        Ok(self.replace_tab(id, &current.with_zoom(zoom)))
     }
 
     /// Toggle a tab's `loading` flag. Idempotent when the value doesn't change.

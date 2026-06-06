@@ -1665,6 +1665,18 @@ body.is-overlay-surface:not(.glass-on) {
   color: var(--text-primary);
 }
 .kb-urlpill-inline svg { width: 14px; height: 14px; opacity: 0.7; flex-shrink: 0; }
+/* Security indicator: padlock for HTTPS, warning for HTTP. */
+.kb-urlpill-inline .ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.kb-urlpill-inline .ico svg { width: 14px; height: 14px; }
+.kb-urlpill-inline .ico.kb-secure { color: var(--text-secondary); }
+.kb-urlpill-inline .ico.kb-secure svg { opacity: 0.85; }
+.kb-urlpill-inline .ico.kb-insecure { color: var(--danger-500, #e5484d); }
+.kb-urlpill-inline .ico.kb-insecure svg { opacity: 1; }
 .kb-urlpill-inline .protocol { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 11px; }
 .kb-urlpill-inline .domain   { color: var(--text-primary); font-weight: 500; }
 .kb-urlpill-inline .path     {

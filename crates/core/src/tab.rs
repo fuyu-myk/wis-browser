@@ -13,7 +13,7 @@ pub struct FaviconRef {
     pub hash: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Tab {
     pub id: TabId,
     pub workspace_id: WorkspaceId,
@@ -27,8 +27,16 @@ pub struct Tab {
     /// mid-load, so the storage layer always reconstructs `loading: false`.
     #[serde(default)]
     pub loading: bool,
+    /// Persisted page-zoom factor (1.0 = 100%).
+    #[serde(default = "default_zoom")]
+    pub zoom: f64,
     pub created_at: DateTime<Utc>,
     pub last_active_at: DateTime<Utc>,
+}
+
+/// Default page-zoom factor (100%).
+pub fn default_zoom() -> f64 {
+    1.0
 }
 
 impl Tab {
@@ -43,6 +51,7 @@ impl Tab {
             pinned: false,
             muted: false,
             loading: false,
+            zoom: default_zoom(),
             created_at: now,
             last_active_at: now,
         }
@@ -79,6 +88,13 @@ impl Tab {
     pub fn with_muted(&self, muted: bool) -> Self {
         Self {
             muted,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_zoom(&self, zoom: f64) -> Self {
+        Self {
+            zoom,
             ..self.clone()
         }
     }

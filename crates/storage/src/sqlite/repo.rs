@@ -103,8 +103,8 @@ fn insert_workspace(
 fn insert_tab(tx: &Transaction<'_>, tab: &Tab, position: i64) -> StorageResult<()> {
     tx.execute(
         "INSERT INTO tabs (id, workspace_id, position, url, title, favicon_hash,
-                           pinned, muted, created_at, last_active_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                           pinned, muted, created_at, last_active_at, zoom)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             uuid_string(tab.id.into()),
             uuid_string(tab.workspace_id.into()),
@@ -116,6 +116,7 @@ fn insert_tab(tx: &Transaction<'_>, tab: &Tab, position: i64) -> StorageResult<(
             tab.muted,
             tab.created_at,
             tab.last_active_at,
+            tab.zoom,
         ],
     )?;
 
@@ -253,7 +254,7 @@ fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
 fn load_tabs(conn: &Connection) -> StorageResult<Vec<Tab>> {
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, url, title, favicon_hash, pinned, muted,
-                created_at, last_active_at
+                created_at, last_active_at, zoom
          FROM tabs
          ORDER BY workspace_id ASC, position ASC",
     )?;
@@ -264,6 +265,7 @@ fn load_tabs(conn: &Connection) -> StorageResult<Vec<Tab>> {
         let id_str: String = row.get(0)?;
         let workspace_id_str: String = row.get(1)?;
         let favicon_hash: Option<String> = row.get(4)?;
+        let zoom: Option<f64> = row.get(9)?;
 
         out.push(Tab {
             id: TabId::from(parse_uuid(&id_str)?),
@@ -274,6 +276,7 @@ fn load_tabs(conn: &Connection) -> StorageResult<Vec<Tab>> {
             pinned: row.get(5)?,
             muted: row.get(6)?,
             loading: false,
+            zoom: zoom.unwrap_or_else(wis_core::tab::default_zoom),
             created_at: row.get::<_, DateTime<Utc>>(7)?,
             last_active_at: row.get::<_, DateTime<Utc>>(8)?,
         });

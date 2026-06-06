@@ -53,7 +53,7 @@ pub fn run() {
             let db_path = data_dir.join("wis.db");
 
             log::info!("opening database at {}", db_path.display());
-            let storage = SqliteStorage::open(&db_path)?;
+            let storage = open_storage_resilient(&data_dir, &db_path);
 
             let browser_state = hydrate_state(&storage);
             let storage: Arc<dyn Storage> = Arc::new(storage);
@@ -200,6 +200,48 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Open the state DB resiliently so a corrupt store never blocks launch or
+/// silently wipes the session:
+///  1. Open the primary DB; on success, refresh a known-good backup
+///     (`wis.db.bak`) capturing the session at this launch.
+///  2. If the primary won't open (corruption), set it aside, restore from the
+///     backup, and reopen.
+///  3. If there's no usable backup, start fresh (the corrupt file is kept as
+///     `wis.db.corrupt-<ts>`).
+fn open_storage_resilient(data_dir: &std::path::Path, db_path: &std::path::Path) -> SqliteStorage {
+    let backup = data_dir.join("wis.db.bak");
+
+    match SqliteStorage::open(db_path) {
+        Ok(storage) => {
+            if let Err(err) = storage.backup_to(&backup) {
+                log::warn!("session backup failed (non-fatal): {err}");
+            }
+            storage
+        }
+        Err(open_err) => {
+            log::error!("state DB failed to open ({open_err}); attempting recovery");
+            let _ = std::fs::remove_file(data_dir.join("wis.db-wal"));
+            let _ = std::fs::remove_file(data_dir.join("wis.db-shm"));
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let _ = std::fs::rename(db_path, data_dir.join(format!("wis.db.corrupt-{stamp}")));
+
+            if backup.exists() && std::fs::copy(&backup, db_path).is_ok() {
+                if let Ok(storage) = SqliteStorage::open(db_path) {
+                    log::warn!("recovered previous session from backup");
+                    return storage;
+                }
+                log::error!("backup recovery failed; starting fresh");
+                let _ = std::fs::remove_file(db_path);
+            }
+
+            SqliteStorage::open(db_path).expect("fresh state DB must open")
+        }
+    }
 }
 
 /// Load persisted state, falling back to defaults on corruption or absence.

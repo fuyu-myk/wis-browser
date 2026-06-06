@@ -132,6 +132,11 @@ const M0007_UPSTREAM_PROXY: &str = r#"
 ALTER TABLE workspaces ADD COLUMN upstream_proxy TEXT;
 "#;
 
+// Per-tab page-zoom factor (1.0 = 100%). Nullable → existing tabs load at 1.0.
+const M0008_TAB_ZOOM: &str = r#"
+ALTER TABLE tabs ADD COLUMN zoom REAL;
+"#;
+
 fn all() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(M0001_INITIAL),
@@ -141,6 +146,7 @@ fn all() -> Migrations<'static> {
         M::up(M0005_CREDENTIALS),
         M::up(M0006_SEARCHES),
         M::up(M0007_UPSTREAM_PROXY),
+        M::up(M0008_TAB_ZOOM),
     ])
 }
 
