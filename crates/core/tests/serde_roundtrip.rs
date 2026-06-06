@@ -119,6 +119,26 @@ fn user_settings_roundtrips() {
 }
 
 #[test]
+fn upstream_proxy_roundtrips_tagged() {
+    use wis_core::UpstreamProxy;
+    for variant in [
+        UpstreamProxy::Socks5 {
+            host: "127.0.0.1".into(),
+            port: 9050,
+        },
+        UpstreamProxy::Tor,
+    ] {
+        let json = serde_json::to_string(&variant).unwrap();
+        let parsed: UpstreamProxy = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, variant);
+    }
+    // Tagged by `kind`, snake_case.
+    let json = serde_json::to_string(&UpstreamProxy::tor_default()).unwrap();
+    assert!(json.contains("\"kind\":\"socks5\""), "got {json}");
+    assert_eq!(serde_json::to_string(&UpstreamProxy::Tor).unwrap(), "{\"kind\":\"tor\"}");
+}
+
+#[test]
 fn search_engine_roundtrips_as_lowercase() {
     for (variant, expected) in [
         (wis_core::SearchEngine::DuckDuckGo, "\"duckduckgo\""),

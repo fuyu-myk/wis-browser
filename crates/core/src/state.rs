@@ -195,6 +195,33 @@ impl BrowserState {
         })
     }
 
+    pub fn with_workspace_upstream_proxy(
+        &self,
+        id: WorkspaceId,
+        upstream: Option<crate::proxy::UpstreamProxy>,
+    ) -> WisResult<Self> {
+        if !self.workspaces.iter().any(|w| w.id == id) {
+            return Err(WisError::WorkspaceNotFound { id });
+        }
+
+        let workspaces = self
+            .workspaces
+            .iter()
+            .map(|w| {
+                if w.id == id {
+                    w.with_upstream_proxy(upstream.clone())
+                } else {
+                    w.clone()
+                }
+            })
+            .collect();
+
+        Ok(Self {
+            workspaces,
+            ..self.clone()
+        })
+    }
+
     pub fn with_workspace_removed(&self, id: WorkspaceId) -> WisResult<Self> {
         if self.workspaces.len() == 1 {
             return Err(WisError::CannotDeleteLastWorkspace);

@@ -5,6 +5,7 @@ import { cx } from '@/lib/cx'
 import { SettingsIcon } from '@/lib/icons'
 
 import { Brand } from '@/components/Brand'
+import { VpnToggle } from '@/components/VpnToggle'
 import { WorkspacePill } from '@/components/WorkspacePill'
 
 interface TopTabsRailProps {
@@ -21,6 +22,8 @@ interface TopTabsRailProps {
 export function TopTabsRail({ state, side, onOpenSettings }: TopTabsRailProps) {
   const [workspacePopoverOpen, setWorkspacePopoverOpen] = useState(false)
   const expanded = workspacePopoverOpen
+  const activeWorkspace =
+    state.workspaces.find((w) => w.id === state.active_workspace_id) ?? null
 
   return (
     <aside
@@ -31,14 +34,17 @@ export function TopTabsRail({ state, side, onOpenSettings }: TopTabsRailProps) {
       <Brand />
       <WorkspacePill state={state} onOpenChange={setWorkspacePopoverOpen} />
       <div className="kb-rail-spacer" />
-      <button
-        type="button"
-        className="kb-circle-btn kb-rail-settings"
-        aria-label="Settings"
-        onClick={onOpenSettings}
-      >
-        <SettingsIcon />
-      </button>
+      <div className="kb-rail-controls">
+        <VpnToggle workspace={activeWorkspace} variant="rail" />
+        <button
+          type="button"
+          className="kb-circle-btn kb-rail-settings"
+          aria-label="Settings"
+          onClick={onOpenSettings}
+        >
+          <SettingsIcon />
+        </button>
+      </div>
     </aside>
   )
 }

@@ -20,6 +20,7 @@ import type {
   SplitDir,
   Tab,
   TabId,
+  UpstreamProxy,
   UrlSuggestions,
   UserSettings,
   UserSettingsPatch,
@@ -211,6 +212,26 @@ export const commands = {
    */
   async setWorkspacePrivacyMode(id: WorkspaceId, mode: PrivacyMode): Promise<Workspace> {
     return invoke('set_workspace_privacy_mode', { id, mode })
+  },
+
+  /**
+   * Set (or clear, with `null`) a workspace's upstream proxy.
+   */
+  async setWorkspaceUpstream(
+    id: WorkspaceId,
+    upstream: UpstreamProxy | null,
+  ): Promise<Workspace> {
+    return invoke('set_workspace_upstream', { id, upstream })
+  },
+
+  /** Probe an upstream proxy for reachability. Rejects with the failure reason. */
+  async testUpstream(upstream: UpstreamProxy): Promise<void> {
+    return invoke('test_upstream', { upstream })
+  },
+
+  /** Whether the built-in Tor client is compiled into this build. */
+  async torAvailable(): Promise<boolean> {
+    return invoke('tor_available')
   },
 
   // -- tab mutations --------------------------------------------------------

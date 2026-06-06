@@ -35,6 +35,11 @@ export type PrivacyMode = 'strict' | 'balanced' | 'permissive'
 
 export type SplitDir = 'horizontal' | 'vertical'
 
+/** Mirror of `wis_core::UpstreamProxy` (serde-tagged by `kind`). */
+export type UpstreamProxy =
+  | { kind: 'socks5'; host: string; port: number }
+  | { kind: 'tor' }
+
 export type PaneBranch = 'first' | 'second'
 
 /**
@@ -153,6 +158,8 @@ export interface Workspace {
   pane_tree: PaneNode | null
   /** Private/incognito workspace: non-persistent data store, never saved. */
   ephemeral: boolean
+  /** Upstream proxy this workspace routes through (Tor/SOCKS5/HTTP); null = direct. */
+  upstream_proxy: UpstreamProxy | null
 }
 
 export interface UserSettings {

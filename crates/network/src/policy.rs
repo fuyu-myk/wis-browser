@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use url::Url;
-use wis_core::{PerSitePolicy, PrivacyMode};
+use wis_core::{PerSitePolicy, PrivacyMode, UpstreamProxy};
 
 use crate::blocker::{BlockerVerdict, RequestType, TrackerBlocker};
 use crate::error::NetworkResult;
@@ -38,6 +38,7 @@ pub struct RequestPolicy {
     blocker: Arc<TrackerBlocker>,
     upgrader: HttpsUpgrader,
     per_site: Vec<PerSitePolicy>,
+    upstream: Option<UpstreamProxy>,
 }
 
 impl RequestPolicy {
@@ -47,6 +48,7 @@ impl RequestPolicy {
             blocker,
             privacy_mode,
             per_site: Vec::new(),
+            upstream: None,
         }
     }
 
@@ -54,6 +56,18 @@ impl RequestPolicy {
     /// the same host.
     pub fn with_per_site(self, per_site: Vec<PerSitePolicy>) -> Self {
         Self { per_site, ..self }
+    }
+
+    /// Route all connections through an upstream proxy (e.g. Tor via SOCKS5).
+    pub fn with_upstream(self, upstream: UpstreamProxy) -> Self {
+        Self {
+            upstream: Some(upstream),
+            ..self
+        }
+    }
+
+    pub fn upstream(&self) -> Option<&UpstreamProxy> {
+        self.upstream.as_ref()
     }
 
     pub fn privacy_mode(&self) -> PrivacyMode {

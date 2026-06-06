@@ -18,6 +18,8 @@ pub mod filter_lists;
 pub mod policy;
 pub mod proxy;
 pub mod resolver;
+#[cfg(feature = "tor")]
+pub mod tor;
 pub mod upgrader;
 
 pub use blocker::{RequestType, TrackerBlocker};
@@ -25,6 +27,8 @@ pub use content_filter::content_blocking_json;
 pub use context::{NetworkContext, RefererPolicy};
 pub use error::{NetworkError, NetworkResult};
 pub use policy::{Decision, OutboundRequest, RequestPolicy};
-pub use proxy::ProxyServer;
+pub use proxy::{probe_upstream, ProxyServer};
 pub use resolver::{DohResolver, Resolver, StubResolver};
+#[cfg(feature = "tor")]
+pub use tor::TorProxy;
 pub use upgrader::HttpsUpgrader;

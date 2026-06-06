@@ -44,6 +44,10 @@ pub struct AppState {
     /// A login captured from a page, awaiting the user's save/dismiss decision.
     /// The plaintext password lives here only; it never crosses back to a webview.
     pub pending_capture: Mutex<Option<crate::capture::PendingCapture>>,
+    /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
+    /// Only present with the `tor` feature.
+    #[cfg(feature = "tor")]
+    pub tor_proxy: Mutex<Option<wis_network::TorProxy>>,
 }
 
 impl AppState {
@@ -65,6 +69,8 @@ impl AppState {
             proxies: Mutex::new(HashMap::new()),
             vault_key: Mutex::new(None),
             pending_capture: Mutex::new(None),
+            #[cfg(feature = "tor")]
+            tor_proxy: Mutex::new(None),
         }
     }
 
@@ -104,23 +110,22 @@ impl AppState {
     /// HTTPS-First upgrades. HTTPS is tunnelled raw; path-level filtering is
     /// enforced in the WebView engine (see `content_filter`).
     pub async fn ensure_proxy_for(&self, workspace_id: WorkspaceId) -> Result<u16, WisShellError> {
-        let privacy_mode = {
+        let (privacy_mode, upstream) = {
             let browser = self.browser.lock().await;
-            browser
+            let ws = browser
                 .workspace(workspace_id)
-                .map_err(WisShellError::from)?
-                .privacy_mode
+                .map_err(WisShellError::from)?;
+            (ws.privacy_mode, ws.upstream_proxy.clone())
         };
+
+        let upstream = self.resolve_upstream(upstream).await?;
 
         let mut proxies = self.proxies.lock().await;
         if let Some(server) = proxies.get(&workspace_id) {
             return Ok(server.port());
         }
 
-        let policy = Arc::new(RequestPolicy::new(
-            privacy_mode,
-            self.current_tracker_blocker(),
-        ));
+        let policy = Arc::new(self.build_request_policy(privacy_mode, upstream));
         let bind: SocketAddr = ([127, 0, 0, 1], 0).into();
         let server = ProxyServer::start(policy, self.resolver.clone(), bind)
             .await
@@ -131,6 +136,97 @@ impl AppState {
         proxies.insert(workspace_id, server);
 
         Ok(port)
+    }
+
+    /// Build the request policy for a workspace from its privacy mode + the
+    /// current tracker blocker, routed through `upstream` when set.
+    fn build_request_policy(
+        &self,
+        privacy_mode: PrivacyMode,
+        upstream: Option<wis_core::UpstreamProxy>,
+    ) -> RequestPolicy {
+        let policy = RequestPolicy::new(privacy_mode, self.current_tracker_blocker());
+        match upstream {
+            Some(up) => policy.with_upstream(up),
+            None => policy,
+        }
+    }
+
+    /// Hot-swap a running workspace proxy's policy from current state (privacy
+    /// mode + upstream proxy), without rebinding the port. No-op if the proxy
+    /// hasn't been started yet.
+    pub async fn update_proxy_policy(&self, workspace_id: WorkspaceId) {
+        let (privacy_mode, upstream) = {
+            let browser = self.browser.lock().await;
+            match browser.workspace(workspace_id) {
+                Ok(ws) => (ws.privacy_mode, ws.upstream_proxy.clone()),
+                Err(_) => return,
+            }
+        };
+        let upstream = match self.resolve_upstream(upstream).await {
+            Ok(up) => up,
+            Err(err) => {
+                log::warn!("workspace {workspace_id} upstream resolve failed: {err}");
+                return;
+            }
+        };
+        let proxies = self.proxies.lock().await;
+        if let Some(server) = proxies.get(&workspace_id) {
+            let policy = Arc::new(self.build_request_policy(privacy_mode, upstream));
+            server.update_policy(policy);
+            log::info!("workspace {workspace_id} proxy policy updated in place");
+        }
+    }
+
+    /// Resolve a workspace upstream for the transport layer: built-in Tor maps
+    /// to the embedded Arti SOCKS5 port; everything else passes through unchanged.
+    pub async fn resolve_upstream(
+        &self,
+        upstream: Option<wis_core::UpstreamProxy>,
+    ) -> Result<Option<wis_core::UpstreamProxy>, WisShellError> {
+        match upstream {
+            Some(wis_core::UpstreamProxy::Tor) => {
+                let port = self.ensure_tor().await?;
+                Ok(Some(wis_core::UpstreamProxy::Socks5 {
+                    host: "127.0.0.1".to_string(),
+                    port,
+                }))
+            }
+            other => Ok(other),
+        }
+    }
+
+    /// Start (once) the built-in Tor SOCKS5 proxy and return its loopback port.
+    /// Bootstrapping can take several seconds on first call.
+    #[cfg(feature = "tor")]
+    pub async fn ensure_tor(&self) -> Result<u16, WisShellError> {
+        let mut guard = self.tor_proxy.lock().await;
+        if let Some(proxy) = guard.as_ref() {
+            return Ok(proxy.port());
+        }
+        log::info!("bootstrapping built-in Tor (this can take a few seconds)…");
+        let tor_dir = self
+            .filter_cache_dir
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| self.filter_cache_dir.clone())
+            .join("tor");
+        let proxy = wis_network::TorProxy::start(tor_dir)
+            .await
+            .map_err(|e| WisShellError::Other(format!("tor: {e}")))?;
+        let port = proxy.port();
+        *guard = Some(proxy);
+
+        log::info!("built-in Tor ready on 127.0.0.1:{port}");
+        Ok(port)
+    }
+
+    /// Built-in Tor isn't compiled into this build.
+    #[cfg(not(feature = "tor"))]
+    pub async fn ensure_tor(&self) -> Result<u16, WisShellError> {
+        Err(WisShellError::Other(
+            "built-in Tor is not enabled in this build".to_string(),
+        ))
     }
 
     /// Drop all running proxies. Next call to [`ensure_proxy_for`] for a

@@ -2,9 +2,34 @@
 //! in-memory database (`:memory:`) so they're hermetic and fast.
 
 use wis_core::{
-    AccentColor, BrowserState, EssentialPin, LayoutMode, PrivacyMode, ThemeMode, UserSettingsPatch,
+    AccentColor, BrowserState, EssentialPin, LayoutMode, PrivacyMode, ThemeMode, UpstreamProxy,
+    UserSettingsPatch,
 };
 use wis_storage::{SqliteStorage, Storage};
+
+#[test]
+fn upstream_proxy_survives_round_trip() {
+    let store = fresh_store();
+    let s0 = BrowserState::new_with_defaults();
+    let workspace = s0.workspaces[0].with_upstream_proxy(Some(UpstreamProxy::Socks5 {
+        host: "127.0.0.1".into(),
+        port: 9050,
+    }));
+    let state = BrowserState {
+        workspaces: vec![workspace],
+        ..s0
+    };
+
+    store.save_state(&state).expect("save");
+    let loaded = store.load_state().expect("load").unwrap();
+    assert_eq!(
+        loaded.workspaces[0].upstream_proxy,
+        Some(UpstreamProxy::Socks5 {
+            host: "127.0.0.1".into(),
+            port: 9050,
+        })
+    );
+}
 
 fn fresh_store() -> SqliteStorage {
     SqliteStorage::open_in_memory().expect("open in-memory DB")

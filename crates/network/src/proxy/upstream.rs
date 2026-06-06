@@ -12,19 +12,22 @@ use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
 use hyper::body::{Bytes, Incoming};
 use hyper::{HeaderMap, Request, Response, Uri};
 use hyper_util::rt::TokioIo;
-use tokio::net::TcpStream;
 use url::Url;
+use wis_core::UpstreamProxy;
 
+use super::connect::connect_target;
 use crate::Resolver;
 
 /// Forward an HTTP request through to its upstream and return the
 /// response (with the body streamed through unchanged). Hop-by-hop
-/// headers are stripped on both legs.
+/// headers are stripped on both legs. When `upstream` is set the connection
+/// is routed through it.
 pub async fn forward(
     req: Request<Incoming>,
     resolver: Arc<dyn Resolver>,
+    upstream: Option<UpstreamProxy>,
 ) -> Response<BoxBody<Bytes, hyper::Error>> {
-    match forward_inner(req, resolver).await {
+    match forward_inner(req, resolver, upstream).await {
         Ok(resp) => resp,
         Err(reason) => bad_gateway(&reason),
     }
@@ -33,6 +36,7 @@ pub async fn forward(
 async fn forward_inner(
     req: Request<Incoming>,
     resolver: Arc<dyn Resolver>,
+    upstream: Option<UpstreamProxy>,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, String> {
     let uri = req.uri().clone();
     let url = parse_uri_as_url(&uri).map_err(|e| format!("invalid request URI {uri}: {e}"))?;
@@ -46,19 +50,8 @@ async fn forward_inner(
         .map(|p| p.to_string())
         .unwrap_or_else(|| "/".to_string());
 
-    // DoH-resolve the host, then connect to (ip, port). Bypassing the OS
-    // resolver is half the privacy story.
-    let ip = resolver
-        .resolve(&host)
-        .await
-        .map_err(|e| format!("dns {host}: {e}"))?
-        .into_iter()
-        .next()
-        .ok_or_else(|| format!("no addresses for {host}"))?;
-
-    let stream = TcpStream::connect((ip, port))
-        .await
-        .map_err(|e| format!("connect {ip}:{port}: {e}"))?;
+    // Connect directly (DoH-resolve + dial) or through the upstream proxy.
+    let stream = connect_target(&host, port, upstream.as_ref(), &resolver).await?;
     let io = TokioIo::new(stream);
 
     let (mut sender, conn) = hyper::client::conn::http1::handshake::<_, Incoming>(io)

@@ -109,7 +109,9 @@ const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
 /// Persist the master key in the Keychain (this-device login keychain).
 #[cfg(target_os = "macos")]
 pub fn keychain_store(key: &MasterKey) -> Result<(), VaultError> {
-    use security_framework::passwords::set_generic_password;
+    use security_framework::passwords::{delete_generic_password, set_generic_password};
+
+    let _ = delete_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
     set_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, key.as_ref())
         .map_err(|err| VaultError::Keychain(err.to_string()))
 }

@@ -1550,8 +1550,35 @@ body.is-overlay-surface:not(.glass-on) {
   width: 32px;
   height: 32px;
 }
-.kb-side.kb-rail.is-left  .kb-rail-settings { align-self: flex-start; }
-.kb-side.kb-rail.is-right .kb-rail-settings { align-self: flex-end; }
+
+/* VPN + settings grouped at the rail's bottom, 8px apart. */
+.kb-rail-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.kb-side.kb-rail.is-left  .kb-rail-controls { align-self: flex-start; align-items: flex-start; }
+.kb-side.kb-rail.is-right .kb-rail-controls { align-self: flex-end; align-items: flex-end; }
+
+/* VPN toggle in the top-tabs rail: a circle button just above the cog. */
+.kb-rail-vpn {
+  width: 32px;
+  height: 32px;
+}
+.kb-rail-vpn.is-on,
+.glass-on .kb-rail-vpn.is-on,
+[data-mode="dark"].glass-on .kb-rail-vpn.is-on {
+  background: var(--primary-500);
+  color: #fff;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.kb-rail-vpn.is-on:hover,
+.glass-on .kb-rail-vpn.is-on:hover {
+  background: color-mix(in oklab, var(--primary-500) 88%, black 12%);
+}
+.kb-rail-vpn.is-error { color: var(--danger-500, #e5484d); }
 
 .kb-window.has-rail.rail-left  .kb-main { padding-left: 52px; }
 .kb-window.has-rail.rail-right .kb-main { padding-right: 52px; }
@@ -2488,6 +2515,48 @@ body.is-overlay-surface:not(.glass-on) {
 }
 .kb-btn.is-primary:hover { background: var(--primary-600, var(--primary-500)); border-color: transparent; }
 
+/* Network → upstream proxy address inputs */
+.kb-net-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.kb-net-input {
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 7px 10px;
+  width: 150px;
+  outline: none;
+  transition: border-color var(--transition-speed) ease;
+}
+.kb-net-input:focus { border-color: var(--primary-500); }
+.kb-net-input::placeholder { color: var(--text-tertiary); }
+.kb-net-port { width: 72px; }
+
+.kb-net-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.kb-net-status.is-idle,
+.kb-net-status.is-checking { color: var(--text-tertiary); }
+.kb-net-status.is-ok { color: #1a7f37; }
+.kb-net-status.is-fail { color: var(--danger-500, #e5484d); }
+[data-mode="dark"] .kb-net-status.is-ok { color: #3fb950; }
+.kb-net-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
 .kb-omnisearch {
   display: flex;
   align-items: center;
@@ -3044,6 +3113,70 @@ body.is-overlay-surface:not(.glass-on) {
 .kb-settings-fixed svg { width: 16px; height: 16px; }
 .kb-settings-fixed.is-left  { left: 10px; }
 .kb-settings-fixed.is-right { right: 10px; }
+
+/* VPN quick-toggle. */
+.kb-vpn-fixed {
+  position: absolute;
+  bottom: 56px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 0;
+  box-shadow: var(--shadow-soft);
+  z-index: 60;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, transform 0.12s;
+}
+.glass-on .kb-vpn-fixed {
+  background: rgba(255, 255, 255, 0.55);
+  color: rgba(20, 20, 28, 0.92);
+  box-shadow: none;
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+}
+[data-mode="dark"].glass-on .kb-vpn-fixed {
+  background: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.85);
+}
+.kb-vpn-fixed:hover { transform: translateY(-1px); }
+.kb-vpn-fixed svg { width: 16px; height: 16px; }
+.kb-vpn-fixed.is-left  { left: 10px; }
+.kb-vpn-fixed.is-right { right: 10px; }
+.kb-vpn-fixed:disabled { cursor: default; }
+
+/* Lit in the workspace accent when the VPN is on. */
+.kb-vpn-fixed.is-on,
+.glass-on .kb-vpn-fixed.is-on,
+[data-mode="dark"].glass-on .kb-vpn-fixed.is-on {
+  background: var(--primary-500);
+  color: #fff;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.kb-vpn-fixed.is-on:hover,
+.glass-on .kb-vpn-fixed.is-on:hover {
+  background: color-mix(in oklab, var(--primary-500) 88%, black 12%);
+}
+.kb-vpn-fixed.is-error { color: var(--danger-500, #e5484d); }
+
+/* Loading spinner shown while the VPN connection is being set up. */
+.kb-vpn-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  opacity: 0.8;
+  animation: kb-vpn-spin 0.7s linear infinite;
+}
+@keyframes kb-vpn-spin {
+  to { transform: rotate(360deg); }
+}
 
 /* ─── workspace pill + popover ────────────────────────────────── */
 .kb-ws-pill-wrap { position: relative; padding: 0 4px; }

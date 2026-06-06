@@ -31,6 +31,14 @@ hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 bytes = "1"
 
+# Built-in Tor (Arti), default-off.
+arti-client = { version = "0.34", default-features = false, features = ["tokio", "rustls"], optional = true }
+tor-rtcompat = { version = "0.34", optional = true }
+tokio-util = { version = "0.7", features = ["compat"], optional = true }
+
 [dev-dependencies]
 tokio = { workspace = true }
 http-body-util = "0.1"
+
+[features]
+tor = ["dep:arti-client", "dep:tor-rtcompat", "dep:tokio-util"]

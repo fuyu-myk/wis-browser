@@ -11,34 +11,28 @@ use http_body_util::combinators::BoxBody;
 use hyper::body::{Bytes, Incoming};
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
-use tokio::net::TcpStream;
+use wis_core::UpstreamProxy;
 
 use crate::resolver::Resolver;
 
+use super::connect::connect_target;
 use super::upstream::{bad_gateway, empty};
 
 pub async fn tunnel(
     req: Request<Incoming>,
     resolver: Arc<dyn Resolver>,
+    upstream: Option<UpstreamProxy>,
 ) -> Response<BoxBody<Bytes, hyper::Error>> {
     let (host, port) = match parse_authority(&req) {
         Some(pair) => pair,
         None => return bad_gateway("CONNECT target missing host:port"),
     };
 
-    // Resolve + open upstream eagerly so a meaningful 502 can still be
-    // returned before sending 200.
-    let ip = match resolver.resolve(&host).await {
-        Ok(ips) => match ips.into_iter().next() {
-            Some(ip) => ip,
-            None => return bad_gateway(&format!("no addresses for {host}")),
-        },
-        Err(err) => return bad_gateway(&format!("dns {host}: {err}")),
-    };
-
-    let upstream = match TcpStream::connect((ip, port)).await {
+    // Open the upstream eagerly (directly or via the proxy) so a meaningful
+    // 502 can still be returned before sending 200.
+    let upstream = match connect_target(&host, port, upstream.as_ref(), &resolver).await {
         Ok(s) => s,
-        Err(err) => return bad_gateway(&format!("connect {ip}:{port}: {err}")),
+        Err(err) => return bad_gateway(&err),
     };
 
     tokio::spawn(async move {

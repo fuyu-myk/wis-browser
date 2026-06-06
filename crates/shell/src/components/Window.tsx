@@ -17,6 +17,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { TopBar } from '@/components/TopBar'
 import { TopTabsRail } from '@/components/TopTabsRail'
 import { FloatingUrlBar } from '@/components/UrlBar'
+import { VpnToggle } from '@/components/VpnToggle'
 
 interface WindowProps {
   state: BrowserState
@@ -93,6 +94,7 @@ export function Window({ state, settings }: WindowProps) {
             expanded={sidebarExpanded}
             setExpanded={setSidebarExpanded}
           />
+          <VpnToggle workspace={activeWorkspace ?? null} variant="fixed" anchor={fixedSettingsAnchor} />
           <button
             type="button"
             className={cx('kb-settings-fixed', `is-${fixedSettingsAnchor}`)}

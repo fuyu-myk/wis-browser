@@ -17,8 +17,8 @@ use tauri::webview::{PageLoadEvent, PageLoadPayload, WebviewBuilder};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
 use url::Url;
 use wis_core::{
-    AccentColor, BrowserState, PaneBranch, PrivacyMode, SplitDir, Tab, TabId, UserSettings,
-    UserSettingsPatch, WisError, WisResult, Workspace, WorkspaceId,
+    AccentColor, BrowserState, PaneBranch, PrivacyMode, SplitDir, Tab, TabId, UpstreamProxy,
+    UserSettings, UserSettingsPatch, WisError, WisResult, Workspace, WorkspaceId,
 };
 use wis_network::{Decision, OutboundRequest, RequestType};
 
@@ -396,7 +396,7 @@ pub async fn set_workspace_privacy_mode(
     })
     .await?;
 
-    state.clear_proxies().await;
+    state.update_proxy_policy(id).await;
 
     let spec = state.content_rule_spec(mode);
     let tab_labels: Vec<String> = {
@@ -427,6 +427,79 @@ pub async fn set_workspace_privacy_mode(
     log::info!("workspace {id} privacy mode now {mode:?}: re-attached {reattached}/{total} tabs");
 
     Ok(workspace)
+}
+
+/// Set (or clear) a workspace's upstream proxy. The running proxy's policy is
+/// updated in place so open tabs route through the new upstream on their next
+/// request without losing their connection.
+#[tauri::command]
+pub async fn set_workspace_upstream(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: WorkspaceId,
+    upstream: Option<UpstreamProxy>,
+) -> WisResult<Workspace> {
+    let workspace = mutate(&app, &state, |s| {
+        let next = s.with_workspace_upstream_proxy(id, upstream.clone())?;
+        let updated = next.workspace(id)?.clone();
+        Ok((next, updated))
+    })
+    .await?;
+
+    state.update_proxy_policy(id).await;
+
+    let tab_labels: Vec<String> = {
+        let browser = state.browser.lock().await;
+        browser
+            .tabs_for(id)
+            .map(|tabs| {
+                tabs.iter()
+                    .filter(|tab| !crate::commands::is_chrome_url(tab.url.as_str()))
+                    .map(|tab| format!("tab-{}", tab.id.as_uuid()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    for label in tab_labels {
+        if let Some(webview) = app.webviews().get(&label).cloned() {
+            let _ = webview.eval("window.location.reload()");
+        }
+    }
+
+    log::info!("workspace {id} upstream proxy updated");
+
+    Ok(workspace)
+}
+
+/// Whether a URL is a chrome page (no native webview / not reloadable as a site).
+pub(crate) fn is_chrome_url(url: &str) -> bool {
+    url.starts_with("about:")
+}
+
+/// Probe an upstream proxy for reachability (TCP connect, plus a SOCKS5
+/// handshake) so Settings can show a connection status. Does not change any
+/// workspace; returns `Ok(())` when reachable, or an error message. Built-in
+/// Tor is "probed" by bootstrapping the embedded client.
+#[tauri::command]
+pub async fn test_upstream(state: State<'_, AppState>, upstream: UpstreamProxy) -> WisResult<()> {
+    match upstream {
+        UpstreamProxy::Tor => state
+            .ensure_tor()
+            .await
+            .map(|_| ())
+            .map_err(|e| WisError::InvalidInput {
+                message: e.to_string(),
+            }),
+        other => wis_network::probe_upstream(&other)
+            .await
+            .map_err(|reason| WisError::InvalidInput { message: reason }),
+    }
+}
+
+/// Whether the built-in Tor client is compiled into this build.
+#[tauri::command]
+pub fn tor_available() -> bool {
+    cfg!(feature = "tor")
 }
 
 // ---------------------------------------------------------------------------

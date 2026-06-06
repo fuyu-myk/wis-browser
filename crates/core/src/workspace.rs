@@ -4,6 +4,7 @@
 use crate::ids::{TabId, WorkspaceId};
 use crate::pane::{PaneBranch, PaneNode, SplitDir};
 use crate::privacy::PrivacyMode;
+use crate::proxy::UpstreamProxy;
 use serde::{Deserialize, Serialize};
 
 /// Accent colours available for a workspace,
@@ -55,6 +56,10 @@ pub struct Workspace {
     /// existing persisted state deserialises unchanged.
     #[serde(default)]
     pub ephemeral: bool,
+    /// Upstream proxy this workspace routes traffic through (e.g. Tor via a
+    /// local SOCKS5). `None` = direct connection. Serde-defaults to `None`.
+    #[serde(default)]
+    pub upstream_proxy: Option<UpstreamProxy>,
 }
 
 impl Workspace {
@@ -80,6 +85,7 @@ impl Workspace {
             privacy_mode: PrivacyMode::default(),
             pane_tree: None,
             ephemeral,
+            upstream_proxy: None,
         }
     }
 
@@ -173,6 +179,13 @@ impl Workspace {
     pub fn with_ephemeral(&self, ephemeral: bool) -> Self {
         Self {
             ephemeral,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_upstream_proxy(&self, upstream_proxy: Option<UpstreamProxy>) -> Self {
+        Self {
+            upstream_proxy,
             ..self.clone()
         }
     }

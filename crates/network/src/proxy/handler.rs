@@ -62,7 +62,7 @@ async fn handle_http(
     };
 
     match decision {
-        Decision::Allow => forward(req, resolver).await,
+        Decision::Allow => forward(req, resolver, policy.upstream().cloned()).await,
         Decision::Rewrite { url: new_url } => moved_permanently(new_url.as_str()),
         Decision::Block { reason } => {
             tracing::info!(target = %url, %reason, "blocked HTTP");
@@ -105,7 +105,7 @@ async fn handle_connect(
                 host = %synthetic.host_str().unwrap_or(""),
                 "CONNECT tunnel"
             );
-            tunnel(req, resolver).await
+            tunnel(req, resolver, policy.upstream().cloned()).await
         }
         Decision::Block { reason } => {
             tracing::info!(target = %synthetic, %reason, "blocked CONNECT");

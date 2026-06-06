@@ -64,17 +64,24 @@ pub async fn vault_unlock(_app: AppHandle, state: State<'_, AppState>) -> WisRes
         return Ok(false);
     }
 
-    let key = match wis_secrets::keychain_load().map_err(vault_err)? {
-        Some(key) => key,
-        None => {
-            let key = wis_secrets::generate_master_key();
-            wis_secrets::keychain_store(&key).map_err(vault_err)?;
-            key
+    let key = match wis_secrets::keychain_load() {
+        Ok(Some(key)) => key,
+        Ok(None) => create_master_key()?,
+        Err(err) => {
+            log::warn!("vault: stored key unreadable ({err}); recreating master key");
+            create_master_key()?
         }
     };
     *state.vault_key.lock().await = Some(key);
 
     Ok(true)
+}
+
+/// Generate a fresh master key and persist it to the Keychain.
+fn create_master_key() -> WisResult<wis_secrets::MasterKey> {
+    let key = wis_secrets::generate_master_key();
+    wis_secrets::keychain_store(&key).map_err(vault_err)?;
+    Ok(key)
 }
 
 /// Drop the in-memory master key; the vault returns to the locked state.

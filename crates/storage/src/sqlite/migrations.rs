@@ -126,6 +126,12 @@ CREATE TABLE searches (
 CREATE INDEX idx_searches_searched_at ON searches(searched_at);
 "#;
 
+// Per-workspace upstream proxy (Tor / SOCKS5 / HTTP), stored as JSON. Null =
+// direct connection. Added as a nullable column so existing state loads as-is.
+const M0007_UPSTREAM_PROXY: &str = r#"
+ALTER TABLE workspaces ADD COLUMN upstream_proxy TEXT;
+"#;
+
 fn all() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(M0001_INITIAL),
@@ -134,6 +140,7 @@ fn all() -> Migrations<'static> {
         M::up(M0004_HISTORY_PER_WORKSPACE),
         M::up(M0005_CREDENTIALS),
         M::up(M0006_SEARCHES),
+        M::up(M0007_UPSTREAM_PROXY),
     ])
 }
 

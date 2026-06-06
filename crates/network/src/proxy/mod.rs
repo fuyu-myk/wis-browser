@@ -6,10 +6,13 @@
 //! forward (HTTP), tunnel (HTTPS `CONNECT`), 301-redirect (HTTPS-First),
 //! or refuse (tracker blocking).
 
+mod connect;
 mod handler;
 mod request_type;
 mod tunnel;
 mod upstream;
+
+pub use connect::probe_upstream;
 
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -32,6 +35,8 @@ use crate::resolver::Resolver;
 pub struct ProxyServer {
     local_addr: SocketAddr,
     shutdown_tx: watch::Sender<bool>,
+    /// Hot-swappable request policy.
+    policy_tx: watch::Sender<Arc<RequestPolicy>>,
 }
 
 impl ProxyServer {
@@ -51,6 +56,7 @@ impl ProxyServer {
         let listener = TcpListener::bind(bind_addr).await?;
         let local_addr = listener.local_addr()?;
         let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
+        let (policy_tx, policy_rx) = watch::channel(policy);
 
         tokio::spawn(async move {
             loop {
@@ -71,9 +77,9 @@ impl ProxyServer {
                                 continue;
                             }
                         };
-                        let policy = policy.clone();
+                        let policy_rx = policy_rx.clone();
                         let resolver = resolver.clone();
-                        tokio::spawn(serve_connection(stream, policy, resolver));
+                        tokio::spawn(serve_connection(stream, policy_rx, resolver));
                     }
                 }
             }
@@ -84,7 +90,13 @@ impl ProxyServer {
         Ok(Self {
             local_addr,
             shutdown_tx,
+            policy_tx,
         })
+    }
+
+    /// Swap in a new request policy; takes effect on the next request.
+    pub fn update_policy(&self, policy: Arc<RequestPolicy>) {
+        let _ = self.policy_tx.send(policy);
     }
 
     pub fn local_addr(&self) -> SocketAddr {
@@ -104,12 +116,12 @@ impl Drop for ProxyServer {
 
 async fn serve_connection(
     stream: tokio::net::TcpStream,
-    policy: Arc<RequestPolicy>,
+    policy_rx: watch::Receiver<Arc<RequestPolicy>>,
     resolver: Arc<dyn Resolver>,
 ) {
     let io = TokioIo::new(stream);
     let service = service_fn(move |req: Request<Incoming>| {
-        let policy = policy.clone();
+        let policy = policy_rx.borrow().clone();
         let resolver = resolver.clone();
         async move {
             let resp: Response<_> = handler::handle(req, policy, resolver).await;
