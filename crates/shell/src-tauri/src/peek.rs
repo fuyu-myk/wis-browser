@@ -1,0 +1,394 @@
+//! "Peek": an Opt+click link preview shown in a small, isolated webview.
+//!
+//! Safety spine:
+//! - The preview page (`peek-page`) is created **incognito** (a non-persistent
+//!   data store), so a link-based scam cannot read or write the active
+//!   workspace's cookies/storage. It still routes through the workspace proxy,
+//!   so DoH / HTTPS-First / tracker blocking apply.
+//! - The page gets **no Tauri capability** (same as tab webviews), so it can
+//!   never call a command.
+//! - The trigger is a *narrow* `WKScriptMessageHandler` (`wisPeek`) installed on
+//!   tab webviews that only forwards `{href, text}` of an Opt+clicked link to
+//!   Rust, which re-emits it to the chrome. The link is assessed by
+//!   [`wis_core::assess_link`] and the result drives a warning in the UI.
+//! - Reader mode transforms the preview *in place inside the isolated page*
+//!   (never rendering untrusted HTML in the privileged chrome).
+
+use std::sync::OnceLock;
+
+use serde::Serialize;
+use tauri::webview::WebviewBuilder;
+use tauri::{AppHandle, Manager, State, WebviewUrl};
+use url::Url;
+use wis_core::{LinkAssessment, WisError, WisResult};
+
+use crate::state::AppState;
+
+/// Label of the isolated preview webview.
+const PEEK_LABEL: &str = "peek-page";
+
+/// Event emitted to the chrome when a link is Opt+clicked.
+const PEEK_OPEN_EVENT: &str = "wis-peek-open";
+
+/// App handle for the native message handler to reach the async runtime.
+static APP: OnceLock<AppHandle> = OnceLock::new();
+
+/// Record the app handle once during setup so the `wisPeek` handler can emit.
+pub fn set_app_handle(app: AppHandle) {
+    let _ = APP.set(app);
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct PeekOpenEvent {
+    href: String,
+    text: String,
+}
+
+/// Create (or replace) the isolated preview webview pointed at `url`, positioned
+/// at the given rect, and return the link's safety assessment.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn open_peek(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    url: String,
+    anchor_text: Option<String>,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> WisResult<LinkAssessment> {
+    let assessment = wis_core::assess_link(&url, anchor_text.as_deref());
+
+    // A malformed URL is already flagged High; there's nothing to load.
+    let parsed = match Url::parse(&url) {
+        Ok(u) => u,
+        Err(_) => return Ok(assessment),
+    };
+    // Only ever preview real web content in the isolated view.
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Ok(assessment);
+    }
+
+    // Replace any existing preview.
+    if let Some(existing) = app.webviews().get(PEEK_LABEL).cloned() {
+        let _ = existing.close();
+    }
+
+    let active_ws = {
+        let browser = state.browser.lock().await;
+        browser.active_workspace_id
+    };
+    let proxy_port = state
+        .ensure_proxy_for(active_ws)
+        .await
+        .map_err(wis_core::WisError::from)?;
+    let proxy_url = format!("http://127.0.0.1:{proxy_port}")
+        .parse::<Url>()
+        .expect("loopback proxy URL is valid");
+
+    let window = app
+        .get_window("main")
+        .ok_or_else(|| WisError::InvalidInput {
+            message: "main window missing".into(),
+        })?;
+
+    let builder = WebviewBuilder::new(PEEK_LABEL, WebviewUrl::External(parsed))
+        .focused(true)
+        .incognito(true)
+        .proxy_url(proxy_url);
+
+    let child = window
+        .add_child(
+            builder,
+            tauri::LogicalPosition::new(x, y),
+            tauri::LogicalSize::new(width.max(1.0), height.max(1.0)),
+        )
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("peek add_child failed: {err}"),
+        })?;
+
+    // Round the preview's corners so it sits cleanly inside the card.
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
+
+        let _ = child.with_webview(|w| unsafe {
+            let view: *mut AnyObject = w.inner() as *mut AnyObject;
+            if view.is_null() {
+                return;
+            }
+            let _: () = msg_send![view, setWantsLayer: true];
+            let layer: *mut AnyObject = msg_send![view, layer];
+            if layer.is_null() {
+                return;
+            }
+            let _: () = msg_send![layer, setCornerRadius: 12.0_f64];
+            let _: () = msg_send![layer, setMasksToBounds: true];
+        });
+    }
+
+    Ok(assessment)
+}
+
+/// Reposition/resize the preview webview. No-op if there's no live preview.
+#[tauri::command]
+pub async fn set_peek_bounds(
+    app: AppHandle,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> WisResult<()> {
+    let Some(wv) = app.webviews().get(PEEK_LABEL).cloned() else {
+        return Ok(());
+    };
+
+    wv.set_position(tauri::LogicalPosition::new(x, y))
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("peek set_position: {err}"),
+        })?;
+    wv.set_size(tauri::LogicalSize::new(width.max(1.0), height.max(1.0)))
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("peek set_size: {err}"),
+        })?;
+
+    Ok(())
+}
+
+/// Destroy the preview webview.
+#[tauri::command]
+pub async fn close_peek(app: AppHandle) -> WisResult<()> {
+    if let Some(wv) = app.webviews().get(PEEK_LABEL).cloned() {
+        wv.close().map_err(|err| WisError::InvalidInput {
+            message: format!("peek close: {err}"),
+        })?;
+    }
+
+    Ok(())
+}
+
+/// Toggle reader mode in the isolated preview. When enabled, the page is
+/// transformed in place into a clean article; when disabled, it reloads to
+/// restore the live page. The transform runs entirely inside the isolated
+/// webview, so no untrusted markup reaches the chrome.
+#[tauri::command]
+pub async fn peek_set_reader(app: AppHandle, enabled: bool) -> WisResult<()> {
+    let Some(wv) = app.webviews().get(PEEK_LABEL).cloned() else {
+        return Ok(());
+    };
+
+    let js = if enabled { READER_JS } else { "location.reload();" };
+    wv.eval(js).map_err(|err| WisError::InvalidInput {
+        message: format!("peek reader eval: {err}"),
+    })
+}
+
+/// Injected page script (tab webviews): Opt+click a link to preview it instead
+/// of navigating. No-ops when the handler isn't present.
+const PEEK_JS: &str = r#"(function () {
+  if (window.__wisPeekInstalled) return;
+  window.__wisPeekInstalled = true;
+  function linkAt(e) {
+    if (!e.altKey || e.button !== 0) return null;
+    var t = e.target;
+    var el = (t && t.nodeType === 1) ? t : (t && t.parentElement);
+    var a = el && el.closest ? el.closest('a[href]') : null;
+    if (!a) return null;
+    var href = a.href || '';
+    if (!href || href.toLowerCase().indexOf('javascript:') === 0) return null;
+    return a;
+  }
+  function fire(a) {
+    var href = a.href || '';
+    var text = (a.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    try {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.wisPeek) {
+        window.webkit.messageHandlers.wisPeek.postMessage({ href: href, text: text });
+      }
+    } catch (err) {}
+  }
+  document.addEventListener('mousedown', function (e) {
+    var a = linkAt(e);
+    if (!a) return;
+    e.preventDefault();
+    e.stopPropagation();
+    fire(a);
+  }, true);
+  document.addEventListener('click', function (e) {
+    if (linkAt(e)) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+})();"#;
+
+/// In-page reader transform (runs inside the isolated preview only).
+const READER_JS: &str = r#"(function () {
+  try {
+    function textLen(el) { return (el.innerText || '').replace(/\s+/g, ' ').trim().length; }
+    var best = null, bestScore = 0;
+    var named = document.querySelectorAll('article, main, [role=main], .post, .article, .entry-content, .post-content, #content, .content');
+    Array.prototype.slice.call(named).forEach(function (c) { var s = textLen(c); if (s > bestScore) { bestScore = s; best = c; } });
+    if (!best || bestScore < 200) {
+      Array.prototype.slice.call(document.querySelectorAll('div, section')).forEach(function (c) {
+        var ps = c.querySelectorAll('p'); if (ps.length < 2) return;
+        var s = 0; for (var i = 0; i < ps.length; i++) s += textLen(ps[i]);
+        if (s > bestScore) { bestScore = s; best = c; }
+      });
+    }
+    if (!best) best = document.body;
+    var title = (document.title || '').trim();
+    var clone = best.cloneNode(true);
+    ['script', 'style', 'noscript', 'iframe', 'form', 'nav', 'aside', 'header', 'footer', 'button', 'svg', '[role=navigation]'].forEach(function (sel) {
+      try { Array.prototype.slice.call(clone.querySelectorAll(sel)).forEach(function (n) { n.remove(); }); } catch (e) {}
+    });
+    Array.prototype.slice.call(clone.querySelectorAll('*')).forEach(function (n) {
+      var keep = ['href', 'src', 'alt'];
+      Array.prototype.slice.call(n.attributes || []).forEach(function (a) { if (keep.indexOf(a.name) < 0) n.removeAttribute(a.name); });
+    });
+    var css = '*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fbfbfd;color:#1d1d22}@media(prefers-color-scheme:dark){html,body{background:#16161a;color:#e9e9ee}}body{font:17px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main.kbreader{max-width:680px;margin:0 auto;padding:40px 24px 80px}main.kbreader h1.kbreader-title{font-size:28px;line-height:1.25;margin:0 0 24px}main.kbreader img{max-width:100%;height:auto;border-radius:8px}main.kbreader p{margin:0 0 18px}main.kbreader a{color:#6b77f8}';
+    var safeTitle = title.replace(/</g, '&lt;');
+    var doc = '<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><style>' + css + '</style></head><body><main class=kbreader>' + (title ? ('<h1 class=kbreader-title>' + safeTitle + '</h1>') : '') + clone.innerHTML + '</main></body></html>';
+    document.open(); document.write(doc); document.close();
+  } catch (e) {}
+})();"#;
+
+#[cfg(target_os = "macos")]
+mod imp {
+    use std::ffi::{CStr, CString};
+    use std::os::raw::c_char;
+
+    use objc2::rc::Id;
+    use objc2::runtime::{AnyObject, NSObject};
+    use objc2::{class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass};
+    use tauri::Emitter;
+
+    use super::{PeekOpenEvent, APP, PEEK_JS, PEEK_OPEN_EVENT};
+
+    declare_class!(
+        struct PeekHandler;
+
+        unsafe impl ClassType for PeekHandler {
+            type Super = NSObject;
+            type Mutability = mutability::InteriorMutable;
+            const NAME: &'static str = "WisPeekHandler";
+        }
+
+        impl DeclaredClass for PeekHandler {
+            type Ivars = ();
+        }
+
+        unsafe impl PeekHandler {
+            #[method(userContentController:didReceiveScriptMessage:)]
+            fn did_receive(&self, _ucc: *mut AnyObject, message: *mut AnyObject) {
+                unsafe { handle_message(message) }
+            }
+        }
+    );
+
+    impl PeekHandler {
+        fn new() -> Id<Self> {
+            unsafe { msg_send_id![Self::alloc(), init] }
+        }
+    }
+
+    unsafe fn ns_string(s: &str) -> *mut AnyObject {
+        let c = CString::new(s).unwrap_or_default();
+        msg_send![class!(NSString), stringWithUTF8String: c.as_ptr()]
+    }
+
+    unsafe fn nsstring_to_string(ns: *mut AnyObject) -> Option<String> {
+        if ns.is_null() {
+            return None;
+        }
+
+        let is_str: bool = msg_send![ns, isKindOfClass: class!(NSString)];
+        if !is_str {
+            return None;
+        }
+
+        let utf8: *const c_char = msg_send![ns, UTF8String];
+        if utf8.is_null() {
+            return None;
+        }
+
+        Some(CStr::from_ptr(utf8).to_string_lossy().into_owned())
+    }
+
+    unsafe fn dict_string(dict: *mut AnyObject, key: &str) -> Option<String> {
+        let k = ns_string(key);
+        let v: *mut AnyObject = msg_send![dict, objectForKey: k];
+        nsstring_to_string(v)
+    }
+
+    unsafe fn handle_message(message: *mut AnyObject) {
+        if message.is_null() {
+            return;
+        }
+
+        let body: *mut AnyObject = msg_send![message, body];
+        if body.is_null() {
+            return;
+        }
+
+        let is_dict: bool = msg_send![body, isKindOfClass: class!(NSDictionary)];
+        if !is_dict {
+            return;
+        }
+
+        let Some(href) = dict_string(body, "href") else {
+            return;
+        };
+        if href.is_empty() {
+            return;
+        }
+        let text = dict_string(body, "text").unwrap_or_default();
+
+        if let Some(app) = APP.get() {
+            let _ = app.emit(PEEK_OPEN_EVENT, PeekOpenEvent { href, text });
+        }
+    }
+
+    /// Install the Opt+click peek user script + message handler on a tab webview.
+    pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+        let _ = webview.with_webview(|w| unsafe {
+            let wk: *mut AnyObject = w.inner() as *mut AnyObject;
+            if wk.is_null() {
+                return;
+            }
+
+            let config: *mut AnyObject = msg_send![wk, configuration];
+            if config.is_null() {
+                return;
+            }
+
+            let controller: *mut AnyObject = msg_send![config, userContentController];
+            if controller.is_null() {
+                return;
+            }
+
+            let src = ns_string(PEEK_JS);
+            let script: *mut AnyObject = msg_send![class!(WKUserScript), alloc];
+            let injection_time: isize = 1; // WKUserScriptInjectionTimeAtDocumentEnd
+            let script: *mut AnyObject = msg_send![
+                script,
+                initWithSource: src,
+                injectionTime: injection_time,
+                forMainFrameOnly: false,
+            ];
+            let _: () = msg_send![controller, addUserScript: script];
+            let _: () = msg_send![script, release];
+
+            let handler = PeekHandler::new();
+            let name = ns_string("wisPeek");
+            let _: () = msg_send![controller, addScriptMessageHandler: &*handler, name: name];
+        });
+    }
+}
+
+/// Install the Opt+click peek channel on a tab webview. No-op off macOS.
+pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    #[cfg(target_os = "macos")]
+    imp::install(webview);
+    #[cfg(not(target_os = "macos"))]
+    let _ = webview;
+}

@@ -7,8 +7,10 @@ mod error_compat;
 mod favicons;
 mod find;
 mod menu;
+mod navguard;
 mod overlay;
 mod pane_focus;
+mod peek;
 mod state;
 mod suggest;
 mod vault;
@@ -119,6 +121,12 @@ pub fn run() {
             // App handle for the native "Save password?" capture handler.
             capture::set_app_handle(app.handle().clone());
 
+            // App handle for the native Opt+click "Peek" handler.
+            peek::set_app_handle(app.handle().clone());
+
+            // App handle for the native click navigation-guard handler.
+            navguard::set_app_handle(app.handle().clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -190,6 +198,11 @@ pub fn run() {
             commands::refresh_filter_lists,
             find::tab_find_string,
             find::tab_find_clear,
+            peek::open_peek,
+            peek::set_peek_bounds,
+            peek::close_peek,
+            peek::peek_set_reader,
+            navguard::nav_guard_proceed,
             overlay::focus_webview,
             overlay::ensure_overlay,
             overlay::set_overlay_bounds,

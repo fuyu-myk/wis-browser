@@ -900,6 +900,17 @@ pub async fn create_tab_webview(
                 }
             });
 
+            // Fallback safety guard for navigations not caught by the in-page
+            // click interceptor (address bar, JS redirects).
+            if matches!(event, PageLoadEvent::Started) {
+                let app_for_guard = app.clone();
+                let guard_url = page_url.clone();
+                tauri::async_runtime::spawn(async move {
+                    crate::navguard::maybe_guard(app_for_guard, tab_id, guard_url).await;
+                });
+            }
+
+
             if matches!(event, PageLoadEvent::Finished) {
                 let app_for_favicon = app.clone();
                 let page_url_for_history = page_url.clone();
@@ -982,6 +993,12 @@ pub async fn create_tab_webview(
     if !ephemeral {
         crate::capture::install(&child);
     }
+
+    // Opt+click "Peek" trigger (safe on all tabs; forwards only the link).
+    crate::peek::install(&child);
+
+    // Plain-click navigation safety interstitial for risky links.
+    crate::navguard::install(&child);
 
     // Restore the tab's persisted page zoom (if it isn't the default).
     let zoom = {

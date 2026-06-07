@@ -8,6 +8,8 @@ import { SettingsIcon } from '@/lib/icons'
 import { SETTINGS_URL } from '@/lib/url'
 import { useClearDataOverlay } from '@/hooks/useClearDataOverlay'
 import { useCommandPaletteOverlay } from '@/hooks/useCommandPaletteOverlay'
+import { useNavGuardOverlay } from '@/hooks/useNavGuardOverlay'
+import { usePeekOverlay } from '@/hooks/usePeekOverlay'
 import { useKeyActions } from '@/hooks/useKeyActions'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 
@@ -35,6 +37,8 @@ export function Window({ state, settings }: WindowProps) {
   useKeyActions()
   useCommandPaletteOverlay()
   useClearDataOverlay()
+  usePeekOverlay()
+  useNavGuardOverlay()
 
   const layoutClass = `layout-${settings.layout.replace('_', '-')}`
   const isSidebar = settings.layout !== 'top_tabs'

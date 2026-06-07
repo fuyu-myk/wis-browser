@@ -226,6 +226,22 @@ export interface UserSettingsPatch {
   keybindings?: Partial<Record<KeyAction, string>>
 }
 
+// ---------------------------------------------------------------------------
+// Peek link-safety (mirror of `wis_core::link_safety`).
+// ---------------------------------------------------------------------------
+
+export type RiskLevel = 'low' | 'medium' | 'high'
+
+export interface LinkWarning {
+  code: string
+  message: string
+}
+
+export interface LinkAssessment {
+  risk: RiskLevel
+  warnings: LinkWarning[]
+}
+
 export interface PerSitePolicy {
   host: string
   allow_javascript: boolean

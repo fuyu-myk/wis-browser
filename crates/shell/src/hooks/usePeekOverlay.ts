@@ -1,0 +1,84 @@
+/**
+ * Chrome-side orchestration for the "Peek" overlay. The native Opt+click
+ * handler emits `wis-peek-open`; this hook reveals the full-window `peek`
+ * overlay and forwards the link to the surface via `wis-peek-show` (emitted
+ * twice to cover the first-open race where the overlay webview was just
+ * created). It hides the overlay on `wis-peek-close` and keeps it full-window
+ * on resize.
+ */
+
+import { useEffect, useRef } from 'react'
+import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
+
+import { useOverlay } from '@/hooks/useOverlay'
+
+const PEEK_OPEN_EVENT = 'wis-peek-open'
+const PEEK_SHOW_EVENT = 'wis-peek-show'
+const PEEK_CLOSE_EVENT = 'wis-peek-close'
+const PEEK_READY_EVENT = 'wis-peek-ready'
+
+interface PeekPayload {
+  href: string
+  text: string
+}
+
+export function usePeekOverlay(): void {
+  const overlay = useOverlay('peek')
+  const openRef = useRef(false)
+  // Last requested peek, replayed when the surface announces it is ready.
+  const pendingRef = useRef<PeekPayload | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const unlistens: UnlistenFn[] = []
+
+    const fullRect = () => ({
+      x: 0,
+      y: 0,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    })
+
+    const showFor = async (p: PeekPayload) => {
+      pendingRef.current = p
+      await overlay.show(fullRect())
+      openRef.current = true
+      void emit(PEEK_SHOW_EVENT, p)
+    }
+
+    void listen<PeekPayload>(PEEK_OPEN_EVENT, (e) => {
+      void showFor(e.payload)
+    }).then((fn) => {
+      if (cancelled) fn()
+      else unlistens.push(fn)
+    })
+
+    // The surface (re)mounted: replay the pending peek so it isn't missed.
+    void listen<void>(PEEK_READY_EVENT, () => {
+      if (pendingRef.current) void emit(PEEK_SHOW_EVENT, pendingRef.current)
+    }).then((fn) => {
+      if (cancelled) fn()
+      else unlistens.push(fn)
+    })
+
+    void listen<void>(PEEK_CLOSE_EVENT, () => {
+      openRef.current = false
+      pendingRef.current = null
+      void overlay.hide().catch(() => undefined)
+    }).then((fn) => {
+      if (cancelled) fn()
+      else unlistens.push(fn)
+    })
+
+    const onResize = () => {
+      if (openRef.current) void overlay.show(fullRect())
+    }
+    window.addEventListener('resize', onResize)
+
+    return () => {
+      cancelled = true
+      unlistens.forEach((fn) => fn())
+      window.removeEventListener('resize', onResize)
+    }
+  }, [overlay])
+}

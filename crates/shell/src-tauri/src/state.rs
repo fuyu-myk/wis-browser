@@ -15,7 +15,7 @@
 //! Commands acquire the async mutex, compute the new state, persist it, then
 //! replace the in-memory copy: see `mutate` in `commands`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -53,6 +53,9 @@ pub struct AppState {
     /// Most-recently-closed tabs (newest last), for "reopen closed tab". Capped
     /// in-memory and per-session; private/ephemeral tabs are never recorded.
     pub closed_tabs: Mutex<Vec<ClosedTab>>,
+    /// Hosts the user chose to "proceed anyway" past the navigation safety
+    /// interstitial this session, so they aren't re-prompted for that host.
+    pub nav_guard_bypass: Mutex<HashSet<String>>,
     /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
     /// Only present with the `tor` feature.
     #[cfg(feature = "tor")]
@@ -79,6 +82,7 @@ impl AppState {
             vault_key: Mutex::new(None),
             pending_capture: Mutex::new(None),
             closed_tabs: Mutex::new(Vec::new()),
+            nav_guard_bypass: Mutex::new(HashSet::new()),
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }

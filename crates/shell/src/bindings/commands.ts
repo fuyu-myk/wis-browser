@@ -13,6 +13,7 @@ import type {
   Decision,
   HistoryEntry,
   HistoryQuery,
+  LinkAssessment,
   PaneBranch,
   SiteDataEntry,
   PrivacyMode,
@@ -527,6 +528,56 @@ export const commands = {
   /** Hide the overlay (kept around for the next show). */
   async hideOverlay(name: string): Promise<void> {
     return invoke('hide_overlay', { name })
+  },
+
+  // -- peek (Opt+click link preview) ----------------------------------------
+
+  /**
+   * Open (or replace) the isolated link-preview webview at the given rect and
+   * return the link's safety assessment. The preview is incognito and routed
+   * through the active workspace proxy.
+   */
+  async openPeek(args: {
+    url: string
+    anchorText: string | null
+    x: number
+    y: number
+    width: number
+    height: number
+  }): Promise<LinkAssessment> {
+    return invoke('open_peek', {
+      url: args.url,
+      anchorText: args.anchorText,
+      x: args.x,
+      y: args.y,
+      width: args.width,
+      height: args.height,
+    })
+  },
+
+  /** Reposition/resize the preview webview. No-op if none is open. */
+  async setPeekBounds(x: number, y: number, width: number, height: number): Promise<void> {
+    return invoke('set_peek_bounds', { x, y, width, height })
+  },
+
+  /** Destroy the preview webview. */
+  async closePeek(): Promise<void> {
+    return invoke('close_peek')
+  },
+
+  /** Toggle reader mode inside the isolated preview. */
+  async peekSetReader(enabled: boolean): Promise<void> {
+    return invoke('peek_set_reader', { enabled })
+  },
+
+  // -- navigation safety interstitial ---------------------------------------
+
+  /**
+   * Proceed past the navigation safety interstitial: remember the host for the
+   * session and drive the tab to the URL.
+   */
+  async navGuardProceed(tabId: TabId, url: string, host: string): Promise<void> {
+    return invoke('nav_guard_proceed', { tabId, url, host })
   },
 
   // -- favicons -------------------------------------------------------------

@@ -7,8 +7,10 @@
 
 import { ClearDataSurface } from '@/overlay/surfaces/ClearDataSurface'
 import { FindSurface } from '@/overlay/surfaces/FindSurface'
+import { NavGuardSurface } from '@/overlay/surfaces/NavGuardSurface'
 import { PaletteSurface } from '@/overlay/surfaces/PaletteSurface'
 import { PaneSplitMenuSurface } from '@/overlay/surfaces/PaneSplitMenuSurface'
+import { PeekSurface } from '@/overlay/surfaces/PeekSurface'
 import { UrlbarSuggestSurface } from '@/overlay/surfaces/UrlbarSuggestSurface'
 import { VaultMenuSurface } from '@/overlay/surfaces/VaultMenuSurface'
 
@@ -23,6 +25,8 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'cleardata') return <ClearDataSurface />
   if (surface === 'urlbar') return <UrlbarSuggestSurface />
   if (surface === 'vaultmenu') return <VaultMenuSurface />
+  if (surface === 'peek') return <PeekSurface />
+  if (surface === 'navguard') return <NavGuardSurface />
   // eslint-disable-next-line no-console
   console.warn(`Unknown overlay surface: ${surface}`)
   return null
