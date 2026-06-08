@@ -22,7 +22,8 @@ import { commands } from '@/bindings/commands'
 import type { TabId, WorkspaceId } from '@/bindings/types'
 
 const DRAG_THRESHOLD_PX = 6
-const MENU_W = 132
+// 4 split glyphs + a divider + the pin toggle (see PaneSplitMenuSurface).
+const MENU_W = 172
 const MENU_H = 36
 const MARGIN = 8
 
@@ -142,6 +143,25 @@ export function reorderedTabIds(
   return without
 }
 
+/**
+ * Reorder within the non-pinned subset, then merge back so pinned tabs keep
+ * their slots in the full order. `insertion` indexes the rendered (non-pinned)
+ * list, since pinned tabs live in the quick-access grid, not the list. Returns
+ * null when nothing moves.
+ */
+export function reorderedWithPinned(
+  fullOrder: TabId[],
+  pinned: ReadonlySet<TabId>,
+  draggedId: TabId,
+  insertion: number,
+): TabId[] | null {
+  const nonPinned = fullOrder.filter((id) => !pinned.has(id))
+  const next = reorderedTabIds(nonPinned, draggedId, insertion)
+  if (!next) return null
+  let i = 0
+  return fullOrder.map((id) => (pinned.has(id) ? id : next[i++]))
+}
+
 export function useTabSplit({
   workspaceId: _workspaceId,
   activeTabId,
@@ -207,7 +227,6 @@ export function useTabSplit({
       if (e.key === 'Escape') dismiss()
     }
     window.addEventListener('pointerdown', onPointerDown)
-    window.addEventListener('blur', dismiss)
     document.addEventListener('keydown', onKey)
     let unlisten: UnlistenFn | null = null
     let cancelled = false
@@ -219,7 +238,6 @@ export function useTabSplit({
       cancelled = true
       unlisten?.()
       window.removeEventListener('pointerdown', onPointerDown)
-      window.removeEventListener('blur', dismiss)
       document.removeEventListener('keydown', onKey)
     }
   }, [menuOpen])

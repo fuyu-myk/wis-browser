@@ -4,6 +4,7 @@ import type { BrowserState, Tab, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 
 import { Brand } from '@/components/Brand'
+import { PinnedTabs } from '@/components/PinnedTabs'
 import { TabList } from '@/components/TabList'
 import { WorkspacePill } from '@/components/WorkspacePill'
 
@@ -37,6 +38,10 @@ export function Sidebar({
 
   const [workspacePopoverOpen, setWorkspacePopoverOpen] = useState(false)
   const [tabMenuOpen, setTabMenuOpen] = useState(false)
+  // A live menu/popover keeps the sidebar pinned open. Tracked via a ref so the
+  // window-blur handler reads the current value without re-subscribing.
+  const keepOpenRef = useRef(false)
+  keepOpenRef.current = workspacePopoverOpen || tabMenuOpen
   useEffect(() => {
     if (workspacePopoverOpen || tabMenuOpen) setExpanded(true)
   }, [workspacePopoverOpen, tabMenuOpen, setExpanded])
@@ -65,13 +70,17 @@ export function Sidebar({
         collapse()
       }
     }
+    const onBlur = () => {
+      if (keepOpenRef.current) return
+      collapse()
+    }
     document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
-    window.addEventListener('blur', collapse)
+    window.addEventListener('blur', onBlur)
     return () => {
       document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('blur', collapse)
+      window.removeEventListener('blur', onBlur)
     }
   }, [collapsible, expanded, setExpanded])
 
@@ -100,10 +109,22 @@ export function Sidebar({
       )}
       <Brand />
       <WorkspacePill state={state} onOpenChange={setWorkspacePopoverOpen} />
+      {activeWorkspace && (
+        <PinnedTabs
+          variant="sidebar"
+          workspaceId={activeWorkspace.id}
+          tabs={tabs}
+          pinnedTabIds={activeWorkspace.pinned_tab_ids}
+          activeTabId={activeTab?.id ?? null}
+          onExpand={() => setExpanded(true)}
+          onMenuOpenChange={setTabMenuOpen}
+        />
+      )}
       <TabList
         workspaceId={activeWorkspace?.id ?? ('' as never)}
         tabs={tabs}
         activeTabId={activeTab?.id ?? null}
+        pinnedTabIds={activeWorkspace?.pinned_tab_ids ?? []}
         onSplitMenuOpenChange={setTabMenuOpen}
       />
     </aside>

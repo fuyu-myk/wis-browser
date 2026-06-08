@@ -10,7 +10,7 @@ import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import {
   useTabSplit,
   tabDropTarget,
-  reorderedTabIds,
+  reorderedWithPinned,
   type TabReorder,
   type DropTarget,
 } from '@/hooks/useTabSplit'
@@ -22,6 +22,8 @@ interface HorizontalTabsProps {
   workspaceId: WorkspaceId
   tabs: Tab[]
   activeTabId: TabId | null
+  /** Pinned tab IDs; pulled out of the strip (they live in the rail). */
+  pinnedTabIds: TabId[]
   /** When true, render the URL inside the active tab. */
   integrateUrlBar: boolean
   /** Render as a smaller, centered tab strip. */
@@ -89,6 +91,7 @@ export function HorizontalTabs({
   workspaceId,
   tabs,
   activeTabId,
+  pinnedTabIds,
   integrateUrlBar,
   compact = false,
 }: HorizontalTabsProps) {
@@ -117,13 +120,17 @@ export function HorizontalTabs({
   const [stripWidth, setStripWidth] = useState(0)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
 
+  const pinnedSet = new Set(pinnedTabIds)
+  const stripTabs = tabs.filter((t) => !pinnedSet.has(t.id))
+
   const makeReorder = (tabId: TabId): TabReorder => ({
     targetAtPoint: (x, y) =>
       stripRef.current ? tabDropTarget(stripRef.current, 'x', x, y) : null,
     onTarget: setDropTarget,
     onDrop: (idx) => {
-      const next = reorderedTabIds(
+      const next = reorderedWithPinned(
         tabs.map((t) => t.id),
+        pinnedSet,
         tabId,
         idx,
       )
@@ -148,7 +155,7 @@ export function HorizontalTabs({
     el.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
   }, [activeTabId])
 
-  const n = tabs.length
+  const n = stripTabs.length
   const minActive = compact ? COMPACT_MINIMUM_CURRENT_TAB_SIZE : MINIMUM_CURRENT_TAB_SIZE
   const minInactive = compact ? COMPACT_MINIMUM_TAB_SIZE : MINIMUM_TAB_SIZE
 
@@ -177,7 +184,7 @@ export function HorizontalTabs({
       ref={wrapRef}
     >
       <div className={cx('tabs-h', { compact })} ref={stripRef}>
-        {tabs.map((tab, i) => {
+        {stripTabs.map((tab, i) => {
           const isActive = tab.id === activeTabId
           const size = isActive ? sizing.activeSize : sizing.inactiveSize
           return (

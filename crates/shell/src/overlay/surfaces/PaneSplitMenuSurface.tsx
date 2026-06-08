@@ -19,6 +19,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { commands } from '@/bindings/commands'
 import type { SplitDir, TabId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
+import { PinIcon, PinOffIcon } from '@/lib/icons'
 import { NEW_TAB_URL } from '@/lib/url'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
@@ -91,6 +92,12 @@ export function PaneSplitMenuSurface() {
     close()
   }
 
+  const movedPinned = !!state?.tabs.find((t) => t.id === movedTabId)?.pinned
+  const togglePin = () => {
+    if (movedTabId) void commands.pinTab(movedTabId, !movedPinned).catch(() => undefined)
+    close()
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close()
@@ -116,6 +123,17 @@ export function PaneSplitMenuSurface() {
           <DirArrow dir={dir} />
         </button>
       ))}
+      <span className="kb-panemenu-sep" aria-hidden />
+      <button
+        type="button"
+        role="menuitem"
+        className="kb-panemenu-btn"
+        aria-label={movedPinned ? 'Unpin tab' : 'Pin tab'}
+        title={movedPinned ? 'Unpin tab' : 'Pin tab'}
+        onClick={togglePin}
+      >
+        {movedPinned ? <PinOffIcon width={16} height={16} /> : <PinIcon width={16} height={16} />}
+      </button>
     </div>
   )
 }

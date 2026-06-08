@@ -68,6 +68,7 @@ export function TopBar({ state }: TopBarProps) {
           workspaceId={activeWorkspace?.id ?? ('' as never)}
           tabs={tabs}
           activeTabId={activeTab?.id ?? null}
+          pinnedTabIds={activeWorkspace?.pinned_tab_ids ?? []}
           integrateUrlBar={false}
           compact
         />

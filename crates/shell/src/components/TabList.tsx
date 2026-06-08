@@ -10,7 +10,7 @@ import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import {
   useTabSplit,
   tabDropTarget,
-  reorderedTabIds,
+  reorderedWithPinned,
   type TabReorder,
   type DropTarget,
 } from '@/hooks/useTabSplit'
@@ -22,6 +22,8 @@ interface TabListProps {
   workspaceId: WorkspaceId
   tabs: Tab[]
   activeTabId: TabId | null
+  /** Pinned tab IDs in pin order; rendered as a favicon grid above the list. */
+  pinnedTabIds: TabId[]
   /** Notified when the right-click split menu opens/closes (expand sidebar). */
   onSplitMenuOpenChange?: (open: boolean) => void
 }
@@ -32,7 +34,13 @@ interface TabListProps {
  * renders a coloured "fav" tile (favicon placeholder), title, and a
  * close affordance on hover.
  */
-export function TabList({ workspaceId, tabs, activeTabId, onSplitMenuOpenChange }: TabListProps) {
+export function TabList({
+  workspaceId,
+  tabs,
+  activeTabId,
+  pinnedTabIds,
+  onSplitMenuOpenChange,
+}: TabListProps) {
   const qc = useQueryClient()
   const setActive = useMutation({
     mutationFn: (id: TabId) => commands.setActiveTab(id),
@@ -61,13 +69,17 @@ export function TabList({ workspaceId, tabs, activeTabId, onSplitMenuOpenChange 
   const listRef = useRef<HTMLDivElement>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
 
+  const pinnedSet = new Set(pinnedTabIds)
+  const normalTabs = tabs.filter((t) => !pinnedSet.has(t.id))
+
   const makeReorder = (tabId: TabId): TabReorder => ({
     targetAtPoint: (x, y) =>
       listRef.current ? tabDropTarget(listRef.current, 'y', x, y) : null,
     onTarget: setDropTarget,
     onDrop: (idx) => {
-      const next = reorderedTabIds(
+      const next = reorderedWithPinned(
         tabs.map((t) => t.id),
+        pinnedSet,
         tabId,
         idx,
       )
@@ -87,13 +99,12 @@ export function TabList({ workspaceId, tabs, activeTabId, onSplitMenuOpenChange 
         <PlusIcon />
         <span>New tab</span>
       </button>
-      {tabs.map((tab, i) => (
+      {normalTabs.map((tab, i) => (
         <div
           key={tab.id}
           data-tab-id={tab.id}
           className={cx('kb-tab', {
             active: tab.id === activeTabId,
-            pinned: tab.pinned,
             asleep: discardedTabs.has(tab.id) && tab.id !== activeTabId,
             'drop-before': dropTarget?.anchorIndex === i && dropTarget.side === 'before',
             'drop-after': dropTarget?.anchorIndex === i && dropTarget.side === 'after',

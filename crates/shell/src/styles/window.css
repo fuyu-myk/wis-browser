@@ -289,6 +289,13 @@ body.is-overlay-surface:not(.glass-on) {
   background: color-mix(in oklab, var(--primary-400) 18%, transparent);
   color: var(--primary-400);
 }
+.kb-panemenu-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 2px;
+  background: var(--border);
+}
+[data-mode='dark'] .kb-panemenu.glass-on .kb-panemenu-sep { background: rgba(255, 255, 255, 0.16); }
 
 /* ─── Find-in-page overlay (bottom-centred glass pill) ─────────── */
 .kb-findbar-wrap {
@@ -1079,6 +1086,10 @@ body.is-overlay-surface:not(.glass-on) {
   visibility: hidden;
 }
 
+/* Collapsed sidebar / slim rail: swap the favicon grid for a single glyph. */
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-pinned-grid { display: none; }
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-pinned-glyph { display: inline-flex; }
+
 /* Thin invisible edge zone at the very window border — only hovering this
    triggers sidebar expand on collapsible layouts. */
 .kb-side-edge {
@@ -1241,6 +1252,82 @@ body.is-overlay-surface:not(.glass-on) {
 }
 
 [data-mode="dark"].glass-on .kb-tabs .group-label { color: rgba(255,255,255,0.78); }
+
+/* ─── pinned-tab quick-access strip (docked under the workspace pill) ── */
+.kb-pinned { padding: 0 4px; }
+.kb-pinned-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px 0 2px;
+}
+/* Single glyph shown in place of the grid when the sidebar/rail is collapsed.
+   Sized and skinned to match the collapsed workspace pill. */
+.kb-pinned-glyph {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 210px;
+  margin: 0 auto;
+  height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.kb-pinned-glyph:hover { background: var(--surface-raised); color: var(--text-primary); }
+.kb-pinned-glyph svg { width: 16px; height: 16px; }
+.glass-on .kb-pinned-glyph {
+  background: rgba(255,255,255,0.55);
+  color: rgba(20,20,28,0.92);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+}
+.glass-on .kb-pinned-glyph:hover { background: rgba(255,255,255,0.72); }
+[data-mode="dark"].glass-on .kb-pinned-glyph {
+  background: rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.85);
+}
+[data-mode="dark"].glass-on .kb-pinned-glyph:hover { background: rgba(255,255,255,0.18); }
+/* Rail keeps the slim glyph until opened; the rail widens to host the grid. */
+.kb-pinned.is-rail .kb-pinned-glyph { display: inline-flex; }
+.kb-pinned.is-rail .kb-pinned-grid { padding: 6px 0 2px; }
+.kb-pinned-cell {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.12s, background 0.12s;
+}
+.kb-pinned-cell:hover { border-color: var(--border-strong); background: var(--overlay); }
+.kb-pinned-cell.active {
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 1px var(--primary-500) inset;
+}
+.kb-pinned-cell .fav { width: 18px; height: 18px; border-radius: 4px; }
+.kb-pinned-cell .fav img { width: 100%; height: 100%; object-fit: contain; display: block; }
+[data-mode="dark"] .kb-pinned-cell {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.glass-on .kb-pinned-cell {
+  background: rgba(255, 255, 255, 0.55);
+  border-color: rgba(255, 255, 255, 0.30);
+}
+[data-mode="dark"].glass-on .kb-pinned-cell {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
 .kb-tab {
   display: flex;
   align-items: center;
