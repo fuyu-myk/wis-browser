@@ -153,4 +153,23 @@ pub trait Storage: Send + Sync {
 
     /// Delete a bookmark by id.
     fn delete_bookmark(&self, id: i64) -> StorageResult<()>;
+
+    // -- session cookies (per-workspace; see migration M0011) --------------
+
+    /// Persist a workspace's session-cookie snapshot (opaque blob). Replaces any
+    /// prior snapshot's data but keeps its original `created_at` (so the absolute
+    /// lifetime cap isn't reset by ongoing snapshots).
+    fn save_session_cookies(&self, workspace_id: WorkspaceId, data: &str) -> StorageResult<()>;
+
+    /// Load a workspace's session-cookie snapshot, or `None` if none saved or it
+    /// was first persisted more than `max_age_days` ago (absolute TTL).
+    fn load_session_cookies(
+        &self,
+        workspace_id: WorkspaceId,
+        max_age_days: i64,
+    ) -> StorageResult<Option<String>>;
+
+    /// Delete every session-cookie snapshot first persisted more than
+    /// `max_age_days` ago (`0` deletes all). Hygiene + blast-radius bound.
+    fn purge_stale_session_cookies(&self, max_age_days: i64) -> StorageResult<()>;
 }

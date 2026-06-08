@@ -128,6 +128,33 @@ pub fn run() {
             // App handle for the native click navigation-guard handler.
             navguard::set_app_handle(app.handle().clone());
 
+            // Periodically snapshot session cookies for activated workspaces so
+            // logins survive a restart even when no page reload occurs (e.g. a
+            // cookie set via fetch). Restore happens per-workspace on first tab.
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    // Drop any persisted sessions past their TTL at launch.
+                    cookies::purge_persisted_sessions(&handle, false).await;
+                    let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
+                    tick.tick().await; // consume the immediate first tick
+                    loop {
+                        tick.tick().await;
+                        let workspaces: Vec<wis_core::WorkspaceId> = handle
+                            .state::<AppState>()
+                            .restored_cookies
+                            .lock()
+                            .await
+                            .iter()
+                            .copied()
+                            .collect();
+                        for ws in workspaces {
+                            cookies::persist_session_cookies(&handle, ws).await;
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

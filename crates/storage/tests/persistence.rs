@@ -36,6 +36,35 @@ fn fresh_store() -> SqliteStorage {
 }
 
 #[test]
+fn session_cookies_round_trip_overwrite_and_ttl() {
+    use wis_core::WorkspaceId;
+    let store = fresh_store();
+    let ws = WorkspaceId::new();
+    let ttl = 14;
+
+    assert_eq!(store.load_session_cookies(ws, ttl).expect("load"), None);
+
+    store.save_session_cookies(ws, "blob-1").expect("save");
+    assert_eq!(
+        store.load_session_cookies(ws, ttl).expect("load").as_deref(),
+        Some("blob-1"),
+    );
+
+    // Saving again replaces the data (one row per workspace).
+    store.save_session_cookies(ws, "blob-2").expect("save 2");
+    assert_eq!(store.load_session_cookies(ws, ttl).expect("load").as_deref(), Some("blob-2"));
+
+    // A zero-day TTL treats everything as expired (nothing loads, purge clears).
+    assert_eq!(store.load_session_cookies(ws, 0).expect("load ttl0"), None);
+    store.purge_stale_session_cookies(0).expect("purge all");
+    assert_eq!(store.load_session_cookies(ws, ttl).expect("after purge"), None);
+
+    // Scoped per workspace.
+    store.save_session_cookies(ws, "blob-3").expect("save 3");
+    assert_eq!(store.load_session_cookies(WorkspaceId::new(), ttl).expect("other"), None);
+}
+
+#[test]
 fn loading_an_empty_store_returns_none() {
     let store = fresh_store();
     let loaded = store.load_state().expect("load_state");

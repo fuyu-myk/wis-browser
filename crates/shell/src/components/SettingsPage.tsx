@@ -385,6 +385,21 @@ export function SettingsPage() {
         </div>
         <div className="row">
           <div className="l">
+            <span>Stay logged in across restarts</span>
+            <span>
+              Save login sessions (encrypted) so sites stay signed in
+              after a restart. Restored sessions auto-expire after two weeks.
+              Turning this off ends sessions on quit and wipes any saved ones.
+            </span>
+          </div>
+          <Switch
+            checked={settings.persist_sessions}
+            onChange={(persist_sessions) => update.mutate({ persist_sessions })}
+            label="Stay logged in across restarts"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
             <span>Auto-update filter lists</span>
             <span>Fetch EasyPrivacy on launch, cache for 24 hours.</span>
           </div>

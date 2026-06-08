@@ -101,6 +101,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
         always_private: Some(true),
         tab_sleep_enabled: Some(false),
         tab_sleep_minutes: Some(30),
+        persist_sessions: Some(false),
         keybindings: Some(HashMap::from([
             (KeyAction::NewTab, "Ctrl+T".into()),
             (KeyAction::CloseTab, "Ctrl+W".into()),

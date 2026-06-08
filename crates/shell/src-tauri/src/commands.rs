@@ -985,6 +985,16 @@ pub async fn create_tab_webview(
                     )
                     .await;
                 });
+
+                // Snapshot session cookies after each load so a fresh login
+                // (e.g. the redirect that completes an SSO sign-in) is saved
+                // promptly, before any quit. Skipped for private workspaces.
+                if !ephemeral {
+                    let app_for_cookies = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        crate::cookies::persist_session_cookies(&app_for_cookies, workspace_id).await;
+                    });
+                }
             }
         });
     }
@@ -992,6 +1002,16 @@ pub async fn create_tab_webview(
     // Allow `window.open` / `target=_blank` popups (e.g. "Continue with Google"
     // and other OAuth flows).
     builder = builder.on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Allow);
+
+    // Restore this workspace's saved session cookies into its data store before
+    // the first page loads, so logins survive a restart. Once per workspace per run;
+    // never for ephemeral (private) workspaces.
+    if !ephemeral {
+        let first = state.restored_cookies.lock().await.insert(workspace_id);
+        if first {
+            crate::cookies::restore_session_cookies(&app, workspace_id).await;
+        }
+    }
 
     let child = window
         .add_child(
@@ -1274,6 +1294,7 @@ pub async fn update_settings(
 ) -> WisResult<UserSettings> {
     let keybindings_touched = patch.keybindings.is_some();
     let theme_touched = patch.theme.is_some();
+    let persistence_disabled = patch.persist_sessions == Some(false);
     let settings = mutate(&app, &state, |s| {
         let next = s.with_settings(patch);
         let settings = next.settings.clone();
@@ -1291,6 +1312,11 @@ pub async fn update_settings(
 
     if theme_touched {
         apply_appearance_to_all_tabs(&app, settings.theme);
+    }
+
+    // Turning off "stay logged in" wipes any already-persisted sessions.
+    if persistence_disabled {
+        crate::cookies::purge_persisted_sessions(&app, true).await;
     }
 
     Ok(settings)

@@ -193,6 +193,8 @@ export interface UserSettings {
   tab_sleep_enabled: boolean
   /** Idle minutes before a hidden tab's webview is discarded. */
   tab_sleep_minutes: number
+  /** Persist (encrypted) login sessions across restarts; auto-expire after a cap. */
+  persist_sessions: boolean
   /** User-supplied accelerator overrides, sparse. Keyed by `KeyAction`. */
   keybindings: Partial<Record<KeyAction, string>>
 }
@@ -218,6 +220,7 @@ export interface UserSettingsPatch {
   always_private?: boolean
   tab_sleep_enabled?: boolean
   tab_sleep_minutes?: number
+  persist_sessions?: boolean
   /**
    * Sparse map of accelerator overrides. An entry replaces just that
    * action's binding; an empty string acts as "reset to default".

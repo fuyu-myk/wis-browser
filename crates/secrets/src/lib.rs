@@ -127,6 +127,40 @@ pub fn keychain_delete() -> Result<(), VaultError> {
     }
 }
 
+/// Keychain account for the session-cookie encryption key (distinct from the
+/// vault master key).
+#[cfg(target_os = "macos")]
+const KEYCHAIN_COOKIE_ACCOUNT: &str = "session-cookie-key";
+
+/// Load (creating it on first use) the symmetric key that encrypts persisted
+/// session cookies. Unlike the vault master key this is deliberately **not**
+/// gated by Touch ID: it must be available automatically at launch, since
+/// session cookies are restored before any user interaction. It lives in the
+/// login Keychain ACL'd to this app, so the on-disk blob is useless without
+/// Keychain access (mirrors Chrome's "Safe Storage" key). 256-bit, OS CSPRNG.
+#[cfg(target_os = "macos")]
+pub fn session_key_load_or_create() -> Result<MasterKey, VaultError> {
+    use security_framework::passwords::{get_generic_password, set_generic_password};
+
+    match get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_COOKIE_ACCOUNT) {
+        Ok(bytes) => {
+            if bytes.len() != 32 {
+                return Err(VaultError::Malformed);
+            }
+            let mut key = Zeroizing::new([0u8; 32]);
+            key.copy_from_slice(&bytes);
+            Ok(key)
+        }
+        Err(err) if err.code() == ERR_SEC_ITEM_NOT_FOUND => {
+            let key = generate_master_key();
+            set_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_COOKIE_ACCOUNT, key.as_ref())
+                .map_err(|e| VaultError::Keychain(e.to_string()))?;
+            Ok(key)
+        }
+        Err(err) => Err(VaultError::Keychain(err.to_string())),
+    }
+}
+
 #[cfg(not(target_os = "macos"))]
 pub fn keychain_load() -> Result<Option<MasterKey>, VaultError> {
     Err(VaultError::Unsupported)
@@ -137,6 +171,10 @@ pub fn keychain_store(_key: &MasterKey) -> Result<(), VaultError> {
 }
 #[cfg(not(target_os = "macos"))]
 pub fn keychain_delete() -> Result<(), VaultError> {
+    Err(VaultError::Unsupported)
+}
+#[cfg(not(target_os = "macos"))]
+pub fn session_key_load_or_create() -> Result<MasterKey, VaultError> {
     Err(VaultError::Unsupported)
 }
 

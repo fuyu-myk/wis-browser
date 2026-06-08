@@ -53,6 +53,12 @@ pub struct UserSettings {
     /// discarded. Only consulted when [`Self::tab_sleep_enabled`].
     #[serde(default = "default_tab_sleep_minutes")]
     pub tab_sleep_minutes: u32,
+    /// When true, in-memory session cookies (login sessions) are snapshotted,
+    /// encrypted, and restored on the next launch, so logins survive a restart.
+    /// Restored sessions still expire after a fixed cap (see the shell's session
+    /// cookie TTL). Off means logins end when the app quits (most private).
+    #[serde(default = "default_persist_sessions")]
+    pub persist_sessions: bool,
     /// User-supplied accelerator overrides keyed by [`KeyAction`]. Each
     /// entry replaces the corresponding entry from [`crate::default_keymap`]
     /// at runtime (see [`crate::effective_keymap`]). Absent entries fall
@@ -74,6 +80,10 @@ fn default_tab_sleep_minutes() -> u32 {
     15
 }
 
+fn default_persist_sessions() -> bool {
+    true
+}
+
 impl Default for UserSettings {
     fn default() -> Self {
         Self {
@@ -93,6 +103,7 @@ impl Default for UserSettings {
             always_private: false,
             tab_sleep_enabled: true,
             tab_sleep_minutes: 15,
+            persist_sessions: true,
             keybindings: HashMap::new(),
         }
     }
@@ -136,6 +147,8 @@ pub struct UserSettingsPatch {
     pub tab_sleep_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tab_sleep_minutes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persist_sessions: Option<bool>,
     /// Merged onto the existing `keybindings` map. Sparse entries replace
     /// just those actions; absent actions keep their current binding.
     /// `Some(empty_map)` is a no-op (the patch is sparse, not a wipe).
@@ -169,6 +182,7 @@ impl UserSettings {
             always_private: patch.always_private.unwrap_or(self.always_private),
             tab_sleep_enabled: patch.tab_sleep_enabled.unwrap_or(self.tab_sleep_enabled),
             tab_sleep_minutes: patch.tab_sleep_minutes.unwrap_or(self.tab_sleep_minutes),
+            persist_sessions: patch.persist_sessions.unwrap_or(self.persist_sessions),
             keybindings: match patch.keybindings {
                 None => self.keybindings.clone(),
                 Some(overrides) => {

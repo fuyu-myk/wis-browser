@@ -276,6 +276,56 @@ impl Storage for SqliteStorage {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         bookmarks::delete_bookmark(&conn, id)
     }
+
+    fn save_session_cookies(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+        data: &str,
+    ) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let ws = workspace_id.as_uuid().to_string();
+        let now = chrono::Utc::now();
+        // `created_at` is set only on first insert; later snapshots refresh the
+        // data + `updated_at` but keep `created_at`, so the absolute TTL holds.
+        conn.execute(
+            "INSERT INTO session_cookies (workspace_id, data, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?3) \
+             ON CONFLICT(workspace_id) DO UPDATE SET data = ?2, updated_at = ?3",
+            rusqlite::params![ws, data, now],
+        )?;
+
+        Ok(())
+    }
+
+    fn load_session_cookies(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+        max_age_days: i64,
+    ) -> StorageResult<Option<String>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let ws = workspace_id.as_uuid().to_string();
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(max_age_days);
+        let data = conn
+            .query_row(
+                "SELECT data FROM session_cookies WHERE workspace_id = ?1 AND created_at >= ?2",
+                rusqlite::params![ws, cutoff],
+                |row| row.get::<_, String>(0),
+            )
+            .ok();
+
+        Ok(data)
+    }
+
+    fn purge_stale_session_cookies(&self, max_age_days: i64) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(max_age_days);
+        conn.execute(
+            "DELETE FROM session_cookies WHERE created_at < ?1",
+            rusqlite::params![cutoff],
+        )?;
+
+        Ok(())
+    }
 }
 
 /// Verify the loaded state passes [`BrowserState::invariant_violations`].

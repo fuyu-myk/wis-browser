@@ -56,6 +56,9 @@ pub struct AppState {
     /// Hosts the user chose to "proceed anyway" past the navigation safety
     /// interstitial this session, so they aren't re-prompted for that host.
     pub nav_guard_bypass: Mutex<HashSet<String>>,
+    /// Workspaces whose saved session cookies have already been restored into
+    /// their WebKit data store this run, these are only restored once per workspace.
+    pub restored_cookies: Mutex<HashSet<WorkspaceId>>,
     /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
     /// Only present with the `tor` feature.
     #[cfg(feature = "tor")]
@@ -83,6 +86,7 @@ impl AppState {
             pending_capture: Mutex::new(None),
             closed_tabs: Mutex::new(Vec::new()),
             nav_guard_bypass: Mutex::new(HashSet::new()),
+            restored_cookies: Mutex::new(HashSet::new()),
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }

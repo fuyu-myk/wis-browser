@@ -172,6 +172,27 @@ ALTER TABLE bookmarks ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE bookmarks ADD COLUMN pin_position INTEGER NOT NULL DEFAULT 0;
 "#;
 
+// Persisted session cookies per workspace. Cookies are snapshotted as JSON and
+// restored into the workspace's data store on launch. One row per workspace.
+// Ephemeral (private) workspaces never write here.
+const M0011_SESSION_COOKIES: &str = r#"
+CREATE TABLE session_cookies (
+    workspace_id TEXT    NOT NULL PRIMARY KEY,
+    data         TEXT    NOT NULL,
+    updated_at   TEXT    NOT NULL
+);
+"#;
+
+// `created_at` records when a session was first persisted (it is *not* refreshed
+// on later snapshots), so a persisted login's absolute lifetime can be capped:
+// a stolen snapshot is only useful for a bounded window, and the user re-auths
+// periodically (rotating the token). Pre-existing rows default to the epoch so
+// they expire immediately (also drops any pre-encryption plaintext rows).
+const M0012_SESSION_COOKIE_AGE: &str = r#"
+ALTER TABLE session_cookies ADD COLUMN created_at TEXT NOT NULL
+    DEFAULT '1970-01-01T00:00:00+00:00';
+"#;
+
 fn all() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(M0001_INITIAL),
@@ -184,6 +205,8 @@ fn all() -> Migrations<'static> {
         M::up(M0008_TAB_ZOOM),
         M::up(M0009_BOOKMARKS),
         M::up(M0010_BOOKMARK_PINNED),
+        M::up(M0011_SESSION_COOKIES),
+        M::up(M0012_SESSION_COOKIE_AGE),
     ])
 }
 
