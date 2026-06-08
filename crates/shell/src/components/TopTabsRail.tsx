@@ -4,6 +4,7 @@ import type { BrowserState, RailSide } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { SettingsIcon } from '@/lib/icons'
 
+import { BookmarksButton } from '@/components/BookmarksButton'
 import { Brand } from '@/components/Brand'
 import { VpnToggle } from '@/components/VpnToggle'
 import { WorkspacePill } from '@/components/WorkspacePill'
@@ -15,9 +16,9 @@ interface TopTabsRailProps {
 }
 
 /**
- * Slim, always-collapsed rail shown when `layout === 'top_tabs'`. Hosts
- * the brand mark, the workspace pill, and the settings button. Only
- * expands while the workspace popover is open.
+ * Slim, always-collapsed rail shown when `layout === 'top_tabs'`. Hosts the
+ * brand mark, the workspace pill, and the bookmarks/VPN/settings controls.
+ * Expands only while the workspace popover is open.
  */
 export function TopTabsRail({ state, side, onOpenSettings }: TopTabsRailProps) {
   const [workspacePopoverOpen, setWorkspacePopoverOpen] = useState(false)
@@ -35,6 +36,7 @@ export function TopTabsRail({ state, side, onOpenSettings }: TopTabsRailProps) {
       <WorkspacePill state={state} onOpenChange={setWorkspacePopoverOpen} />
       <div className="kb-rail-spacer" />
       <div className="kb-rail-controls">
+        {!activeWorkspace?.ephemeral && <BookmarksButton variant="rail" />}
         <VpnToggle workspace={activeWorkspace} variant="rail" />
         <button
           type="button"

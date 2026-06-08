@@ -1,5 +1,6 @@
 //! The [`Storage`] trait: the contract the rest of the app codes against.
 
+use crate::bookmarks::{Bookmark, BookmarkFolder};
 use crate::credentials::CredentialRecord;
 use crate::error::StorageResult;
 use crate::history::{HistoryEntry, HistoryQuery};
@@ -96,4 +97,60 @@ pub trait Storage: Send + Sync {
         query: &str,
         limit: u32,
     ) -> StorageResult<Vec<HistoryEntry>>;
+
+    // -- bookmarks (per-workspace, foldered; see [`crate::bookmarks`]) -------
+
+    /// Folders in a workspace, ordered by position.
+    fn list_bookmark_folders(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> StorageResult<Vec<BookmarkFolder>>;
+
+    /// Create a folder appended after the workspace's existing folders.
+    fn create_bookmark_folder(
+        &self,
+        workspace_id: WorkspaceId,
+        name: &str,
+    ) -> StorageResult<BookmarkFolder>;
+
+    /// Rename a folder.
+    fn rename_bookmark_folder(&self, id: i64, name: &str) -> StorageResult<()>;
+
+    /// Reorder folders within a workspace (each id's `position` = its index).
+    fn reorder_bookmark_folders(&self, ids: &[i64]) -> StorageResult<()>;
+
+    /// Delete a folder, re-parenting its bookmarks to unfiled.
+    fn delete_bookmark_folder(&self, id: i64) -> StorageResult<()>;
+
+    /// All bookmarks in a workspace (UI groups them by `folder_id`).
+    fn list_bookmarks(&self, workspace_id: WorkspaceId) -> StorageResult<Vec<Bookmark>>;
+
+    /// Add a bookmark to `folder_id` (or unfiled when `None`); returns it.
+    /// `pinned` also places it in the quick-access row.
+    fn add_bookmark(
+        &self,
+        workspace_id: WorkspaceId,
+        folder_id: Option<i64>,
+        url: &str,
+        title: &str,
+        favicon_hash: Option<&str>,
+        pinned: bool,
+    ) -> StorageResult<Bookmark>;
+
+    /// Move a bookmark to a different folder (or unfiled). Keeps the pin flag.
+    fn move_bookmark(&self, id: i64, folder_id: Option<i64>) -> StorageResult<()>;
+
+    /// Pin/unpin a bookmark (independent of its folder). Pinning places it at
+    /// the front of the quick-access row.
+    fn set_bookmark_pinned(&self, id: i64, pinned: bool) -> StorageResult<()>;
+
+    /// Reorder the pinned quick-access row (each id's `pin_position` = its index).
+    fn reorder_pinned_bookmarks(&self, ids: &[i64]) -> StorageResult<()>;
+
+    /// Reorder bookmarks within a group sharing a `folder_id` (a folder, or the
+    /// unfiled list): each id's `position` = its index.
+    fn reorder_bookmarks(&self, ids: &[i64]) -> StorageResult<()>;
+
+    /// Delete a bookmark by id.
+    fn delete_bookmark(&self, id: i64) -> StorageResult<()>;
 }

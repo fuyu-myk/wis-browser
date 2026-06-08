@@ -137,7 +137,8 @@ pub async fn ensure_overlay(app: AppHandle, name: String) -> WisResult<()> {
     let url = WebviewUrl::App(format!("index.html?surface={name}").into());
     let builder = WebviewBuilder::new(&label, url)
         .focused(false)
-        .transparent(true);
+        .transparent(true)
+        .disable_drag_drop_handler();
 
     let wv = window
         .add_child(

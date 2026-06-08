@@ -58,17 +58,14 @@ export function VaultMenuSurface() {
   const [anchor, setAnchor] = useState<VaultMenuAnchor | null>(null)
 
   const load = useCallback(async () => {
-    if (!host) {
-      setPending(null)
-      setCandidates([])
-      return
-    }
     const [cands, pend] = await Promise.all([
-      commands.autofillCandidates(host).catch(() => [] as CredentialSummary[]),
+      host
+        ? commands.autofillCandidates(host).catch(() => [] as CredentialSummary[])
+        : Promise.resolve([] as CredentialSummary[]),
       commands.capturePending().catch(() => null),
     ])
     setCandidates(cands)
-    setPending(pend && pend.host === host ? pend : null)
+    setPending(pend)
   }, [host])
 
   useEffect(() => {
@@ -151,7 +148,7 @@ export function VaultMenuSurface() {
 
   if (!anchor) return null
 
-  const hasContent = host && (pending || candidates.length > 0)
+  const hasContent = !!pending || (!!host && candidates.length > 0)
 
   return (
     <div className="kb-vaultmenu-backdrop" onMouseDown={close}>

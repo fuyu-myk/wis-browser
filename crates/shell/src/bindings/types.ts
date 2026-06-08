@@ -322,6 +322,34 @@ export interface SiteDataEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Bookmarks (mirror of `wis_storage::bookmarks`).
+// ---------------------------------------------------------------------------
+
+export interface BookmarkFolder {
+  id: number
+  workspace_id: WorkspaceId
+  name: string
+  position: number
+  created_at: string
+}
+
+export interface Bookmark {
+  id: number
+  workspace_id: WorkspaceId
+  /** Containing folder, or null when unfiled. */
+  folder_id: number | null
+  url: string
+  title: string
+  favicon_hash: string | null
+  position: number
+  /** Pinned to the quick-access row, independent of `folder_id`. */
+  pinned: boolean
+  /** Order within the pinned row (separate from `position`). */
+  pin_position: number
+  created_at: string
+}
+
+// ---------------------------------------------------------------------------
 // Password vault (mirror of `vault.rs`).
 // ---------------------------------------------------------------------------
 

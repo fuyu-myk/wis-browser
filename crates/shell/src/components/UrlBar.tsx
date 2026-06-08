@@ -18,6 +18,9 @@ import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { SearchIcon } from '@/lib/icons'
 import { isChromeUrl, isSearchQuery, normaliseUrl, SEARCH_ENGINES } from '@/lib/url'
+import { bookmarkFoldersKey, bookmarksKey } from '@/lib/bookmarkKeys'
+import { useBookmarkSync } from '@/hooks/useBookmarkSync'
+import { BMPICKER_OPEN_EVENT, lastFolderKey, PIN_CAP } from '@/lib/bookmarkMenu'
 import {
   CAPTURE_LOGIN_EVENT,
   VAULTMENU_CLOSE_EVENT,
@@ -48,7 +51,8 @@ function hostOf(tab: Tab | null): string | null {
   if (!tab || isChromeUrl(tab.url)) return null
   try {
     const u = new URL(tab.url)
-    return u.protocol === 'http:' || u.protocol === 'https:' ? u.host : null
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
+    return u.host.replace(/^www\./, '')
   } catch {
     return null
   }
@@ -79,8 +83,9 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
     staleTime: 30_000,
   })
 
-  const pendingForHost = host != null && pendingHost === host
-  const visible = host != null && (hasCreds === true || pendingForHost)
+  // A pending capture keeps the prompt alive regardless of the current page host.
+  const hasPending = pendingHost !== null
+  const visible = hasPending || (host != null && hasCreds === true)
 
   const anchorRect = useCallback(() => {
     const el = btnRef.current
@@ -109,21 +114,22 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
       openRef.current = false
       await overlay.hide().catch(() => undefined)
     }
-    setPendingHost((p) => (p === host ? null : p))
+    setPendingHost(null)
     void qc.invalidateQueries({ queryKey: [VAULT_HAS_KEY] })
-  }, [overlay, host, qc])
+  }, [overlay, qc])
 
   useEffect(() => {
     void commands.ensureOverlay('vaultmenu').catch(() => undefined)
   }, [])
 
+  // Recover an outstanding capture (e.g. after a post-login navigation re-renders
+  // this bar).
   useEffect(() => {
-    if (!host) return
     let cancelled = false
     void commands.capturePending().then((p) => {
-      if (!cancelled && p && p.host === host) {
-        setPendingHost(host)
-        autoOpenRef.current = true
+      if (!cancelled && p) {
+        setPendingHost(p.host)
+        if (!openRef.current) autoOpenRef.current = true
       }
     })
     return () => {
@@ -135,16 +141,14 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
     let un: UnlistenFn | null = null
     let cancelled = false
     void listen<CaptureInfo>(CAPTURE_LOGIN_EVENT, (e) => {
-      if (host && e.payload.host === host) {
-        setPendingHost(host)
-        autoOpenRef.current = true
-      }
+      setPendingHost(e.payload.host)
+      autoOpenRef.current = true
     }).then((fn) => (cancelled ? fn() : (un = fn)))
     return () => {
       cancelled = true
       un?.()
     }
-  }, [host])
+  }, [])
 
   useEffect(() => {
     if (visible && autoOpenRef.current) {
@@ -447,6 +451,134 @@ function NotSecureGlyph() {
   )
 }
 
+/**
+ * Bookmark star on the right of the address bar. Clicking bookmarks the active
+ * page into the last-used folder (default: unfiled) and opens a small folder
+ * picker anchored under the star to confirm/change it; the choice persists for
+ * next time. Clicking again when already bookmarked removes it. Hidden for
+ * chrome pages and private (ephemeral) workspaces.
+ */
+function BookmarkStar({ activeTab }: { activeTab: Tab | null }) {
+  const qc = useQueryClient()
+  const { data: state } = useBrowserState()
+  useBookmarkSync()
+  const overlay = useOverlay('bmpicker')
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const wsId = activeTab?.workspace_id ?? null
+  const ephemeral =
+    (wsId ? state?.workspaces.find((w) => w.id === wsId)?.ephemeral : false) ?? false
+  const bookmarkable = !!activeTab && !isChromeUrl(activeTab.url) && !ephemeral && wsId !== null
+
+  useEffect(() => {
+    void commands.ensureOverlay('bmpicker').catch(() => undefined)
+  }, [])
+
+  const bookmarks = useQuery({
+    queryKey: wsId ? bookmarksKey(wsId) : ['bookmarks', 'none'],
+    queryFn: () => commands.listBookmarks(wsId!),
+    enabled: bookmarkable,
+  })
+  const folders = useQuery({
+    queryKey: wsId ? bookmarkFoldersKey(wsId) : ['bookmark-folders', 'none'],
+    queryFn: () => commands.listBookmarkFolders(wsId!),
+    enabled: bookmarkable,
+  })
+  const existing =
+    activeTab && bookmarkable
+      ? (bookmarks.data?.find((b) => b.url === activeTab.url) ?? null)
+      : null
+
+  const onClick = async () => {
+    if (!activeTab || !wsId) return
+    if (existing) {
+      await commands.deleteBookmark(existing.id).catch(() => undefined)
+      void qc.invalidateQueries({ queryKey: bookmarksKey(wsId) })
+      return
+    }
+
+    // New bookmarks land in the last-used folder (unfiled by default).
+    let lastFolderId: number | null = null
+    try {
+      const raw = localStorage.getItem(lastFolderKey(wsId))
+      if (raw && raw !== 'unfiled') {
+        const id = Number(raw)
+        if ((folders.data ?? []).some((f) => f.id === id)) lastFolderId = id
+      }
+    } catch {
+      /* ignore */
+    }
+
+    const pinnedCount = (bookmarks.data ?? []).filter((b) => b.pinned).length
+    const autoPin = pinnedCount < PIN_CAP
+
+    const bm = await commands
+      .addBookmark({
+        workspaceId: wsId,
+        folderId: lastFolderId,
+        url: activeTab.url,
+        title: activeTab.title,
+        faviconHash: activeTab.favicon?.hash ?? null,
+        pinned: autoPin,
+      })
+      .catch(() => null)
+    void qc.invalidateQueries({ queryKey: bookmarksKey(wsId) })
+    if (!bm) return
+
+    // Open the folder picker anchored under the star.
+    const el = btnRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const width = 240
+    await overlay
+      .show({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight })
+      .catch(() => undefined)
+    await emit(BMPICKER_OPEN_EVENT, {
+      bookmarkId: bm.id,
+      workspaceId: wsId,
+      currentFolderId: lastFolderId,
+      x: Math.round(Math.max(8, r.right - width)),
+      y: Math.round(r.bottom + 6),
+      width,
+    }).catch(() => undefined)
+  }
+
+  if (!bookmarkable) return null
+
+  return (
+    <button
+      ref={btnRef}
+      type="button"
+      className={cx('kb-urlbar-key', 'kb-urlbar-star', { 'is-on': !!existing })}
+      title={existing ? 'Remove bookmark' : 'Bookmark this page'}
+      aria-label={existing ? 'Remove bookmark' : 'Bookmark this page'}
+      aria-pressed={!!existing}
+      onMouseDown={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }}
+      onClick={() => void onClick()}
+    >
+      <StarGlyph filled={!!existing} />
+    </button>
+  )
+}
+
+function StarGlyph({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill={filled ? 'currentColor' : 'none'}
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 17.3 6.2 20.5l1.1-6.5L2.5 9.3l6.5-.9L12 2.5l3 5.9 6.5.9-4.8 4.7 1.1 6.5z" />
+    </svg>
+  )
+}
+
 // ─── Floating / horizontal-pill variant ──────────────────────────────────
 
 export interface FloatingUrlBarProps {
@@ -492,6 +624,7 @@ export function FloatingUrlBar({
         spellCheck={false}
       />
       <AutofillKey activeTab={activeTab} />
+      <BookmarkStar activeTab={activeTab} />
     </form>
   )
 }

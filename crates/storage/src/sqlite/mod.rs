@@ -9,6 +9,7 @@
 //! back. A corrupted store returns [`StorageError::DataCorruption`] so the
 //! shell can log and fall back to defaults rather than crash.
 
+mod bookmarks;
 mod convert;
 mod credentials;
 mod history;
@@ -196,6 +197,84 @@ impl Storage for SqliteStorage {
     ) -> StorageResult<Vec<crate::history::HistoryEntry>> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         history::recommend(&conn, workspace_id, query, limit)
+    }
+
+    fn list_bookmark_folders(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+    ) -> StorageResult<Vec<crate::bookmarks::BookmarkFolder>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        bookmarks::list_folders(&conn, workspace_id)
+    }
+
+    fn create_bookmark_folder(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+        name: &str,
+    ) -> StorageResult<crate::bookmarks::BookmarkFolder> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        bookmarks::create_folder(&conn, workspace_id, name)
+    }
+
+    fn rename_bookmark_folder(&self, id: i64, name: &str) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        bookmarks::rename_folder(&conn, id, name)
+    }
+
+    fn reorder_bookmark_folders(&self, ids: &[i64]) -> StorageResult<()> {
+        let mut conn = self.conn.lock().expect("storage mutex poisoned");
+        bookmarks::reorder_folders(&mut conn, ids)
+    }
+
+    fn delete_bookmark_folder(&self, id: i64) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        bookmarks::delete_folder(&conn, id)
+    }
+
+    fn list_bookmarks(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+    ) -> StorageResult<Vec<crate::bookmarks::Bookmark>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        bookmarks::list_bookmarks(&conn, workspace_id)
+    }
+
+    fn add_bookmark(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+        folder_id: Option<i64>,
+        url: &str,
+        title: &str,
+        favicon_hash: Option<&str>,
+        pinned: bool,
+    ) -> StorageResult<crate::bookmarks::Bookmark> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        bookmarks::add_bookmark(&conn, workspace_id, folder_id, url, title, favicon_hash, pinned)
+    }
+
+    fn move_bookmark(&self, id: i64, folder_id: Option<i64>) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        bookmarks::move_bookmark(&conn, id, folder_id)
+    }
+
+    fn set_bookmark_pinned(&self, id: i64, pinned: bool) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        bookmarks::set_pinned(&conn, id, pinned)
+    }
+
+    fn reorder_pinned_bookmarks(&self, ids: &[i64]) -> StorageResult<()> {
+        let mut conn = self.conn.lock().expect("storage mutex poisoned");
+        bookmarks::reorder_pinned(&mut conn, ids)
+    }
+
+    fn reorder_bookmarks(&self, ids: &[i64]) -> StorageResult<()> {
+        let mut conn = self.conn.lock().expect("storage mutex poisoned");
+        bookmarks::reorder_bookmarks(&mut conn, ids)
+    }
+
+    fn delete_bookmark(&self, id: i64) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        bookmarks::delete_bookmark(&conn, id)
     }
 }
 

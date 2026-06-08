@@ -8,6 +8,8 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   AccentColor,
+  Bookmark,
+  BookmarkFolder,
   BrowserState,
   CredentialSummary,
   Decision,
@@ -578,6 +580,74 @@ export const commands = {
    */
   async navGuardProceed(tabId: TabId, url: string, host: string): Promise<void> {
     return invoke('nav_guard_proceed', { tabId, url, host })
+  },
+
+  // -- bookmarks (per-workspace, foldered) ----------------------------------
+
+  async listBookmarkFolders(workspaceId: WorkspaceId): Promise<BookmarkFolder[]> {
+    return invoke('list_bookmark_folders', { workspaceId })
+  },
+
+  async listBookmarks(workspaceId: WorkspaceId): Promise<Bookmark[]> {
+    return invoke('list_bookmarks', { workspaceId })
+  },
+
+  async createBookmarkFolder(workspaceId: WorkspaceId, name: string): Promise<BookmarkFolder> {
+    return invoke('create_bookmark_folder', { workspaceId, name })
+  },
+
+  async renameBookmarkFolder(id: number, name: string): Promise<void> {
+    return invoke('rename_bookmark_folder', { id, name })
+  },
+
+  /** Reorder folders within a workspace: `ids` is the new order. */
+  async reorderBookmarkFolders(ids: number[]): Promise<void> {
+    return invoke('reorder_bookmark_folders', { ids })
+  },
+
+  async deleteBookmarkFolder(id: number): Promise<void> {
+    return invoke('delete_bookmark_folder', { id })
+  },
+
+  async addBookmark(args: {
+    workspaceId: WorkspaceId
+    folderId: number | null
+    url: string
+    title: string
+    faviconHash: string | null
+    pinned: boolean
+  }): Promise<Bookmark> {
+    return invoke('add_bookmark', {
+      workspaceId: args.workspaceId,
+      folderId: args.folderId,
+      url: args.url,
+      title: args.title,
+      faviconHash: args.faviconHash,
+      pinned: args.pinned,
+    })
+  },
+
+  async moveBookmark(id: number, folderId: number | null): Promise<void> {
+    return invoke('move_bookmark', { id, folderId })
+  },
+
+  /** Pin or unpin a bookmark (independent of its folder). */
+  async setBookmarkPinned(id: number, pinned: boolean): Promise<void> {
+    return invoke('set_bookmark_pinned', { id, pinned })
+  },
+
+  /** Reorder the pinned quick-access row: `ids` is the new order. */
+  async reorderPinnedBookmarks(ids: number[]): Promise<void> {
+    return invoke('reorder_pinned_bookmarks', { ids })
+  },
+
+  /** Reorder bookmarks within a folder (or the unfiled list): `ids` = new order. */
+  async reorderBookmarks(ids: number[]): Promise<void> {
+    return invoke('reorder_bookmarks', { ids })
+  },
+
+  async deleteBookmark(id: number): Promise<void> {
+    return invoke('delete_bookmark', { id })
   },
 
   // -- favicons -------------------------------------------------------------

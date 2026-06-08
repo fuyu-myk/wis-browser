@@ -17,8 +17,8 @@ use tauri::webview::{PageLoadEvent, PageLoadPayload, WebviewBuilder};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
 use url::Url;
 use wis_core::{
-    AccentColor, BrowserState, PaneBranch, PrivacyMode, SplitDir, Tab, TabId, UpstreamProxy,
-    UserSettings, UserSettingsPatch, WisError, WisResult, Workspace, WorkspaceId,
+    AccentColor, BrowserState, PaneBranch, PrivacyMode, SplitDir, Tab, TabId, ThemeMode,
+    UpstreamProxy, UserSettings, UserSettingsPatch, WisError, WisResult, Workspace, WorkspaceId,
 };
 use wis_network::{Decision, OutboundRequest, RequestType};
 
@@ -747,6 +747,57 @@ pub(crate) fn apply_tab_zoom(app: &AppHandle, id: TabId, factor: f64) {
     }
 }
 
+/// Force a tab webview's `prefers-color-scheme` to match the browser theme by
+/// overriding its native appearance. `System` clears the override so the page
+/// follows the OS again. No-op off macOS.
+pub(crate) fn apply_tab_appearance<R: tauri::Runtime>(
+    webview: &tauri::webview::Webview<R>,
+    theme: ThemeMode,
+) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::runtime::AnyObject;
+        use objc2::{class, msg_send};
+
+        let _ = webview.with_webview(move |w| unsafe {
+            let view: *mut AnyObject = w.inner() as *mut AnyObject;
+            if view.is_null() {
+                return;
+            }
+            let name: Option<&str> = match theme {
+                ThemeMode::Dark => Some("NSAppearanceNameDarkAqua"),
+                ThemeMode::Light => Some("NSAppearanceNameAqua"),
+                ThemeMode::System => None,
+            };
+            let appearance: *mut AnyObject = match name {
+                Some(n) => {
+                    let Ok(c) = std::ffi::CString::new(n) else {
+                        return;
+                    };
+                    let ns: *mut AnyObject =
+                        msg_send![class!(NSString), stringWithUTF8String: c.as_ptr()];
+                    msg_send![class!(NSAppearance), appearanceNamed: ns]
+                }
+                None => std::ptr::null_mut(),
+            };
+            let _: () = msg_send![view, setAppearance: appearance];
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (webview, theme);
+    }
+}
+
+/// Re-apply the theme appearance to every live tab webview (on a theme change).
+pub(crate) fn apply_appearance_to_all_tabs(app: &AppHandle, theme: ThemeMode) {
+    for (label, webview) in app.webviews() {
+        if label.starts_with("tab-") {
+            apply_tab_appearance(&webview, theme);
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn reorder_tabs(
     app: AppHandle,
@@ -938,6 +989,10 @@ pub async fn create_tab_webview(
         });
     }
 
+    // Allow `window.open` / `target=_blank` popups (e.g. "Continue with Google"
+    // and other OAuth flows).
+    builder = builder.on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Allow);
+
     let child = window
         .add_child(
             builder,
@@ -1000,14 +1055,19 @@ pub async fn create_tab_webview(
     // Plain-click navigation safety interstitial for risky links.
     crate::navguard::install(&child);
 
-    // Restore the tab's persisted page zoom (if it isn't the default).
-    let zoom = {
+    // Restore the tab's persisted page zoom (if it isn't the default), and force
+    // the page's `prefers-color-scheme` to match the browser theme.
+    let (zoom, theme) = {
         let browser = state.browser.lock().await;
-        browser.tab(tab_id).map(|t| t.zoom).unwrap_or(1.0)
+        (
+            browser.tab(tab_id).map(|t| t.zoom).unwrap_or(1.0),
+            browser.settings.theme,
+        )
     };
     if (zoom - 1.0).abs() > f64::EPSILON {
         apply_tab_zoom(&app, tab_id, zoom);
     }
+    apply_tab_appearance(&child, theme);
 
     Ok(())
 }
@@ -1213,6 +1273,7 @@ pub async fn update_settings(
     patch: UserSettingsPatch,
 ) -> WisResult<UserSettings> {
     let keybindings_touched = patch.keybindings.is_some();
+    let theme_touched = patch.theme.is_some();
     let settings = mutate(&app, &state, |s| {
         let next = s.with_settings(patch);
         let settings = next.settings.clone();
@@ -1226,6 +1287,10 @@ pub async fn update_settings(
         if let Err(err) = crate::menu::apply_menu(&app, &effective) {
             log::warn!("menu rebuild after keybindings change failed: {err}");
         }
+    }
+
+    if theme_touched {
+        apply_appearance_to_all_tabs(&app, settings.theme);
     }
 
     Ok(settings)

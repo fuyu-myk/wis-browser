@@ -163,9 +163,11 @@ pub async fn vault_delete(state: State<'_, AppState>, id: i64) -> WisResult<()> 
     run_blocking(move || storage.delete_credential(id)).await
 }
 
-/// Whether any credential is saved for `host`.
+/// Whether any credential is saved for `host`. Matches on the `www.`-stripped
+/// host (capture stores the stripped form).
 #[tauri::command]
 pub async fn vault_has_credentials(state: State<'_, AppState>, host: String) -> WisResult<bool> {
+    let host = strip_www(&host).to_string();
     let storage = state.storage.clone();
     let records = run_blocking(move || storage.list_credentials(Some(&host))).await?;
     Ok(!records.is_empty())
@@ -180,6 +182,7 @@ pub async fn autofill_candidates(
     state: State<'_, AppState>,
     host: String,
 ) -> WisResult<Vec<CredentialSummary>> {
+    let host = strip_www(&host).to_string();
     let storage = state.storage.clone();
     let records = run_blocking(move || storage.list_credentials(Some(&host))).await?;
 

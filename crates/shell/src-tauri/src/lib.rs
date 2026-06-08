@@ -1,4 +1,5 @@
 mod biometrics;
+mod bookmarks;
 mod capture;
 mod commands;
 mod content_filter;
@@ -203,6 +204,18 @@ pub fn run() {
             peek::close_peek,
             peek::peek_set_reader,
             navguard::nav_guard_proceed,
+            bookmarks::list_bookmark_folders,
+            bookmarks::list_bookmarks,
+            bookmarks::create_bookmark_folder,
+            bookmarks::rename_bookmark_folder,
+            bookmarks::reorder_bookmark_folders,
+            bookmarks::delete_bookmark_folder,
+            bookmarks::add_bookmark,
+            bookmarks::move_bookmark,
+            bookmarks::set_bookmark_pinned,
+            bookmarks::reorder_pinned_bookmarks,
+            bookmarks::reorder_bookmarks,
+            bookmarks::delete_bookmark,
             overlay::focus_webview,
             overlay::ensure_overlay,
             overlay::set_overlay_bounds,

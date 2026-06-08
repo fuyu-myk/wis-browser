@@ -4,6 +4,7 @@
 //! pulled into the shell's `AppState` so storage can be swapped out in tests
 //! (and, later, replaced with an encrypted variant).
 
+pub mod bookmarks;
 pub mod credentials;
 pub mod error;
 pub mod history;
@@ -11,6 +12,7 @@ pub mod searches;
 pub mod sqlite;
 pub mod traits;
 
+pub use bookmarks::{Bookmark, BookmarkFolder};
 pub use credentials::CredentialRecord;
 pub use error::{StorageError, StorageResult};
 pub use history::{HistoryEntry, HistoryQuery};

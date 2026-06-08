@@ -6,6 +6,7 @@ import type { BrowserState, Tab, TabId, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { SettingsIcon } from '@/lib/icons'
 import { SETTINGS_URL } from '@/lib/url'
+import { useBookmarksOverlay } from '@/hooks/useBookmarksOverlay'
 import { useClearDataOverlay } from '@/hooks/useClearDataOverlay'
 import { useCommandPaletteOverlay } from '@/hooks/useCommandPaletteOverlay'
 import { useNavGuardOverlay } from '@/hooks/useNavGuardOverlay'
@@ -13,6 +14,7 @@ import { usePeekOverlay } from '@/hooks/usePeekOverlay'
 import { useKeyActions } from '@/hooks/useKeyActions'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 
+import { BookmarksButton } from '@/components/BookmarksButton'
 import { Content } from '@/components/Content'
 import { DiscardedTabsContext } from '@/components/DiscardedTabsContext'
 import { NavRow } from '@/components/NavRow'
@@ -39,6 +41,7 @@ export function Window({ state, settings }: WindowProps) {
   useClearDataOverlay()
   usePeekOverlay()
   useNavGuardOverlay()
+  useBookmarksOverlay()
 
   const layoutClass = `layout-${settings.layout.replace('_', '-')}`
   const isSidebar = settings.layout !== 'top_tabs'
@@ -105,6 +108,9 @@ export function Window({ state, settings }: WindowProps) {
             expanded={sidebarExpanded}
             setExpanded={setSidebarExpanded}
           />
+          {!isPrivate && (
+            <BookmarksButton variant="fixed" anchor={fixedSettingsAnchor} />
+          )}
           <VpnToggle workspace={activeWorkspace ?? null} variant="fixed" anchor={fixedSettingsAnchor} />
           <button
             type="button"

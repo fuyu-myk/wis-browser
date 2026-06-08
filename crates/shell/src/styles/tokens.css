@@ -142,6 +142,8 @@
   --chrome-bg:      #ECEAE3;
   --chrome-tint:    rgba(247,246,243,0.75);
   --content-bg:     #FFFFFF;
+  --chrome-bar:       #E2DFD5;
+  --chrome-bar-glass: rgba(0,0,0,0.05);
   --wp-grad:        linear-gradient(160deg, #EFE7FF 0%, #DDE2FF 40%, #F7F6F3 100%);
   --shadow-soft:    0 1px 0 rgba(255,255,255,.6) inset, 0 8px 32px rgba(20,18,12,0.06);
   --shadow-pop:     0 8px 32px rgba(20,18,12,0.10), 0 2px 6px rgba(20,18,12,0.04);
@@ -163,6 +165,8 @@
   --chrome-bg:      #26262E;
   --chrome-tint:    rgba(48,48,58,0.92);
   --content-bg:     #24242C;
+  --chrome-bar:       #16161B;
+  --chrome-bar-glass: rgba(0,0,0,0.26);
   --wp-grad:        linear-gradient(160deg, #1A1730 0%, #14182E 45%, #0F0F12 100%);
   --shadow-soft:    0 1px 0 rgba(255,255,255,.04) inset, 0 8px 32px rgba(0,0,0,0.35);
   --shadow-pop:     0 12px 40px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3);

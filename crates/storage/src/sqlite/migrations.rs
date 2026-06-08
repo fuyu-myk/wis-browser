@@ -137,6 +137,41 @@ const M0008_TAB_ZOOM: &str = r#"
 ALTER TABLE tabs ADD COLUMN zoom REAL;
 "#;
 
+// Per-workspace bookmarks, organised into optional folders. Append-style and
+// independent of `BrowserState`. `folder_id` NULL = unfiled. Ephemeral
+// (private) workspaces never write here. Folders carry no foreign key; deleting
+// a folder re-parents its bookmarks to unfiled in code.
+const M0009_BOOKMARKS: &str = r#"
+CREATE TABLE bookmark_folders (
+    id           INTEGER NOT NULL PRIMARY KEY,
+    workspace_id TEXT    NOT NULL,
+    name         TEXT    NOT NULL,
+    position     INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT    NOT NULL
+);
+CREATE INDEX idx_bookmark_folders_ws ON bookmark_folders(workspace_id, position);
+
+CREATE TABLE bookmarks (
+    id           INTEGER NOT NULL PRIMARY KEY,
+    workspace_id TEXT    NOT NULL,
+    folder_id    INTEGER,
+    url          TEXT    NOT NULL,
+    title        TEXT    NOT NULL,
+    favicon_hash TEXT,
+    position     INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT    NOT NULL
+);
+CREATE INDEX idx_bookmarks_ws ON bookmarks(workspace_id, folder_id, position);
+"#;
+
+// Pin flag (independent of folder): a bookmark can be pinned to the quick-access
+// row and live in a folder. `pin_position` orders the pinned row separately
+// from `position` (which orders within a folder / the unfiled list).
+const M0010_BOOKMARK_PINNED: &str = r#"
+ALTER TABLE bookmarks ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE bookmarks ADD COLUMN pin_position INTEGER NOT NULL DEFAULT 0;
+"#;
+
 fn all() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(M0001_INITIAL),
@@ -147,6 +182,8 @@ fn all() -> Migrations<'static> {
         M::up(M0006_SEARCHES),
         M::up(M0007_UPSTREAM_PROXY),
         M::up(M0008_TAB_ZOOM),
+        M::up(M0009_BOOKMARKS),
+        M::up(M0010_BOOKMARK_PINNED),
     ])
 }
 

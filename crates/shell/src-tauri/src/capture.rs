@@ -160,41 +160,171 @@ fn locked() -> WisError {
     }
 }
 
-/// Injected page script: on a form submit, forward the password (and a
-/// best-effort username) to the native handler. No-ops when the handler
-/// isn't present (private tabs).
+/// Injected page script: forward a submitted login (password + best-effort
+/// username) to the native handler. Modern sign-ins (Gmail, Twitch, Canvas, most
+/// SPAs) don't fire a native form `submit`. So several signals are watched: form
+/// submit, "Enter" in a password field, a click on a login/submit control, page
+/// teardown, and the filled password field disappearing from the DOM (modal close
+/// / view swap, via a MutationObserver). Field discovery descends into open shadow
+/// roots and event handlers use `composedPath()` (the event target is retargeted to
+/// the shadow host otherwise). The last typed password/username are remembered as a
+/// fallback. A per-page dedup avoids re-posting the same credentials. No-ops when
+/// the handler isn't present (private tabs).
 const CAPTURE_JS: &str = r#"(function () {
   if (window.__wisCaptureInstalled) return;
   window.__wisCaptureInstalled = true;
-  function findUsername(form, pwd) {
-    var inputs = Array.prototype.slice.call(form.querySelectorAll('input'));
-    for (var i = 0; i < inputs.length; i++) {
-      var el = inputs[i];
-      if ((el.type || '').toLowerCase() === 'password') continue;
-      var hay = ((el.name || '') + ' ' + (el.id || '') + ' ' + (el.autocomplete || '')).toLowerCase();
-      if (/user|email|login|account/.test(hay) && el.value) return el.value;
-    }
-    var idx = inputs.indexOf(pwd);
-    for (var j = idx - 1; j >= 0; j--) {
-      var t = (inputs[j].type || 'text').toLowerCase();
-      if ((t === 'text' || t === 'email' || t === 'tel') && inputs[j].value) return inputs[j].value;
-    }
-    return '';
-  }
-  function handle(form) {
+
+  var lastSent = '';
+  var lastPassword = '';
+  var lastUsername = '';
+  var sawPassword = false;
+
+  function send(username, password) {
+    if (!password) return;
+    var key = username + '\n' + password;
+    if (key === lastSent) return;
+    lastSent = key;
     try {
-      var pwd = form.querySelector('input[type=password]');
-      if (!pwd || !pwd.value) return;
-      var username = findUsername(form, pwd);
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.wisCapture) {
-        window.webkit.messageHandlers.wisCapture.postMessage({ username: username, password: pwd.value });
+        window.webkit.messageHandlers.wisCapture.postMessage({ username: username, password: password });
       }
     } catch (e) {}
   }
-  document.addEventListener('submit', function (e) {
-    var t = e.target;
-    if (t && t.tagName === 'FORM') handle(t);
+
+  // Collect matching elements across the document.
+  function deepQuery(selector, root, out) {
+    root = root || document;
+    out = out || [];
+    var nodes;
+    try { nodes = root.querySelectorAll(selector); } catch (e) { nodes = []; }
+    for (var i = 0; i < nodes.length; i++) out.push(nodes[i]);
+    var hosts;
+    try { hosts = root.querySelectorAll('*'); } catch (e) { hosts = []; }
+    for (var j = 0; j < hosts.length; j++) {
+      if (hosts[j].shadowRoot) deepQuery(selector, hosts[j].shadowRoot, out);
+    }
+    return out;
+  }
+
+  function findPassword() {
+    var pwds = deepQuery('input[type=password]');
+    for (var i = 0; i < pwds.length; i++) {
+      if (pwds[i].value) return pwds[i];
+    }
+    return null;
+  }
+
+  function anyPasswordEl() {
+    return deepQuery('input[type=password]').length > 0;
+  }
+
+  function looksLikeUser(el) {
+    var hay = ((el.name || '') + ' ' + (el.id || '') + ' ' + (el.autocomplete || '') +
+      ' ' + ((el.getAttribute && el.getAttribute('aria-label')) || '')).toLowerCase();
+    return /user|email|login|account|phone|tel/.test(hay);
+  }
+
+  function findUsername() {
+    var inputs = deepQuery('input');
+    for (var i = 0; i < inputs.length; i++) {
+      var el = inputs[i];
+      var t = (el.type || 'text').toLowerCase();
+      if (t === 'password' || t === 'hidden') continue;
+      if (el.value && (t === 'email' || looksLikeUser(el))) return el.value;
+    }
+    for (var k = 0; k < inputs.length; k++) {
+      var v = inputs[k].value || '';
+      if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return v;
+    }
+    for (var m = 0; m < inputs.length; m++) {
+      var tt = (inputs[m].type || 'text').toLowerCase();
+      if ((tt === 'text' || tt === 'email' || tt === 'tel') && inputs[m].value) return inputs[m].value;
+    }
+    return lastUsername;
+  }
+
+  function capture() {
+    var pwd = findPassword();
+    var password = (pwd && pwd.value) || lastPassword;
+    if (!password) return;
+    send(findUsername(), password);
+  }
+
+  function isSubmitLike(el) {
+    if (!el || !el.tagName) return false;
+    var tag = el.tagName.toLowerCase();
+    var type = (el.getAttribute && (el.getAttribute('type') || '')).toLowerCase();
+    var role = (el.getAttribute && (el.getAttribute('role') || '')).toLowerCase();
+    if (tag === 'input' && (type === 'submit' || type === 'button')) return true;
+    if (tag !== 'button' && tag !== 'a' && role !== 'button') return false;
+    if (type === 'submit') return true;
+    var label = (((el.textContent || '') + ' ' +
+      ((el.getAttribute && el.getAttribute('aria-label')) || '') + ' ' +
+      ((el.getAttribute && el.getAttribute('data-a-target')) || '') + ' ' +
+      (el.value || ''))).toLowerCase();
+    return /log\s?in|sign\s?in|sign\s?on|log\s?on|continue|submit|next|done|confirm/.test(label);
+  }
+
+  // Remember the latest password/username as they're typed.
+  document.addEventListener('input', function (e) {
+    var path = (e.composedPath && e.composedPath()) || [e.target];
+    for (var i = 0; i < path.length; i++) {
+      var el = path[i];
+      if (!el || el.tagName !== 'INPUT') continue;
+      var t = (el.type || 'text').toLowerCase();
+      if (t === 'password') {
+        if (el.value) { lastPassword = el.value; sawPassword = true; }
+      } else if ((t === 'email' || t === 'text' || t === 'tel') && el.value && looksLikeUser(el)) {
+        lastUsername = el.value;
+      }
+      return;
+    }
   }, true);
+
+  document.addEventListener('submit', function () { capture(); }, true);
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    var path = (e.composedPath && e.composedPath()) || [e.target];
+    for (var i = 0; i < path.length; i++) {
+      var el = path[i];
+      if (el && el.tagName === 'INPUT' && (el.type || '').toLowerCase() === 'password' && el.value) {
+        capture();
+        return;
+      }
+    }
+  }, true);
+
+  document.addEventListener('click', function (e) {
+    var path = (e.composedPath && e.composedPath()) || [e.target];
+    for (var i = 0; i < path.length; i++) {
+      var el = path[i];
+      if (el === document || el === window) break;
+      if (isSubmitLike(el)) {
+        if (findPassword() || lastPassword) capture();
+        return;
+      }
+    }
+  }, true);
+
+  window.addEventListener('pagehide', function () { capture(); }, true);
+
+  var checkScheduled = false;
+  function scheduleDisappearCheck() {
+    if (checkScheduled || !sawPassword) return;
+    checkScheduled = true;
+    setTimeout(function () {
+      checkScheduled = false;
+      if (sawPassword && !anyPasswordEl()) {
+        sawPassword = false;
+        capture();
+      }
+    }, 200);
+  }
+  try {
+    var mo = new MutationObserver(scheduleDisappearCheck);
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
 })();"#;
 
 #[cfg(target_os = "macos")]
