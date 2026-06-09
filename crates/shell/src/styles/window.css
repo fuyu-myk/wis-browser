@@ -187,7 +187,7 @@
   border: 2px solid var(--primary-400);
   background: color-mix(in oklab, var(--primary-500) 28%, transparent);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
-  opacity: 0.95;
+  opacity: 0.7;
   transform: scale(0.97);
   overflow: hidden;
   white-space: nowrap;
@@ -227,6 +227,26 @@
 }
 .kb-drag-ghost .close { display: none !important; }
 .kb-drag-ghost::after { display: none !important; }
+.kb-drag-ghost.h-pin-circle {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  justify-content: center;
+}
+.kb-drag-ghost.h-pin-circle .fav { width: 18px; height: 18px; }
+.kb-drag-ghost.h-island-circle {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  justify-content: center;
+}
+.kb-drag-ghost.h-island-name {
+  border-radius: 10px;
+  padding: 0 12px;
+  color: #fff;
+}
 
 /* Tab reorder drop indicator (insertion line, no layout shift). */
 .kb-tab.drop-before { box-shadow: inset 0 2px 0 0 var(--primary-400); }
@@ -296,6 +316,73 @@ body.is-overlay-surface:not(.glass-on) {
   background: var(--border);
 }
 [data-mode='dark'] .kb-panemenu.glass-on .kb-panemenu-sep { background: rgba(255, 255, 255, 0.16); }
+
+/* ─── Tab context menu (split pill + move-to-folder) ─────────────── */
+/* Content-sized at the top-left of its overlay so the surface can fit the
+   overlay to it. */
+.kb-tabctx {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 200px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--surface) 96%, transparent);
+  border: 1px solid var(--border);
+}
+[data-mode="dark"] .kb-tabctx { background: #26262e; }
+.kb-tabctx.glass-on {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.30);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+}
+[data-mode="dark"] .kb-tabctx.glass-on {
+  background: rgba(28, 28, 34, 0.85);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.kb-tabctx-split { display: flex; align-items: center; justify-content: center; gap: 3px; }
+.kb-tabctx-sep { height: 1px; margin: 2px 4px; background: var(--border); }
+[data-mode="dark"] .kb-tabctx-sep { background: rgba(255, 255, 255, 0.1); }
+.kb-tabctx-folders {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 220px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.kb-tabctx-folders::-webkit-scrollbar { display: none; }
+.kb-tabctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.kb-tabctx-item:hover { background: var(--overlay); }
+.kb-tabctx-item:disabled { opacity: 0.45; cursor: default; }
+.kb-tabctx-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.kb-tabctx-dot.is-none { background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-tertiary); }
+.kb-tabctx-plus {
+  width: 10px;
+  text-align: center;
+  color: var(--primary-500);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.kb-tabctx-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ─── Find-in-page overlay (bottom-centred glass pill) ─────────── */
 .kb-findbar-wrap {
@@ -1279,7 +1366,7 @@ body.is-overlay-surface:not(.glass-on) {
   transition: background 0.12s, color 0.12s;
 }
 .kb-pinned-glyph:hover { background: var(--surface-raised); color: var(--text-primary); }
-.kb-pinned-glyph svg { width: 16px; height: 16px; }
+.kb-pinned-glyph svg { width: 16px; height: 16px; color: var(--primary-500); }
 .glass-on .kb-pinned-glyph {
   background: rgba(255,255,255,0.55);
   color: rgba(20,20,28,0.92);
@@ -1313,6 +1400,9 @@ body.is-overlay-surface:not(.glass-on) {
   border-color: var(--primary-500);
   box-shadow: 0 0 0 1px var(--primary-500) inset;
 }
+/* Reorder drop indicator (overrides the active ring during a drag). */
+.kb-pinned-cell.drop-before { box-shadow: inset 2px 0 0 0 var(--primary-400); }
+.kb-pinned-cell.drop-after { box-shadow: inset -2px 0 0 0 var(--primary-400); }
 .kb-pinned-cell .fav { width: 18px; height: 18px; border-radius: 4px; }
 .kb-pinned-cell .fav img { width: 100%; height: 100%; object-fit: contain; display: block; }
 [data-mode="dark"] .kb-pinned-cell {
@@ -1429,6 +1519,277 @@ body.is-overlay-surface:not(.glass-on) {
 .kb-newtab-row:disabled { opacity: 0.4; cursor: default; }
 .kb-newtab-row svg { width: 13px; height: 13px; flex-shrink: 0; }
 
+/* ─── live-tab folders (IDE-style tree in the sidebar) ───────────── */
+.kb-loose { display: flex; flex-direction: column; gap: 1px; }
+/* While dragging, keep a droppable strip so a foldered tab can be dropped back
+   out even when there are no loose tabs. */
+body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
+.kb-loose.is-drop {
+  background: color-mix(in oklab, var(--primary-400) 14%, transparent);
+  box-shadow: inset 0 0 0 1px var(--primary-400);
+}
+
+/* The `accent-<name>` class on the container is only for its `--accent`
+   variable; suppress the solid `background` it also carries (parent-scoped so
+   it outweighs `.accent-<name>`). */
+.kb-tabs .kb-tabfolder { display: flex; flex-direction: column; margin-top: 2px; background: transparent; }
+.kb-tabfolder-head-wrap { display: flex; flex-direction: column; position: relative; }
+
+/* Folder-level active indicator: shown when the active tab is inside this
+   folder but its own row isn't visible (folder collapsed, or sidebar
+   collapsed). When both the sidebar and folder are expanded, the tab row's own
+   `.kb-tab.active` indicator is used instead. */
+.kb-tabfolder-head-wrap.has-active.folder-collapsed::after,
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-head-wrap.has-active::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 0;
+  width: 3px;
+  height: 18px;
+  border-radius: 3px;
+  background: var(--primary-500);
+  z-index: 2;
+  pointer-events: none;
+}
+.layout-sidebar-right .kb-tabfolder-head-wrap.has-active.folder-collapsed::after,
+.kb-window.collapsible.layout-sidebar-right .kb-side:not(.is-expanded) .kb-tabfolder-head-wrap.has-active::after {
+  right: auto;
+  left: 0;
+}
+.kb-tabfolder-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: background 0.12s;
+}
+.kb-tabfolder-head:hover { background: var(--overlay); }
+/* Selected = the target for new tabs, ringed in the theme colour. */
+.kb-tabfolder-head.selected {
+  background: color-mix(in oklab, var(--primary-500) 12%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--primary-500);
+}
+.kb-tabfolder-head.is-drop {
+  background: color-mix(in oklab, var(--accent) 22%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+[data-mode="dark"] .kb-tabfolder-head { color: rgba(255, 255, 255, 0.9); }
+.kb-tabfolder-chevron-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px; height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.kb-tabfolder-chevron-btn:hover { background: var(--overlay); }
+.kb-tabfolder-chevron { transition: transform 0.15s; color: var(--text-tertiary); }
+.kb-tabfolder-chevron.collapsed { transform: rotate(-90deg); }
+/* Accent pill shown only when the sidebar is collapsed (folder = a colour). */
+.kb-tabfolder-dot {
+  display: none;
+  width: 12px; height: 12px;
+  border-radius: 5px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+/* Only the name is tinted: a pill sized to its text, left-aligned. */
+.kb-tabfolder-name {
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  padding: 1px 9px;
+  border-radius: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.kb-tabfolder-rename {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--content-bg);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.kb-tabfolder-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.kb-tabfolder-more {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px; height: 18px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.kb-tabfolder-head:hover .kb-tabfolder-more { display: inline-flex; }
+.kb-tabfolder-more:hover { background: var(--overlay); color: var(--text-primary); }
+.kb-tabfolder-more svg { width: 14px; height: 14px; }
+
+.kb-tabfolder-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 3px 4px 4px;
+  padding: 8px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--surface) 96%, transparent);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+}
+[data-mode="dark"] .kb-tabfolder-menu { background: #26262e; }
+.glass-on .kb-tabfolder-menu {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.30);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+}
+[data-mode="dark"].glass-on .kb-tabfolder-menu {
+  background: rgba(28, 28, 34, 0.85);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.kb-tabfolder-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 5px;
+  padding: 2px 0 4px;
+}
+.kb-tabfolder-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.kb-tabfolder-menu-item:hover { background: var(--overlay); }
+.kb-tabfolder-menu-item svg { width: 13px; height: 13px; }
+.kb-tabfolder-menu-item.danger { color: var(--danger-500, #e5484d); }
+.kb-tabfolder-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  padding: 4px 2px 2px;
+}
+.kb-tabfolder-confirm-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.kb-tabfolder-confirm-actions button {
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--content-bg);
+  color: var(--text-primary);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.kb-tabfolder-confirm-actions button.danger {
+  background: var(--danger-500, #e5484d);
+  border-color: transparent;
+  color: #fff;
+}
+
+/* Folder body: member tabs indented beside a rounded accent line that's inset
+   top and bottom (equal spacing to the header above and the next item below)
+   and a touch more translucent than the name pill. */
+.kb-tabfolder-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0 2px 13px;
+  padding-left: 9px;
+}
+.kb-tabfolder-body::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 5px;
+  bottom: 5px;
+  width: 2px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--accent) 70%, transparent);
+}
+
+/* Folder reorder drop indicator: theme-coloured line. */
+.kb-tabfolder.drop-before { box-shadow: inset 0 2px 0 0 var(--primary-400); border-radius: 4px; }
+.kb-tabfolder.drop-after { box-shadow: inset 0 -2px 0 0 var(--primary-400); border-radius: 4px; }
+.kb-drag-ghost.kb-tabfolder-head { padding: 3px 8px; border-radius: 8px; }
+
+.kb-newfolder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 26px;
+  margin-top: 2px;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  transition: background .12s, color .12s;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.kb-newfolder-row:hover { background: var(--overlay); color: var(--text-primary); }
+.kb-newfolder-row:disabled { opacity: 0.4; cursor: default; }
+.kb-newfolder-row svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--primary-500); }
+
+/* Collapsed sidebar: folders shrink to their accent pill; members are hidden
+   and reappear on expand. */
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-name,
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-count,
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-more,
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-chevron-btn,
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-body,
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-newfolder-row span { display: none; }
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-dot { display: block; }
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-newfolder-row {
+  justify-content: flex-start;
+  padding-left: 10px;
+}
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-head {
+  padding-left: 10px;
+}
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-pinned-glyph {
+  justify-content: flex-start;
+  margin: 0;
+  padding-left: 4px;
+}
+
 /* ─── top horizontal tab bar ─────────────────────────────────────── */
 .kb-topbar {
   display: flex;
@@ -1514,6 +1875,201 @@ body.is-overlay-surface:not(.glass-on) {
 [data-mode="dark"] .kb-topbar .h-tab { color: rgba(255,255,255,0.85); }
 [data-mode="dark"] .kb-topbar .h-tab:hover { color: white; }
 
+/* ─── tab islands (live-tab folders in the top strip) ─────────────── */
+/* Expanded group: an obvious glass pill wrapping its name + tabs only. */
+.kb-topbar .h-island {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 34px;
+  padding: 3px;
+  border-radius: 14px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  min-width: 0;
+  background: var(--surface-raised);
+}
+[data-mode="dark"] .kb-topbar .h-island { background: rgba(255, 255, 255, 0.08); }
+.glass-on .kb-topbar .h-island {
+  background: rgba(255, 255, 255, 0.62);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+[data-mode="dark"].glass-on .kb-topbar .h-island { background: rgba(0, 0, 0, 0.34); }
+.kb-topbar .h-island.is-drop { box-shadow: inset 0 0 0 2px var(--primary-400); }
+.kb-topbar .h-island .h-tab { height: 28px; }
+
+/* Colored name chip: click selects the folder (theme target); the chevron
+   collapses the group; double-click / Enter-when-selected renames. */
+.kb-topbar .h-island-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 28px;
+  padding: 0 9px 0 5px;
+  border: 0;
+  border-radius: 10px;
+  box-sizing: border-box;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+.kb-topbar .h-island-label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Selected = the target for new tabs, ringed inside the chip. */
+.kb-topbar .h-island-name.selected { box-shadow: inset 0 0 0 2px var(--primary-500); }
+.kb-topbar .h-island-name.selected.ring-contrast { box-shadow: inset 0 0 0 2px var(--text-primary); }
+.kb-topbar .h-island-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.kb-topbar .h-island-chevron:hover { background: rgba(255, 255, 255, 0.22); }
+.kb-topbar .h-island-rename {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  font: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--content-bg);
+  border: 0;
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+/* Collapsed group: a colored circle; click to expand. */
+.kb-topbar .h-island-circle {
+  position: relative;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+.kb-topbar .h-island-circle:hover { transform: scale(1.08); }
+.kb-topbar .h-island-circle.active {
+  width: 26px;
+  height: 26px;
+  box-shadow: 0 0 0 2px var(--primary-500);
+}
+.kb-topbar .h-island-circle.active.ring-contrast { box-shadow: 0 0 0 2px var(--text-primary); }
+.kb-topbar .h-island-circle.selected:not(.active) { box-shadow: 0 0 0 2px var(--primary-500); }
+.kb-topbar .h-island-circle.selected.ring-contrast:not(.active) {
+  box-shadow: 0 0 0 2px var(--text-primary);
+}
+.kb-topbar .h-island-circle.is-drop { box-shadow: 0 0 0 2px var(--primary-400); }
+.kb-topbar .h-island.reorder-before,
+.kb-topbar .h-island-circle.reorder-before { box-shadow: inset 2px 0 0 0 var(--primary-400); }
+.kb-topbar .h-island.reorder-after,
+.kb-topbar .h-island-circle.reorder-after { box-shadow: inset -2px 0 0 0 var(--primary-400); }
+
+/* Pinned tabs: favicon-only circles at the start of the strip. */
+.kb-topbar .h-pin-circle {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--surface-raised);
+  transition: transform 0.12s;
+}
+[data-mode="dark"] .kb-topbar .h-pin-circle { background: rgba(255, 255, 255, 0.10); }
+.glass-on .kb-topbar .h-pin-circle { background: rgba(255, 255, 255, 0.55); }
+[data-mode="dark"].glass-on .kb-topbar .h-pin-circle { background: rgba(255, 255, 255, 0.12); }
+.kb-topbar .h-pin-circle:hover { transform: scale(1.08); }
+.kb-topbar .h-pin-circle.active {
+  width: 26px;
+  height: 26px;
+  box-shadow: 0 0 0 2px var(--primary-500);
+}
+.kb-topbar .h-pin-circle.drop-before { box-shadow: inset 2px 0 0 0 var(--primary-400); }
+.kb-topbar .h-pin-circle.drop-after { box-shadow: inset -2px 0 0 0 var(--primary-400); }
+.kb-topbar .h-pin-circle .fav { width: 18px; height: 18px; border-radius: 4px; }
+.kb-topbar .h-pin-circle .fav img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+/* Island right-click options popover. */
+.kb-islandmenu {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  box-sizing: border-box;
+  background: color-mix(in oklab, var(--surface) 96%, transparent);
+  border: 1px solid var(--border);
+}
+[data-mode="dark"] .kb-islandmenu { background: #26262e; }
+.kb-islandmenu.glass-on {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.30);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+}
+[data-mode="dark"] .kb-islandmenu.glass-on {
+  background: rgba(28, 28, 34, 0.85);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.kb-islandmenu-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: center;
+}
+.kb-islandmenu-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--content-bg);
+  color: var(--text-primary);
+  font-size: 12.5px;
+}
+.kb-islandmenu-input:focus { border-color: var(--primary-500); outline: none; }
+.kb-islandmenu-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.kb-islandmenu-item:hover { background: var(--overlay); }
+.kb-islandmenu-item.danger { color: var(--danger-500, #e5484d); }
+
 /* Close (X) on horizontal tab. */
 .kb-topbar .h-tab .close {
   position: absolute;
@@ -1595,6 +2151,7 @@ body.is-overlay-surface:not(.glass-on) {
 .kb-tabs-h-wrap.compact .tabs-h {
   flex: 1;
   min-width: 0;
+  min-height: 34px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -1603,6 +2160,8 @@ body.is-overlay-surface:not(.glass-on) {
   justify-content: center;
 }
 .kb-tabs-h-wrap.compact .tabs-h::-webkit-scrollbar { display: none; }
+/* Once the row overflows, lay out from the start so scroll reaches every item. */
+.kb-tabs-h-wrap.compact.is-scrolling .tabs-h { justify-content: flex-start; }
 .kb-tabs-h-wrap.is-inactive-compact .h-tab:not(.active) {
   padding: 0 8px;
 }
@@ -4618,14 +5177,14 @@ body.is-overlay-surface:not(.glass-on) {
 .kb-ws-swatch.on { outline: 2px solid var(--primary-400); outline-offset: 1px; }
 
 /* Accent dot / swatch colour mapping. */
-.accent-primary { background: #6b77f8; }
-.accent-mint    { background: #3aa17e; }
-.accent-rose    { background: #c9636f; }
-.accent-sun     { background: #d99a3b; }
-.accent-lila    { background: #8d7be3; }
-.accent-gray    { background: #6e6c66; }
-.accent-ink     { background: #1a1a22; }
-.accent-azur    { background: #3d7fc8; }
+.accent-primary { background: #6b77f8; --accent: #6b77f8; }
+.accent-mint    { background: #3aa17e; --accent: #3aa17e; }
+.accent-rose    { background: #c9636f; --accent: #c9636f; }
+.accent-sun     { background: #d99a3b; --accent: #d99a3b; }
+.accent-lila    { background: #8d7be3; --accent: #8d7be3; }
+.accent-gray    { background: #6e6c66; --accent: #6e6c66; }
+.accent-ink     { background: #1a1a22; --accent: #1a1a22; }
+.accent-azur    { background: #3d7fc8; --accent: #3d7fc8; }
 
 /* ─── compact density ─────────────────────────────────────────── */
 .compact .kb-side    { padding: 8px 6px; gap: 6px; }

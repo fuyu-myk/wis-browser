@@ -35,9 +35,11 @@ export function TopBar({ state }: TopBarProps) {
   const activeTab = tabs.find((t) => t.id === activeWorkspace?.active_tab_id) ?? null
 
   const createTab = useMutation({
+    // The explicit "+ New tab" button always makes a loose, top-level tab; only
+    // Cmd+T and link/bookmark opens honour the selected folder.
     mutationFn: () => {
       if (!activeWorkspace) throw new Error('no active workspace')
-      return commands.createTab(activeWorkspace.id, 'about:blank')
+      return commands.createLooseTab(activeWorkspace.id, 'about:blank')
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
   })
@@ -69,6 +71,10 @@ export function TopBar({ state }: TopBarProps) {
           tabs={tabs}
           activeTabId={activeTab?.id ?? null}
           pinnedTabIds={activeWorkspace?.pinned_tab_ids ?? []}
+          folders={activeWorkspace?.tab_folders ?? []}
+          selectedFolderId={activeWorkspace?.selected_folder_id ?? null}
+          railSide={state.settings.top_tabs_rail_side}
+          themeAccent={state.settings.accent}
           integrateUrlBar={false}
           compact
         />

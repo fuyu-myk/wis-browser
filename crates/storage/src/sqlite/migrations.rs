@@ -193,6 +193,14 @@ ALTER TABLE session_cookies ADD COLUMN created_at TEXT NOT NULL
     DEFAULT '1970-01-01T00:00:00+00:00';
 "#;
 
+// Live-tab folders (distinct from bookmarks). `tab_folders` is a JSON array on
+// the workspace (like `pane_tree`); `tabs.folder_id` records membership. Both
+// nullable so existing state loads as no folders / loose tabs.
+const M0013_TAB_FOLDERS: &str = r#"
+ALTER TABLE workspaces ADD COLUMN tab_folders TEXT;
+ALTER TABLE tabs ADD COLUMN folder_id TEXT;
+"#;
+
 fn all() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(M0001_INITIAL),
@@ -207,6 +215,7 @@ fn all() -> Migrations<'static> {
         M::up(M0010_BOOKMARK_PINNED),
         M::up(M0011_SESSION_COOKIES),
         M::up(M0012_SESSION_COOKIE_AGE),
+        M::up(M0013_TAB_FOLDERS),
     ])
 }
 

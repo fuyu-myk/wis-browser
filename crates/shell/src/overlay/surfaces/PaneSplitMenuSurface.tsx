@@ -1,23 +1,18 @@
 /**
- * Tab "split with this tab" popup, hosted by the `overlay-tabmenu` webview so
- * it composites above the tab webviews. The chrome positions this webview at the cursor via
- * `setOverlayBounds('tabmenu', ...)` and tells it which tab was right-clicked
- * with the `wis-tabmenu-open` event.
+ * Tab context menu, hosted by the `overlay-tabmenu` webview so it composites
+ * above the tab webviews. Opened at the cursor via `setOverlayBounds('tabmenu',
+ * ...)` + the `wis-tabmenu-open` event (which carries the cursor position and
+ * the window height so the menu can re-fit after measuring its content).
  *
- * A 4-glyph directional pill: left/right split horizontally, up/down split
- * vertically. The arrow points where the right-clicked tab goes.
- * 
- * Two cases:
- *   - another tab → it moves into the new pane beside the active tab;
- *   - the active tab itself → it slides to the arrow side and a fresh new tab
- *     fills the opposite pane (which can then be replaced by a centre-drop).
+ * Rows: a directional split pill + pin toggle, then "move to folder" actions
+ * (each folder, remove-from-folder, and new-folder).
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
-import type { SplitDir, TabId } from '@/bindings/types'
+import type { AccentColor, SplitDir, TabFolderId, TabId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { PinIcon, PinOffIcon } from '@/lib/icons'
 import { NEW_TAB_URL } from '@/lib/url'
@@ -28,9 +23,16 @@ import { useThemeApply } from '@/hooks/useThemeApply'
 const OPEN_EVENT = 'wis-tabmenu-open'
 const READY_EVENT = 'wis-tabmenu-ready'
 const DONE_EVENT = 'wis-tabmenu-done'
+const MENU_W = 200
+const MARGIN = 8
+
+const ACCENTS: AccentColor[] = ['primary', 'mint', 'rose', 'sun', 'lila', 'gray', 'ink', 'azur']
 
 interface OpenPayload {
   movedTabId: TabId
+  x: number
+  y: number
+  winH: number
 }
 
 type Dir = 'left' | 'up' | 'right' | 'down'
@@ -48,19 +50,19 @@ export function PaneSplitMenuSurface() {
   useThemeApply(state?.settings)
 
   const activeWorkspace = state?.workspaces.find((w) => w.id === state.active_workspace_id)
-  const activeTabId = activeWorkspace?.active_tab_id ?? null
   const activeTabIdRef = useRef<TabId | null>(null)
-  activeTabIdRef.current = activeTabId
+  activeTabIdRef.current = activeWorkspace?.active_tab_id ?? null
   const workspaceIdRef = useRef(activeWorkspace?.id ?? null)
   workspaceIdRef.current = activeWorkspace?.id ?? null
 
-  const [movedTabId, setMovedTabId] = useState<TabId | null>(null)
+  const [target, setTarget] = useState<OpenPayload | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let unlisten: UnlistenFn | null = null
     let cancelled = false
     void listen<OpenPayload>(OPEN_EVENT, (e) => {
-      setMovedTabId(e.payload.movedTabId)
+      setTarget(e.payload)
       void commands.focusWebview('overlay-tabmenu').catch(() => undefined)
     }).then((fn) => {
       if (cancelled) fn()
@@ -73,29 +75,24 @@ export function PaneSplitMenuSurface() {
     }
   }, [])
 
+  const movedTab = state?.tabs.find((t) => t.id === target?.movedTabId)
+  const folders = [...(activeWorkspace?.tab_folders ?? [])].sort((a, b) => a.position - b.position)
+  const inFolder = movedTab?.folder_id != null
+
+  // Fit the overlay to the measured menu, re-clamping vertically.
+  useLayoutEffect(() => {
+    if (!target) return
+    const el = menuRef.current
+    if (!el) return
+    const h = el.offsetHeight
+    const y = Math.max(MARGIN, Math.min(target.y, target.winH - h - MARGIN))
+    void commands.setOverlayBounds('tabmenu', target.x, y, MENU_W, h).catch(() => undefined)
+  }, [target, folders.length, inFolder])
+
   const close = () => {
-    setMovedTabId(null)
+    setTarget(null)
     void commands.hideOverlay('tabmenu').catch(() => undefined)
     void emit(DONE_EVENT)
-  }
-
-  const doSplit = (split: SplitDir, first: boolean) => {
-    const ws = workspaceIdRef.current
-    const target = activeTabIdRef.current
-    if (ws && movedTabId) {
-      if (movedTabId === target) {
-        void commands.splitPane(ws, split, !first, NEW_TAB_URL).catch(() => undefined)
-      } else if (target) {
-        void commands.splitPaneWith(ws, target, split, first, movedTabId).catch(() => undefined)
-      }
-    }
-    close()
-  }
-
-  const movedPinned = !!state?.tabs.find((t) => t.id === movedTabId)?.pinned
-  const togglePin = () => {
-    if (movedTabId) void commands.pinTab(movedTabId, !movedPinned).catch(() => undefined)
-    close()
   }
 
   useEffect(() => {
@@ -106,34 +103,99 @@ export function PaneSplitMenuSurface() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  if (!target) return null
+
+  const doSplit = (split: SplitDir, first: boolean) => {
+    const ws = workspaceIdRef.current
+    const active = activeTabIdRef.current
+    if (ws) {
+      if (target.movedTabId === active) {
+        void commands.splitPane(ws, split, !first, NEW_TAB_URL).catch(() => undefined)
+      } else if (active) {
+        void commands.splitPaneWith(ws, active, split, first, target.movedTabId).catch(() => undefined)
+      }
+    }
+    close()
+  }
+
+  const movedPinned = !!movedTab?.pinned
+  const togglePin = () => {
+    void commands.pinTab(target.movedTabId, !movedPinned).catch(() => undefined)
+    close()
+  }
+  const moveTo = (folderId: TabFolderId | null) => {
+    void commands.assignTabToFolder(target.movedTabId, folderId).catch(() => undefined)
+    close()
+  }
+  const createAndMove = async () => {
+    const ws = workspaceIdRef.current
+    if (!ws) return close()
+    try {
+      const folder = await commands.createTabFolder(ws, 'New folder', ACCENTS[folders.length % 8])
+      await commands.assignTabToFolder(target.movedTabId, folder.id)
+    } catch {
+      // ignore
+    }
+    close()
+  }
+
   const glassOn = state?.settings.glass_enabled ?? true
 
   return (
-    <div className={cx('kb-panemenu', { 'glass-on': glassOn })} role="menu" aria-label="Split with tab">
-      {DIRECTIONS.map(({ dir, split, first, label }) => (
+    <div ref={menuRef} className={cx('kb-tabctx', { 'glass-on': glassOn })} role="menu">
+      <div className="kb-tabctx-split">
+        {DIRECTIONS.map(({ dir, split, first, label }) => (
+          <button
+            key={dir}
+            type="button"
+            className="kb-panemenu-btn"
+            aria-label={label}
+            title={label}
+            onClick={() => doSplit(split, first)}
+          >
+            <DirArrow dir={dir} />
+          </button>
+        ))}
+        <span className="kb-panemenu-sep" aria-hidden />
         <button
-          key={dir}
           type="button"
-          role="menuitem"
           className="kb-panemenu-btn"
-          aria-label={label}
-          title={label}
-          onClick={() => doSplit(split, first)}
+          aria-label={movedPinned ? 'Unpin tab' : 'Pin tab'}
+          title={movedPinned ? 'Unpin tab' : 'Pin tab'}
+          onClick={togglePin}
         >
-          <DirArrow dir={dir} />
+          {movedPinned ? <PinOffIcon width={16} height={16} /> : <PinIcon width={16} height={16} />}
         </button>
-      ))}
-      <span className="kb-panemenu-sep" aria-hidden />
-      <button
-        type="button"
-        role="menuitem"
-        className="kb-panemenu-btn"
-        aria-label={movedPinned ? 'Unpin tab' : 'Pin tab'}
-        title={movedPinned ? 'Unpin tab' : 'Pin tab'}
-        onClick={togglePin}
-      >
-        {movedPinned ? <PinOffIcon width={16} height={16} /> : <PinIcon width={16} height={16} />}
-      </button>
+      </div>
+
+      <div className="kb-tabctx-sep" aria-hidden />
+
+      <div className="kb-tabctx-folders">
+        {folders.map((folder) => (
+          <button
+            key={folder.id}
+            type="button"
+            className="kb-tabctx-item"
+            disabled={movedTab?.folder_id === folder.id}
+            onClick={() => moveTo(folder.id)}
+          >
+            <span className={cx('kb-tabctx-dot', `accent-${folder.accent}`)} aria-hidden />
+            <span className="kb-tabctx-label">{folder.name}</span>
+          </button>
+        ))}
+        {inFolder && (
+          <button type="button" className="kb-tabctx-item" onClick={() => moveTo(null)}>
+            <span className="kb-tabctx-dot is-none" aria-hidden />
+            <span className="kb-tabctx-label">Remove from folder</span>
+          </button>
+        )}
+        <button type="button" className="kb-tabctx-item" onClick={createAndMove}>
+          <span className="kb-tabctx-plus" aria-hidden>
+            +
+          </span>
+          <span className="kb-tabctx-label">New folder</span>
+        </button>
+      </div>
     </div>
   )
 }

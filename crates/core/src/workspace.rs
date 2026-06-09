@@ -1,10 +1,11 @@
 //! Workspace: a named group of tabs with its own accent colour,
 //! essentials, and privacy preset.
 
-use crate::ids::{TabId, WorkspaceId};
+use crate::ids::{TabFolderId, TabId, WorkspaceId};
 use crate::pane::{PaneBranch, PaneNode, SplitDir};
 use crate::privacy::PrivacyMode;
 use crate::proxy::UpstreamProxy;
+use crate::tab_folder::TabFolder;
 use serde::{Deserialize, Serialize};
 
 /// Accent colours available for a workspace,
@@ -41,6 +42,15 @@ pub struct Workspace {
     pub icon: Option<String>,
     pub tab_order: Vec<TabId>,
     pub pinned_tab_ids: Vec<TabId>,
+    /// Live-tab folders in this workspace. Membership is on the tab
+    /// ([`Tab::folder_id`](crate::tab::Tab::folder_id)).
+    /// Serde-defaults to empty so existing state loads unchanged.
+    #[serde(default)]
+    pub tab_folders: Vec<TabFolder>,
+    /// Folder that new tabs are filed into (Cmd+T, bookmarks, etc.). `None`
+    /// means new tabs follow the active tab. Session-only (not persisted).
+    #[serde(default)]
+    pub selected_folder_id: Option<TabFolderId>,
     pub essentials: Vec<EssentialPin>,
     pub active_tab_id: Option<TabId>,
     pub privacy_mode: PrivacyMode,
@@ -80,6 +90,8 @@ impl Workspace {
             icon: None,
             tab_order: Vec::new(),
             pinned_tab_ids: Vec::new(),
+            tab_folders: Vec::new(),
+            selected_folder_id: None,
             essentials: Vec::new(),
             active_tab_id: None,
             privacy_mode: PrivacyMode::default(),
@@ -172,6 +184,89 @@ impl Workspace {
     pub fn with_privacy_mode(&self, mode: PrivacyMode) -> Self {
         Self {
             privacy_mode: mode,
+            ..self.clone()
+        }
+    }
+
+    // -- tab folders --------------------------------------------------------
+
+    /// Whether a folder with `id` exists in this workspace.
+    pub fn has_folder(&self, id: TabFolderId) -> bool {
+        self.tab_folders.iter().any(|f| f.id == id)
+    }
+
+    /// Next free folder position (one past the current maximum).
+    pub fn next_folder_position(&self) -> u32 {
+        self.tab_folders
+            .iter()
+            .map(|f| f.position)
+            .max()
+            .map_or(0, |m| m + 1)
+    }
+
+    pub fn with_tab_folder_appended(&self, folder: TabFolder) -> Self {
+        let mut next = self.clone();
+        next.tab_folders.push(folder);
+        next
+    }
+
+    fn map_folder(&self, id: TabFolderId, f: impl Fn(&TabFolder) -> TabFolder) -> Self {
+        Self {
+            tab_folders: self
+                .tab_folders
+                .iter()
+                .map(|fold| if fold.id == id { f(fold) } else { fold.clone() })
+                .collect(),
+            ..self.clone()
+        }
+    }
+
+    pub fn with_folder_renamed(&self, id: TabFolderId, name: String) -> Self {
+        self.map_folder(id, |f| f.with_name(name.clone()))
+    }
+
+    pub fn with_folder_recolored(&self, id: TabFolderId, accent: AccentColor) -> Self {
+        self.map_folder(id, |f| f.with_accent(accent))
+    }
+
+    pub fn with_folder_collapsed(&self, id: TabFolderId, collapsed: bool) -> Self {
+        self.map_folder(id, |f| f.with_collapsed(collapsed))
+    }
+
+    pub fn with_folder_removed(&self, id: TabFolderId) -> Self {
+        Self {
+            tab_folders: self
+                .tab_folders
+                .iter()
+                .filter(|f| f.id != id)
+                .cloned()
+                .collect(),
+            selected_folder_id: self.selected_folder_id.filter(|s| *s != id),
+            ..self.clone()
+        }
+    }
+
+    pub fn with_selected_folder(&self, id: Option<TabFolderId>) -> Self {
+        Self {
+            selected_folder_id: id,
+            ..self.clone()
+        }
+    }
+
+    /// Reassign folder positions to match `order` (folders not listed keep their
+    /// relative order after the listed ones).
+    pub fn with_tab_folders_reordered(&self, order: &[TabFolderId]) -> Self {
+        let tab_folders = self
+            .tab_folders
+            .iter()
+            .map(|f| match order.iter().position(|id| *id == f.id) {
+                Some(idx) => f.with_position(idx as u32),
+                None => f.with_position(order.len() as u32 + f.position),
+            })
+            .collect();
+
+        Self {
+            tab_folders,
             ..self.clone()
         }
     }

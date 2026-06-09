@@ -64,6 +64,11 @@ define_id!(
     "Identifier for a workspace (group of tabs)."
 );
 define_id!(
+    TabFolderId,
+    "fld",
+    "Identifier for a tab folder (live-tab grouping within a workspace)."
+);
+define_id!(
     WidgetId,
     "wgt",
     "Identifier for a side widget (WhatsApp, Telegram, etc)."

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
@@ -7,14 +7,14 @@ import { cx } from '@/lib/cx'
 import { PinIcon } from '@/lib/icons'
 import { tabDisplayName } from '@/lib/url'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
-import { useTabSplit } from '@/hooks/useTabSplit'
+import { reorderedAmong, useTabSplit } from '@/hooks/useTabSplit'
 
 import { TabFavicon } from '@/components/TabFavicon'
 
 interface PinnedTabsProps {
   workspaceId: WorkspaceId
   tabs: Tab[]
-  /** Pinned tab IDs in pin order. */
+  /** Pinned tab IDs (the set; order follows `tabs`/tab_order). */
   pinnedTabIds: TabId[]
   activeTabId: TabId | null
   /**
@@ -37,7 +37,8 @@ interface PinnedTabsProps {
 /**
  * Pinned tabs as a docked quick-access strip under the workspace pill, in both
  * the collapsible sidebar and the top-tabs rail. Clicking a favicon activates
- * the tab; right-click opens the tab menu (split + pin/unpin).
+ * the tab; dragging one reorders the pinned row; right-click opens the tab menu
+ * (split + pin/unpin).
  */
 export function PinnedTabs({
   workspaceId,
@@ -51,11 +52,20 @@ export function PinnedTabs({
   onOpenChange,
 }: PinnedTabsProps) {
   const qc = useQueryClient()
+  const invalidate = () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
   const setActive = useMutation({
     mutationFn: (id: TabId) => commands.setActiveTab(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
+    onSuccess: invalidate,
+  })
+  const reorder = useMutation({
+    mutationFn: (order: TabId[]) => commands.reorderTabs(workspaceId, order),
+    onSuccess: invalidate,
   })
   const { openSplitMenu } = useTabSplit({ workspaceId, activeTabId, onMenuOpenChange })
+
+  const gridRef = useRef<HTMLDivElement>(null)
+  const draggedRef = useRef(false)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
 
   // Rail: dismiss the inline grid on outside click or Escape.
   useEffect(() => {
@@ -76,9 +86,8 @@ export function PinnedTabs({
     }
   }, [variant, open, onOpenChange])
 
-  const pinnedTabs = pinnedTabIds
-    .map((id) => tabs.find((t) => t.id === id))
-    .filter((t): t is Tab => t !== undefined)
+  const pinnedSet = new Set(pinnedTabIds)
+  const pinnedTabs = tabs.filter((t) => pinnedSet.has(t.id))
 
   if (pinnedTabs.length === 0) return null
 
@@ -87,17 +96,93 @@ export function PinnedTabs({
     if (variant === 'rail') onOpenChange?.(false)
   }
 
+  // Reorder the pinned subset within the full tab order (persists, and reflects
+  // back into pinned membership on reload).
+  const startDrag = (e: ReactPointerEvent, tabId: TabId) => {
+    if (e.button !== 0) return
+    const startX = e.clientX
+    const startY = e.clientY
+    const sourceEl = e.currentTarget as HTMLElement
+    const rect = sourceEl.getBoundingClientRect()
+    const grabX = startX - rect.left
+    const grabY = startY - rect.top
+    const fullOrder = tabs.map((t) => t.id)
+    draggedRef.current = false
+    let begun = false
+    let ghost: HTMLElement | null = null
+    let lastIndex: number | null = null
+
+    const insertionAt = (x: number, y: number): number => {
+      const root = gridRef.current
+      if (!root) return pinnedTabs.length
+      const cells = Array.from(root.querySelectorAll<HTMLElement>('[data-pin-id]'))
+      for (let i = 0; i < cells.length; i++) {
+        const r = cells[i].getBoundingClientRect()
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+          return x < r.left + r.width / 2 ? i : i + 1
+        }
+      }
+      return cells.length
+    }
+
+    const move = (ev: PointerEvent) => {
+      if (!begun) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) <= 6) return
+        begun = true
+        draggedRef.current = true
+        document.body.classList.add('is-tab-dragging')
+        window.getSelection()?.removeAllRanges()
+        ghost = sourceEl.cloneNode(true) as HTMLElement
+        ghost.classList.add('kb-drag-ghost')
+        ghost.style.width = `${rect.width}px`
+        ghost.style.height = `${rect.height}px`
+        document.body.appendChild(ghost)
+      }
+      if (ghost) {
+        ghost.style.left = `${ev.clientX - grabX}px`
+        ghost.style.top = `${ev.clientY - grabY}px`
+      }
+      lastIndex = insertionAt(ev.clientX, ev.clientY)
+      setDropIndex(lastIndex)
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      ghost?.remove()
+      if (begun) document.body.classList.remove('is-tab-dragging')
+      setDropIndex(null)
+      if (begun && lastIndex != null) {
+        const next = reorderedAmong(fullOrder, pinnedSet, tabId, lastIndex)
+        if (next) reorder.mutate(next)
+      }
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
   const grid = (
-    <div className="kb-pinned-grid" role="list" aria-label="Pinned tabs">
-      {pinnedTabs.map((tab) => (
+    <div className="kb-pinned-grid" role="list" aria-label="Pinned tabs" ref={gridRef}>
+      {pinnedTabs.map((tab, i) => (
         <button
           key={tab.id}
           type="button"
           role="listitem"
-          className={cx('kb-pinned-cell', { active: tab.id === activeTabId })}
+          data-pin-id={tab.id}
+          className={cx('kb-pinned-cell', {
+            active: tab.id === activeTabId,
+            'drop-before': dropIndex === i,
+            'drop-after': dropIndex === pinnedTabs.length && i === pinnedTabs.length - 1,
+          })}
           title={tabDisplayName(tab)}
           aria-label={tabDisplayName(tab)}
-          onClick={() => activate(tab.id)}
+          onPointerDown={(e) => startDrag(e, tab.id)}
+          onClick={() => {
+            if (draggedRef.current) {
+              draggedRef.current = false
+              return
+            }
+            activate(tab.id)
+          }}
           onContextMenu={(e) => openSplitMenu(e, tab.id)}
         >
           <TabFavicon tab={tab} />

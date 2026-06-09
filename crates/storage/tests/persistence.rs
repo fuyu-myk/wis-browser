@@ -36,6 +36,37 @@ fn fresh_store() -> SqliteStorage {
 }
 
 #[test]
+fn tab_folders_and_membership_survive_round_trip() {
+    let store = fresh_store();
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").expect("tab a");
+    let (s2, _b) = s1.with_new_tab(ws, "https://b.example/").expect("tab b");
+    let (s3, folder) = s2
+        .with_new_tab_folder(ws, "Work".into(), AccentColor::Mint)
+        .expect("folder");
+    let s4 = s3
+        .with_tab_assigned_folder(a.id, Some(folder.id))
+        .expect("assign")
+        .with_tab_folder_collapsed(ws, folder.id, true)
+        .expect("collapse");
+
+    store.save_state(&s4).expect("save");
+    let loaded = store.load_state().expect("load").unwrap();
+
+    let lw = &loaded.workspaces[0];
+    assert_eq!(lw.tab_folders.len(), 1);
+    assert_eq!(lw.tab_folders[0].id, folder.id);
+    assert_eq!(lw.tab_folders[0].name, "Work");
+    assert!(lw.tab_folders[0].collapsed);
+    assert_eq!(
+        loaded.tab(a.id).expect("tab a present").folder_id,
+        Some(folder.id)
+    );
+    assert!(loaded.invariant_violations().is_empty());
+}
+
+#[test]
 fn session_cookies_round_trip_overwrite_and_ttl() {
     use wis_core::WorkspaceId;
     let store = fresh_store();

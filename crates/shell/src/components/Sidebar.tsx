@@ -38,13 +38,20 @@ export function Sidebar({
 
   const [workspacePopoverOpen, setWorkspacePopoverOpen] = useState(false)
   const [tabMenuOpen, setTabMenuOpen] = useState(false)
-  // A live menu/popover keeps the sidebar pinned open. Tracked via a ref so the
-  // window-blur handler reads the current value without re-subscribing.
+  const [folderEditing, setFolderEditing] = useState(false)
+  const keepOpen = workspacePopoverOpen || tabMenuOpen || folderEditing
+  // A live menu/popover/edit keeps the sidebar pinned open. Tracked via a ref so
+  // the window-blur handler reads the current value without re-subscribing.
   const keepOpenRef = useRef(false)
-  keepOpenRef.current = workspacePopoverOpen || tabMenuOpen
+  keepOpenRef.current = keepOpen
   useEffect(() => {
-    if (workspacePopoverOpen || tabMenuOpen) setExpanded(true)
-  }, [workspacePopoverOpen, tabMenuOpen, setExpanded])
+    if (keepOpen) setExpanded(true)
+  }, [keepOpen, setExpanded])
+
+  // Broadcast collapse so open folder edit popovers discard and close.
+  useEffect(() => {
+    if (!expanded) window.dispatchEvent(new CustomEvent('wis-sidebar-collapsed'))
+  }, [expanded])
 
   useEffect(() => {
     if (!collapsible || !expanded) return
@@ -95,9 +102,7 @@ export function Sidebar({
     <aside
       ref={asideRef}
       className={cx('kb-side', { 'is-expanded': expanded })}
-      onMouseLeave={() =>
-        collapsible && !workspacePopoverOpen && !tabMenuOpen && setExpanded(false)
-      }
+      onMouseLeave={() => collapsible && !keepOpen && setExpanded(false)}
       onClick={handleAsideClick}
     >
       {collapsible && (
@@ -125,7 +130,10 @@ export function Sidebar({
         tabs={tabs}
         activeTabId={activeTab?.id ?? null}
         pinnedTabIds={activeWorkspace?.pinned_tab_ids ?? []}
+        folders={activeWorkspace?.tab_folders ?? []}
+        selectedFolderId={activeWorkspace?.selected_folder_id ?? null}
         onSplitMenuOpenChange={setTabMenuOpen}
+        onFolderEditingChange={setFolderEditing}
       />
     </aside>
   )

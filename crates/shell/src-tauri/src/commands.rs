@@ -17,8 +17,9 @@ use tauri::webview::{PageLoadEvent, PageLoadPayload, WebviewBuilder};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
 use url::Url;
 use wis_core::{
-    AccentColor, BrowserState, PaneBranch, PrivacyMode, SplitDir, Tab, TabId, ThemeMode,
-    UpstreamProxy, UserSettings, UserSettingsPatch, WisError, WisResult, Workspace, WorkspaceId,
+    AccentColor, BrowserState, PaneBranch, PrivacyMode, SplitDir, Tab, TabFolder, TabFolderId,
+    TabId, ThemeMode, UpstreamProxy, UserSettings, UserSettingsPatch, WisError, WisResult,
+    Workspace, WorkspaceId,
 };
 use wis_network::{Decision, OutboundRequest, RequestType};
 
@@ -518,6 +519,19 @@ pub async fn create_tab(
     mutate(&app, &state, |s| s.with_new_tab(workspace_id, &url)).await
 }
 
+/// Append a tab that is always loose (outside any folder), ignoring the
+/// workspace's selected folder. Backs the explicit "+ New tab" affordance, where
+/// the user wants a fresh top-level tab rather than one filed into a group.
+#[tauri::command]
+pub async fn create_loose_tab(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    url: String,
+) -> WisResult<Tab> {
+    mutate(&app, &state, |s| s.with_new_loose_tab(workspace_id, &url)).await
+}
+
 /// Split the workspace's focused pane along `dir`, opening `url` in the new
 /// pane and focusing it. Returns the newly created tab. The frontend's webview
 /// reconciler then spins up its native webview and tiles it into the pane.
@@ -816,6 +830,118 @@ pub async fn pin_tab(
     pinned: bool,
 ) -> WisResult<Tab> {
     mutate(&app, &state, |s| s.with_tab_pinned(id, pinned)).await
+}
+
+// ---------------------------------------------------------------------------
+// Tab folders (live-tab grouping)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn create_tab_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    name: String,
+    accent: AccentColor,
+) -> WisResult<TabFolder> {
+    mutate(&app, &state, |s| {
+        s.with_new_tab_folder(workspace_id, name, accent)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn rename_tab_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    folder_id: TabFolderId,
+    name: String,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| {
+        s.with_tab_folder_renamed(workspace_id, folder_id, name)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn recolor_tab_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    folder_id: TabFolderId,
+    accent: AccentColor,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| {
+        s.with_tab_folder_recolored(workspace_id, folder_id, accent)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn set_tab_folder_collapsed(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    folder_id: TabFolderId,
+    collapsed: bool,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| {
+        s.with_tab_folder_collapsed(workspace_id, folder_id, collapsed)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn delete_tab_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    folder_id: TabFolderId,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| {
+        s.with_tab_folder_removed(workspace_id, folder_id)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn reorder_tab_folders(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    order: Vec<TabFolderId>,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| {
+        s.with_tab_folders_reordered(workspace_id, order)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn assign_tab_to_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    tab_id: TabId,
+    folder_id: Option<TabFolderId>,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| {
+        s.with_tab_assigned_folder(tab_id, folder_id)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn select_tab_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    folder_id: Option<TabFolderId>,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| {
+        s.with_selected_tab_folder(workspace_id, folder_id)
+    })
+    .await
 }
 
 #[tauri::command]

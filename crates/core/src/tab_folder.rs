@@ -1,0 +1,59 @@
+//! [`TabFolder`]: a named, collapsible grouping of *live* tabs within a workspace.
+//! Distinct from bookmarks (which save URLs); this organises open tabs. Folder
+//! membership lives on the tab ([`Tab::folder_id`](crate::tab::Tab::folder_id)); this type holds the folder's
+//! own attributes. Immutable: all "mutations" return a new value.
+
+use crate::ids::TabFolderId;
+use crate::workspace::AccentColor;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TabFolder {
+    pub id: TabFolderId,
+    pub name: String,
+    pub accent: AccentColor,
+    /// Collapsed folders hide their tabs in the list and let those tabs sleep.
+    pub collapsed: bool,
+    /// Order among a workspace's folders (ascending).
+    pub position: u32,
+}
+
+impl TabFolder {
+    pub fn new(name: String, accent: AccentColor, position: u32) -> Self {
+        Self {
+            id: TabFolderId::new(),
+            name,
+            accent,
+            collapsed: false,
+            position,
+        }
+    }
+
+    pub fn with_name(&self, name: String) -> Self {
+        Self {
+            name,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_accent(&self, accent: AccentColor) -> Self {
+        Self {
+            accent,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_collapsed(&self, collapsed: bool) -> Self {
+        Self {
+            collapsed,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_position(&self, position: u32) -> Self {
+        Self {
+            position,
+            ..self.clone()
+        }
+    }
+}

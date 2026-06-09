@@ -64,6 +64,19 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     [workspaceTabs],
   )
 
+  // Tabs inside a collapsed folder: explicitly tucked away, so let them sleep.
+  const collapsedFolderTabIds = useMemo(() => {
+    const collapsed = new Set(
+      (activeWorkspace?.tab_folders ?? []).filter((f) => f.collapsed).map((f) => f.id),
+    )
+    const ids = new Set<TabId>()
+    if (collapsed.size === 0) return ids
+    for (const t of state.tabs) {
+      if (t.folder_id != null && collapsed.has(t.folder_id)) ids.add(t.id)
+    }
+    return ids
+  }, [activeWorkspace?.tab_folders, state.tabs])
+
   const { syncLayout } = useTabWebviews({
     createTabs,
     activeWorkspaceId: activeWorkspace?.id ?? null,
@@ -71,6 +84,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     activeTabId: activeWorkspace?.active_tab_id ?? null,
     sleepEnabled: state.settings.tab_sleep_enabled,
     sleepMinutes: state.settings.tab_sleep_minutes,
+    forceSleepTabIds: collapsedFolderTabIds,
     onDiscardedChange,
   })
 

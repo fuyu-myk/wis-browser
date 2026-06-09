@@ -9,6 +9,7 @@ import { ClearDataSurface } from '@/overlay/surfaces/ClearDataSurface'
 import { FindSurface } from '@/overlay/surfaces/FindSurface'
 import { BookmarkPickerSurface } from '@/overlay/surfaces/BookmarkPickerSurface'
 import { BookmarksMenuSurface } from '@/overlay/surfaces/BookmarksMenuSurface'
+import { IslandMenuSurface } from '@/overlay/surfaces/IslandMenuSurface'
 import { NavGuardSurface } from '@/overlay/surfaces/NavGuardSurface'
 import { PaletteSurface } from '@/overlay/surfaces/PaletteSurface'
 import { PaneSplitMenuSurface } from '@/overlay/surfaces/PaneSplitMenuSurface'
@@ -24,6 +25,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'find') return <FindSurface />
   if (surface === 'palette') return <PaletteSurface />
   if (surface === 'tabmenu') return <PaneSplitMenuSurface />
+  if (surface === 'islandmenu') return <IslandMenuSurface />
   if (surface === 'cleardata') return <ClearDataSurface />
   if (surface === 'urlbar') return <UrlbarSuggestSurface />
   if (surface === 'vaultmenu') return <VaultMenuSurface />

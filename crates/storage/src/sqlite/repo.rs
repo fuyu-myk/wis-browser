@@ -7,8 +7,8 @@ use rusqlite::{params, Connection, Transaction};
 use url::Url;
 use uuid::Uuid;
 use wis_core::{
-    AccentColor, BrowserState, EssentialPin, FaviconRef, PrivacyMode, Tab, TabId, UserSettings,
-    Workspace, WorkspaceId,
+    AccentColor, BrowserState, EssentialPin, FaviconRef, PrivacyMode, Tab, TabFolder, TabFolderId,
+    TabId, UserSettings, Workspace, WorkspaceId,
 };
 
 use crate::error::{StorageError, StorageResult};
@@ -81,9 +81,14 @@ fn insert_workspace(
         .as_ref()
         .map(serde_json::to_string)
         .transpose()?;
+    let tab_folders_json = if workspace.tab_folders.is_empty() {
+        None
+    } else {
+        Some(serde_json::to_string(&workspace.tab_folders)?)
+    };
     tx.execute(
-        "INSERT INTO workspaces (id, position, name, accent, icon, privacy_mode, active_tab_id, pane_tree, upstream_proxy)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO workspaces (id, position, name, accent, icon, privacy_mode, active_tab_id, pane_tree, upstream_proxy, tab_folders)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             uuid_string(workspace.id.into()),
             position,
@@ -94,6 +99,7 @@ fn insert_workspace(
             workspace.active_tab_id.map(|id| uuid_string(id.into())),
             pane_tree_json,
             upstream_proxy_json,
+            tab_folders_json,
         ],
     )?;
 
@@ -103,8 +109,8 @@ fn insert_workspace(
 fn insert_tab(tx: &Transaction<'_>, tab: &Tab, position: i64) -> StorageResult<()> {
     tx.execute(
         "INSERT INTO tabs (id, workspace_id, position, url, title, favicon_hash,
-                           pinned, muted, created_at, last_active_at, zoom)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                           pinned, muted, created_at, last_active_at, zoom, folder_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             uuid_string(tab.id.into()),
             uuid_string(tab.workspace_id.into()),
@@ -117,6 +123,7 @@ fn insert_tab(tx: &Transaction<'_>, tab: &Tab, position: i64) -> StorageResult<(
             tab.created_at,
             tab.last_active_at,
             tab.zoom,
+            tab.folder_id.map(|id| uuid_string(id.into())),
         ],
     )?;
 
@@ -208,7 +215,7 @@ pub fn load(conn: &Connection) -> StorageResult<Option<BrowserState>> {
 /// [`assemble_workspaces`].
 fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, accent, icon, privacy_mode, active_tab_id, pane_tree, upstream_proxy
+        "SELECT id, name, accent, icon, privacy_mode, active_tab_id, pane_tree, upstream_proxy, tab_folders
          FROM workspaces ORDER BY position ASC",
     )?;
     let mut rows = stmt.query([])?;
@@ -227,6 +234,12 @@ fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
             .as_deref()
             .map(serde_json::from_str)
             .transpose()?;
+        let tab_folders_json: Option<String> = row.get(8)?;
+        let tab_folders: Vec<TabFolder> = tab_folders_json
+            .as_deref()
+            .map(serde_json::from_str)
+            .transpose()?
+            .unwrap_or_default();
 
         out.push(Workspace {
             id: WorkspaceId::from(parse_uuid(&id_str)?),
@@ -243,6 +256,8 @@ fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
             upstream_proxy,
             tab_order: Vec::new(),
             pinned_tab_ids: Vec::new(),
+            tab_folders,
+            selected_folder_id: None,
             essentials: Vec::new(),
             ephemeral: false,
         });
@@ -254,7 +269,7 @@ fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
 fn load_tabs(conn: &Connection) -> StorageResult<Vec<Tab>> {
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, url, title, favicon_hash, pinned, muted,
-                created_at, last_active_at, zoom
+                created_at, last_active_at, zoom, folder_id
          FROM tabs
          ORDER BY workspace_id ASC, position ASC",
     )?;
@@ -266,6 +281,7 @@ fn load_tabs(conn: &Connection) -> StorageResult<Vec<Tab>> {
         let workspace_id_str: String = row.get(1)?;
         let favicon_hash: Option<String> = row.get(4)?;
         let zoom: Option<f64> = row.get(9)?;
+        let folder_id_str: Option<String> = row.get(10)?;
 
         out.push(Tab {
             id: TabId::from(parse_uuid(&id_str)?),
@@ -274,6 +290,11 @@ fn load_tabs(conn: &Connection) -> StorageResult<Vec<Tab>> {
             title: row.get(3)?,
             favicon: favicon_hash.map(|hash| FaviconRef { hash }),
             pinned: row.get(5)?,
+            folder_id: folder_id_str
+                .as_deref()
+                .map(parse_uuid)
+                .transpose()?
+                .map(TabFolderId::from),
             muted: row.get(6)?,
             loading: false,
             zoom: zoom.unwrap_or_else(wis_core::tab::default_zoom),

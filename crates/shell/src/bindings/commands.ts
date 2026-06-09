@@ -22,6 +22,8 @@ import type {
   RequestType,
   SplitDir,
   Tab,
+  TabFolder,
+  TabFolderId,
   TabId,
   UpstreamProxy,
   UrlSuggestions,
@@ -244,6 +246,15 @@ export const commands = {
   },
 
   /**
+   * Like {@link createTab} but the new tab is always loose (outside any folder),
+   * ignoring the workspace's selected folder. Backs the explicit "+ New tab"
+   * button.
+   */
+  async createLooseTab(workspaceId: WorkspaceId, url: string): Promise<Tab> {
+    return invoke('create_loose_tab', { workspaceId, url })
+  },
+
+  /**
    * Split the workspace's focused pane along `dir`, opening `url` in the new
    * pane and focusing it. `placeNewFirst` puts the new pane in the left/top
    * slot. Returns the created tab.
@@ -323,6 +334,49 @@ export const commands = {
 
   async pinTab(id: TabId, pinned: boolean): Promise<Tab> {
     return invoke('pin_tab', { id, pinned })
+  },
+
+  // -- tab folders ----------------------------------------------------------
+
+  async createTabFolder(
+    workspaceId: WorkspaceId,
+    name: string,
+    accent: AccentColor,
+  ): Promise<TabFolder> {
+    return invoke('create_tab_folder', { workspaceId, name, accent })
+  },
+  async renameTabFolder(
+    workspaceId: WorkspaceId,
+    folderId: TabFolderId,
+    name: string,
+  ): Promise<void> {
+    return invoke('rename_tab_folder', { workspaceId, folderId, name })
+  },
+  async recolorTabFolder(
+    workspaceId: WorkspaceId,
+    folderId: TabFolderId,
+    accent: AccentColor,
+  ): Promise<void> {
+    return invoke('recolor_tab_folder', { workspaceId, folderId, accent })
+  },
+  async setTabFolderCollapsed(
+    workspaceId: WorkspaceId,
+    folderId: TabFolderId,
+    collapsed: boolean,
+  ): Promise<void> {
+    return invoke('set_tab_folder_collapsed', { workspaceId, folderId, collapsed })
+  },
+  async deleteTabFolder(workspaceId: WorkspaceId, folderId: TabFolderId): Promise<void> {
+    return invoke('delete_tab_folder', { workspaceId, folderId })
+  },
+  async reorderTabFolders(workspaceId: WorkspaceId, order: TabFolderId[]): Promise<void> {
+    return invoke('reorder_tab_folders', { workspaceId, order })
+  },
+  async assignTabToFolder(tabId: TabId, folderId: TabFolderId | null): Promise<void> {
+    return invoke('assign_tab_to_folder', { tabId, folderId })
+  },
+  async selectTabFolder(workspaceId: WorkspaceId, folderId: TabFolderId | null): Promise<void> {
+    return invoke('select_tab_folder', { workspaceId, folderId })
   },
 
   async setActiveTab(id: TabId): Promise<void> {

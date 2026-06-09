@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Webview } from '@tauri-apps/api/webview'
 import { Window, getCurrentWindow } from '@tauri-apps/api/window'
 
@@ -45,6 +45,11 @@ interface UseTabWebviewsArgs {
   /** When true, background webviews idle past `sleepMinutes` are discarded. */
   sleepEnabled: boolean
   sleepMinutes: number
+  /**
+   * Tabs in collapsed folders: discarded immediately (not after the idle delay)
+   * while sleeping is enabled, since a collapsed folder is explicitly tucked away.
+   */
+  forceSleepTabIds?: Set<TabId>
   /** Reports the current set of discarded ("asleep") tab ids when it changes. */
   onDiscardedChange?: (discarded: Set<TabId>) => void
 }
@@ -97,6 +102,7 @@ export function useTabWebviews({
   activeTabId,
   sleepEnabled,
   sleepMinutes,
+  forceSleepTabIds,
   onDiscardedChange,
 }: UseTabWebviewsArgs): UseTabWebviewsReturn {
   const webviewsRef = useRef<Map<TabId, Webview>>(new Map())
@@ -125,6 +131,8 @@ export function useTabWebviews({
   sleepEnabledRef.current = sleepEnabled
   const sleepMinutesRef = useRef(sleepMinutes)
   sleepMinutesRef.current = sleepMinutes
+  const forceSleepRef = useRef<Set<TabId>>(forceSleepTabIds ?? new Set())
+  forceSleepRef.current = forceSleepTabIds ?? new Set()
   const onDiscardedRef = useRef(onDiscardedChange)
   onDiscardedRef.current = onDiscardedChange
 
@@ -285,12 +293,15 @@ export function useTabWebviews({
         if (id === activeTabIdRef.current) continue
         const tab = allTabsRef.current.find((t) => t.id === id)
         if (tab?.pinned) continue
-        const since = hiddenSinceRef.current.get(id)
-        if (since == null) {
-          hiddenSinceRef.current.set(id, now)
-          continue
+        // Collapsed-folder tabs skip the idle delay.
+        if (!forceSleepRef.current.has(id)) {
+          const since = hiddenSinceRef.current.get(id)
+          if (since == null) {
+            hiddenSinceRef.current.set(id, now)
+            continue
+          }
+          if (now - since < thresholdMs) continue
         }
-        if (now - since < thresholdMs) continue
         void wv.close().catch(() => undefined)
         map.delete(id)
         visibilityRef.current.delete(id)
@@ -301,6 +312,31 @@ export function useTabWebviews({
     }, SWEEP_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [recomputeDiscarded])
+
+  // Discard collapsed-folder tabs the moment they're collapsed, rather than
+  // waiting for the next sweep. The key collapses the set to a stable string so
+  // this only fires when membership actually changes.
+  const forceSleepKey = useMemo(
+    () => Array.from(forceSleepTabIds ?? []).sort().join(','),
+    [forceSleepTabIds],
+  )
+  useEffect(() => {
+    if (!sleepEnabledRef.current) return
+    const map = webviewsRef.current
+    let changed = false
+    for (const id of forceSleepRef.current) {
+      if (id === activeTabIdRef.current) continue
+      if (layoutRef.current.has(id)) continue
+      const wv = map.get(id)
+      if (wv == null || (wv as unknown) === PENDING) continue
+      void wv.close().catch(() => undefined)
+      map.delete(id)
+      visibilityRef.current.delete(id)
+      hiddenSinceRef.current.delete(id)
+      changed = true
+    }
+    if (changed) recomputeDiscarded()
+  }, [forceSleepKey, recomputeDiscarded])
 
   const syncLayout = useCallback(
     (layout: WebviewLayout, focusedTabId: TabId | null) => {

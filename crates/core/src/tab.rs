@@ -1,7 +1,7 @@
 //! Tab: a single open page inside a workspace. Immutable: all "mutations"
 //! return a new value.
 
-use crate::ids::{TabId, WorkspaceId};
+use crate::ids::{TabFolderId, TabId, WorkspaceId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -21,6 +21,10 @@ pub struct Tab {
     pub title: String,
     pub favicon: Option<FaviconRef>,
     pub pinned: bool,
+    /// Containing tab folder, or `None` when the tab is loose. Pinned tabs are
+    /// always loose. Serde-defaults to `None` so existing state loads unchanged.
+    #[serde(default)]
+    pub folder_id: Option<TabFolderId>,
     pub muted: bool,
     /// Whether the tab's page is currently loading. In-memory only:
     /// not persisted. On cold start no tab can legitimately be
@@ -49,6 +53,7 @@ impl Tab {
             url,
             favicon: None,
             pinned: false,
+            folder_id: None,
             muted: false,
             loading: false,
             zoom: default_zoom(),
@@ -81,6 +86,13 @@ impl Tab {
     pub fn with_pinned(&self, pinned: bool) -> Self {
         Self {
             pinned,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_folder(&self, folder_id: Option<TabFolderId>) -> Self {
+        Self {
+            folder_id,
             ..self.clone()
         }
     }

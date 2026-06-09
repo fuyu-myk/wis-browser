@@ -441,3 +441,149 @@ fn with_tab_url_synced_errors_on_bad_url() {
         .unwrap_err();
     assert!(matches!(err, WisError::InvalidUrl { .. }));
 }
+
+#[test]
+fn tab_folders_create_assign_collapse_delete_preserve_invariants() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s2, _b) = s1.with_new_tab(ws, "https://b.example/").unwrap();
+    assert_clean(&s2);
+
+    // Create a folder and move `a` into it.
+    let (s3, folder) = s2
+        .with_new_tab_folder(ws, "Work".into(), AccentColor::Mint)
+        .unwrap();
+    let s4 = s3.with_tab_assigned_folder(a.id, Some(folder.id)).unwrap();
+    assert_eq!(s4.tab(a.id).unwrap().folder_id, Some(folder.id));
+    assert_clean(&s4);
+
+    // A new tab opened while a foldered tab is active inherits the folder.
+    let s5 = s4.with_active_tab(a.id).unwrap();
+    let (s6, c) = s5.with_new_tab(ws, "https://c.example/").unwrap();
+    assert_eq!(s6.tab(c.id).unwrap().folder_id, Some(folder.id));
+    assert_clean(&s6);
+
+    // Rename, recolor, collapse: still clean.
+    let s7 = s6
+        .with_tab_folder_collapsed(ws, folder.id, true)
+        .unwrap()
+        .with_tab_folder_renamed(ws, folder.id, "Renamed".into())
+        .unwrap()
+        .with_tab_folder_recolored(ws, folder.id, AccentColor::Rose)
+        .unwrap();
+    let f = s7.workspaces[0]
+        .tab_folders
+        .iter()
+        .find(|f| f.id == folder.id)
+        .unwrap();
+    assert!(f.collapsed);
+    assert_eq!(f.name, "Renamed");
+    assert_eq!(f.accent, AccentColor::Rose);
+    assert_clean(&s7);
+
+    // Deleting the folder leaves its members open but loose.
+    let s8 = s7.with_tab_folder_removed(ws, folder.id).unwrap();
+    assert!(s8.workspaces[0].tab_folders.is_empty());
+    assert_eq!(s8.tab(a.id).unwrap().folder_id, None);
+    assert_eq!(s8.tab(c.id).unwrap().folder_id, None);
+    assert_clean(&s8);
+}
+
+#[test]
+fn pinning_and_foldering_are_mutually_exclusive() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s2, folder) = s1
+        .with_new_tab_folder(ws, "Work".into(), AccentColor::Mint)
+        .unwrap();
+    let s3 = s2.with_tab_assigned_folder(a.id, Some(folder.id)).unwrap();
+
+    // Pinning a foldered tab clears its folder membership.
+    let (s4, _) = s3.with_tab_pinned(a.id, true).unwrap();
+    assert!(s4.tab(a.id).unwrap().pinned);
+    assert_eq!(s4.tab(a.id).unwrap().folder_id, None);
+    assert_clean(&s4);
+
+    // Assigning a pinned tab to a folder unpins it.
+    let s5 = s4.with_tab_assigned_folder(a.id, Some(folder.id)).unwrap();
+    assert!(!s5.tab(a.id).unwrap().pinned);
+    assert_eq!(s5.tab(a.id).unwrap().folder_id, Some(folder.id));
+    assert!(!s5.workspaces[0].pinned_tab_ids.contains(&a.id));
+    assert_clean(&s5);
+}
+
+#[test]
+fn selected_folder_targets_new_tabs_and_clears_on_delete() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, _a) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s2, folder) = s1
+        .with_new_tab_folder(ws, "Work".into(), AccentColor::Mint)
+        .unwrap();
+
+    // Select the folder: new tabs file into it even though the active tab is loose.
+    let s3 = s2.with_selected_tab_folder(ws, Some(folder.id)).unwrap();
+    let (s4, b) = s3.with_new_tab(ws, "https://b.example/").unwrap();
+    assert_eq!(s4.tab(b.id).unwrap().folder_id, Some(folder.id));
+    assert_clean(&s4);
+
+    // Deleting the selected folder clears the selection (no dangling target).
+    let s5 = s4.with_tab_folder_removed(ws, folder.id).unwrap();
+    assert_eq!(s5.workspaces[0].selected_folder_id, None);
+    assert_clean(&s5);
+
+    // With no selection, a new tab is loose again.
+    let (s6, c) = s5.with_new_tab(ws, "https://c.example/").unwrap();
+    assert_eq!(s6.tab(c.id).unwrap().folder_id, None);
+    assert_clean(&s6);
+}
+
+#[test]
+fn loose_new_tab_ignores_selected_folder() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, folder) = s0
+        .with_new_tab_folder(ws, "Work".into(), AccentColor::Mint)
+        .unwrap();
+    let s2 = s1.with_selected_tab_folder(ws, Some(folder.id)).unwrap();
+
+    // `with_new_tab` honours the selection; `with_new_loose_tab` never does.
+    let (s3, filed) = s2.with_new_tab(ws, "https://a.example/").unwrap();
+    assert_eq!(s3.tab(filed.id).unwrap().folder_id, Some(folder.id));
+    let (s4, loose) = s3.with_new_loose_tab(ws, "https://b.example/").unwrap();
+    assert_eq!(s4.tab(loose.id).unwrap().folder_id, None);
+    // The new loose tab is focused and the selection is left intact.
+    assert_eq!(s4.workspaces[0].active_tab_id, Some(loose.id));
+    assert_eq!(s4.workspaces[0].selected_folder_id, Some(folder.id));
+    assert_clean(&s4);
+}
+
+#[test]
+fn selecting_a_folder_from_another_workspace_is_rejected() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, _ws2) = s0.with_new_workspace("Work".into(), AccentColor::Mint);
+    let ws2 = s1.workspaces[1].id;
+    let (s2, folder2) = s1
+        .with_new_tab_folder(ws2, "Other".into(), AccentColor::Sun)
+        .unwrap();
+    let err = s2.with_selected_tab_folder(ws, Some(folder2.id));
+    assert!(matches!(err, Err(WisError::InvalidInput { .. })));
+}
+
+#[test]
+fn assigning_a_folder_from_another_workspace_is_rejected() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, _ws2) = s0.with_new_workspace("Work".into(), AccentColor::Mint);
+    let ws2 = s1.workspaces[1].id;
+    let (s2, a) = s1.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s3, folder2) = s2
+        .with_new_tab_folder(ws2, "Other".into(), AccentColor::Sun)
+        .unwrap();
+
+    let err = s3.with_tab_assigned_folder(a.id, Some(folder2.id));
+    assert!(matches!(err, Err(WisError::InvalidInput { .. })));
+}

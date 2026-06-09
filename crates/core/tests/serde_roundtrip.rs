@@ -207,3 +207,40 @@ fn error_serialises_with_tag_and_payload() {
     assert!(json.contains("\"code\":\"workspace_not_found\""));
     assert!(json.contains(&id.0.to_string()));
 }
+
+#[test]
+fn tab_folders_roundtrip() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s2, folder) = s1
+        .with_new_tab_folder(ws, "Work".into(), AccentColor::Lila)
+        .unwrap();
+    let s3 = s2
+        .with_tab_assigned_folder(a.id, Some(folder.id))
+        .unwrap()
+        .with_tab_folder_collapsed(ws, folder.id, true)
+        .unwrap();
+
+    let after: BrowserState = roundtrip(&s3);
+    assert_eq!(s3, after);
+}
+
+#[test]
+fn tab_without_folder_id_field_deserialises_as_loose() {
+    // Old persisted tabs predate `folder_id`; serde-default keeps them loose.
+    let json = r#"{
+        "id": "00000000-0000-0000-0000-000000000001",
+        "workspace_id": "00000000-0000-0000-0000-000000000002",
+        "url": "https://example.com/",
+        "title": "Example",
+        "favicon": null,
+        "pinned": false,
+        "muted": false,
+        "zoom": 1.0,
+        "created_at": "2024-01-01T00:00:00Z",
+        "last_active_at": "2024-01-01T00:00:00Z"
+    }"#;
+    let tab: wis_core::Tab = serde_json::from_str(json).expect("deserialise legacy tab");
+    assert_eq!(tab.folder_id, None);
+}

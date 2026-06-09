@@ -14,10 +14,12 @@
 declare const TabIdBrand: unique symbol
 declare const WorkspaceIdBrand: unique symbol
 declare const WidgetIdBrand: unique symbol
+declare const TabFolderIdBrand: unique symbol
 
 export type TabId = string & { readonly [TabIdBrand]: never }
 export type WorkspaceId = string & { readonly [WorkspaceIdBrand]: never }
 export type WidgetId = string & { readonly [WidgetIdBrand]: never }
+export type TabFolderId = string & { readonly [TabFolderIdBrand]: never }
 
 // ---------------------------------------------------------------------------
 // Enums: serialised by serde as snake_case strings.
@@ -139,6 +141,8 @@ export interface Tab {
   title: string
   favicon: FaviconRef | null
   pinned: boolean
+  /** Containing tab folder, or null when the tab is loose (pinned tabs are loose). */
+  folder_id: TabFolderId | null
   muted: boolean
   /** In-memory only; reset to false on app launch. */
   loading: boolean
@@ -155,6 +159,17 @@ export interface EssentialPin {
   icon: string | null
 }
 
+/** A named, collapsible grouping of live tabs within a workspace. */
+export interface TabFolder {
+  id: TabFolderId
+  name: string
+  accent: AccentColor
+  /** Collapsed folders hide their tabs in the list and let those tabs sleep. */
+  collapsed: boolean
+  /** Order among a workspace's folders (ascending). */
+  position: number
+}
+
 export interface Workspace {
   id: WorkspaceId
   name: string
@@ -162,6 +177,10 @@ export interface Workspace {
   icon: string | null
   tab_order: TabId[]
   pinned_tab_ids: TabId[]
+  /** Live-tab folders; membership is on the tab (`Tab.folder_id`). */
+  tab_folders: TabFolder[]
+  /** Folder new tabs file into; null = follow the active tab. Session-only. */
+  selected_folder_id: TabFolderId | null
   essentials: EssentialPin[]
   active_tab_id: TabId | null
   privacy_mode: PrivacyMode

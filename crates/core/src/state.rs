@@ -3,10 +3,11 @@
 //! than mutating self.
 
 use crate::error::{WisError, WisResult};
-use crate::ids::{TabId, WorkspaceId};
+use crate::ids::{TabFolderId, TabId, WorkspaceId};
 use crate::pane::{PaneBranch, SplitDir};
 use crate::settings::{UserSettings, UserSettingsPatch};
 use crate::tab::Tab;
+use crate::tab_folder::TabFolder;
 use crate::workspace::{AccentColor, Workspace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -269,13 +270,20 @@ impl BrowserState {
         })
     }
 
-    pub fn with_new_tab(&self, workspace_id: WorkspaceId, url_str: &str) -> WisResult<(Self, Tab)> {
+    /// Append a focused new tab in `folder` (None = loose). Shared by
+    /// [`with_new_tab`] and [`with_new_loose_tab`].
+    fn with_tab_created(
+        &self,
+        workspace_id: WorkspaceId,
+        url_str: &str,
+        folder: Option<TabFolderId>,
+    ) -> WisResult<(Self, Tab)> {
         let url = Url::parse(url_str).map_err(|_| WisError::InvalidUrl {
             url: url_str.to_string(),
         })?;
         self.workspace(workspace_id)?;
 
-        let tab = Tab::new(workspace_id, url);
+        let tab = Tab::new(workspace_id, url).with_folder(folder);
         let tab_id = tab.id;
 
         let mut tabs = self.tabs.clone();
@@ -301,6 +309,32 @@ impl BrowserState {
             },
             tab,
         ))
+    }
+
+    /// New tabs file into the workspace's selected folder if one is set;
+    /// otherwise they inherit the active tab's folder, landing beside their
+    /// opener. Used by Cmd+T, link opens, and bookmark opens.
+    pub fn with_new_tab(&self, workspace_id: WorkspaceId, url_str: &str) -> WisResult<(Self, Tab)> {
+        let inherited_folder = self.workspace(workspace_id).ok().and_then(|workspace| {
+            workspace.selected_folder_id.or_else(|| {
+                workspace
+                    .active_tab_id
+                    .and_then(|aid| self.tab(aid).ok())
+                    .and_then(|t| t.folder_id)
+            })
+        });
+
+        self.with_tab_created(workspace_id, url_str, inherited_folder)
+    }
+
+    /// Append a new tab that is always loose (outside any folder), regardless of
+    /// the selected folder. Used by the explicit "+ New tab" affordance.
+    pub fn with_new_loose_tab(
+        &self,
+        workspace_id: WorkspaceId,
+        url_str: &str,
+    ) -> WisResult<(Self, Tab)> {
+        self.with_tab_created(workspace_id, url_str, None)
     }
 
     pub fn with_tab_closed(&self, id: TabId) -> WisResult<Self> {
@@ -359,7 +393,12 @@ impl BrowserState {
     }
 
     pub fn with_tab_pinned(&self, id: TabId, pinned: bool) -> WisResult<(Self, Tab)> {
-        let updated_tab = self.tab(id)?.with_pinned(pinned);
+        // Pinned tabs are always loose: pinning removes folder membership.
+        let updated_tab = if pinned {
+            self.tab(id)?.with_pinned(true).with_folder(None)
+        } else {
+            self.tab(id)?.with_pinned(false)
+        };
         let workspace_id = updated_tab.workspace_id;
 
         let tabs: Vec<Tab> = self
@@ -394,6 +433,205 @@ impl BrowserState {
             },
             updated_tab,
         ))
+    }
+
+    // -- tab folders --------------------------------------------------------
+
+    /// Map the single workspace `id` through `f`, cloning the rest.
+    fn map_workspace(&self, id: WorkspaceId, f: impl Fn(&Workspace) -> Workspace) -> Vec<Workspace> {
+        self.workspaces
+            .iter()
+            .map(|w| if w.id == id { f(w) } else { w.clone() })
+            .collect()
+    }
+
+    fn require_folder(&self, workspace_id: WorkspaceId, folder_id: TabFolderId) -> WisResult<()> {
+        if self.workspace(workspace_id)?.has_folder(folder_id) {
+            Ok(())
+        } else {
+            Err(WisError::InvalidInput {
+                message: format!("folder {folder_id} is not in workspace {workspace_id}"),
+            })
+        }
+    }
+
+    /// Create a folder at the end of `workspace_id`'s folder list.
+    pub fn with_new_tab_folder(
+        &self,
+        workspace_id: WorkspaceId,
+        name: String,
+        accent: AccentColor,
+    ) -> WisResult<(Self, TabFolder)> {
+        let workspace = self.workspace(workspace_id)?;
+        let folder = TabFolder::new(name, accent, workspace.next_folder_position());
+        let workspaces =
+            self.map_workspace(workspace_id, |w| w.with_tab_folder_appended(folder.clone()));
+
+        Ok((
+            Self {
+                workspaces,
+                ..self.clone()
+            },
+            folder,
+        ))
+    }
+
+    pub fn with_tab_folder_renamed(
+        &self,
+        workspace_id: WorkspaceId,
+        folder_id: TabFolderId,
+        name: String,
+    ) -> WisResult<Self> {
+        self.require_folder(workspace_id, folder_id)?;
+        let workspaces =
+            self.map_workspace(workspace_id, |w| w.with_folder_renamed(folder_id, name.clone()));
+
+        Ok(Self {
+            workspaces,
+            ..self.clone()
+        })
+    }
+
+    pub fn with_tab_folder_recolored(
+        &self,
+        workspace_id: WorkspaceId,
+        folder_id: TabFolderId,
+        accent: AccentColor,
+    ) -> WisResult<Self> {
+        self.require_folder(workspace_id, folder_id)?;
+        let workspaces =
+            self.map_workspace(workspace_id, |w| w.with_folder_recolored(folder_id, accent));
+
+        Ok(Self {
+            workspaces,
+            ..self.clone()
+        })
+    }
+
+    pub fn with_tab_folder_collapsed(
+        &self,
+        workspace_id: WorkspaceId,
+        folder_id: TabFolderId,
+        collapsed: bool,
+    ) -> WisResult<Self> {
+        self.require_folder(workspace_id, folder_id)?;
+        let workspaces =
+            self.map_workspace(workspace_id, |w| w.with_folder_collapsed(folder_id, collapsed));
+
+        Ok(Self {
+            workspaces,
+            ..self.clone()
+        })
+    }
+
+    /// Delete a folder, leaving its member tabs open but loose (no dangling
+    /// membership).
+    pub fn with_tab_folder_removed(
+        &self,
+        workspace_id: WorkspaceId,
+        folder_id: TabFolderId,
+    ) -> WisResult<Self> {
+        self.require_folder(workspace_id, folder_id)?;
+
+        let tabs = self
+            .tabs
+            .iter()
+            .map(|t| {
+                if t.workspace_id == workspace_id && t.folder_id == Some(folder_id) {
+                    t.with_folder(None)
+                } else {
+                    t.clone()
+                }
+            })
+            .collect();
+        let workspaces = self.map_workspace(workspace_id, |w| w.with_folder_removed(folder_id));
+
+        Ok(Self {
+            workspaces,
+            tabs,
+            ..self.clone()
+        })
+    }
+
+    /// Set (or clear, with `None`) the folder new tabs file into for a workspace.
+    pub fn with_selected_tab_folder(
+        &self,
+        workspace_id: WorkspaceId,
+        folder_id: Option<TabFolderId>,
+    ) -> WisResult<Self> {
+        if let Some(fid) = folder_id {
+            self.require_folder(workspace_id, fid)?;
+        } else {
+            self.workspace(workspace_id)?;
+        }
+        let workspaces = self.map_workspace(workspace_id, |w| w.with_selected_folder(folder_id));
+
+        Ok(Self {
+            workspaces,
+            ..self.clone()
+        })
+    }
+
+    pub fn with_tab_folders_reordered(
+        &self,
+        workspace_id: WorkspaceId,
+        order: Vec<TabFolderId>,
+    ) -> WisResult<Self> {
+        self.workspace(workspace_id)?;
+        let workspaces =
+            self.map_workspace(workspace_id, |w| w.with_tab_folders_reordered(&order));
+
+        Ok(Self {
+            workspaces,
+            ..self.clone()
+        })
+    }
+
+    /// Move a tab into `folder_id` (or out of any folder when `None`). Assigning
+    /// to a folder unpins the tab, since pinned tabs are always loose.
+    pub fn with_tab_assigned_folder(
+        &self,
+        tab_id: TabId,
+        folder_id: Option<TabFolderId>,
+    ) -> WisResult<Self> {
+        let tab = self.tab(tab_id)?;
+        let workspace_id = tab.workspace_id;
+        if let Some(fid) = folder_id {
+            self.require_folder(workspace_id, fid)?;
+        }
+
+        let unpin = folder_id.is_some() && tab.pinned;
+        let updated = {
+            let next = tab.with_folder(folder_id);
+            if unpin {
+                next.with_pinned(false)
+            } else {
+                next
+            }
+        };
+
+        let tabs = self
+            .tabs
+            .iter()
+            .map(|t| {
+                if t.id == tab_id {
+                    updated.clone()
+                } else {
+                    t.clone()
+                }
+            })
+            .collect();
+        let workspaces = if unpin {
+            self.map_workspace(workspace_id, |w| w.with_pinned(tab_id, false))
+        } else {
+            self.workspaces.clone()
+        };
+
+        Ok(Self {
+            workspaces,
+            tabs,
+            ..self.clone()
+        })
     }
 
     /// Replace a tab's URL. The title is also bumped to the URL string as a
@@ -761,6 +999,14 @@ impl BrowserState {
                     ));
                 }
             }
+            if let Some(selected) = ws.selected_folder_id {
+                if !ws.has_folder(selected) {
+                    errors.push(format!(
+                        "workspace {} selected_folder_id {} is not one of its folders",
+                        ws.id, selected
+                    ));
+                }
+            }
             if let Some(tree) = &ws.pane_tree {
                 for leaf in tree.leaves() {
                     if !ws.tab_order.contains(&leaf) {
@@ -787,6 +1033,26 @@ impl BrowserState {
                     "tab {} belongs to missing workspace {}",
                     tab.id, tab.workspace_id
                 ));
+            }
+            if let Some(folder_id) = tab.folder_id {
+                let in_workspace = self
+                    .workspaces
+                    .iter()
+                    .find(|w| w.id == tab.workspace_id)
+                    .map(|w| w.has_folder(folder_id))
+                    .unwrap_or(false);
+                if !in_workspace {
+                    errors.push(format!(
+                        "tab {} references missing folder {} in workspace {}",
+                        tab.id, folder_id, tab.workspace_id
+                    ));
+                }
+                if tab.pinned {
+                    errors.push(format!(
+                        "tab {} is pinned but also assigned to folder {}",
+                        tab.id, folder_id
+                    ));
+                }
             }
         }
 

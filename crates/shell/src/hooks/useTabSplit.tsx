@@ -22,9 +22,10 @@ import { commands } from '@/bindings/commands'
 import type { TabId, WorkspaceId } from '@/bindings/types'
 
 const DRAG_THRESHOLD_PX = 6
-// 4 split glyphs + a divider + the pin toggle (see PaneSplitMenuSurface).
-const MENU_W = 172
-const MENU_H = 36
+// The tab context menu (split + pin + move-to-folder) self-measures and resizes;
+// this is just the initial overlay height before it fits to content.
+const MENU_W = 200
+const MENU_INITIAL_H = 240
 const MARGIN = 8
 
 const OPEN_EVENT = 'wis-tabmenu-open'
@@ -162,6 +163,25 @@ export function reorderedWithPinned(
   return fullOrder.map((id) => (pinned.has(id) ? id : next[i++]))
 }
 
+/**
+ * Reorder only the `movable` subset (e.g. the loose, non-foldered tabs shown as
+ * a flat list), merging back so every other tab keeps its slot in the full
+ * order. `insertion` indexes the rendered movable list. Returns null when
+ * nothing moves.
+ */
+export function reorderedAmong(
+  fullOrder: TabId[],
+  movable: ReadonlySet<TabId>,
+  draggedId: TabId,
+  insertion: number,
+): TabId[] | null {
+  const subset = fullOrder.filter((id) => movable.has(id))
+  const next = reorderedTabIds(subset, draggedId, insertion)
+  if (!next) return null
+  let i = 0
+  return fullOrder.map((id) => (movable.has(id) ? next[i++] : id))
+}
+
 export function useTabSplit({
   workspaceId: _workspaceId,
   activeTabId,
@@ -169,7 +189,7 @@ export function useTabSplit({
 }: UseTabSplitArgs): UseTabSplitReturn {
   const draggedRef = useRef(false)
   const ensuredRef = useRef(false)
-  const pendingRef = useRef<TabId | null>(null)
+  const pendingRef = useRef<{ movedTabId: TabId; x: number; y: number; winH: number } | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -181,7 +201,7 @@ export function useTabSplit({
     let cancelled = false
     void listen(READY_EVENT, () => {
       if (pendingRef.current) {
-        void emit(OPEN_EVENT, { movedTabId: pendingRef.current })
+        void emit(OPEN_EVENT, pendingRef.current)
       }
     }).then((fn) => {
       if (cancelled) fn()
@@ -303,19 +323,21 @@ export function useTabSplit({
   const openSplitMenu = (e: ReactMouseEvent, tabId: TabId) => {
     if (!activeTabId) return
     e.preventDefault()
+    const winH = window.innerHeight
     const x = Math.min(Math.max(MARGIN, e.clientX), window.innerWidth - MENU_W - MARGIN)
-    const y = Math.min(Math.max(MARGIN, e.clientY), window.innerHeight - MENU_H - MARGIN)
-    pendingRef.current = tabId
+    const y = Math.max(MARGIN, Math.min(e.clientY, winH - MENU_INITIAL_H - MARGIN))
+    const payload = { movedTabId: tabId, x, y: e.clientY, winH }
+    pendingRef.current = payload
 
     const place = async () => {
       if (!ensuredRef.current) {
         await commands.ensureOverlay('tabmenu')
         ensuredRef.current = true
       }
-      await commands.setOverlayBounds('tabmenu', x, y, MENU_W, MENU_H)
+      await commands.setOverlayBounds('tabmenu', x, y, MENU_W, MENU_INITIAL_H)
     }
     void place().catch(() => undefined)
-    void emit(OPEN_EVENT, { movedTabId: tabId })
+    void emit(OPEN_EVENT, payload)
     setMenuOpen(true)
   }
 
