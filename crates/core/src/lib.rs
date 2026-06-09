@@ -17,6 +17,7 @@ pub mod settings;
 pub mod state;
 pub mod tab;
 pub mod tab_folder;
+pub mod user_agent;
 pub mod widget;
 pub mod workspace;
 
@@ -33,5 +34,6 @@ pub use settings::{UserSettings, UserSettingsPatch};
 pub use state::BrowserState;
 pub use tab::{FaviconRef, Tab};
 pub use tab_folder::TabFolder;
+pub use user_agent::{ua_for_host, UaProfile, DEFAULT_MAC_OS_VERSION};
 pub use widget::{Widget, WidgetKind};
 pub use workspace::{AccentColor, EssentialPin, Workspace};

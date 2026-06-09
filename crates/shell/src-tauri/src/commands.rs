@@ -1010,12 +1010,19 @@ pub async fn create_tab_webview(
 
     let label_ident = label.clone();
 
-    let ephemeral = {
+    let (ephemeral, user_agent) = {
         let browser = state.browser.lock().await;
-        browser
+        let ephemeral = browser
             .workspace(workspace_id)
             .map(|w| w.ephemeral)
-            .unwrap_or(false)
+            .unwrap_or(false);
+        let user_agent = wis_core::ua_for_host(
+            parsed.host_str().unwrap_or_default(),
+            &browser.settings.ua_site_overrides,
+            &browser.settings.user_agent_profile,
+            wis_core::DEFAULT_MAC_OS_VERSION,
+        );
+        (ephemeral, user_agent)
     };
 
     let proxy_port = state
@@ -1029,6 +1036,9 @@ pub async fn create_tab_webview(
     let mut builder = WebviewBuilder::new(label, WebviewUrl::External(parsed))
         .focused(false)
         .proxy_url(proxy_url);
+    if let Some(ua) = &user_agent {
+        builder = builder.user_agent(ua);
+    }
     if ephemeral {
         builder = builder.incognito(true);
     } else {

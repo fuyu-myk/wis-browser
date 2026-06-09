@@ -192,6 +192,13 @@ export interface Workspace {
   upstream_proxy: UpstreamProxy | null
 }
 
+/**
+ * User agent a remote page is shown. Mirrors `wis_core::UaProfile`
+ * (externally tagged). `'safari'` is the default and fixes sites that flag the
+ * raw WKWebView engine as an unsupported browser.
+ */
+export type UaProfile = 'default' | 'safari' | 'chrome' | { custom: string }
+
 export interface UserSettings {
   layout: LayoutMode
   top_tabs_rail_side: RailSide
@@ -214,6 +221,10 @@ export interface UserSettings {
   tab_sleep_minutes: number
   /** Persist (encrypted) login sessions across restarts; auto-expire after a cap. */
   persist_sessions: boolean
+  /** Default user agent presented to remote pages. */
+  user_agent_profile: UaProfile
+  /** Per-host user agent overrides, keyed by `www.`-stripped host. */
+  ua_site_overrides: Record<string, UaProfile>
   /** User-supplied accelerator overrides, sparse. Keyed by `KeyAction`. */
   keybindings: Partial<Record<KeyAction, string>>
 }
@@ -240,6 +251,9 @@ export interface UserSettingsPatch {
   tab_sleep_enabled?: boolean
   tab_sleep_minutes?: number
   persist_sessions?: boolean
+  user_agent_profile?: UaProfile
+  /** Replaces the whole override map when present. */
+  ua_site_overrides?: Record<string, UaProfile>
   /**
    * Sparse map of accelerator overrides. An entry replaces just that
    * action's binding; an empty string acts as "reset to default".

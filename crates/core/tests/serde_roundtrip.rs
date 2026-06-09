@@ -102,6 +102,11 @@ fn settings_patch_round_trips_when_all_fields_set() {
         tab_sleep_enabled: Some(false),
         tab_sleep_minutes: Some(30),
         persist_sessions: Some(false),
+        user_agent_profile: Some(wis_core::UaProfile::Chrome),
+        ua_site_overrides: Some(HashMap::from([(
+            "example.com".to_string(),
+            wis_core::UaProfile::Safari,
+        )])),
         keybindings: Some(HashMap::from([
             (KeyAction::NewTab, "Ctrl+T".into()),
             (KeyAction::CloseTab, "Ctrl+W".into()),

@@ -75,9 +75,15 @@ pub async fn open_peek(
         let _ = existing.close();
     }
 
-    let active_ws = {
+    let (active_ws, user_agent) = {
         let browser = state.browser.lock().await;
-        browser.active_workspace_id
+        let user_agent = wis_core::ua_for_host(
+            parsed.host_str().unwrap_or_default(),
+            &browser.settings.ua_site_overrides,
+            &browser.settings.user_agent_profile,
+            wis_core::DEFAULT_MAC_OS_VERSION,
+        );
+        (browser.active_workspace_id, user_agent)
     };
     let proxy_port = state
         .ensure_proxy_for(active_ws)
@@ -93,10 +99,13 @@ pub async fn open_peek(
             message: "main window missing".into(),
         })?;
 
-    let builder = WebviewBuilder::new(PEEK_LABEL, WebviewUrl::External(parsed))
+    let mut builder = WebviewBuilder::new(PEEK_LABEL, WebviewUrl::External(parsed))
         .focused(true)
         .incognito(true)
         .proxy_url(proxy_url);
+    if let Some(ua) = &user_agent {
+        builder = builder.user_agent(ua);
+    }
 
     let child = window
         .add_child(

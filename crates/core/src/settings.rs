@@ -6,6 +6,7 @@ use crate::keybinding::KeyAction;
 use crate::layout::{LayoutMode, RailSide, ThemeMode};
 use crate::privacy::PrivacyMode;
 use crate::search::SearchEngine;
+use crate::user_agent::UaProfile;
 use crate::workspace::AccentColor;
 use serde::{Deserialize, Serialize};
 
@@ -59,6 +60,15 @@ pub struct UserSettings {
     /// cookie TTL). Off means logins end when the app quits (most private).
     #[serde(default = "default_persist_sessions")]
     pub persist_sessions: bool,
+    /// Default user agent presented to remote pages. Safari by default so the
+    /// WebKit engine is identified correctly. Serde-default upgrades existing 
+    /// settings to the fix automatically.
+    #[serde(default)]
+    pub user_agent_profile: UaProfile,
+    /// Per-host user agent overrides for sites that still special-case a
+    /// particular browser. Keyed by `www.`-stripped host.
+    #[serde(default)]
+    pub ua_site_overrides: HashMap<String, UaProfile>,
     /// User-supplied accelerator overrides keyed by [`KeyAction`]. Each
     /// entry replaces the corresponding entry from [`crate::default_keymap`]
     /// at runtime (see [`crate::effective_keymap`]). Absent entries fall
@@ -104,6 +114,8 @@ impl Default for UserSettings {
             tab_sleep_enabled: true,
             tab_sleep_minutes: 15,
             persist_sessions: true,
+            user_agent_profile: UaProfile::default(),
+            ua_site_overrides: HashMap::new(),
             keybindings: HashMap::new(),
         }
     }
@@ -149,6 +161,12 @@ pub struct UserSettingsPatch {
     pub tab_sleep_minutes: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persist_sessions: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_agent_profile: Option<UaProfile>,
+    /// Replaces the whole override map when present (the frontend holds the
+    /// full map). `None` keeps the current map.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ua_site_overrides: Option<HashMap<String, UaProfile>>,
     /// Merged onto the existing `keybindings` map. Sparse entries replace
     /// just those actions; absent actions keep their current binding.
     /// `Some(empty_map)` is a no-op (the patch is sparse, not a wipe).
@@ -183,6 +201,12 @@ impl UserSettings {
             tab_sleep_enabled: patch.tab_sleep_enabled.unwrap_or(self.tab_sleep_enabled),
             tab_sleep_minutes: patch.tab_sleep_minutes.unwrap_or(self.tab_sleep_minutes),
             persist_sessions: patch.persist_sessions.unwrap_or(self.persist_sessions),
+            user_agent_profile: patch
+                .user_agent_profile
+                .unwrap_or_else(|| self.user_agent_profile.clone()),
+            ua_site_overrides: patch
+                .ua_site_overrides
+                .unwrap_or_else(|| self.ua_site_overrides.clone()),
             keybindings: match patch.keybindings {
                 None => self.keybindings.clone(),
                 Some(overrides) => {
