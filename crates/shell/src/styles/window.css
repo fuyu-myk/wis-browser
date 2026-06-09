@@ -66,6 +66,7 @@
   display: flex;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 .pane-slot > .pane-leaf,
 .pane-slot > .pane-split {
@@ -90,22 +91,32 @@
   flex-direction: column;
 }
 .pane-split .pane-leaf {
-  border: 2px solid color-mix(in oklab, var(--primary-400) 22%, transparent);
-  border-radius: 10px;
+  padding: 3px;
 }
+/* "Cut-out" panes: each surface is a transparent rounded window (the page shows
+   the glass vibrancy straight through it). */
+.pane-split { --pane-fill: var(--chrome-bar); }
+.kb-window.glass-on .pane-split { --pane-fill: var(--chrome-bar-glass); }
 .pane-split .pane-leaf > .pane-surface {
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
+  box-shadow:
+    0 0 0 2px color-mix(in oklab, var(--primary-400) 40%, transparent),
+    0 0 0 100vmax var(--pane-fill);
 }
-.pane-split .pane-leaf.is-focused {
-  border-color: var(--primary-400);
+.pane-split .pane-leaf.is-focused > .pane-surface {
+  box-shadow:
+    0 0 0 2px var(--primary-400),
+    0 0 0 100vmax var(--pane-fill);
 }
 .pane-divider {
   flex: 0 0 8px;
   align-self: stretch;
   position: relative;
   z-index: 5;
+  background: var(--chrome-bar);
 }
+.kb-window.glass-on .pane-divider { background: var(--chrome-bar-glass); }
 .pane-divider.is-vertical { cursor: col-resize; }
 .pane-divider.is-horizontal { cursor: row-resize; }
 .pane-divider::after {
@@ -2305,9 +2316,8 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 }
 
 .kb-content.is-split {
-  border-color: transparent;
+  border-width: 0;
 }
-[data-mode="dark"] .kb-content.is-split { box-shadow: none; }
 
 .kb-urlpill-inline {
   width: 100%;
@@ -3103,45 +3113,11 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 }
 [data-mode="dark"].glass-on .kb-sitedata-row { border-bottom-color: rgba(255,255,255,0.06); }
 
-/* ─── Chrome-page scrollbars: inverted vs the theme ─────────────── */
 .kb-history-groups::-webkit-scrollbar,
 .kb-sitedata-list::-webkit-scrollbar,
 .kb-settings-main::-webkit-scrollbar {
   width: 10px;
   height: 10px;
-}
-.kb-history-groups::-webkit-scrollbar-track,
-.kb-sitedata-list::-webkit-scrollbar-track,
-.kb-settings-main::-webkit-scrollbar-track {
-  background: transparent;
-}
-[data-mode="dark"] .kb-history-groups::-webkit-scrollbar-thumb,
-[data-mode="dark"] .kb-sitedata-list::-webkit-scrollbar-thumb,
-[data-mode="dark"] .kb-settings-main::-webkit-scrollbar-thumb {
-  background: rgba(235, 234, 240, 0.45);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-  border-radius: 10px;
-}
-[data-mode="dark"] .kb-history-groups::-webkit-scrollbar-thumb:hover,
-[data-mode="dark"] .kb-sitedata-list::-webkit-scrollbar-thumb:hover,
-[data-mode="dark"] .kb-settings-main::-webkit-scrollbar-thumb:hover {
-  background: rgba(235, 234, 240, 0.65);
-  background-clip: padding-box;
-}
-[data-mode="light"] .kb-history-groups::-webkit-scrollbar-thumb,
-[data-mode="light"] .kb-sitedata-list::-webkit-scrollbar-thumb,
-[data-mode="light"] .kb-settings-main::-webkit-scrollbar-thumb {
-  background: rgba(20, 20, 28, 0.4);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-  border-radius: 10px;
-}
-[data-mode="light"] .kb-history-groups::-webkit-scrollbar-thumb:hover,
-[data-mode="light"] .kb-sitedata-list::-webkit-scrollbar-thumb:hover,
-[data-mode="light"] .kb-settings-main::-webkit-scrollbar-thumb:hover {
-  background: rgba(20, 20, 28, 0.6);
-  background-clip: padding-box;
 }
 
 .kb-launch-mark {

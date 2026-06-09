@@ -134,6 +134,8 @@
   --surface-raised: #FAFAF9;
   --border:         #E4E2DC;
   --border-strong:  #C9C7BF;
+  --scrollbar-thumb:       rgba(20,20,28,0.40);
+  --scrollbar-thumb-hover: rgba(20,20,28,0.60);
   --text-primary:   #1A1916;
   --text-secondary: #5C5A54;
   --text-tertiary:  #9B9890;
@@ -157,6 +159,8 @@
   --surface-raised: #41414C;
   --border:         #3A3A43;
   --border-strong:  #4E4E5A;
+  --scrollbar-thumb:       rgba(235,234,240,0.45);
+  --scrollbar-thumb-hover: rgba(235,234,240,0.65);
   --text-primary:   #EEEDF0;
   --text-secondary: #A4A3B2;
   --text-tertiary:  #6E6D7E;
@@ -205,4 +209,13 @@ button {
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 10px; }
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
