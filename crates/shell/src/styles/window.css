@@ -1554,10 +1554,11 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-head-wrap.has-active::after {
   content: '';
   position: absolute;
-  top: 3px;
-  right: 0;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
   width: 3px;
-  height: 18px;
+  height: 14px;
   border-radius: 3px;
   background: var(--primary-500);
   z-index: 2;
@@ -1566,7 +1567,14 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 .layout-sidebar-right .kb-tabfolder-head-wrap.has-active.folder-collapsed::after,
 .kb-window.collapsible.layout-sidebar-right .kb-side:not(.is-expanded) .kb-tabfolder-head-wrap.has-active::after {
   right: auto;
-  left: 0;
+  left: 4px;
+}
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-head-wrap.has-active::after {
+  right: 2px;
+}
+.kb-window.collapsible.layout-sidebar-right .kb-side:not(.is-expanded) .kb-tabfolder-head-wrap.has-active::after {
+  right: auto;
+  left: 2px;
 }
 .kb-tabfolder-head {
   display: flex;
@@ -1794,6 +1802,14 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 }
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-head {
   padding-left: 10px;
+}
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-head.selected {
+  background: transparent;
+  box-shadow: none;
+}
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-head.selected .kb-tabfolder-dot {
+  outline: 1.5px solid var(--primary-500);
+  outline-offset: 2px;
 }
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-pinned-glyph {
   justify-content: flex-start;

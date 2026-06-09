@@ -2,11 +2,12 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
-import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
+import type { Tab, TabFolderId, TabId, WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { PinIcon } from '@/lib/icons'
 import { tabDisplayName } from '@/lib/url'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import { useFolderTarget } from '@/hooks/useFolderTarget'
 import { reorderedAmong, useTabSplit } from '@/hooks/useTabSplit'
 
 import { TabFavicon } from '@/components/TabFavicon'
@@ -17,6 +18,9 @@ interface PinnedTabsProps {
   /** Pinned tab IDs (the set; order follows `tabs`/tab_order). */
   pinnedTabIds: TabId[]
   activeTabId: TabId | null
+  /** Folder currently targeted for new tabs; activating a pin (never in a
+   * folder) clears it, matching the main tab list. */
+  selectedFolderId: TabFolderId | null
   /**
    * `sidebar` swaps a favicon grid (expanded) for a single glyph (collapsed)
    * purely via CSS, riding the sidebar's own expand/collapse. `rail` keeps the
@@ -45,6 +49,7 @@ export function PinnedTabs({
   tabs,
   pinnedTabIds,
   activeTabId,
+  selectedFolderId,
   variant,
   onExpand,
   onMenuOpenChange,
@@ -62,6 +67,7 @@ export function PinnedTabs({
     onSuccess: invalidate,
   })
   const { openSplitMenu } = useTabSplit({ workspaceId, activeTabId, onMenuOpenChange })
+  const { syncToTab } = useFolderTarget(workspaceId, selectedFolderId)
 
   const gridRef = useRef<HTMLDivElement>(null)
   const draggedRef = useRef(false)
@@ -93,6 +99,8 @@ export function PinnedTabs({
 
   const activate = (id: TabId) => {
     setActive.mutate(id)
+    const tab = pinnedTabs.find((t) => t.id === id)
+    if (tab) syncToTab(tab)
     if (variant === 'rail') onOpenChange?.(false)
   }
 

@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -29,6 +30,7 @@ import {
   type DropTarget,
 } from '@/hooks/useTabSplit'
 
+import { useFolderTarget } from '@/hooks/useFolderTarget'
 import { useIslandMenu } from '@/hooks/useIslandMenu'
 import { TabFavicon } from '@/components/TabFavicon'
 import { useDiscardedTabs } from '@/components/DiscardedTabsContext'
@@ -170,13 +172,7 @@ export function HorizontalTabs({
     mutationFn: (order: TabFolderId[]) => commands.reorderTabFolders(workspaceId, order),
     onSuccess: invalidate,
   })
-  const selectFolder = useMutation({
-    // `selected` is the folder's *current* state; toggle deselect when it
-    // is already the target, select it otherwise.
-    mutationFn: (a: { folderId: TabFolderId; selected: boolean }) =>
-      commands.selectTabFolder(workspaceId, a.selected ? null : a.folderId),
-    onSuccess: invalidate,
-  })
+  const { setTarget, syncToTab } = useFolderTarget(workspaceId, selectedFolderId)
   const renameFolder = useMutation({
     mutationFn: (a: { folderId: TabFolderId; name: string }) =>
       commands.renameTabFolder(workspaceId, a.folderId, a.name),
@@ -509,12 +505,14 @@ export function HorizontalTabs({
             return
           }
           setActive.mutate(tab.id)
+          syncToTab(tab)
         }}
         onContextMenu={(e) => openSplitMenu(e, tab.id)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
             setActive.mutate(tab.id)
+            syncToTab(tab)
           }
         }}
         title={tab.title}
@@ -561,6 +559,7 @@ export function HorizontalTabs({
           return
         }
         setActive.mutate(tab.id)
+        syncToTab(tab)
       }}
       onContextMenu={(e) => openSplitMenu(e, tab.id)}
     >
@@ -599,13 +598,13 @@ export function HorizontalTabs({
         return
       }
       if (isRenaming) return
-      selectFolder.mutate({ folderId: folder.id, selected: isSelected })
+      setTarget(isSelected ? null : folder.id)
     }
     const onFolderKeyDown = (e: ReactKeyboardEvent) => {
       if (e.key !== 'Enter') return
       e.preventDefault()
       if (isSelected) beginRename(folder)
-      else selectFolder.mutate({ folderId: folder.id, selected: false })
+      else setTarget(folder.id)
     }
     if (folder.collapsed) {
       return (
@@ -696,6 +695,14 @@ export function HorizontalTabs({
     )
   }
 
+  const onStripClick = (e: ReactMouseEvent) => {
+    if (selectedFolderId == null) return
+    // Tabs, pinned tabs and folder islands set the target themselves; only a
+    // click on bare strip background clears it.
+    if ((e.target as Element).closest('.h-tab, .h-pin-circle, .h-island, .h-island-circle')) return
+    setTarget(null)
+  }
+
   const pinnedEls = pinnedTabs.map((tab, i) => renderPinCircle(tab, i))
   const folderEls = folderGroups.map((g, i) => renderFolder(g, i))
   const looseEls = looseTabs.map((tab, i) => renderTab(tab, { looseIndex: i }))
@@ -715,6 +722,7 @@ export function HorizontalTabs({
         'is-inactive-compact': inactiveCompact,
       })}
       ref={wrapRef}
+      onClick={onStripClick}
     >
       <div className={cx('tabs-h', { compact })} ref={stripRef}>
         {ordered}

@@ -121,6 +121,7 @@ export function Sidebar({
           tabs={tabs}
           pinnedTabIds={activeWorkspace.pinned_tab_ids}
           activeTabId={activeTab?.id ?? null}
+          selectedFolderId={activeWorkspace.selected_folder_id ?? null}
           onExpand={() => setExpanded(true)}
           onMenuOpenChange={setTabMenuOpen}
         />

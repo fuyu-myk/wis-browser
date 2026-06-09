@@ -7,6 +7,7 @@ import { cx } from '@/lib/cx'
 import { FolderPlusIcon, PlusIcon, XIcon } from '@/lib/icons'
 import { tabDisplayName } from '@/lib/url'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import { useFolderTarget } from '@/hooks/useFolderTarget'
 import {
   useTabSplit,
   tabDropTarget,
@@ -114,6 +115,7 @@ export function TabList({
     mutationFn: (order: TabFolderId[]) => commands.reorderTabFolders(workspaceId, order),
     onSuccess: invalidate,
   })
+  const { syncToTab } = useFolderTarget(workspaceId, selectedFolderId)
 
   const { startTabDrag, draggedRef, openSplitMenu } = useTabSplit({
     workspaceId,
@@ -331,12 +333,14 @@ export function TabList({
             return
           }
           setActive.mutate(tab.id)
+          syncToTab(tab)
         }}
         onContextMenu={(e) => openSplitMenu(e, tab.id)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
             setActive.mutate(tab.id)
+            syncToTab(tab)
           }
         }}
       >
