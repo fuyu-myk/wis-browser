@@ -73,3 +73,4 @@ define_id!(
     "wgt",
     "Identifier for a side widget (WhatsApp, Telegram, etc)."
 );
+define_id!(DownloadId, "dl", "Identifier for a single download.");

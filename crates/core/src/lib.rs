@@ -4,6 +4,7 @@
 //! workspaces, tabs, settings, and the operations that produce new states
 //! from old ones.
 
+pub mod download;
 pub mod error;
 pub mod ids;
 pub mod keybinding;
@@ -21,8 +22,9 @@ pub mod user_agent;
 pub mod widget;
 pub mod workspace;
 
+pub use download::{sanitize_filename, unique_filename, DownloadStatus, FALLBACK_FILENAME};
 pub use error::{WisError, WisResult};
-pub use ids::{TabFolderId, TabId, WidgetId, WorkspaceId};
+pub use ids::{DownloadId, TabFolderId, TabId, WidgetId, WorkspaceId};
 pub use keybinding::{default_keymap, effective_keymap, KeyAction};
 pub use layout::{LayoutMode, RailSide, ThemeMode};
 pub use link_safety::{assess_link, LinkAssessment, LinkWarning, RiskLevel};
