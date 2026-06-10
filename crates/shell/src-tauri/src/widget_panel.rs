@@ -231,11 +231,9 @@ pub async fn open_widget_panel(
                 #[derive(Clone, Copy)]
                 struct CGColorRef(*const std::ffi::c_void);
                 unsafe impl objc2::encode::Encode for CGColorRef {
-                    const ENCODING: objc2::encode::Encoding =
-                        objc2::encode::Encoding::Pointer(&objc2::encode::Encoding::Struct(
-                            "CGColor",
-                            &[],
-                        ));
+                    const ENCODING: objc2::encode::Encoding = objc2::encode::Encoding::Pointer(
+                        &objc2::encode::Encoding::Struct("CGColor", &[]),
+                    );
                 }
                 let cg: CGColorRef = msg_send![surface, CGColor];
                 if !cg.0.is_null() {

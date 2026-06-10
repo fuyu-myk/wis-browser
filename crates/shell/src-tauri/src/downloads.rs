@@ -107,12 +107,13 @@ pub async fn list_downloads(state: State<'_, AppState>) -> WisResult<Vec<Downloa
         let items = state.downloads.lock().expect("downloads poisoned");
         items.iter().rev().cloned().collect()
     };
-    let history = state
-        .storage
-        .list_downloads(HISTORY_LIMIT)
-        .map_err(|err| WisError::PersistenceFailed {
-            reason: err.to_string(),
-        })?;
+    let history =
+        state
+            .storage
+            .list_downloads(HISTORY_LIMIT)
+            .map_err(|err| WisError::PersistenceFailed {
+                reason: err.to_string(),
+            })?;
     let seen: std::collections::HashSet<DownloadId> = merged.iter().map(|item| item.id).collect();
     merged.extend(
         history
@@ -270,9 +271,11 @@ fn validate_on_disk(path: &Path) -> WisResult<Option<PathBuf>> {
 
 fn spawn_open(mut cmd: std::process::Command, path: &Path) -> WisResult<()> {
     cmd.arg(path);
-    cmd.spawn().map(|_| ()).map_err(|err| WisError::InvalidInput {
-        message: format!("failed to open download: {err}"),
-    })
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("failed to open download: {err}"),
+        })
 }
 
 /// Decide the destination for a requested download and register it.
@@ -380,7 +383,10 @@ fn pick_destination(
     // by clearing the way first. Server names never reach this branch.
     if chosen.exists() {
         if let Err(err) = std::fs::remove_file(&chosen) {
-            log::warn!("download denied, cannot replace {}: {err}", chosen.display());
+            log::warn!(
+                "download denied, cannot replace {}: {err}",
+                chosen.display()
+            );
             return None;
         }
     }
@@ -467,7 +473,9 @@ fn ask_destination(suggested: &str, start_dir: &Path) -> Option<PathBuf> {
             return None;
         }
 
-        Some(PathBuf::from(CStr::from_ptr(utf8).to_string_lossy().into_owned()))
+        Some(PathBuf::from(
+            CStr::from_ptr(utf8).to_string_lossy().into_owned(),
+        ))
     }
 }
 
