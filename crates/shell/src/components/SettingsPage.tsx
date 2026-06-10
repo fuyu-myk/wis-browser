@@ -476,6 +476,20 @@ export function SettingsPage() {
         </div>
         <div className="row">
           <div className="l">
+            <span>Fraudulent website warning</span>
+            <span>
+              Warn before suspected phishing or malware sites (WebKit's
+              Apple-proxied Safe Browsing check; performs network lookups).
+            </span>
+          </div>
+          <Switch
+            checked={settings.fraud_warning_enabled}
+            onChange={(fraud_warning_enabled) => update.mutate({ fraud_warning_enabled })}
+            label="Fraudulent website warning"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
             <span>Auto-update filter lists</span>
             <span>Fetch EasyPrivacy on launch, cache for 24 hours.</span>
           </div>

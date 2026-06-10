@@ -61,6 +61,13 @@ pub struct UserSettings {
     /// cookie TTL). Off means logins end when the app quits (most private).
     #[serde(default = "default_persist_sessions")]
     pub persist_sessions: bool,
+    /// When true, remote webviews enable WebKit's fraudulent-website warning
+    /// (Apple-proxied Safe Browsing): a full-page warning before suspected
+    /// phishing/malware sites. Complements the structural heuristics in
+    /// [`crate::link_safety`] with a real threat database. On by default;
+    /// exposed as a toggle because the check performs network lookups.
+    #[serde(default = "default_fraud_warning_enabled")]
+    pub fraud_warning_enabled: bool,
     /// Default user agent presented to remote pages. Safari by default so the
     /// WebKit engine is identified correctly. Serde-default upgrades existing
     /// settings to the fix automatically.
@@ -109,6 +116,10 @@ fn default_persist_sessions() -> bool {
     true
 }
 
+fn default_fraud_warning_enabled() -> bool {
+    true
+}
+
 fn default_widget_panel_limit_enabled() -> bool {
     true
 }
@@ -137,6 +148,7 @@ impl Default for UserSettings {
             tab_sleep_enabled: true,
             tab_sleep_minutes: 15,
             persist_sessions: true,
+            fraud_warning_enabled: true,
             user_agent_profile: UaProfile::default(),
             ua_site_overrides: HashMap::new(),
             sidebar_widgets: Vec::new(),
@@ -188,6 +200,8 @@ pub struct UserSettingsPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persist_sessions: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fraud_warning_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_agent_profile: Option<UaProfile>,
     /// Replaces the whole override map when present (the frontend holds the
     /// full map). `None` keeps the current map.
@@ -235,6 +249,9 @@ impl UserSettings {
             tab_sleep_enabled: patch.tab_sleep_enabled.unwrap_or(self.tab_sleep_enabled),
             tab_sleep_minutes: patch.tab_sleep_minutes.unwrap_or(self.tab_sleep_minutes),
             persist_sessions: patch.persist_sessions.unwrap_or(self.persist_sessions),
+            fraud_warning_enabled: patch
+                .fraud_warning_enabled
+                .unwrap_or(self.fraud_warning_enabled),
             user_agent_profile: patch
                 .user_agent_profile
                 .unwrap_or_else(|| self.user_agent_profile.clone()),

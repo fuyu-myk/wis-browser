@@ -120,7 +120,7 @@ pub async fn open_widget_panel(
         return Ok(());
     }
 
-    let (workspace_id, ephemeral, privacy_mode, user_agent) = {
+    let (workspace_id, ephemeral, privacy_mode, user_agent, fraud_warning) = {
         let browser = state.browser.lock().await;
         let ws_id = browser.active_workspace_id;
         let (ephemeral, privacy_mode) = browser
@@ -134,7 +134,13 @@ pub async fn open_widget_panel(
             wis_core::DEFAULT_MAC_OS_VERSION,
         );
 
-        (ws_id, ephemeral, privacy_mode, user_agent)
+        (
+            ws_id,
+            ephemeral,
+            privacy_mode,
+            user_agent,
+            browser.settings.fraud_warning_enabled,
+        )
     };
 
     let proxy_port = state
@@ -174,6 +180,9 @@ pub async fn open_widget_panel(
         .map_err(|err| WisError::InvalidInput {
             message: format!("widget panel add_child failed: {err}"),
         })?;
+
+    // Apple-proxied Safe Browsing warning.
+    crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
 
     // Keep overlays (incl. the resize strip) above the freshly added panel.
     crate::overlay::promote_overlays_to_front(&app);

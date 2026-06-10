@@ -75,7 +75,7 @@ pub async fn open_peek(
         let _ = existing.close();
     }
 
-    let (active_ws, user_agent) = {
+    let (active_ws, user_agent, fraud_warning) = {
         let browser = state.browser.lock().await;
         let user_agent = wis_core::ua_for_host(
             parsed.host_str().unwrap_or_default(),
@@ -83,7 +83,11 @@ pub async fn open_peek(
             &browser.settings.user_agent_profile,
             wis_core::DEFAULT_MAC_OS_VERSION,
         );
-        (browser.active_workspace_id, user_agent)
+        (
+            browser.active_workspace_id,
+            user_agent,
+            browser.settings.fraud_warning_enabled,
+        )
     };
     let proxy_port = state
         .ensure_proxy_for(active_ws)
@@ -116,6 +120,9 @@ pub async fn open_peek(
         .map_err(|err| WisError::InvalidInput {
             message: format!("peek add_child failed: {err}"),
         })?;
+
+    // Apple-proxied Safe Browsing warning.
+    crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
 
     // Round the preview's corners so it sits cleanly inside the card.
     #[cfg(target_os = "macos")]

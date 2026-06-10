@@ -1072,7 +1072,7 @@ pub async fn create_tab_webview(
 
     let label_ident = label.clone();
 
-    let (ephemeral, user_agent) = {
+    let (ephemeral, user_agent, fraud_warning) = {
         let browser = state.browser.lock().await;
         let ephemeral = browser
             .workspace(workspace_id)
@@ -1084,7 +1084,11 @@ pub async fn create_tab_webview(
             &browser.settings.user_agent_profile,
             wis_core::DEFAULT_MAC_OS_VERSION,
         );
-        (ephemeral, user_agent)
+        (
+            ephemeral,
+            user_agent,
+            browser.settings.fraud_warning_enabled,
+        )
     };
 
     let proxy_port = state
@@ -1263,6 +1267,9 @@ pub async fn create_tab_webview(
             log::warn!("content filter: attach skipped: {err}");
         }
     }
+
+    // Apple-proxied Safe Browsing warning.
+    crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
 
     // "Save password?" capture.
     if !ephemeral {
@@ -1495,6 +1502,7 @@ pub async fn update_settings(
     let keybindings_touched = patch.keybindings.is_some();
     let theme_touched = patch.theme.is_some();
     let persistence_disabled = patch.persist_sessions == Some(false);
+    let fraud_warning_changed = patch.fraud_warning_enabled;
     let settings = mutate_immediate(&app, &state, |s| {
         let next = s.with_settings(patch);
         let settings = next.settings.clone();
@@ -1512,6 +1520,10 @@ pub async fn update_settings(
 
     if theme_touched {
         apply_appearance_to_all_tabs(&app, settings.theme);
+    }
+
+    if let Some(enabled) = fraud_warning_changed {
+        crate::webview_prefs::apply_fraud_warning_to_all_remote(&app, enabled);
     }
 
     // Turning off "stay logged in" wipes any already-persisted sessions.

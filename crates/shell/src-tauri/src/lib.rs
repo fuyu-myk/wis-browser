@@ -17,6 +17,7 @@ mod save_coalescer;
 mod state;
 mod suggest;
 mod vault;
+mod webview_prefs;
 mod widget_panel;
 
 use std::sync::Arc;
