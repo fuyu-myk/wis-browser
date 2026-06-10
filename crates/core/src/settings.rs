@@ -7,6 +7,7 @@ use crate::layout::{LayoutMode, RailSide, ThemeMode};
 use crate::privacy::PrivacyMode;
 use crate::search::SearchEngine;
 use crate::user_agent::UaProfile;
+use crate::widget::Widget;
 use crate::workspace::AccentColor;
 use serde::{Deserialize, Serialize};
 
@@ -69,6 +70,20 @@ pub struct UserSettings {
     /// particular browser. Keyed by `www.`-stripped host.
     #[serde(default)]
     pub ua_site_overrides: HashMap<String, UaProfile>,
+    /// Global quick-launch sidebar widgets (social apps + AI providers), in
+    /// display order. Shown in every workspace's sidebar; clicking one opens
+    /// its URL in a split pane. Empty by default.
+    #[serde(default)]
+    pub sidebar_widgets: Vec<Widget>,
+    /// When true, at most [`Self::widget_panel_limit`] widget panels stay
+    /// loaded (hidden for instant reopening); beyond that the
+    /// least-recently-used hidden one is reclaimed. Off means limitless.
+    #[serde(default = "default_widget_panel_limit_enabled")]
+    pub widget_panel_limit_enabled: bool,
+    /// Loaded widget panels kept before the oldest hidden one is reclaimed.
+    /// Only consulted when [`Self::widget_panel_limit_enabled`].
+    #[serde(default = "default_widget_panel_limit")]
+    pub widget_panel_limit: u32,
     /// User-supplied accelerator overrides keyed by [`KeyAction`]. Each
     /// entry replaces the corresponding entry from [`crate::default_keymap`]
     /// at runtime (see [`crate::effective_keymap`]). Absent entries fall
@@ -94,6 +109,14 @@ fn default_persist_sessions() -> bool {
     true
 }
 
+fn default_widget_panel_limit_enabled() -> bool {
+    true
+}
+
+fn default_widget_panel_limit() -> u32 {
+    3
+}
+
 impl Default for UserSettings {
     fn default() -> Self {
         Self {
@@ -116,6 +139,9 @@ impl Default for UserSettings {
             persist_sessions: true,
             user_agent_profile: UaProfile::default(),
             ua_site_overrides: HashMap::new(),
+            sidebar_widgets: Vec::new(),
+            widget_panel_limit_enabled: true,
+            widget_panel_limit: 3,
             keybindings: HashMap::new(),
         }
     }
@@ -167,6 +193,14 @@ pub struct UserSettingsPatch {
     /// full map). `None` keeps the current map.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ua_site_overrides: Option<HashMap<String, UaProfile>>,
+    /// Replaces the whole widget list when present (the frontend holds the
+    /// full ordered list). `None` keeps the current list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar_widgets: Option<Vec<Widget>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub widget_panel_limit_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub widget_panel_limit: Option<u32>,
     /// Merged onto the existing `keybindings` map. Sparse entries replace
     /// just those actions; absent actions keep their current binding.
     /// `Some(empty_map)` is a no-op (the patch is sparse, not a wipe).
@@ -207,6 +241,13 @@ impl UserSettings {
             ua_site_overrides: patch
                 .ua_site_overrides
                 .unwrap_or_else(|| self.ua_site_overrides.clone()),
+            sidebar_widgets: patch
+                .sidebar_widgets
+                .unwrap_or_else(|| self.sidebar_widgets.clone()),
+            widget_panel_limit_enabled: patch
+                .widget_panel_limit_enabled
+                .unwrap_or(self.widget_panel_limit_enabled),
+            widget_panel_limit: patch.widget_panel_limit.unwrap_or(self.widget_panel_limit),
             keybindings: match patch.keybindings {
                 None => self.keybindings.clone(),
                 Some(overrides) => {

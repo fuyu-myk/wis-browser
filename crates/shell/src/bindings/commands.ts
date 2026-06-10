@@ -30,6 +30,7 @@ import type {
   UserSettings,
   UserSettingsPatch,
   VaultStatus,
+  WidgetId,
   Workspace,
   WorkspaceId,
 } from '@/bindings/types'
@@ -479,6 +480,67 @@ export const commands = {
    */
   async openInExternalBrowser(url: string): Promise<void> {
     return invoke('open_in_external_browser', { url })
+  },
+
+  /**
+   * Open widget `id`'s quick-launch panel: a floating webview above the tab
+   * webviews, sharing the active workspace's data store and proxy. Reveals
+   * the existing panel when it is already live.
+   */
+  async openWidgetPanel(
+    id: WidgetId,
+    url: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): Promise<void> {
+    return invoke('open_widget_panel', { id, url, x, y, width, height })
+  },
+
+  /**
+   * Re-show widget `id`'s hidden panel without navigating (in-page state
+   * kept). Returns false when it isn't live; the caller should open it.
+   */
+  async showWidgetPanel(
+    id: WidgetId,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): Promise<boolean> {
+    return invoke('show_widget_panel', { id, x, y, width, height })
+  },
+
+  /** Hide widget `id`'s panel, keeping the page alive for instant re-show. */
+  async hideWidgetPanel(id: WidgetId): Promise<void> {
+    return invoke('hide_widget_panel', { id })
+  },
+
+  /** Reposition/resize widget `id`'s panel. No-op when it isn't live. */
+  async setWidgetPanelBounds(
+    id: WidgetId,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): Promise<void> {
+    return invoke('set_widget_panel_bounds', { id, x, y, width, height })
+  },
+
+  /** Close widget `id`'s panel. No-op when it isn't live. */
+  async closeWidgetPanel(id: WidgetId): Promise<void> {
+    return invoke('close_widget_panel', { id })
+  },
+
+  /** Close every live widget panel (workspace switch, dock unmount). */
+  async closeAllWidgetPanels(): Promise<void> {
+    return invoke('close_all_widget_panels')
+  },
+
+  /** Widget ids of the live panel webviews (visible or hidden). */
+  async listWidgetPanels(): Promise<WidgetId[]> {
+    return invoke('list_widget_panels')
   },
 
   // -- settings -------------------------------------------------------------

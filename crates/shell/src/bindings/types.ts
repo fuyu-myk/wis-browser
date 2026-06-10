@@ -124,6 +124,14 @@ export type WidgetKind =
   | 'messenger'
   | 'x_twitter'
   | 'instagram'
+  | 'reddit'
+  | 'line'
+  | 'chat_gpt'
+  | 'claude'
+  | 'gemini'
+  | 'grok'
+  | 'deep_seek'
+  | 'qwen'
   | 'custom'
 
 // ---------------------------------------------------------------------------
@@ -225,6 +233,12 @@ export interface UserSettings {
   user_agent_profile: UaProfile
   /** Per-host user agent overrides, keyed by `www.`-stripped host. */
   ua_site_overrides: Record<string, UaProfile>
+  /** Global quick-launch sidebar widgets, in display order. */
+  sidebar_widgets: Widget[]
+  /** Cap loaded widget panels (LRU reclaim); off means limitless. */
+  widget_panel_limit_enabled: boolean
+  /** Loaded widget panels kept before the oldest hidden one is reclaimed. */
+  widget_panel_limit: number
   /** User-supplied accelerator overrides, sparse. Keyed by `KeyAction`. */
   keybindings: Partial<Record<KeyAction, string>>
 }
@@ -254,6 +268,10 @@ export interface UserSettingsPatch {
   user_agent_profile?: UaProfile
   /** Replaces the whole override map when present. */
   ua_site_overrides?: Record<string, UaProfile>
+  /** Replaces the whole widget list when present. */
+  sidebar_widgets?: Widget[]
+  widget_panel_limit_enabled?: boolean
+  widget_panel_limit?: number
   /**
    * Sparse map of accelerator overrides. An entry replaces just that
    * action's binding; an empty string acts as "reset to default".

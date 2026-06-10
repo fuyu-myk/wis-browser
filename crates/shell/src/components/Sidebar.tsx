@@ -6,6 +6,7 @@ import { cx } from '@/lib/cx'
 import { Brand } from '@/components/Brand'
 import { PinnedTabs } from '@/components/PinnedTabs'
 import { TabList } from '@/components/TabList'
+import { WidgetDock } from '@/components/WidgetDock'
 import { WorkspacePill } from '@/components/WorkspacePill'
 
 interface SidebarProps {
@@ -136,6 +137,7 @@ export function Sidebar({
         onSplitMenuOpenChange={setTabMenuOpen}
         onFolderEditingChange={setFolderEditing}
       />
+      <WidgetDock widgets={settings.sidebar_widgets} variant="sidebar" />
     </aside>
   )
 }

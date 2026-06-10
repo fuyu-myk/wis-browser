@@ -3300,6 +3300,149 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 }
 .kb-ua-remove:hover { color: var(--text-primary); }
 
+/* -- Sidebar quick-launch widgets --------------------------------------- */
+.kb-widget-dock {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 2px;
+  /* Same theme-inverting line as .kb-widget-divider below. */
+  border-top: 1px solid color-mix(in oklab, var(--text-primary) 45%, transparent);
+}
+.kb-widget-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+/* Sidebar dock sits directly below the tab list but is held above the fixed
+   bookmarks/VPN/history/settings stack (its top is ~174px up from the window
+   bottom), and scrolls internally rather than extending down into the icons. */
+.kb-widget-dock.is-sidebar {
+  margin-bottom: 172px;
+  max-height: 30vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.kb-widget-dock.is-sidebar::-webkit-scrollbar { display: none; }
+.kb-window.collapsible .kb-side .kb-widget-dock.is-sidebar {
+  width: 32px;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+.kb-window.collapsible.layout-sidebar-right .kb-side .kb-widget-dock.is-sidebar {
+  align-self: flex-end;
+}
+.kb-widget-dock.is-rail {
+  align-items: center;
+  align-self: center;
+  margin-bottom: 6px;
+  max-height: 40vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.kb-widget-dock.is-rail::-webkit-scrollbar { display: none; }
+.kb-widget-dock.is-rail .kb-widget-row {
+  flex-direction: column;
+}
+.kb-widget-dock.is-rail .kb-widget-divider {
+  width: 22px;
+  align-self: center;
+}
+.kb-widget-divider {
+  height: 1px;
+  width: 100%;
+  margin: 1px 0;
+  background: color-mix(in oklab, var(--text-primary) 45%, transparent);
+}
+.kb-widget-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--transition-speed) ease, transform 0.12s ease;
+}
+.kb-widget-btn:hover { background: var(--overlay); }
+.kb-widget-btn:active { transform: translateY(1px); }
+.kb-widget-btn.is-active {
+  background: var(--overlay);
+  border-color: var(--primary-500);
+}
+.kb-widget-btn.is-dragging { opacity: 0.45; }
+
+/* Resize strip surface (overlay-widgetresize): a thin invisible overlay
+   webview spanning the widget panel's inner edge. */
+.kb-wresize-surface {
+  position: fixed;
+  inset: 0;
+  cursor: col-resize;
+  touch-action: none;
+}
+.kb-widget-fav-img {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  object-fit: contain;
+}
+.kb-widget-fav-tile {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* Settings: widget picker chips */
+.kb-widget-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  margin: 6px 0;
+}
+.kb-widget-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.kb-widget-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color var(--transition-speed) ease, background var(--transition-speed) ease,
+    color var(--transition-speed) ease;
+}
+.kb-widget-chip:hover { border-color: var(--text-tertiary); }
+.kb-widget-chip.on {
+  border-color: transparent;
+  background: var(--primary-500);
+  color: #fff;
+}
+.kb-widget-sep {
+  display: block;
+  height: 1px;
+  /* Inverts with the theme: dark-grey in light mode, light-grey in dark. */
+  background: color-mix(in oklab, var(--text-primary) 45%, transparent);
+  margin: 14px 0;
+}
+
 /* -- Peek (Opt+click link preview) -------------------------------------- */
 .kb-peek-backdrop {
   position: fixed;
@@ -3834,7 +3977,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 /* Bookmarks glyph bubble (sidebar fixed): stacks above the VPN/settings cogs. */
 .kb-bm-fixed {
   position: absolute;
-  bottom: 98px;
+  bottom: 140px;
   width: 34px;
   height: 34px;
   border-radius: 50%;
@@ -4769,7 +4912,8 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 .fav.fav-history svg { width: 90%; height: 90%; display: block; }
 
 /* ─── fixed settings button (sidebar layouts) ─────────────────── */
-.kb-settings-fixed {
+.kb-settings-fixed,
+.kb-history-fixed {
   position: absolute;
   bottom: 14px;
   width: 34px;
@@ -4786,34 +4930,40 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   cursor: pointer;
   transition: background 0.12s, color 0.12s, transform 0.12s;
 }
-.glass-on .kb-settings-fixed {
+/* Fixed stack, bottom-up: settings 14px, history 56px, VPN 98px, bookmarks 140px. */
+.kb-history-fixed { bottom: 56px; }
+.glass-on .kb-settings-fixed,
+.glass-on .kb-history-fixed {
   background: rgba(255,255,255,0.55);
   color: rgba(20,20,28,0.92);
   box-shadow: none;
   -webkit-backdrop-filter: blur(18px) saturate(180%);
   backdrop-filter: blur(18px) saturate(180%);
 }
-[data-mode="dark"].glass-on .kb-settings-fixed {
+[data-mode="dark"].glass-on .kb-settings-fixed,
+[data-mode="dark"].glass-on .kb-history-fixed {
   background: rgba(255,255,255,0.10);
   color: rgba(255,255,255,0.85);
 }
-.glass-on .kb-settings-fixed:hover {
+.glass-on .kb-settings-fixed:hover,
+.glass-on .kb-history-fixed:hover {
   background: rgba(255,255,255,0.72);
   transform: translateY(-1px);
 }
-[data-mode="dark"].glass-on .kb-settings-fixed:hover {
+[data-mode="dark"].glass-on .kb-settings-fixed:hover,
+[data-mode="dark"].glass-on .kb-history-fixed:hover {
   background: rgba(255,255,255,0.18);
   color: rgba(255,255,255,0.95);
 }
-.kb-settings-fixed:hover { transform: translateY(-1px); }
-.kb-settings-fixed svg { width: 16px; height: 16px; }
-.kb-settings-fixed.is-left  { left: 10px; }
-.kb-settings-fixed.is-right { right: 10px; }
+.kb-settings-fixed:hover, .kb-history-fixed:hover { transform: translateY(-1px); }
+.kb-settings-fixed svg, .kb-history-fixed svg { width: 16px; height: 16px; }
+.kb-settings-fixed.is-left, .kb-history-fixed.is-left  { left: 10px; }
+.kb-settings-fixed.is-right, .kb-history-fixed.is-right { right: 10px; }
 
 /* VPN quick-toggle. */
 .kb-vpn-fixed {
   position: absolute;
-  bottom: 56px;
+  bottom: 98px;
   width: 34px;
   height: 34px;
   border-radius: 50%;

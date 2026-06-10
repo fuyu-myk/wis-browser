@@ -107,6 +107,16 @@ fn settings_patch_round_trips_when_all_fields_set() {
             "example.com".to_string(),
             wis_core::UaProfile::Safari,
         )])),
+        sidebar_widgets: Some(vec![wis_core::Widget {
+            id: wis_core::WidgetId::new(),
+            kind: wis_core::WidgetKind::Claude,
+            label: "Claude".to_string(),
+            url: "https://claude.ai".to_string(),
+            icon: None,
+            enabled: true,
+        }]),
+        widget_panel_limit_enabled: Some(false),
+        widget_panel_limit: Some(5),
         keybindings: Some(HashMap::from([
             (KeyAction::NewTab, "Ctrl+T".into()),
             (KeyAction::CloseTab, "Ctrl+W".into()),

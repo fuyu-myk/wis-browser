@@ -1228,7 +1228,7 @@ pub async fn create_tab_webview(
     Ok(())
 }
 
-fn workspace_id_to_data_store_bytes(workspace_id: WorkspaceId) -> [u8; 16] {
+pub(crate) fn workspace_id_to_data_store_bytes(workspace_id: WorkspaceId) -> [u8; 16] {
     *workspace_id.as_uuid().as_bytes()
 }
 

@@ -11,6 +11,9 @@
 //!      the hash.
 //!   4. Otherwise GET `<origin>/favicon.ico` through the workspace's
 //!      loopback proxy so DoH + tracker rules apply. Cap at 5 s + 256 KB.
+//!      If that yields no usable image (404, HTML error page, CDN-hosted
+//!      icons), fall back to fetching the page itself and following its
+//!      `<link rel="icon">` declarations.
 //!   5. Sniff magic bytes (PNG / ICO / SVG / JPEG / WebP / GIF). Unknown
 //!      formats are rejected so a broken host can't dump arbitrary bytes
 //!      into the cache.
@@ -20,11 +23,6 @@
 //! Frontend reads cached entries via [`get_favicon_data_url`], which
 //! returns a base64 `data:` URL. Avoids registering an asset-protocol
 //! scope; favicons are small enough that the encoding cost is trivial.
-//!
-//! Future TODO:
-//!   - Parsing `<link rel="icon">` to honour custom favicon paths. Most
-//!     sites expose `/favicon.ico`; the letter-tile fallback still
-//!     renders for the rest.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -44,8 +42,13 @@ pub const FAVICON_CACHED_EVENT: &str = "favicon-cached";
 
 const FAVICON_TIMEOUT: Duration = Duration::from_secs(5);
 const FAVICON_MAX_BYTES: usize = 256 * 1024;
-const FAVICON_USER_AGENT: &str =
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
+/// `<link rel="icon">` declarations live in `<head>`; scanning this much of
+/// the page body is plenty while bounding memory and CPU.
+const HTML_SCAN_BYTES: usize = 256 * 1024;
+/// Hard cap on a fetched page body during the HTML fallback.
+const HTML_MAX_BYTES: usize = 4 * 1024 * 1024;
+/// How many `<link rel=icon>` candidates to try before giving up.
+const MAX_ICON_CANDIDATES: usize = 3;
 
 /// Disk location for cached favicons. Created on demand.
 fn cache_dir(app: &AppHandle) -> Result<PathBuf, WisError> {
@@ -177,6 +180,170 @@ fn favicon_path(dir: &std::path::Path, hash: &str) -> Option<PathBuf> {
     None
 }
 
+/// GET `url` and validate it as a favicon image: 2xx, non-empty, within the
+/// size cap, and a recognised magic-byte format.
+async fn fetch_image(client: &reqwest::Client, url: &str) -> Result<(Vec<u8>, Format), String> {
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|err| format!("GET {url}: {err}"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(format!("GET {url}: status {status}"));
+    }
+
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|err| format!("read body: {err}"))?;
+    if bytes.is_empty() {
+        return Err("empty body".into());
+    }
+    if bytes.len() > FAVICON_MAX_BYTES {
+        return Err(format!("body too large: {} bytes", bytes.len()));
+    }
+    let format = sniff_format(&bytes).ok_or_else(|| "unknown image format".to_string())?;
+
+    Ok((bytes.to_vec(), format))
+}
+
+/// Fetch the page itself and try the icons it declares via `<link rel=icon>`.
+/// Hrefs are resolved against the response's final URL (after redirects) so
+/// relative, root-relative, and protocol-relative paths all work.
+async fn icon_from_page_html(
+    client: &reqwest::Client,
+    page_url: &Url,
+) -> Result<(Vec<u8>, Format), String> {
+    let resp = client
+        .get(page_url.clone())
+        .send()
+        .await
+        .map_err(|err| format!("GET {page_url}: {err}"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(format!("GET {page_url}: status {status}"));
+    }
+
+    let final_url = resp.url().clone();
+    let body = resp
+        .bytes()
+        .await
+        .map_err(|err| format!("read page body: {err}"))?;
+    if body.len() > HTML_MAX_BYTES {
+        return Err(format!("page too large: {} bytes", body.len()));
+    }
+
+    let head = String::from_utf8_lossy(&body[..body.len().min(HTML_SCAN_BYTES)]);
+    let candidates = extract_icon_hrefs(&head);
+    if candidates.is_empty() {
+        return Err("no <link rel=icon> in page".into());
+    }
+
+    let mut last_err = String::from("no candidate tried");
+    for href in candidates.iter().take(MAX_ICON_CANDIDATES) {
+        let Ok(icon_url) = final_url.join(href) else {
+            continue;
+        };
+        if !matches!(icon_url.scheme(), "http" | "https") {
+            continue;
+        }
+        match fetch_image(client, icon_url.as_str()).await {
+            Ok(found) => return Ok(found),
+            Err(err) => last_err = err,
+        }
+    }
+
+    Err(last_err)
+}
+
+/// Pull icon hrefs out of a page's `<link>` tags, best first: standard
+/// `rel="icon"` / `rel="shortcut icon"` declarations, then
+/// `apple-touch-icon` variants as a fallback. Pure string scan; tolerates
+/// attribute order, quoting style, and case.
+fn extract_icon_hrefs(html: &str) -> Vec<String> {
+    let lower = html.to_ascii_lowercase();
+    let mut standard = Vec::new();
+    let mut touch = Vec::new();
+
+    let mut at = 0;
+    while let Some(found) = lower[at..].find("<link") {
+        let start = at + found;
+        let Some(close) = lower[start..].find('>') else {
+            break;
+        };
+
+        let end = start + close;
+        at = end + 1;
+
+        let tag_lower = &lower[start..end];
+        let tag_source = &html[start..end];
+        let Some(rel) = attr_value(tag_lower, tag_lower, "rel") else {
+            continue;
+        };
+        let Some(href) = attr_value(tag_lower, tag_source, "href") else {
+            continue;
+        };
+        if href.is_empty() || href.starts_with("data:") {
+            continue;
+        }
+
+        let tokens: Vec<&str> = rel.split_ascii_whitespace().collect();
+        if tokens.contains(&"icon") {
+            standard.push(href.to_string());
+        } else if tokens.iter().any(|t| t.starts_with("apple-touch-icon")) {
+            touch.push(href.to_string());
+        }
+    }
+
+    standard.extend(touch);
+    standard
+}
+
+/// Value of attribute `name` inside a single tag. `tag_lower` drives the
+/// (case-insensitive) search; the value is sliced out of `tag_source` at the
+/// same byte offsets, which line up because ASCII lowercasing preserves
+/// length. Handles `name="v"`, `name='v'`, and unquoted `name=v`.
+fn attr_value<'a>(tag_lower: &str, tag_source: &'a str, name: &str) -> Option<&'a str> {
+    let bytes = tag_lower.as_bytes();
+    let mut search = 0;
+    loop {
+        let idx = tag_lower[search..].find(name)? + search;
+        search = idx + name.len();
+
+        let boundary_before = idx > 0 && bytes[idx - 1].is_ascii_whitespace();
+        let mut j = idx + name.len();
+        while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        if !boundary_before || j >= bytes.len() || bytes[j] != b'=' {
+            continue;
+        }
+        j += 1;
+        while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        if j >= bytes.len() {
+            return None;
+        }
+
+        return match bytes[j] {
+            quote @ (b'"' | b'\'') => {
+                let value_start = j + 1;
+                let close = tag_lower[value_start..].find(quote as char)? + value_start;
+                Some(tag_source[value_start..close].trim())
+            }
+            _ => {
+                let mut k = j;
+                while k < bytes.len() && !bytes[k].is_ascii_whitespace() {
+                    k += 1;
+                }
+                Some(tag_source[j..k].trim())
+            }
+        };
+    }
+}
+
 /// Capture a favicon for the given tab. Best-effort: any failure logs a
 /// warning and leaves `tab.favicon` untouched.
 pub async fn capture_favicon(
@@ -218,34 +385,23 @@ async fn ensure_favicon_cached(
     let proxy = reqwest::Proxy::all(&proxy_url).map_err(|err| format!("proxy: {err}"))?;
     let client = reqwest::Client::builder()
         .timeout(FAVICON_TIMEOUT)
-        .user_agent(FAVICON_USER_AGENT)
+        .user_agent(wis_core::user_agent::compatibility_user_agent(
+            wis_core::DEFAULT_MAC_OS_VERSION,
+        ))
         .danger_accept_invalid_certs(true)
         .proxy(proxy)
         .build()
         .map_err(|err| format!("build client: {err}"))?;
 
+    // Try the conventional root path first, then fall back to the icons the
+    // page itself declares.
     let favicon_url = format!("{origin}/favicon.ico");
-    let resp = client
-        .get(&favicon_url)
-        .send()
-        .await
-        .map_err(|err| format!("GET {favicon_url}: {err}"))?;
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(format!("GET {favicon_url}: status {status}"));
-    }
-
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|err| format!("read body: {err}"))?;
-    if bytes.is_empty() {
-        return Err("empty body".into());
-    }
-    if bytes.len() > FAVICON_MAX_BYTES {
-        return Err(format!("body too large: {} bytes", bytes.len()));
-    }
-    let format = sniff_format(&bytes).ok_or_else(|| "unknown image format".to_string())?;
+    let (bytes, format) = match fetch_image(&client, &favicon_url).await {
+        Ok(found) => found,
+        Err(root_err) => icon_from_page_html(&client, &page_url)
+            .await
+            .map_err(|html_err| format!("{root_err}; html fallback: {html_err}"))?,
+    };
 
     let target = dir.join(format!("{hash}.{}", format.extension()));
     std::fs::write(&target, &bytes).map_err(|err| format!("write {}: {err}", target.display()))?;
@@ -343,4 +499,53 @@ pub async fn favicon_origin_hash(url: String) -> WisResult<Option<String>> {
     };
 
     Ok(origin_hash_for_url(&parsed))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_icon_hrefs;
+
+    #[test]
+    fn finds_standard_icon_links() {
+        let html = r#"<head>
+            <link rel="stylesheet" href="/app.css">
+            <link rel="icon" href="/assets/fav.png" type="image/png">
+            <link rel="shortcut icon" href="https://cdn.example.com/ico.ico">
+        </head>"#;
+        assert_eq!(
+            extract_icon_hrefs(html),
+            vec!["/assets/fav.png", "https://cdn.example.com/ico.ico"]
+        );
+    }
+
+    #[test]
+    fn tolerates_case_quoting_and_attribute_order() {
+        let html = r#"<LINK HREF='/i.svg' REL=ICON><link rel=icon href=/plain.png>"#;
+        assert_eq!(extract_icon_hrefs(html), vec!["/i.svg", "/plain.png"]);
+    }
+
+    #[test]
+    fn apple_touch_icons_rank_after_standard_ones() {
+        let html = r#"
+            <link rel="apple-touch-icon" sizes="180x180" href="/touch.png">
+            <link rel="icon" href="/fav.ico">
+        "#;
+        assert_eq!(extract_icon_hrefs(html), vec!["/fav.ico", "/touch.png"]);
+    }
+
+    #[test]
+    fn skips_non_icon_rels_data_urls_and_mask_icons() {
+        let html = r##"
+            <link rel="preconnect" href="https://cdn.example.com">
+            <link rel="mask-icon" href="/mask.svg" color="#000">
+            <link rel="icon" href="data:image/png;base64,AAAA">
+        "##;
+        assert!(extract_icon_hrefs(html).is_empty());
+    }
+
+    #[test]
+    fn href_preserves_original_case() {
+        let html = r#"<link rel="icon" href="/Assets/Fav.PNG">"#;
+        assert_eq!(extract_icon_hrefs(html), vec!["/Assets/Fav.PNG"]);
+    }
 }

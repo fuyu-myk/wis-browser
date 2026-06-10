@@ -4,8 +4,8 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { commands } from '@/bindings/commands'
 import type { BrowserState, Tab, TabId, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { SettingsIcon } from '@/lib/icons'
-import { SETTINGS_URL } from '@/lib/url'
+import { HistoryIcon, SettingsIcon } from '@/lib/icons'
+import { HISTORY_URL, SETTINGS_URL } from '@/lib/url'
 import { useBookmarksOverlay } from '@/hooks/useBookmarksOverlay'
 import { useClearDataOverlay } from '@/hooks/useClearDataOverlay'
 import { useCommandPaletteOverlay } from '@/hooks/useCommandPaletteOverlay'
@@ -23,6 +23,7 @@ import { TopBar } from '@/components/TopBar'
 import { TopTabsRail } from '@/components/TopTabsRail'
 import { FloatingUrlBar } from '@/components/UrlBar'
 import { VpnToggle } from '@/components/VpnToggle'
+import { prefetchWidgetFavicons } from '@/components/WidgetFavicon'
 
 interface WindowProps {
   state: BrowserState
@@ -62,11 +63,19 @@ export function Window({ state, settings }: WindowProps) {
 
   const navigateOrCreate = useNavigateOrCreateTab(activeWorkspace?.id ?? null, activeTab)
   const openSettings = () => navigateOrCreate(SETTINGS_URL)
+  const openHistory = () => navigateOrCreate(HISTORY_URL)
 
   const isPrivate = activeWorkspace?.ephemeral ?? false
   useEffect(() => {
     void commands.setDockIcon(isPrivate ? 'closed' : 'open').catch(() => undefined)
   }, [isPrivate])
+
+  // Warm the favicon cache for sidebar widgets on startup (and when the set
+  // changes).
+  const widgetUrlsKey = settings.sidebar_widgets.map((w) => w.url).join('\n')
+  useEffect(() => {
+    prefetchWidgetFavicons(widgetUrlsKey ? widgetUrlsKey.split('\n') : [])
+  }, [widgetUrlsKey])
 
   return (
     <DiscardedTabsContext.Provider value={discardedTabs}>
@@ -98,6 +107,7 @@ export function Window({ state, settings }: WindowProps) {
             state={state}
             side={railSide}
             onOpenSettings={openSettings}
+            onOpenHistory={openHistory}
           />
         </>
       ) : (
@@ -112,6 +122,14 @@ export function Window({ state, settings }: WindowProps) {
             <BookmarksButton variant="fixed" anchor={fixedSettingsAnchor} />
           )}
           <VpnToggle workspace={activeWorkspace ?? null} variant="fixed" anchor={fixedSettingsAnchor} />
+          <button
+            type="button"
+            className={cx('kb-history-fixed', `is-${fixedSettingsAnchor}`)}
+            aria-label="History"
+            onClick={openHistory}
+          >
+            <HistoryIcon />
+          </button>
           <button
             type="button"
             className={cx('kb-settings-fixed', `is-${fixedSettingsAnchor}`)}

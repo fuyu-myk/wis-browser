@@ -1,6 +1,7 @@
-//! Side-widget descriptors (WhatsApp, Telegram, Discord, etc).
+//! Side-widget descriptors (social apps and AI providers).
 //!
-//! These are pinned to the sidebar and have a URL, but they aren't full tabs.
+//! Quick-launch shortcuts pinned to the sidebar: a favicon that opens its site
+//! in a split pane. They carry a URL but aren't full tabs in the tab list.
 
 use crate::ids::WidgetId;
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WidgetKind {
+    // Social / messaging.
     WhatsApp,
     Telegram,
     Discord,
@@ -17,6 +19,16 @@ pub enum WidgetKind {
     Messenger,
     XTwitter,
     Instagram,
+    Reddit,
+    Line,
+    // AI providers.
+    ChatGpt,
+    Claude,
+    Gemini,
+    Grok,
+    DeepSeek,
+    Qwen,
+    // User-defined.
     Custom,
 }
 

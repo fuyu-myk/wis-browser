@@ -16,6 +16,7 @@ mod peek;
 mod state;
 mod suggest;
 mod vault;
+mod widget_panel;
 
 use std::sync::Arc;
 
@@ -241,6 +242,13 @@ pub fn run() {
             peek::set_peek_bounds,
             peek::close_peek,
             peek::peek_set_reader,
+            widget_panel::open_widget_panel,
+            widget_panel::show_widget_panel,
+            widget_panel::hide_widget_panel,
+            widget_panel::set_widget_panel_bounds,
+            widget_panel::close_widget_panel,
+            widget_panel::close_all_widget_panels,
+            widget_panel::list_widget_panels,
             navguard::nav_guard_proceed,
             bookmarks::list_bookmark_folders,
             bookmarks::list_bookmarks,

@@ -2,17 +2,19 @@ import { useState } from 'react'
 
 import type { BrowserState, RailSide } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { SettingsIcon } from '@/lib/icons'
+import { HistoryIcon, SettingsIcon } from '@/lib/icons'
 
 import { BookmarksButton } from '@/components/BookmarksButton'
 import { Brand } from '@/components/Brand'
 import { VpnToggle } from '@/components/VpnToggle'
+import { WidgetDock } from '@/components/WidgetDock'
 import { WorkspacePill } from '@/components/WorkspacePill'
 
 interface TopTabsRailProps {
   state: BrowserState
   side: RailSide
   onOpenSettings: () => void
+  onOpenHistory: () => void
 }
 
 /**
@@ -21,7 +23,7 @@ interface TopTabsRailProps {
  * Pinned tabs live in the top strip in this layout. Expands only while the
  * workspace popover is open.
  */
-export function TopTabsRail({ state, side, onOpenSettings }: TopTabsRailProps) {
+export function TopTabsRail({ state, side, onOpenSettings, onOpenHistory }: TopTabsRailProps) {
   const [workspacePopoverOpen, setWorkspacePopoverOpen] = useState(false)
   const expanded = workspacePopoverOpen
   const activeWorkspace =
@@ -36,9 +38,18 @@ export function TopTabsRail({ state, side, onOpenSettings }: TopTabsRailProps) {
       <Brand />
       <WorkspacePill state={state} onOpenChange={setWorkspacePopoverOpen} />
       <div className="kb-rail-spacer" />
+      <WidgetDock widgets={state.settings.sidebar_widgets} variant="rail" />
       <div className="kb-rail-controls">
         {!activeWorkspace?.ephemeral && <BookmarksButton variant="rail" />}
         <VpnToggle workspace={activeWorkspace} variant="rail" />
+        <button
+          type="button"
+          className="kb-circle-btn kb-rail-settings"
+          aria-label="History"
+          onClick={onOpenHistory}
+        >
+          <HistoryIcon />
+        </button>
         <button
           type="button"
           className="kb-circle-btn kb-rail-settings"

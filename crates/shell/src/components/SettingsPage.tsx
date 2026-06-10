@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type {
@@ -11,6 +12,7 @@ import type {
   ThemeMode,
   UaProfile,
   UserSettingsPatch,
+  Widget,
   Workspace,
   WorkspaceId,
 } from '@/bindings/types'
@@ -30,6 +32,8 @@ import { DEFAULT_KEYMAP, actionLabel, allActions, effectiveKeymap } from '@/lib/
 import type { KeyAction } from '@/bindings/types'
 
 import { Segmented, SwatchRow, Switch } from '@/components/controls'
+import { WidgetFavicon } from '@/components/WidgetFavicon'
+import { WIDGET_CATALOG, makeWidget, type WidgetCatalogEntry } from '@/lib/widgets'
 import { SiteDataSection } from '@/components/SiteDataSection'
 import { PasswordsSection } from '@/components/PasswordsSection'
 import { OPEN_CLEAR_DATA_EVENT } from '@/hooks/useClearDataOverlay'
@@ -44,6 +48,7 @@ interface NavSection {
 const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'appearance', label: 'Appearance', icon: <SunIcon /> },
   { id: 'layout', label: 'Layout', icon: <PanelTopIcon /> },
+  { id: 'widgets', label: 'Sidebar widgets', icon: <GridIcon /> },
   { id: 'performance', label: 'Performance', icon: <MonitorIcon /> },
   { id: 'privacy', label: 'Privacy', icon: <LockIcon /> },
   { id: 'network', label: 'Network', icon: <LockIcon /> },
@@ -68,6 +73,27 @@ function KeyboardIcon() {
     >
       <rect x="2" y="6" width="20" height="12" rx="2" />
       <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" />
+    </svg>
+  )
+}
+
+function GridIcon() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
     </svg>
   )
 }
@@ -306,6 +332,11 @@ export function SettingsPage() {
         </div>
       </section>
 
+      <SidebarWidgetsSection
+        widgets={settings.sidebar_widgets}
+        onUpdate={(patch) => update.mutate(patch)}
+      />
+
       <section id="performance" className="sec">
         <div className="sec-h">Performance</div>
         <div className="row">
@@ -343,6 +374,48 @@ export function SettingsPage() {
             aria-label="Sleep after minutes"
           />
         </div>
+        <div className="row">
+          <div className="l">
+            <span>Limit loaded widget panels</span>
+            <span>
+              Cap how many recently used widget panels stay loaded for instant
+              reopening; the oldest is reclaimed first. Turn off for no limit.
+            </span>
+          </div>
+          <Switch
+            checked={settings.widget_panel_limit_enabled}
+            onChange={(widget_panel_limit_enabled) =>
+              update.mutate({ widget_panel_limit_enabled })
+            }
+            label="Limit loaded widget panels"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
+            <span>Keep at most</span>
+            <span>Loaded widget panels kept before the oldest is reclaimed.</span>
+          </div>
+          <input
+            type="number"
+            className="kb-num-input"
+            min={1}
+            max={50}
+            step={1}
+            value={settings.widget_panel_limit}
+            disabled={!settings.widget_panel_limit_enabled}
+            onChange={(e) => {
+              const n = Math.round(Number(e.currentTarget.value))
+              if (!Number.isFinite(n)) return
+              update.mutate({ widget_panel_limit: Math.min(50, Math.max(1, n)) })
+            }}
+            aria-label="Loaded widget panel limit"
+          />
+        </div>
+        <LiveWidgetPanelsRow
+          widgets={settings.sidebar_widgets}
+          limitEnabled={settings.widget_panel_limit_enabled}
+          limit={settings.widget_panel_limit}
+        />
       </section>
 
       <section id="privacy" className="sec">
@@ -665,6 +738,131 @@ function CompatibilitySection({ profile, overrides, onUpdate }: CompatibilitySec
         </ul>
       )}
     </section>
+  )
+}
+
+// ─── Sidebar widgets ───────────────────────────────────────────────────────
+
+interface SidebarWidgetsSectionProps {
+  widgets: Widget[]
+  onUpdate: (patch: UserSettingsPatch) => void
+}
+
+function SidebarWidgetsSection({ widgets, onUpdate }: SidebarWidgetsSectionProps) {
+  const enabledKinds = new Set(widgets.map((w) => w.kind))
+
+  const toggle = (entry: WidgetCatalogEntry) => {
+    const next = enabledKinds.has(entry.kind)
+      ? widgets.filter((w) => w.kind !== entry.kind)
+      : [...widgets, makeWidget(entry)]
+    onUpdate({ sidebar_widgets: next })
+  }
+
+  const chip = (entry: WidgetCatalogEntry) => {
+    const on = enabledKinds.has(entry.kind)
+    return (
+      <button
+        key={entry.kind}
+        type="button"
+        role="switch"
+        aria-checked={on}
+        className={cx('kb-widget-chip', { on })}
+        onClick={() => toggle(entry)}
+      >
+        <WidgetFavicon url={entry.url} label={entry.label} />
+        <span>{entry.label}</span>
+      </button>
+    )
+  }
+
+  const social = WIDGET_CATALOG.filter((e) => e.category === 'social')
+  const ai = WIDGET_CATALOG.filter((e) => e.category === 'ai')
+
+  return (
+    <section id="widgets" className="sec">
+      <div className="sec-h">Sidebar widgets</div>
+      <div className="row">
+        <div className="l">
+          <span>Quick launch</span>
+          <span>
+            Choose the social apps and AI providers to show in the sidebar.
+            Clicking one opens it in a split pane on the sidebar side.
+          </span>
+        </div>
+      </div>
+      <div className="kb-widget-group-label">Social</div>
+      <div className="kb-widget-chips">{social.map(chip)}</div>
+      <div className="kb-widget-sep" aria-hidden />
+      <div className="kb-widget-group-label">AI providers</div>
+      <div className="kb-widget-chips">{ai.map(chip)}</div>
+    </section>
+  )
+}
+
+// ─── Live widget panels (Performance) ──────────────────────────────────────
+
+const WIDGET_PANELS_KEY = ['widget-panels']
+const WIDGET_PANELS_CHANGED_EVENT = 'widget-panels-changed'
+
+interface LiveWidgetPanelsRowProps {
+  widgets: Widget[]
+  limitEnabled: boolean
+  limit: number
+}
+
+/**
+ * Performance row showing how many widget panels are currently kept loaded
+ * (visible or hidden for instant reopening), with a one-click reclaim.
+ * Counts come from Rust (the actual live webviews), refreshed on the
+ * `widget-panels-changed` event so LRU evictions and idle destroys reflect.
+ */
+function LiveWidgetPanelsRow({ widgets, limitEnabled, limit }: LiveWidgetPanelsRowProps) {
+  const qc = useQueryClient()
+  const panels = useQuery({
+    queryKey: WIDGET_PANELS_KEY,
+    queryFn: () => commands.listWidgetPanels(),
+  })
+
+  useEffect(() => {
+    let un: UnlistenFn | null = null
+    let cancelled = false
+    void listen<void>(WIDGET_PANELS_CHANGED_EVENT, () =>
+      qc.invalidateQueries({ queryKey: WIDGET_PANELS_KEY }),
+    ).then((fn) => (cancelled ? fn() : (un = fn)))
+    return () => {
+      cancelled = true
+      un?.()
+    }
+  }, [qc])
+
+  const ids = panels.data ?? []
+  const names = ids.map((id) => widgets.find((w) => w.id === id)?.label ?? 'Widget')
+  const capLabel = limitEnabled ? `of up to ${limit} ` : ''
+  const description =
+    ids.length === 0
+      ? 'None right now. Recently used widgets stay loaded for instant reopening, then sleep.'
+      : `${names.join(', ')} — ${ids.length} ${capLabel}kept loaded for instant reopening.`
+
+  return (
+    <div className="row">
+      <div className="l">
+        <span>Loaded widget panels</span>
+        <span>{description}</span>
+      </div>
+      <button
+        type="button"
+        className="kb-btn"
+        disabled={ids.length === 0}
+        onClick={() => {
+          void commands
+            .closeAllWidgetPanels()
+            .catch(() => undefined)
+            .finally(() => qc.invalidateQueries({ queryKey: WIDGET_PANELS_KEY }))
+        }}
+      >
+        Close all
+      </button>
+    </div>
   )
 }
 
