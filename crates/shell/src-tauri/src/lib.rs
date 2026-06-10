@@ -68,7 +68,12 @@ pub fn run() {
             // otherwise the bundled fallback.
             let filter_cache_dir = data_dir.join("filter_lists");
             let (filter_text, _source) = filter_lists::load_cached_or_default(&filter_cache_dir);
-            let tracker_blocker = match TrackerBlocker::from_filter_texts(&[&filter_text]) {
+            // Cache-aware build: a warm launch deserializes the compiled
+            // engine instead of re-parsing the whole filter list.
+            let tracker_blocker = match TrackerBlocker::from_filter_texts_with_cache(
+                &[&filter_text],
+                &filter_cache_dir,
+            ) {
                 Ok(b) => Arc::new(b),
                 Err(err) => {
                     log::error!(

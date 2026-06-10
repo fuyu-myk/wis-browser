@@ -271,8 +271,9 @@ impl AppState {
     /// caller is responsible for re-attaching the new specs to active tabs.
     /// Returns the number of bytes in the new filter text for diagnostics.
     pub async fn rebuild_filter_engine(&self, filter_text: String) -> Result<usize, WisShellError> {
-        let blocker = TrackerBlocker::from_filter_texts(&[&filter_text])
-            .map_err(|err| WisShellError::Other(format!("rebuild blocker: {err}")))?;
+        let blocker =
+            TrackerBlocker::from_filter_texts_with_cache(&[&filter_text], &self.filter_cache_dir)
+                .map_err(|err| WisShellError::Other(format!("rebuild blocker: {err}")))?;
         let rules = build_rule_specs_from(&filter_text);
 
         let size = filter_text.len();

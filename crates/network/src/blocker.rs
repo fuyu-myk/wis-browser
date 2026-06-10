@@ -2,7 +2,15 @@
 //!
 //! A [`TrackerBlocker`] is built once from a set of Adblock-Plus-syntax
 //! filter lists (the bundled default list, optionally supplemented at
-//! runtime).
+//! runtime). Parsing an EasyPrivacy-size list into an [`Engine`] costs real
+//! startup CPU, so [`TrackerBlocker::from_filter_texts_with_cache`] memoizes
+//! the compiled engine on disk (`engine-<hash>.bin` beside the filter-list
+//! cache, keyed by a hash of the input texts) and deserializes on a hit:
+//! launch becomes a file read. The DAT format self-versions; any mismatch
+//! (crate upgrade, corruption) silently falls back to a fresh parse.
+
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
 
 use adblock::lists::{FilterSet, ParseOptions};
 use adblock::request::Request;
@@ -12,6 +20,15 @@ use url::Url;
 
 use crate::error::{NetworkError, NetworkResult};
 use crate::filter_lists::DEFAULT_TRACKER_LIST;
+
+/// Cache file name for the serialized engine compiled from `texts`.
+fn engine_cache_file(texts: &[&str]) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for text in texts {
+        text.hash(&mut hasher);
+    }
+    format!("engine-{:016x}.bin", hasher.finish())
+}
 
 /// The kind of subresource being requested. Lifted from the standard
 /// Adblock Plus `$type` options.
@@ -79,6 +96,80 @@ impl TrackerBlocker {
         Ok(Self { engine })
     }
 
+    /// Like [`Self::from_filter_texts`], but memoizing the compiled engine in
+    /// `cache_dir`: a hit deserializes instead of re-parsing the lists, and a
+    /// miss parses then writes the cache (best-effort) for the next launch.
+    /// Stale `engine-*.bin` files from older list versions are pruned.
+    pub fn from_filter_texts_with_cache(texts: &[&str], cache_dir: &Path) -> NetworkResult<Self> {
+        let file_name = engine_cache_file(texts);
+        let path = cache_dir.join(&file_name);
+
+        if let Some(blocker) = Self::from_engine_cache(&path) {
+            return Ok(blocker);
+        }
+
+        let blocker = Self::from_filter_texts(texts)?;
+        blocker.write_engine_cache(cache_dir, &file_name);
+        Ok(blocker)
+    }
+
+    /// Deserialize a cached engine. Any failure (missing file, version
+    /// mismatch after a crate upgrade, corruption) returns `None` so the
+    /// caller falls back to a fresh parse.
+    fn from_engine_cache(path: &Path) -> Option<Self> {
+        let bytes = std::fs::read(path).ok()?;
+        let mut engine = Engine::default();
+        match engine.deserialize(&bytes) {
+            Ok(()) => {
+                tracing::info!(
+                    "blocker: loaded compiled engine cache ({} bytes) from {}",
+                    bytes.len(),
+                    path.display()
+                );
+                Some(Self { engine })
+            }
+            Err(err) => {
+                tracing::warn!(
+                    "blocker: engine cache at {} unusable ({err:?}); reparsing filter lists",
+                    path.display()
+                );
+                None
+            }
+        }
+    }
+
+    /// Write the compiled engine beside the filter-list cache and prune
+    /// engine caches from other list versions. Best-effort: failures only
+    /// log (the next launch just parses again).
+    fn write_engine_cache(&self, cache_dir: &Path, file_name: &str) {
+        if let Err(err) = std::fs::create_dir_all(cache_dir) {
+            tracing::warn!("blocker: create cache dir failed: {err}");
+            return;
+        }
+
+        let stale: Vec<PathBuf> = std::fs::read_dir(cache_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("engine-") && n.ends_with(".bin"))
+                    && p.file_name().and_then(|n| n.to_str()) != Some(file_name)
+            })
+            .collect();
+        for path in stale {
+            let _ = std::fs::remove_file(path);
+        }
+
+        let path = cache_dir.join(file_name);
+        match std::fs::write(&path, self.engine.serialize()) {
+            Ok(()) => tracing::info!("blocker: wrote engine cache to {}", path.display()),
+            Err(err) => tracing::warn!("blocker: engine cache write failed: {err}"),
+        }
+    }
+
     /// An empty blocker. Used when `PrivacyMode::Permissive` disables
     /// tracker blocking entirely, but the policy code still wants something
     /// to call.
@@ -106,5 +197,75 @@ impl TrackerBlocker {
         } else {
             Ok(BlockerVerdict::Allow)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_cache_dir(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("wis-blocker-test-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp cache dir");
+        dir
+    }
+
+    fn assert_blocks_tracker(blocker: &TrackerBlocker) {
+        let url = Url::parse("https://tracker.test/pixel.js").expect("url");
+        let source = Url::parse("https://site.test/").expect("url");
+        let verdict = blocker
+            .check_request(&url, &source, RequestType::Script)
+            .expect("check");
+        assert!(matches!(verdict, BlockerVerdict::Block { .. }));
+    }
+
+    #[test]
+    fn cache_roundtrip_preserves_blocking_decisions() {
+        let dir = temp_cache_dir("roundtrip");
+        let list = "||tracker.test^\n";
+
+        // Miss: parses and writes the cache.
+        let first = TrackerBlocker::from_filter_texts_with_cache(&[list], &dir).expect("build");
+        assert_blocks_tracker(&first);
+        let cached = dir.join(engine_cache_file(&[list]));
+        assert!(cached.exists(), "engine cache must be written on miss");
+
+        // Hit: deserializes, with identical decisions.
+        let second = TrackerBlocker::from_filter_texts_with_cache(&[list], &dir).expect("reload");
+        assert_blocks_tracker(&second);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn changed_list_replaces_stale_engine_cache() {
+        let dir = temp_cache_dir("stale");
+        let old_list = "||old.test^\n";
+        let new_list = "||tracker.test^\n";
+
+        let _ = TrackerBlocker::from_filter_texts_with_cache(&[old_list], &dir).expect("v1");
+        let blocker = TrackerBlocker::from_filter_texts_with_cache(&[new_list], &dir).expect("v2");
+        assert_blocks_tracker(&blocker);
+
+        assert!(!dir.join(engine_cache_file(&[old_list])).exists());
+        assert!(dir.join(engine_cache_file(&[new_list])).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn corrupt_cache_falls_back_to_parsing() {
+        let dir = temp_cache_dir("corrupt");
+        let list = "||tracker.test^\n";
+        std::fs::write(dir.join(engine_cache_file(&[list])), b"not a dat file")
+            .expect("write garbage");
+
+        let blocker =
+            TrackerBlocker::from_filter_texts_with_cache(&[list], &dir).expect("fallback");
+        assert_blocks_tracker(&blocker);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
