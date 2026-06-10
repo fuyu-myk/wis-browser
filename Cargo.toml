@@ -69,6 +69,13 @@ wis-storage = { path = "crates/storage" }
 wis-network = { path = "crates/network" }
 wis-secrets = { path = "crates/secrets" }
 
+# Vendored wry 0.55.1 with one fix: `url_from_webview` no longer unwraps a
+# nil `WKWebView.URL` (panicked + aborted inside the navigation delegate when
+# leaving WebKit's fraud-warning interstitial via "go back" on an empty back
+# stack). Drop this patch once upstream ships the fix (see vendor/wry/README).
+[patch.crates-io]
+wry = { path = "vendor/wry" }
+
 [profile.release]
 opt-level = 3
 lto = "thin"
