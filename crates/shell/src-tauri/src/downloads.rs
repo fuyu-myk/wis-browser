@@ -128,6 +128,136 @@ pub async fn remove_download(
     Ok(())
 }
 
+/// Remove several downloads at once (select-mode delete). Same semantics as
+/// [`remove_download`], one event at the end.
+#[tauri::command]
+pub async fn remove_downloads(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<DownloadId>,
+) -> WisResult<()> {
+    {
+        let mut items = state.downloads.lock().expect("downloads poisoned");
+        items.retain(|item| !ids.contains(&item.id) || !item.status.is_terminal());
+    }
+    for id in ids {
+        state
+            .storage
+            .delete_download(id)
+            .map_err(|err| WisError::PersistenceFailed {
+                reason: err.to_string(),
+            })?;
+    }
+    emit_changed(&app);
+
+    Ok(())
+}
+
+/// Open a completed download with its default app. Returns `false` when the
+/// file is no longer at its recorded path (moved or deleted).
+#[tauri::command]
+pub async fn open_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: DownloadId,
+) -> WisResult<bool> {
+    let Some(path) = completed_download_path(&state, id)? else {
+        return Ok(false);
+    };
+    let Some(valid) = validate_on_disk(&app, &path)? else {
+        return Ok(false);
+    };
+    spawn_open(std::process::Command::new("open"), &valid)?;
+
+    Ok(true)
+}
+
+/// Reveal a completed download in the file manager. Same missing-file
+/// semantics as [`open_download`].
+#[tauri::command]
+pub async fn reveal_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: DownloadId,
+) -> WisResult<bool> {
+    let Some(path) = completed_download_path(&state, id)? else {
+        return Ok(false);
+    };
+    let Some(valid) = validate_on_disk(&app, &path)? else {
+        return Ok(false);
+    };
+    let mut cmd = std::process::Command::new("open");
+    cmd.arg("-R");
+    spawn_open(cmd, &valid)?;
+
+    Ok(true)
+}
+
+/// The recorded path of a *completed* download, from the session list or
+/// persisted history. `None` for unknown ids; opening a non-completed item is
+/// an error (an in-flight file is partial; failed/cancelled left no file).
+fn completed_download_path(
+    state: &State<'_, AppState>,
+    id: DownloadId,
+) -> WisResult<Option<PathBuf>> {
+    let in_memory = {
+        let items = state.downloads.lock().expect("downloads poisoned");
+        items
+            .iter()
+            .find(|item| item.id == id)
+            .map(|item| (item.status, item.path.clone()))
+    };
+    if let Some((status, path)) = in_memory {
+        if status != DownloadStatus::Completed {
+            return Err(WisError::InvalidInput {
+                message: format!("download is {status:?}, not completed"),
+            });
+        }
+        return Ok(Some(path));
+    }
+    let record = state
+        .storage
+        .get_download(id)
+        .map_err(|err| WisError::PersistenceFailed {
+            reason: err.to_string(),
+        })?;
+
+    Ok(record.map(|r| PathBuf::from(r.path)))
+}
+
+/// Boundary check before shelling out: the file must still exist as a regular
+/// file and resolve inside the downloads directory (a recorded path is our own
+/// data, but symlink swaps and DB tampering are cheap to rule out). `None`
+/// means "not there anymore" (the moved-or-deleted case); structural
+/// violations are errors.
+fn validate_on_disk<R: Runtime>(app: &AppHandle<R>, path: &Path) -> WisResult<Option<PathBuf>> {
+    let dir = downloads_dir(app)
+        .and_then(|d| d.canonicalize().map_err(|err| err.to_string()))
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("downloads dir unavailable: {err}"),
+        })?;
+    let Ok(canonical) = path.canonicalize() else {
+        return Ok(None);
+    };
+    if !canonical.is_file() {
+        return Ok(None);
+    }
+    if canonical.parent() != Some(dir.as_path()) {
+        return Err(WisError::InvalidInput {
+            message: "download path is outside the downloads directory".to_string(),
+        });
+    }
+
+    Ok(Some(canonical))
+}
+
+fn spawn_open(mut cmd: std::process::Command, path: &Path) -> WisResult<()> {
+    cmd.arg(path);
+    cmd.spawn().map(|_| ()).map_err(|err| WisError::InvalidInput {
+        message: format!("failed to open download: {err}"),
+    })
+}
+
 /// Decide the destination for a requested download and register it.
 /// Returning `false` denies the download.
 fn on_requested<R: Runtime>(

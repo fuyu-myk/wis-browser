@@ -59,6 +59,34 @@ pub fn list(conn: &Connection, limit: u32) -> StorageResult<Vec<DownloadRecord>>
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
+/// Fetch one completed download by id.
+pub fn get(conn: &Connection, id: DownloadId) -> StorageResult<Option<DownloadRecord>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT id, url, filename, path, bytes, completed_at
+        FROM downloads
+        WHERE id = ?1
+        "#,
+    )?;
+    let mut rows = stmt.query_map(params![id.as_uuid().to_string()], |row| {
+        let id_str: String = row.get(0)?;
+        let id = parse_download_id(&id_str).map_err(|err| {
+            rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(err))
+        })?;
+
+        Ok(DownloadRecord {
+            id,
+            url: row.get(1)?,
+            filename: row.get(2)?,
+            path: row.get(3)?,
+            bytes: row.get(4)?,
+            completed_at: row.get(5)?,
+        })
+    })?;
+
+    rows.next().transpose().map_err(Into::into)
+}
+
 /// Remove one download from history (the file itself is untouched). Unknown
 /// ids are silently ignored.
 pub fn delete(conn: &Connection, id: DownloadId) -> StorageResult<()> {

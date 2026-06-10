@@ -6,6 +6,7 @@
  */
 
 import { ClearDataSurface } from '@/overlay/surfaces/ClearDataSurface'
+import { DownloadsMenuSurface } from '@/overlay/surfaces/DownloadsMenuSurface'
 import { FindSurface } from '@/overlay/surfaces/FindSurface'
 import { BookmarkPickerSurface } from '@/overlay/surfaces/BookmarkPickerSurface'
 import { BookmarksMenuSurface } from '@/overlay/surfaces/BookmarksMenuSurface'
@@ -34,6 +35,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'peek') return <PeekSurface />
   if (surface === 'navguard') return <NavGuardSurface />
   if (surface === 'bookmarks') return <BookmarksMenuSurface />
+  if (surface === 'downloads') return <DownloadsMenuSurface />
   if (surface === 'bmpicker') return <BookmarkPickerSurface />
   if (surface === 'widgetresize') return <WidgetResizeSurface />
   if (surface === 'widgetheader') return <WidgetHeaderSurface />

@@ -164,6 +164,9 @@ pub trait Storage: Send + Sync {
     /// Completed downloads, newest first, capped at `limit`.
     fn list_downloads(&self, limit: u32) -> StorageResult<Vec<DownloadRecord>>;
 
+    /// Fetch one completed download by id.
+    fn get_download(&self, id: DownloadId) -> StorageResult<Option<DownloadRecord>>;
+
     /// Remove one download from history (never touches the file). Unknown ids
     /// are ignored.
     fn delete_download(&self, id: DownloadId) -> StorageResult<()>;

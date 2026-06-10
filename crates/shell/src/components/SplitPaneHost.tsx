@@ -198,10 +198,12 @@ function PaneSplit({
 import { NewTabPage } from '@/components/NewTabPage'
 import { SettingsPage } from '@/components/SettingsPage'
 import { HistoryPage } from '@/components/HistoryPage'
-import { HISTORY_URL, SETTINGS_URL } from '@/lib/url'
+import { DownloadsPage } from '@/components/DownloadsPage'
+import { DOWNLOADS_URL, HISTORY_URL, SETTINGS_URL } from '@/lib/url'
 
 function ChromePane({ tab }: { tab: Tab }) {
   if (tab.url === SETTINGS_URL) return <SettingsPage />
   if (tab.url === HISTORY_URL) return <HistoryPage activeTab={tab} />
+  if (tab.url === DOWNLOADS_URL) return <DownloadsPage />
   return <NewTabPage activeTab={tab} />
 }

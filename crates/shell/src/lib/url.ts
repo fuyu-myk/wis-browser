@@ -77,6 +77,7 @@ export function isChromeUrl(url: string): boolean {
 export const NEW_TAB_URL = 'about:blank'
 export const SETTINGS_URL = 'about:settings'
 export const HISTORY_URL = 'about:history'
+export const DOWNLOADS_URL = 'about:downloads'
 
 export function tabDisplayName(tab: { title: string; url: string }): string {
   if (tab.title && tab.title !== tab.url) {
@@ -84,6 +85,7 @@ export function tabDisplayName(tab: { title: string; url: string }): string {
   }
   if (tab.url === SETTINGS_URL) return 'Settings'
   if (tab.url === HISTORY_URL) return 'History'
+  if (tab.url === DOWNLOADS_URL) return 'Downloads'
   try {
     const u = new URL(tab.url)
     if (u.protocol === 'about:') {

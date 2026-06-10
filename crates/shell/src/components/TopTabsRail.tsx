@@ -6,6 +6,7 @@ import { HistoryIcon, SettingsIcon } from '@/lib/icons'
 
 import { BookmarksButton } from '@/components/BookmarksButton'
 import { Brand } from '@/components/Brand'
+import { DownloadsButton } from '@/components/DownloadsButton'
 import { VpnToggle } from '@/components/VpnToggle'
 import { WidgetDock } from '@/components/WidgetDock'
 import { WorkspacePill } from '@/components/WorkspacePill'
@@ -40,6 +41,7 @@ export function TopTabsRail({ state, side, onOpenSettings, onOpenHistory }: TopT
       <div className="kb-rail-spacer" />
       <WidgetDock widgets={state.settings.sidebar_widgets} variant="rail" />
       <div className="kb-rail-controls">
+        <DownloadsButton variant="rail" />
         {!activeWorkspace?.ephemeral && <BookmarksButton variant="rail" />}
         <VpnToggle workspace={activeWorkspace} variant="rail" />
         <button

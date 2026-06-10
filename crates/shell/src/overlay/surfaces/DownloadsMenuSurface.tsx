@@ -1,0 +1,207 @@
+/**
+ * Downloads popup hosted by the `overlay-downloads` webview. The card aligns
+ * toward the sidebar/rail side and shows the latest downloads: in-flight rows
+ * with live progress, completed rows that open the file on click (with a
+ * moved-or-deleted notice when the file is gone), and a footer button to the
+ * full downloads page.
+ */
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { emit } from '@tauri-apps/api/event'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+
+import { commands } from '@/bindings/commands'
+import type { DownloadId, DownloadItem } from '@/bindings/types'
+import { cx } from '@/lib/cx'
+import { FileIcon, XIcon } from '@/lib/icons'
+import { isChromeUrl, DOWNLOADS_URL } from '@/lib/url'
+import {
+  downloadHost,
+  isInProgress,
+  statusLabel,
+  DOWNLOADS_CLOSED_EVENT,
+  DOWNLOADS_KEY,
+  POPUP_LIMIT,
+} from '@/lib/downloads'
+import { useBrowserState } from '@/hooks/useBrowserState'
+import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
+import { useDownloads } from '@/hooks/useDownloads'
+import { useThemeApply } from '@/hooks/useThemeApply'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
+
+export function DownloadsMenuSurface() {
+  const { data: state } = useBrowserState()
+  useBrowserStateEvents()
+  useThemeApply(state?.settings)
+  const { downloads } = useDownloads()
+  const qc = useQueryClient()
+
+  const glassOn = state?.settings.glass_enabled ?? true
+  const layout = state?.settings.layout ?? 'sidebar_left'
+  const railSide = state?.settings.top_tabs_rail_side ?? 'left'
+  const side: 'left' | 'right' =
+    layout === 'sidebar_right' ? 'right' : layout === 'top_tabs' ? railSide : 'left'
+
+  const activeWorkspace = state?.workspaces.find((w) => w.id === state.active_workspace_id)
+  const activeTab =
+    activeWorkspace?.active_tab_id != null
+      ? (state?.tabs.find((t) => t.id === activeWorkspace.active_tab_id) ?? null)
+      : null
+
+  // Per-row "file may have been moved or deleted" notice, cleared on refetch.
+  const [missing, setMissing] = useState<Set<DownloadId>>(new Set())
+  const [confirmRemove, setConfirmRemove] = useState<DownloadItem | null>(null)
+  // Ref'd so the Esc handler can check it without re-binding the listener.
+  const confirmRemoveRef = useRef<DownloadItem | null>(null)
+  confirmRemoveRef.current = confirmRemove
+
+  const close = useCallback(() => {
+    setConfirmRemove(null)
+    void commands.hideOverlay('downloads').catch(() => undefined)
+    void emit(DOWNLOADS_CLOSED_EVENT).catch(() => undefined)
+  }, [])
+
+  // Take focus when first shown (the chrome shows/hides the persistent overlay).
+  useEffect(() => {
+    void commands.focusWebview('overlay-downloads').catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      // The confirm dialog's own Esc handler cancels it; don't also close.
+      if (confirmRemoveRef.current) return
+      close()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [close])
+
+  const removeOne = useMutation({
+    mutationFn: (id: DownloadId) => commands.removeDownload(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: DOWNLOADS_KEY }),
+  })
+
+  const openFile = (item: DownloadItem) => {
+    if (item.status !== 'completed') return
+    void commands
+      .openDownload(item.id)
+      .then((found) => {
+        if (found) close()
+        else setMissing((prev) => new Set(prev).add(item.id))
+      })
+      .catch(() => setMissing((prev) => new Set(prev).add(item.id)))
+  }
+
+  const openFullPage = () => {
+    if (activeTab && isChromeUrl(activeTab.url)) {
+      void commands.navigateTab(activeTab.id, DOWNLOADS_URL).catch(() => undefined)
+    } else if (activeWorkspace) {
+      void commands.createTab(activeWorkspace.id, DOWNLOADS_URL).catch(() => undefined)
+    }
+    close()
+  }
+
+  const latest = downloads.slice(0, POPUP_LIMIT)
+
+  return (
+    <div className={cx('kb-dlmenu-backdrop', { 'glass-on': glassOn })} onMouseDown={close} role="presentation">
+      <div
+        className={cx('kb-dlmenu', `side-${side}`, {
+          'glass-on': glassOn,
+          'is-top-tabs': layout === 'top_tabs',
+        })}
+        role="dialog"
+        aria-label="Downloads"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="kb-dlmenu-head">
+          <span className="kb-dlmenu-title">Downloads</span>
+        </div>
+
+        <div className="kb-dlmenu-scroll">
+          {latest.length === 0 ? (
+            <p className="kb-dlmenu-empty">No downloads yet.</p>
+          ) : (
+            <ul className="kb-dlmenu-list">
+              {latest.map((item) => (
+                <DownloadRow
+                  key={item.id}
+                  item={item}
+                  missing={missing.has(item.id)}
+                  onOpen={() => openFile(item)}
+                  onRemove={() => setConfirmRemove(item)}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <button type="button" className="kb-dlmenu-all" onClick={openFullPage}>
+          View all downloads
+        </button>
+      </div>
+
+      {/* Stop mousedown from reaching the popup backdrop (which closes the popup). */}
+      <div onMouseDown={(e) => e.stopPropagation()} role="presentation">
+        <ConfirmDialog
+          open={confirmRemove != null}
+          title={`Delete "${confirmRemove?.filename ?? ''}" from history?`}
+          message="The downloaded file stays on disk; only the history entry is removed. This can't be undone."
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => {
+            if (confirmRemove) removeOne.mutate(confirmRemove.id)
+            setConfirmRemove(null)
+          }}
+          onCancel={() => setConfirmRemove(null)}
+        />
+      </div>
+    </div>
+  )
+}
+
+interface DownloadRowProps {
+  item: DownloadItem
+  missing: boolean
+  onOpen: () => void
+  onRemove: () => void
+}
+
+function DownloadRow({ item, missing, onOpen, onRemove }: DownloadRowProps) {
+  const inFlight = isInProgress(item)
+  return (
+    <li className={cx('kb-dlmenu-row', { 'is-missing': missing })}>
+      <button
+        type="button"
+        className="kb-dlmenu-tile"
+        onClick={onOpen}
+        disabled={item.status !== 'completed'}
+        title={missing ? undefined : item.path}
+      >
+        <span className="kb-dl-fileicon" aria-hidden>
+          <FileIcon />
+        </span>
+        <span className="kb-dl-meta">
+          <span className="kb-dl-name">{item.filename}</span>
+          <span className={cx('kb-dl-sub', { 'is-error': missing || item.status === 'failed' })}>
+            {missing ? 'File may have been moved or deleted' : statusLabel(item)}
+            {missing ? null : <span className="kb-dl-host"> · {downloadHost(item.url)}</span>}
+          </span>
+          {inFlight ? <span className="kb-dl-bar" aria-hidden /> : null}
+        </span>
+      </button>
+      {inFlight ? null : (
+        <button
+          type="button"
+          className="kb-dlmenu-del"
+          aria-label="Remove from downloads"
+          title="Remove from downloads"
+          onClick={onRemove}
+        >
+          <XIcon />
+        </button>
+      )}
+    </li>
+  )
+}

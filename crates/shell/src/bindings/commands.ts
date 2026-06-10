@@ -13,6 +13,8 @@ import type {
   BrowserState,
   CredentialSummary,
   Decision,
+  DownloadId,
+  DownloadItem,
   HistoryEntry,
   HistoryQuery,
   LinkAssessment,
@@ -432,6 +434,36 @@ export const commands = {
    */
   async tabInteractionState(id: TabId): Promise<string | null> {
     return invoke('tab_interaction_state', { id })
+  },
+
+  // -- downloads --------------------------------------------------------------
+
+  /** Downloads newest first: this session's items, then persisted history. */
+  async listDownloads(): Promise<DownloadItem[]> {
+    return invoke('list_downloads')
+  },
+
+  /** Remove one download from the list and history (the file is untouched). */
+  async removeDownload(id: DownloadId): Promise<void> {
+    return invoke('remove_download', { id })
+  },
+
+  /** Remove several downloads from the list and history (files untouched). */
+  async removeDownloads(ids: DownloadId[]): Promise<void> {
+    return invoke('remove_downloads', { ids })
+  },
+
+  /**
+   * Open a completed download with its default app. Resolves `false` when
+   * the file is no longer at its recorded path (moved or deleted).
+   */
+  async openDownload(id: DownloadId): Promise<boolean> {
+    return invoke('open_download', { id })
+  },
+
+  /** Reveal a completed download in Finder. Same semantics as `openDownload`. */
+  async revealDownload(id: DownloadId): Promise<boolean> {
+    return invoke('reveal_download', { id })
   },
 
   /**

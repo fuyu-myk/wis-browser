@@ -147,6 +147,14 @@ impl Storage for SqliteStorage {
         downloads::list(&conn, limit)
     }
 
+    fn get_download(
+        &self,
+        id: wis_core::DownloadId,
+    ) -> StorageResult<Option<crate::downloads::DownloadRecord>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        downloads::get(&conn, id)
+    }
+
     fn delete_download(&self, id: wis_core::DownloadId) -> StorageResult<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         downloads::delete(&conn, id)

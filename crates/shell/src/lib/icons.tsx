@@ -181,3 +181,18 @@ export const HistoryIcon = (p: Props) => (
     <path d="M12 7v5l4 2" />
   </Icon>
 )
+
+export const DownloadIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <path d="m7 10 5 5 5-5" />
+    <path d="M12 15V3" />
+  </Icon>
+)
+
+export const FileIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+    <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+  </Icon>
+)

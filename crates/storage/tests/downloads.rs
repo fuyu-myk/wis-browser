@@ -56,6 +56,16 @@ fn record_is_idempotent_per_id() {
 }
 
 #[test]
+fn get_returns_one_row_or_none() {
+    let s = store();
+    let rec = record("found.txt", 0);
+    s.record_download(&rec).unwrap();
+
+    assert_eq!(s.get_download(rec.id).unwrap(), Some(rec));
+    assert_eq!(s.get_download(DownloadId::new()).unwrap(), None);
+}
+
+#[test]
 fn delete_removes_one_row_and_ignores_unknown_ids() {
     let s = store();
     let keep = record("keep.txt", 0);

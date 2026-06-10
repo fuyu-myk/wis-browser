@@ -15,11 +15,13 @@ declare const TabIdBrand: unique symbol
 declare const WorkspaceIdBrand: unique symbol
 declare const WidgetIdBrand: unique symbol
 declare const TabFolderIdBrand: unique symbol
+declare const DownloadIdBrand: unique symbol
 
 export type TabId = string & { readonly [TabIdBrand]: never }
 export type WorkspaceId = string & { readonly [WorkspaceIdBrand]: never }
 export type WidgetId = string & { readonly [WidgetIdBrand]: never }
 export type TabFolderId = string & { readonly [TabFolderIdBrand]: never }
+export type DownloadId = string & { readonly [DownloadIdBrand]: never }
 
 // ---------------------------------------------------------------------------
 // Enums: serialised by serde as snake_case strings.
@@ -376,6 +378,25 @@ export interface HistoryEntry {
 /** A domain with stored site data (cookies/cache/storage) in a workspace. */
 export interface SiteDataEntry {
   domain: string
+}
+
+// ---------------------------------------------------------------------------
+// Downloads (mirror of `downloads.rs` `DownloadItem`, camelCase serde).
+// ---------------------------------------------------------------------------
+
+export type DownloadStatus = 'in_progress' | 'completed' | 'failed' | 'cancelled'
+
+/** One tracked download (this session's, or a persisted completed one). */
+export interface DownloadItem {
+  id: DownloadId
+  url: string
+  filename: string
+  path: string
+  receivedBytes: number
+  status: DownloadStatus
+  /** From a private context; saved to disk but never in persistent history. */
+  private: boolean
+  startedAtMs: number
 }
 
 // ---------------------------------------------------------------------------

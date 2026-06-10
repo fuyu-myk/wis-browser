@@ -8,6 +8,7 @@ import { HistoryIcon, SettingsIcon } from '@/lib/icons'
 import { HISTORY_URL, SETTINGS_URL } from '@/lib/url'
 import { useBookmarksOverlay } from '@/hooks/useBookmarksOverlay'
 import { useClearDataOverlay } from '@/hooks/useClearDataOverlay'
+import { useDownloadsOverlay } from '@/hooks/useDownloadsOverlay'
 import { useCommandPaletteOverlay } from '@/hooks/useCommandPaletteOverlay'
 import { useNavGuardOverlay } from '@/hooks/useNavGuardOverlay'
 import { usePeekOverlay } from '@/hooks/usePeekOverlay'
@@ -17,6 +18,7 @@ import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 import { BookmarksButton } from '@/components/BookmarksButton'
 import { Content } from '@/components/Content'
 import { DiscardedTabsContext } from '@/components/DiscardedTabsContext'
+import { DownloadsButton } from '@/components/DownloadsButton'
 import { NavRow } from '@/components/NavRow'
 import { Sidebar } from '@/components/Sidebar'
 import { TopBar } from '@/components/TopBar'
@@ -43,6 +45,7 @@ export function Window({ state, settings }: WindowProps) {
   usePeekOverlay()
   useNavGuardOverlay()
   useBookmarksOverlay()
+  useDownloadsOverlay()
 
   const layoutClass = `layout-${settings.layout.replace('_', '-')}`
   const isSidebar = settings.layout !== 'top_tabs'
@@ -118,6 +121,7 @@ export function Window({ state, settings }: WindowProps) {
             expanded={sidebarExpanded}
             setExpanded={setSidebarExpanded}
           />
+          <DownloadsButton variant="fixed" anchor={fixedSettingsAnchor} />
           {!isPrivate && (
             <BookmarksButton variant="fixed" anchor={fixedSettingsAnchor} />
           )}
