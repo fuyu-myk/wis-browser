@@ -2491,6 +2491,27 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 .kb-window.glass-on .kb-newtab-page { background: transparent; }
 /* A user-set workspace background beats the glass transparency. */
 .has-custom-bg .kb-window.glass-on .kb-newtab-page { background: var(--wp-grad); }
+/* Wallpaper backgrounds render in a backdrop layer so blur applies to the
+   image without blurring the launchpad content. */
+.has-custom-img .kb-newtab-page,
+.has-custom-img .kb-window.glass-on .kb-newtab-page { background: none; }
+.has-custom-img .kb-newtab-page::before {
+  content: "";
+  position: absolute;
+  /* Over-extend by the blur radius so the softened edges never reveal a
+     transparent halo inside the page. */
+  inset: calc(-2 * var(--wp-blur, 0px));
+  background: var(--wp-grad);
+  background-size: var(--wp-bg-size, cover);
+  background-repeat: var(--wp-bg-repeat, no-repeat);
+  background-position: center;
+  filter: blur(var(--wp-blur, 0px));
+  transform: translateZ(0);
+  pointer-events: none;
+}
+/* The blurred layer must stay clipped to the page. */
+.has-custom-img .kb-newtab-page { overflow: hidden; }
+.has-custom-img .kb-newtab-page > * { position: relative; z-index: 1; }
 .kb-newtab-page .inner {
   position: relative;
   text-align: center;
@@ -5937,3 +5958,22 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   border-color: rgba(255, 255, 255, 0.08);
 }
 .glass-on .kb-ua-add { background: transparent; }
+
+/* Image-mode preview: a miniature launchpad. Layered like the real page
+   (image layer + dim overlay) so fit/dim/blur read faithfully; the blur is
+   scaled down to the thumbnail so it looks proportional. */
+.kb-ws-bg-preview.is-image {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  height: auto;
+  overflow: hidden;
+}
+.kb-ws-bg-preview-img {
+  position: absolute;
+  inset: -8px;
+  background-position: center;
+}
+.kb-ws-bg-preview-dim {
+  position: absolute;
+  inset: 0;
+}

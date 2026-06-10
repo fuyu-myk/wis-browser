@@ -75,6 +75,24 @@ pub struct ImageBackground {
     pub blur: u8,
 }
 
+/// Last-configured settings for each background mode, kept so switching
+/// Theme -> Gradient -> Image and back restores what the user built. The
+/// active mode lives in [`crate::workspace::Workspace::background`]; these
+/// are the inactive modes' memories.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackgroundDrafts {
+    #[serde(default)]
+    pub gradient: Option<GradientSpec>,
+    #[serde(default)]
+    pub image: Option<ImageBackground>,
+}
+
+impl BackgroundDrafts {
+    pub fn is_empty(&self) -> bool {
+        self.gradient.is_none() && self.image.is_none()
+    }
+}
+
 /// `#rrggbb` or `#rrggbbaa` (lowercase or uppercase hex digits).
 pub fn is_valid_hex_color(s: &str) -> bool {
     (s.len() == 7 || s.len() == 9)

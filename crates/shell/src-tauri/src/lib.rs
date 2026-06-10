@@ -19,6 +19,7 @@ mod save_coalescer;
 mod state;
 mod suggest;
 mod vault;
+mod wallpapers;
 mod webview_prefs;
 mod widget_panel;
 
@@ -44,6 +45,7 @@ pub fn run() {
     let _ = tracing::subscriber::set_global_default(subscriber);
 
     tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol("wis-asset", wallpapers::handle_asset_request)
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(if cfg!(debug_assertions) {
@@ -254,6 +256,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::set_workspace_background,
+            wallpapers::import_wallpaper,
             commands::set_workspace_custom_accent,
             commands::get_browser_state,
             commands::get_workspace,

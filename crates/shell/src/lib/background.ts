@@ -1,6 +1,6 @@
 /** Pure helpers for workspace backgrounds (CSS generation + defaults). */
 
-import type { Background, GradientSpec } from '@/bindings/types'
+import type { Background, GradientSpec, ImageBackground } from '@/bindings/types'
 
 /** Hex stop colour (+ optional alpha byte) to rgba, with its alpha scaled
  * by the whole-gradient opacity factor. */
@@ -21,11 +21,20 @@ export function gradientCss(spec: GradientSpec): string {
   return `linear-gradient(${spec.angle}deg, ${stops})`
 }
 
-/** CSS background image for a workspace background (gradients only; image
- * backgrounds are rendered by their own hook once wallpapers land). */
+/** Layered CSS background for a workspace background: gradients render
+ * directly; images layer the dim overlay over the wis-asset URL. */
 export function backgroundCss(bg: Background): string | null {
   if ('gradient' in bg) return gradientCss(bg.gradient)
-  return null
+  const img = bg.image
+  const dim = Math.min(80, Math.max(0, img.dim)) / 100
+  return `linear-gradient(rgba(0, 0, 0, ${dim.toFixed(2)}), rgba(0, 0, 0, ${dim.toFixed(2)})), url("wis-asset://wallpaper/${img.asset}")`
+}
+
+/** background-size / background-repeat for an image fit. */
+export function fitCss(fit: ImageBackground['fit']): { size: string; repeat: string } {
+  if (fit === 'contain') return { size: 'contain', repeat: 'no-repeat' }
+  if (fit === 'tile') return { size: 'auto', repeat: 'repeat' }
+  return { size: 'cover', repeat: 'no-repeat' }
 }
 
 /** Seed shown when a workspace first opens the gradient editor. */

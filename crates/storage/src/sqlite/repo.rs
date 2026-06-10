@@ -91,9 +91,14 @@ fn insert_workspace(
         .as_ref()
         .map(serde_json::to_string)
         .transpose()?;
+    let background_drafts_json = if workspace.background_drafts.is_empty() {
+        None
+    } else {
+        Some(serde_json::to_string(&workspace.background_drafts)?)
+    };
     tx.execute(
-        "INSERT INTO workspaces (id, position, name, accent, icon, privacy_mode, active_tab_id, pane_tree, upstream_proxy, tab_folders, background, custom_accent)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT INTO workspaces (id, position, name, accent, icon, privacy_mode, active_tab_id, pane_tree, upstream_proxy, tab_folders, background, custom_accent, background_drafts)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             uuid_string(workspace.id.into()),
             position,
@@ -107,6 +112,7 @@ fn insert_workspace(
             tab_folders_json,
             background_json,
             workspace.custom_accent,
+            background_drafts_json,
         ],
     )?;
 
@@ -222,7 +228,7 @@ pub fn load(conn: &Connection) -> StorageResult<Option<BrowserState>> {
 /// [`assemble_workspaces`].
 fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, accent, icon, privacy_mode, active_tab_id, pane_tree, upstream_proxy, tab_folders, background, custom_accent
+        "SELECT id, name, accent, icon, privacy_mode, active_tab_id, pane_tree, upstream_proxy, tab_folders, background, custom_accent, background_drafts
          FROM workspaces ORDER BY position ASC",
     )?;
     let mut rows = stmt.query([])?;
@@ -252,6 +258,12 @@ fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
             .as_deref()
             .map(serde_json::from_str)
             .transpose()?;
+        let background_drafts_json: Option<String> = row.get(11)?;
+        let background_drafts = background_drafts_json
+            .as_deref()
+            .map(serde_json::from_str)
+            .transpose()?
+            .unwrap_or_default();
 
         out.push(Workspace {
             id: WorkspaceId::from(parse_uuid(&id_str)?),
@@ -274,6 +286,7 @@ fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
             ephemeral: false,
             background,
             custom_accent: row.get(10)?,
+            background_drafts,
         });
     }
 

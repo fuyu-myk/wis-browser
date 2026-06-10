@@ -219,6 +219,12 @@ export const commands = {
     return invoke('set_workspace_custom_accent', { id, color })
   },
 
+  /** Native image picker -> wallpaper store; resolves the asset hash, or
+   *  null when the user cancels. */
+  async importWallpaper(): Promise<string | null> {
+    return invoke('import_wallpaper')
+  },
+
   /** Set or clear a workspace's custom background (null = theme default). */
   async setWorkspaceBackground(
     id: WorkspaceId,

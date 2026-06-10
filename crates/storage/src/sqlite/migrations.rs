@@ -227,6 +227,12 @@ const M0016_WORKSPACE_CUSTOM_ACCENT: &str = r#"
 ALTER TABLE workspaces ADD COLUMN custom_accent TEXT;
 "#;
 
+// Per-mode background memory (JSON), so switching background modes restores
+// the previous configuration of each.
+const M0017_BACKGROUND_DRAFTS: &str = r#"
+ALTER TABLE workspaces ADD COLUMN background_drafts TEXT;
+"#;
+
 fn all() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(M0001_INITIAL),
@@ -245,6 +251,7 @@ fn all() -> Migrations<'static> {
         M::up(M0014_DOWNLOADS),
         M::up(M0015_WORKSPACE_BACKGROUND),
         M::up(M0016_WORKSPACE_CUSTOM_ACCENT),
+        M::up(M0017_BACKGROUND_DRAFTS),
     ])
 }
 

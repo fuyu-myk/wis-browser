@@ -209,6 +209,12 @@ export interface ImageBackground {
 /** A workspace's custom background (externally tagged serde enum). */
 export type Background = { gradient: GradientSpec } | { image: ImageBackground }
 
+/** Per-mode background memory: what each mode last looked like. */
+export interface BackgroundDrafts {
+  gradient: GradientSpec | null
+  image: ImageBackground | null
+}
+
 export interface Workspace {
   id: WorkspaceId
   name: string
@@ -233,6 +239,8 @@ export interface Workspace {
   background: Background | null
   /** Custom flat dot colour overriding the accent preset; null = preset. */
   custom_accent: string | null
+  /** Per-mode background memory; restored when switching modes. */
+  background_drafts: BackgroundDrafts
 }
 
 /**

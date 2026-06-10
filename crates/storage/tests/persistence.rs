@@ -61,7 +61,15 @@ fn workspace_background_survives_round_trip() {
 
     store.save_state(&state).expect("save");
     let loaded = store.load_state().expect("load").unwrap();
-    assert_eq!(loaded.workspaces[0].background, Some(background));
+    assert_eq!(loaded.workspaces[0].background, Some(background.clone()));
+    let wis_core::Background::Gradient(g) = background else {
+        unreachable!()
+    };
+    assert_eq!(
+        loaded.workspaces[0].background_drafts.gradient,
+        Some(g),
+        "with_background must remember the gradient draft"
+    );
 }
 
 #[test]

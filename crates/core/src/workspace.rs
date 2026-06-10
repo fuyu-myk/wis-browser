@@ -1,7 +1,7 @@
 //! Workspace: a named group of tabs with its own accent colour,
 //! essentials, and privacy preset.
 
-use crate::background::Background;
+use crate::background::{Background, BackgroundDrafts};
 use crate::ids::{TabFolderId, TabId, WorkspaceId};
 use crate::pane::{PaneBranch, PaneNode, SplitDir};
 use crate::privacy::PrivacyMode;
@@ -79,6 +79,10 @@ pub struct Workspace {
     /// the `accent` preset's swatch. Cleared when a preset is picked.
     #[serde(default)]
     pub custom_accent: Option<String>,
+    /// Per-mode background memory (see [`BackgroundDrafts`]). Updated by
+    /// [`Workspace::with_background`]; never cleared by switching modes.
+    #[serde(default)]
+    pub background_drafts: BackgroundDrafts,
 }
 
 impl Workspace {
@@ -109,6 +113,7 @@ impl Workspace {
             upstream_proxy: None,
             background: None,
             custom_accent: None,
+            background_drafts: BackgroundDrafts::default(),
         }
     }
 
@@ -305,8 +310,16 @@ impl Workspace {
     }
 
     pub fn with_background(&self, background: Option<Background>) -> Self {
+        let mut background_drafts = self.background_drafts.clone();
+        match &background {
+            Some(Background::Gradient(g)) => background_drafts.gradient = Some(g.clone()),
+            Some(Background::Image(img)) => background_drafts.image = Some(img.clone()),
+            None => {}
+        }
+
         Self {
             background,
+            background_drafts,
             ..self.clone()
         }
     }
