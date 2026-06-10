@@ -196,7 +196,9 @@ export function SettingsPage() {
 
   if (!state) return null
   const settings = state.settings
-  const navOnRight = settings.layout === 'sidebar_right'
+  const navOnRight =
+    settings.layout === 'sidebar_right' ||
+    (settings.layout === 'top_tabs' && settings.top_tabs_rail_side === 'right')
 
   const scrollTo = (id: string) => {
     const el = mainRef.current?.querySelector(`#${id}`)

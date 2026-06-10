@@ -5,7 +5,7 @@ import { commands } from '@/bindings/commands'
 import type { Widget, WidgetId } from '@/bindings/types'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useOverlay } from '@/hooks/useOverlay'
-import { DEFAULT_PANEL_LIMIT } from '@/lib/widgets'
+import { DEFAULT_PANEL_LIMIT, effectiveWidgetUrl } from '@/lib/widgets'
 import {
   WPANEL_RELOAD_EVENT,
   WRESIZE_END_EVENT,
@@ -132,6 +132,30 @@ export function useWidgetPanel(): {
   const limitCount = state?.settings.widget_panel_limit ?? DEFAULT_PANEL_LIMIT
   const limitRef = useRef({ enabled: limitEnabled, count: limitCount })
   limitRef.current = { enabled: limitEnabled, count: limitCount }
+  const widgetsRef = useRef<Widget[]>([])
+  widgetsRef.current = state?.settings.sidebar_widgets ?? []
+
+  // Mirror chrome theme changes onto theme-sensitive widget URLs.
+  useEffect(() => {
+    let lastMode = document.body.getAttribute('data-mode')
+    const observer = new MutationObserver(() => {
+      const mode = document.body.getAttribute('data-mode')
+      // The theme hook re-sets the attribute on unrelated settings changes;
+      // only an actual light/dark flip warrants a navigation.
+      if (mode === lastMode) return
+      lastMode = mode
+      const dark = mode === 'dark'
+      for (const id of liveRef.current.keys()) {
+        const widget = widgetsRef.current.find((w) => w.id === id)
+        if (!widget) continue
+        const url = effectiveWidgetUrl(widget, dark)
+        if (url === effectiveWidgetUrl(widget, !dark)) continue
+        void commands.navigateWidgetPanel(widget.id, url).catch(() => undefined)
+      }
+    })
+    observer.observe(document.body, { attributes: true, attributeFilter: ['data-mode'] })
+    return () => observer.disconnect()
+  }, [])
 
   // Pre-create the chrome companion overlays so the first panel open doesn't
   // render before them.
@@ -288,6 +312,8 @@ export function useWidgetPanel(): {
       liveRef.current.set(widget.id, Date.now())
 
       const { panel } = geo
+      const dark = document.body.getAttribute('data-mode') === 'dark'
+      const url = effectiveWidgetUrl(widget, dark)
       const run = async () => {
         // Hide the previous panel first: panels created later stack higher,
         // so revealing the target under a still-visible newer panel would
@@ -300,12 +326,12 @@ export function useWidgetPanel(): {
           )
           if (!shown) {
             await commands.openWidgetPanel(
-              widget.id, widget.url, panel.x, panel.y, panel.width, panel.height,
+              widget.id, url, panel.x, panel.y, panel.width, panel.height, dark,
             )
           }
         } else {
           await commands.openWidgetPanel(
-            widget.id, widget.url, panel.x, panel.y, panel.width, panel.height,
+            widget.id, url, panel.x, panel.y, panel.width, panel.height, dark,
           )
         }
       }

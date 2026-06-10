@@ -541,8 +541,9 @@ export const commands = {
     y: number,
     width: number,
     height: number,
+    dark: boolean,
   ): Promise<void> {
-    return invoke('open_widget_panel', { id, url, x, y, width, height })
+    return invoke('open_widget_panel', { id, url, x, y, width, height, dark })
   },
 
   /**
@@ -596,6 +597,12 @@ export const commands = {
    */
   async reloadWidgetPanel(id: WidgetId): Promise<void> {
     return invoke('reload_widget_panel', { id })
+  },
+
+  /** Navigate widget `id`'s live panel (e.g. re-applying a theme-dependent
+   *  query parameter). No-op when the panel isn't live. */
+  async navigateWidgetPanel(id: WidgetId, url: string): Promise<void> {
+    return invoke('navigate_widget_panel', { id, url })
   },
 
   // -- settings -------------------------------------------------------------

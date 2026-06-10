@@ -104,6 +104,7 @@ pub async fn open_widget_panel(
     y: f64,
     width: f64,
     height: f64,
+    dark: bool,
 ) -> WisResult<()> {
     let label = panel_label(&id)?;
     let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
@@ -172,6 +173,7 @@ pub async fn open_widget_panel(
     }
     // File downloads from widget sites go through the same sanitised-download pipeline as tabs.
     builder = crate::downloads::attach_download_handler(builder, ephemeral);
+    builder = builder.on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Allow);
 
     let child = window
         .add_child(
@@ -183,20 +185,8 @@ pub async fn open_widget_panel(
             message: format!("widget panel add_child failed: {err}"),
         })?;
 
-    // Apple-proxied Safe Browsing warning.
-    crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
-
-    // Keep overlays (incl. the resize strip) above the freshly added panel.
-    crate::overlay::promote_overlays_to_front(&app);
-    notify_panels_changed(&app);
-
-    // Same engine-level tracker blocking as tab webviews; best-effort.
-    if let Some(spec) = state.content_rule_spec(privacy_mode) {
-        if let Err(err) = crate::content_filter::attach_rule_list(&child, &spec) {
-            log::warn!("widget panel: content filter attach skipped: {err}");
-        }
-    }
-
+    // Style before first paint.
+    let _ = child.hide();
     // Round only the bottom corners: the top edge sits flush under the
     // accent header bar (overlay-widgetheader), which carries the top
     // rounding, so the two read as one card.
@@ -205,7 +195,7 @@ pub async fn open_widget_panel(
         use objc2::runtime::AnyObject;
         use objc2::{class, msg_send};
 
-        let _ = child.with_webview(|w| unsafe {
+        let _ = child.with_webview(move |w| unsafe {
             let view: *mut AnyObject = w.inner() as *mut AnyObject;
             if view.is_null() {
                 return;
@@ -220,17 +210,55 @@ pub async fn open_widget_panel(
             let _: () = msg_send![layer, setMaskedCorners: mask];
             let _: () = msg_send![layer, setMasksToBounds: true];
 
-            // Make WKWebView transparent
+            // The engine draws no background, but the layer carries the theme
+            // surface colour (mirrors --surface-raised in tokens.css).
             let key_c = std::ffi::CString::new("drawsBackground").expect("no NUL");
             let key: *mut AnyObject =
                 msg_send![class!(NSString), stringWithUTF8String: key_c.as_ptr()];
             let no_value: *mut AnyObject = msg_send![class!(NSNumber), numberWithBool: false];
             let _: () = msg_send![view, setValue: no_value, forKey: key];
-            let clear: *mut AnyObject = msg_send![class!(NSColor), clearColor];
-            if !clear.is_null() {
-                let _: () = msg_send![view, setUnderPageBackgroundColor: clear];
+            let (r, g, b) = if dark {
+                (0.255_f64, 0.255_f64, 0.298_f64) // #41414C
+            } else {
+                (0.980_f64, 0.980_f64, 0.976_f64) // #FAFAF9
+            };
+            let surface: *mut AnyObject = msg_send![
+                class!(NSColor),
+                colorWithSRGBRed: r, green: g, blue: b, alpha: 1.0_f64
+            ];
+            if !surface.is_null() {
+                #[repr(transparent)]
+                #[derive(Clone, Copy)]
+                struct CGColorRef(*const std::ffi::c_void);
+                unsafe impl objc2::encode::Encode for CGColorRef {
+                    const ENCODING: objc2::encode::Encoding =
+                        objc2::encode::Encoding::Pointer(&objc2::encode::Encoding::Struct(
+                            "CGColor",
+                            &[],
+                        ));
+                }
+                let cg: CGColorRef = msg_send![surface, CGColor];
+                if !cg.0.is_null() {
+                    let _: () = msg_send![layer, setBackgroundColor: cg];
+                }
+                let _: () = msg_send![view, setUnderPageBackgroundColor: surface];
             }
         });
+    }
+    let _ = child.show();
+
+    // Apple-proxied Safe Browsing warning.
+    crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
+
+    // Keep overlays (incl. the resize strip) above the freshly added panel.
+    crate::overlay::promote_overlays_to_front(&app);
+    notify_panels_changed(&app);
+
+    // Same engine-level tracker blocking as tab webviews; best-effort.
+    if let Some(spec) = state.content_rule_spec(privacy_mode) {
+        if let Err(err) = crate::content_filter::attach_rule_list(&child, &spec) {
+            log::warn!("widget panel: content filter attach skipped: {err}");
+        }
     }
 
     Ok(())
@@ -263,9 +291,31 @@ pub async fn show_widget_panel(
     Ok(true)
 }
 
+/// Navigate widget `id`'s live panel to a new URL (e.g. re-applying a
+/// theme-dependent query parameter). No-op when the panel isn't live.
+#[tauri::command]
+pub async fn navigate_widget_panel(app: AppHandle, id: String, url: String) -> WisResult<()> {
+    let label = panel_label(&id)?;
+    let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(WisError::InvalidInput {
+            message: format!("widget panel refuses non-web URL: {}", parsed.scheme()),
+        });
+    }
+    let Some(wv) = app.webviews().get(&label).cloned() else {
+        return Ok(());
+    };
+    wv.navigate(parsed).map_err(|err| WisError::InvalidInput {
+        message: format!("widget panel navigate: {err}"),
+    })?;
+
+    Ok(())
+}
+
 /// Hard-reload widget `id`'s panel (bypasses caches). Native `reloadFromOrigin`
 /// rather than injected JS, so it works even when the page is hung and would
-/// never execute an injected `location.reload()`.
+/// never execute an injected `location.reload()`. No-op when the panel isn't
+/// live.
 #[tauri::command]
 pub async fn reload_widget_panel(app: AppHandle, id: String) -> WisResult<()> {
     let label = panel_label(&id)?;

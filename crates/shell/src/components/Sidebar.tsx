@@ -54,6 +54,22 @@ export function Sidebar({
     if (!expanded) window.dispatchEvent(new CustomEvent('wis-sidebar-collapsed'))
   }, [expanded])
 
+  const sidebarSide: 'left' | 'right' =
+    settings.layout === 'sidebar_right' ? 'right' : 'left'
+  useEffect(() => {
+    if (!collapsible || expanded) return
+    const EDGE_PX = 8
+    const onMove = (e: globalThis.MouseEvent) => {
+      const atEdge =
+        sidebarSide === 'left'
+          ? e.clientX <= EDGE_PX
+          : e.clientX >= window.innerWidth - EDGE_PX
+      if (atEdge) setExpanded(true)
+    }
+    document.addEventListener('mousemove', onMove)
+    return () => document.removeEventListener('mousemove', onMove)
+  }, [collapsible, expanded, sidebarSide, setExpanded])
+
   useEffect(() => {
     if (!collapsible || !expanded) return
     // Esc and explicit click-out close the workspace popover and

@@ -53,6 +53,24 @@ export function widgetCategory(widget: Widget): WidgetCategory {
   return catalogEntry(widget.kind)?.category ?? 'social'
 }
 
+/**
+ * The URL a widget's panel should load given the current chrome theme.
+ * Instagram opts into its web dark mode via a `?theme=dark` query parameter
+ * rather than `prefers-color-scheme`, so the chrome theme is mirrored onto
+ * the URL; every other widget loads its catalog URL unchanged.
+ */
+export function effectiveWidgetUrl(widget: Widget, dark: boolean): string {
+  if (widget.kind !== 'instagram') return widget.url
+  try {
+    const u = new URL(widget.url)
+    if (dark) u.searchParams.set('theme', 'dark')
+    else u.searchParams.delete('theme')
+    return u.toString()
+  } catch {
+    return widget.url
+  }
+}
+
 /** A fresh enabled `Widget` record from a catalog entry. */
 export function makeWidget(entry: WidgetCatalogEntry): Widget {
   return {
