@@ -690,11 +690,15 @@ pub async fn close_tab(app: AppHandle, state: State<'_, AppState>, id: TabId) ->
                     .map(|w| w.ephemeral)
                     .unwrap_or(true);
 
-                (!ephemeral && !url.starts_with("about:")).then_some((tab.workspace_id, url))
+                (!ephemeral && !url.starts_with("about:")).then_some((
+                    tab.workspace_id,
+                    url,
+                    tab.folder_id,
+                ))
             })
         };
 
-        if let Some((workspace_id, url)) = recorded {
+        if let Some((workspace_id, url, folder_id)) = recorded {
             // Capture the live session (history/scroll/forms) while the
             // webview still exists, so reopen restores instead of cold-loads.
             let interaction_state = app
@@ -706,6 +710,7 @@ pub async fn close_tab(app: AppHandle, state: State<'_, AppState>, id: TabId) ->
             ring.push(crate::state::ClosedTab {
                 workspace_id,
                 url,
+                folder_id,
                 interaction_state,
             });
 
@@ -749,9 +754,22 @@ pub async fn restore_closed_tab(app: AppHandle, state: State<'_, AppState>) -> W
         }
 
         let new_tab_id = mutate(&app, &state, |s| {
-            let (next, tab) = s.with_new_tab(entry.workspace_id, &entry.url)?;
+            // Loose creation bypasses the workspace's currently-selected folder.
+            let (next, tab) = s.with_new_loose_tab(entry.workspace_id, &entry.url)?;
+            let tab_id = tab.id;
             let next = next.with_active_workspace(entry.workspace_id)?;
-            Ok((next, tab.id))
+            let original_folder_exists = entry.folder_id.is_some_and(|fid| {
+                next.workspace(entry.workspace_id)
+                    .map(|w| w.tab_folders.iter().any(|f| f.id == fid))
+                    .unwrap_or(false)
+            });
+            let next = if original_folder_exists {
+                next.with_tab_assigned_folder(tab_id, entry.folder_id)?
+            } else {
+                next
+            };
+
+            Ok((next, tab_id))
         })
         .await?;
 

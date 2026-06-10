@@ -34,6 +34,8 @@ use crate::error_compat::WisShellError;
 pub struct ClosedTab {
     pub workspace_id: WorkspaceId,
     pub url: String,
+    /// The folder the tab lived in at close (`None` = loose).
+    pub folder_id: Option<wis_core::TabFolderId>,
     /// Serialized WKWebView `interactionState` captured at close, so reopen
     /// restores history/scroll/forms instead of cold-loading. `None` when the
     /// webview was already discarded (slept) at close time.
