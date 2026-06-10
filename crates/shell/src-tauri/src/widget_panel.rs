@@ -170,6 +170,8 @@ pub async fn open_widget_panel(
             workspace_id,
         ));
     }
+    // File downloads from widget sites go through the same sanitised-download pipeline as tabs.
+    builder = crate::downloads::attach_download_handler(builder, ephemeral);
 
     let child = window
         .add_child(

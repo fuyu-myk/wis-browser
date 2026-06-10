@@ -110,6 +110,8 @@ pub async fn open_peek(
     if let Some(ua) = &user_agent {
         builder = builder.user_agent(ua);
     }
+    // Peek is always incognito, so its downloads stay out of history.
+    builder = crate::downloads::attach_download_handler(builder, true);
 
     let child = window
         .add_child(

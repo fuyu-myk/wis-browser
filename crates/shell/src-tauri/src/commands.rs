@@ -1266,6 +1266,10 @@ pub async fn create_tab_webview(
     // and other OAuth flows).
     builder = builder.on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Allow);
 
+    // Downloads land in ~/Downloads with sanitised names; private-workspace
+    // downloads are flagged so they never reach persistent history.
+    builder = crate::downloads::attach_download_handler(builder, ephemeral);
+
     // Restore this workspace's saved session cookies into its data store before
     // the first page loads, so logins survive a restart. Once per workspace per run;
     // never for ephemeral (private) workspaces.

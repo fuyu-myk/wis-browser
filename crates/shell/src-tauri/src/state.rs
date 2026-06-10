@@ -73,6 +73,10 @@ pub struct AppState {
     /// Workspaces whose saved session cookies have already been restored into
     /// their WebKit data store this run, these are only restored once per workspace.
     pub restored_cookies: Mutex<HashSet<WorkspaceId>>,
+    /// Tracked downloads, oldest first (see [`crate::downloads`]). A sync
+    /// mutex because wry's download callbacks are synchronous main-thread
+    /// code that cannot await.
+    pub downloads: std::sync::Mutex<Vec<crate::downloads::DownloadItem>>,
     /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
     /// Only present with the `tor` feature.
     #[cfg(feature = "tor")]
@@ -103,6 +107,7 @@ impl AppState {
             pending_restore_states: Mutex::new(HashMap::new()),
             nav_guard_bypass: Mutex::new(HashSet::new()),
             restored_cookies: Mutex::new(HashSet::new()),
+            downloads: std::sync::Mutex::new(Vec::new()),
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }

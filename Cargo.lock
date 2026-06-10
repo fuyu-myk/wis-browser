@@ -8228,6 +8228,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "block2 0.5.1",
+ "libc",
  "log",
  "objc2 0.5.2",
  "reqwest 0.12.28",

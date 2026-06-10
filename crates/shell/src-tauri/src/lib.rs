@@ -4,6 +4,7 @@ mod capture;
 mod commands;
 mod content_filter;
 mod cookies;
+mod downloads;
 mod error_compat;
 mod external;
 mod favicons;
@@ -328,6 +329,7 @@ pub fn run() {
             commands::set_dock_icon,
             commands::refresh_filter_lists,
             external::open_in_external_browser,
+            downloads::list_downloads,
             interaction_state::tab_interaction_state,
             find::tab_find_string,
             find::tab_find_clear,
