@@ -472,6 +472,15 @@ export const commands = {
     return invoke('tab_go_forward', { id })
   },
 
+  /**
+   * Open an http(s) URL in the OS default browser (a full, separate browser).
+   * An exit hatch for pages the embedded engine can't fully handle, e.g.
+   * Widevine-protected video.
+   */
+  async openInExternalBrowser(url: string): Promise<void> {
+    return invoke('open_in_external_browser', { url })
+  },
+
   // -- settings -------------------------------------------------------------
 
   async updateSettings(patch: UserSettingsPatch): Promise<UserSettings> {

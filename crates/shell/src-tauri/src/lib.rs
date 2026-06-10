@@ -5,6 +5,7 @@ mod commands;
 mod content_filter;
 mod cookies;
 mod error_compat;
+mod external;
 mod favicons;
 mod find;
 mod menu;
@@ -233,6 +234,7 @@ pub fn run() {
             commands::set_window_icon,
             commands::set_dock_icon,
             commands::refresh_filter_lists,
+            external::open_in_external_browser,
             find::tab_find_string,
             find::tab_find_clear,
             peek::open_peek,

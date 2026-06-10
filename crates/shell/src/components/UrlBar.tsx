@@ -579,6 +579,49 @@ function StarGlyph({ filled }: { filled: boolean }) {
   )
 }
 
+/**
+ * Hands the current page off to the OS default browser. An exit hatch for
+ * pages the embedded WebKit engine can't fully handle (e.g. Widevine video).
+ * Shown for any real http(s) page; hidden on chrome pages and the launchpad.
+ */
+function OpenExternalButton({ activeTab }: { activeTab: Tab | null }) {
+  const canOpen = hostOf(activeTab) !== null
+  if (!canOpen || !activeTab) return null
+  return (
+    <button
+      type="button"
+      className="kb-urlbar-key"
+      title="Open in your default browser"
+      aria-label="Open in your default browser"
+      onMouseDown={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }}
+      onClick={() => void commands.openInExternalBrowser(activeTab.url).catch(() => undefined)}
+    >
+      <ExternalGlyph />
+    </button>
+  )
+}
+
+function ExternalGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    </svg>
+  )
+}
+
 // ─── Floating / horizontal-pill variant ──────────────────────────────────
 
 export interface FloatingUrlBarProps {
@@ -624,6 +667,7 @@ export function FloatingUrlBar({
         spellCheck={false}
       />
       <AutofillKey activeTab={activeTab} />
+      <OpenExternalButton activeTab={activeTab} />
       <BookmarkStar activeTab={activeTab} />
     </form>
   )
