@@ -6,6 +6,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import App from '@/App'
 import { OverlayRoot } from '@/overlay/OverlayRoot'
 
+import '@/styles/fonts.css'
 import '@/styles/tokens.css'
 import '@/styles/window.css'
 
