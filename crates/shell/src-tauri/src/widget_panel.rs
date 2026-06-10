@@ -34,6 +34,46 @@ fn notify_panels_changed(app: &AppHandle) {
     }
 }
 
+/// Re-promote every live widget panel to the top of the window's subview
+/// stack. Tab webviews are created lazily (sleep-wake, splits, layout
+/// changes) and each `add_child` lands on top of everything, so panel
+/// stacking must be restored whenever a tab webview is created and whenever
+/// a panel is shown (a hidden panel keeps its stale position). Callers
+/// re-promote overlays afterwards, preserving tabs < panels < overlays.
+pub fn promote_panels_to_front(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
+
+        let panels: Vec<_> = app
+            .webviews()
+            .iter()
+            .filter(|(label, _)| label.starts_with(WIDGET_PANEL_PREFIX))
+            .map(|(_, wv)| wv.clone())
+            .collect();
+
+        for wv in panels {
+            let _ = wv.with_webview(|w| unsafe {
+                let view: *mut AnyObject = w.inner() as *mut AnyObject;
+                if view.is_null() {
+                    return;
+                }
+                let superview: *mut AnyObject = msg_send![view, superview];
+                if superview.is_null() {
+                    return;
+                }
+                let _: () = msg_send![superview, addSubview: view];
+            });
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+    }
+}
+
 /// Validate the frontend-supplied widget id before it becomes part of a
 /// webview label (UUIDs in practice; reject anything else).
 fn panel_label(id: &str) -> WisResult<String> {
@@ -146,11 +186,13 @@ pub async fn open_widget_panel(
         }
     }
 
-    // Round the corners so the panel reads as a floating card.
+    // Round only the bottom corners: the top edge sits flush under the
+    // accent header bar (overlay-widgetheader), which carries the top
+    // rounding, so the two read as one card.
     #[cfg(target_os = "macos")]
     {
-        use objc2::msg_send;
         use objc2::runtime::AnyObject;
+        use objc2::{class, msg_send};
 
         let _ = child.with_webview(|w| unsafe {
             let view: *mut AnyObject = w.inner() as *mut AnyObject;
@@ -163,7 +205,20 @@ pub async fn open_widget_panel(
                 return;
             }
             let _: () = msg_send![layer, setCornerRadius: 12.0_f64];
+            let mask: usize = (1 << 2) | (1 << 3);
+            let _: () = msg_send![layer, setMaskedCorners: mask];
             let _: () = msg_send![layer, setMasksToBounds: true];
+
+            // Make WKWebView transparent
+            let key_c = std::ffi::CString::new("drawsBackground").expect("no NUL");
+            let key: *mut AnyObject =
+                msg_send![class!(NSString), stringWithUTF8String: key_c.as_ptr()];
+            let no_value: *mut AnyObject = msg_send![class!(NSNumber), numberWithBool: false];
+            let _: () = msg_send![view, setValue: no_value, forKey: key];
+            let clear: *mut AnyObject = msg_send![class!(NSColor), clearColor];
+            if !clear.is_null() {
+                let _: () = msg_send![view, setUnderPageBackgroundColor: clear];
+            }
         });
     }
 
@@ -189,9 +244,48 @@ pub async fn show_widget_panel(
     wv.show().map_err(|err| WisError::InvalidInput {
         message: format!("widget panel show: {err}"),
     })?;
+
+    promote_panels_to_front(&app);
+    crate::overlay::promote_overlays_to_front(&app);
     set_widget_panel_bounds(app, id, x, y, width, height).await?;
 
     Ok(true)
+}
+
+/// Hard-reload widget `id`'s panel (bypasses caches). Native `reloadFromOrigin`
+/// rather than injected JS, so it works even when the page is hung and would
+/// never execute an injected `location.reload()`.
+#[tauri::command]
+pub async fn reload_widget_panel(app: AppHandle, id: String) -> WisResult<()> {
+    let label = panel_label(&id)?;
+    let Some(wv) = app.webviews().get(&label).cloned() else {
+        return Ok(());
+    };
+
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
+        wv.with_webview(|w| unsafe {
+            let wk: *mut AnyObject = w.inner() as *mut AnyObject;
+            if !wk.is_null() {
+                let _: *mut AnyObject = msg_send![wk, reloadFromOrigin];
+            }
+        })
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("widget panel reload: {err}"),
+        })?;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        wv.eval("window.location.reload()")
+            .map_err(|err| WisError::InvalidInput {
+                message: format!("widget panel reload eval: {err}"),
+            })?;
+    }
+
+    Ok(())
 }
 
 /// Hide widget `id`'s panel, keeping the page alive for an instant re-show.

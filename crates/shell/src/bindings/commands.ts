@@ -543,6 +543,14 @@ export const commands = {
     return invoke('list_widget_panels')
   },
 
+  /**
+   * Hard-reload widget `id`'s panel (native, cache-bypassing). Works even
+   * when the page is hung and injected JS would never run.
+   */
+  async reloadWidgetPanel(id: WidgetId): Promise<void> {
+    return invoke('reload_widget_panel', { id })
+  },
+
   // -- settings -------------------------------------------------------------
 
   async updateSettings(patch: UserSettingsPatch): Promise<UserSettings> {

@@ -7,6 +7,7 @@ import { useBrowserState } from '@/hooks/useBrowserState'
 import { useOverlay } from '@/hooks/useOverlay'
 import { DEFAULT_PANEL_LIMIT } from '@/lib/widgets'
 import {
+  WPANEL_RELOAD_EVENT,
   WRESIZE_END_EVENT,
   WRESIZE_MOVE_EVENT,
   WRESIZE_START_EVENT,
@@ -24,6 +25,8 @@ const WIDTH_STORAGE_KEY = 'wis-widget-panel-width'
  * affordance is the cursor change, not a visible handle.
  */
 const GRIP_WIDTH = 14
+/** Height of the accent header bar docked above the panel (reload button). */
+const HEADER_HEIGHT = 30
 
 interface Rect {
   x: number
@@ -48,22 +51,24 @@ function storedWidth(): number {
 }
 
 /**
- * Floating panel rect on the rail-nearest side of the content area, plus the
- * grip rect spanning the panel's inner edge. Null when the content host isn't
- * mounted.
+ * Floating panel geometry on the rail-nearest side of the content area: the
+ * header bar on top, the panel webview below it, and the resize grip strip
+ * spanning the panel's inner edge. Null when the content host isn't mounted.
  */
 function computeGeometry(
   side: 'left' | 'right',
   width: number,
-): { panel: Rect; grip: Rect } | null {
+): { panel: Rect; grip: Rect; header: Rect } | null {
   const host = document.querySelector('.kb-content-host')
   if (!host) return null
   const r = host.getBoundingClientRect()
-  const y = Math.round(r.top + 8)
-  const height = Math.round(r.height - 16)
+  const top = Math.round(r.top + 8)
   const x = side === 'left' ? Math.round(r.left + 8) : Math.round(r.right - width - 8)
+  const y = top + HEADER_HEIGHT
+  const height = Math.round(r.height - 16) - HEADER_HEIGHT
   const innerEdge = side === 'left' ? x + width : x
   return {
+    header: { x, y: top, width, height: HEADER_HEIGHT },
     panel: { x, y, width, height },
     grip: { x: Math.round(innerEdge - GRIP_WIDTH / 2), y, width: GRIP_WIDTH, height },
   }
@@ -92,9 +97,11 @@ function computeGeometry(
 export function useWidgetPanel(): {
   activeWidgetId: WidgetId | null
   toggleWidget: (widget: Widget) => void
+  panelRect: { x: number; y: number; width: number; height: number } | null
 } {
   const { data: state } = useBrowserState()
   const [activeWidgetId, setActiveWidgetId] = useState<WidgetId | null>(null)
+  const [panelRect, setPanelRect] = useState<Rect | null>(null)
   const visibleRef = useRef<WidgetId | null>(null)
   visibleRef.current = activeWidgetId
   /** Live panel webviews by widget id -> last-used timestamp (for LRU). */
@@ -103,6 +110,7 @@ export function useWidgetPanel(): {
   const timersRef = useRef<Map<WidgetId, number>>(new Map())
   const widthRef = useRef(storedWidth())
   const { show: showGrip, hide: hideGripOverlay } = useOverlay('widgetresize')
+  const { show: showHeader, hide: hideHeaderOverlay } = useOverlay('widgetheader')
   /** Geometry snapshot taken when a grip drag starts. */
   const resizeBaseRef = useRef<{ startW: number; outerEdge: number; y: number; height: number } | null>(null)
 
@@ -125,6 +133,13 @@ export function useWidgetPanel(): {
   const limitRef = useRef({ enabled: limitEnabled, count: limitCount })
   limitRef.current = { enabled: limitEnabled, count: limitCount }
 
+  // Pre-create the chrome companion overlays so the first panel open doesn't
+  // render before them.
+  useEffect(() => {
+    void commands.ensureOverlay('widgetresize').catch(() => undefined)
+    void commands.ensureOverlay('widgetheader').catch(() => undefined)
+  }, [])
+
   const clearTimer = useCallback((id: WidgetId) => {
     const t = timersRef.current.get(id)
     if (t !== undefined) {
@@ -133,9 +148,20 @@ export function useWidgetPanel(): {
     }
   }, [])
 
+  /** Hide the panel's chrome companions (resize grip + header bar). */
   const hideGrip = useCallback(() => {
     void hideGripOverlay().catch(() => undefined)
-  }, [hideGripOverlay])
+    void hideHeaderOverlay().catch(() => undefined)
+  }, [hideGripOverlay, hideHeaderOverlay])
+
+  /** Show/position the panel's chrome companions for the given geometry. */
+  const showChrome = useCallback(
+    async (geo: { grip: Rect; header: Rect }) => {
+      await showGrip(geo.grip)
+      await showHeader(geo.header)
+    },
+    [showGrip, showHeader],
+  )
 
   /** Destroy one panel webview and forget it. */
   const destroyOne = useCallback(
@@ -146,6 +172,7 @@ export function useWidgetPanel(): {
       if (visibleRef.current === id) {
         visibleRef.current = null
         setActiveWidgetId(null)
+        setPanelRect(null)
         hideGrip()
       }
     },
@@ -162,6 +189,7 @@ export function useWidgetPanel(): {
       visibleRef.current = null
       setActiveWidgetId(null)
     }
+    setPanelRect(null)
     hideGrip()
   }, [hideGrip])
 
@@ -200,6 +228,7 @@ export function useWidgetPanel(): {
     }
     visibleRef.current = null
     setActiveWidgetId(null)
+    setPanelRect(null)
     hideGrip()
     hideOne(visible)
   }, [ephemeral, destroyOne, hideGrip, hideOne])
@@ -243,11 +272,13 @@ export function useWidgetPanel(): {
         if (visibleRef.current === widget.id) {
           visibleRef.current = null
           setActiveWidgetId(null)
+          setPanelRect(null)
           hideGrip()
         }
       }
       visibleRef.current = widget.id
       setActiveWidgetId(widget.id)
+      setPanelRect(geo.panel)
 
       const wasLive = liveRef.current.has(widget.id)
       if (!wasLive && limitRef.current.enabled) {
@@ -262,6 +293,7 @@ export function useWidgetPanel(): {
         // so revealing the target under a still-visible newer panel would
         // leave it covered.
         if (previous !== null) hideOne(previous)
+        await showChrome(geo)
         if (wasLive) {
           const shown = await commands.showWidgetPanel(
             widget.id, panel.x, panel.y, panel.width, panel.height,
@@ -276,11 +308,10 @@ export function useWidgetPanel(): {
             widget.id, widget.url, panel.x, panel.y, panel.width, panel.height,
           )
         }
-        await showGrip(geo.grip)
       }
       void run().catch(fail)
     },
-    [dismiss, clearTimer, evictDownTo, hideOne, showGrip, hideGrip],
+    [dismiss, clearTimer, evictDownTo, hideOne, showChrome, hideGrip],
   )
 
   // Grip drags from the overlay surface: resize the visible panel live,
@@ -297,6 +328,14 @@ export function useWidgetPanel(): {
       void commands
         .setWidgetPanelBounds(visible, Math.round(x), base.y, w, base.height)
         .catch(() => undefined)
+      setPanelRect({ x: Math.round(x), y: base.y, width: w, height: base.height })
+      // The header bar tracks the panel's top edge live during the drag.
+      void showHeader({
+        x: Math.round(x),
+        y: base.y - HEADER_HEIGHT,
+        width: w,
+        height: HEADER_HEIGHT,
+      }).catch(() => undefined)
       if (end) {
         resizeBaseRef.current = null
         try {
@@ -305,7 +344,7 @@ export function useWidgetPanel(): {
           /* ignore */
         }
         const geo = computeGeometry(s, w)
-        if (geo) void showGrip(geo.grip).catch(() => undefined)
+        if (geo) void showChrome(geo).catch(() => undefined)
       }
     }
 
@@ -331,11 +370,18 @@ export function useWidgetPanel(): {
     )
     track(listen<number>(WRESIZE_MOVE_EVENT, (e) => apply(e.payload, false)))
     track(listen<number>(WRESIZE_END_EVENT, (e) => apply(e.payload, true)))
+    // Reload click from the header surface: native, cache-bypassing.
+    track(
+      listen(WPANEL_RELOAD_EVENT, () => {
+        const visible = visibleRef.current
+        if (visible !== null) void commands.reloadWidgetPanel(visible).catch(() => undefined)
+      }),
+    )
     return () => {
       cancelled = true
       for (const un of unlisteners) un()
     }
-  }, [showGrip])
+  }, [showGrip, showHeader, showChrome])
 
   // Dismiss on chrome interaction outside the widget dock.
   useEffect(() => {
@@ -400,14 +446,15 @@ export function useWidgetPanel(): {
           activeWidgetId, geo.panel.x, geo.panel.y, geo.panel.width, geo.panel.height,
         )
         .catch(() => undefined)
-      void showGrip(geo.grip).catch(() => undefined)
+      setPanelRect(geo.panel)
+      void showChrome(geo).catch(() => undefined)
     }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
-  }, [activeWidgetId, showGrip])
+  }, [activeWidgetId, showChrome])
 
   // Reclaim every webview when the dock unmounts (e.g. layout switch).
   useEffect(() => destroyAll, [destroyAll])
 
-  return { activeWidgetId, toggleWidget }
+  return { activeWidgetId, toggleWidget, panelRect }
 }

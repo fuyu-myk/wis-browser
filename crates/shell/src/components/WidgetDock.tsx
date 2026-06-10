@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import type { Widget, WidgetId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
@@ -30,7 +31,7 @@ interface DragState {
  * favicon along its row to reorder, which persists to settings.
  */
 export function WidgetDock({ widgets, variant = 'sidebar' }: WidgetDockProps) {
-  const { activeWidgetId, toggleWidget } = useWidgetPanel()
+  const { activeWidgetId, toggleWidget, panelRect } = useWidgetPanel()
   const update = useUpdateSettings()
   const axis: 'x' | 'y' = variant === 'rail' ? 'y' : 'x'
 
@@ -146,15 +147,31 @@ export function WidgetDock({ widgets, variant = 'sidebar' }: WidgetDockProps) {
   )
 
   return (
-    <div
-      className={cx('kb-widget-dock', `is-${variant}`)}
-      role="toolbar"
-      aria-label="Quick launch widgets"
-    >
-      {social.length > 0 && renderRow('social')}
-      {social.length > 0 && ai.length > 0 && <span className="kb-widget-divider" aria-hidden />}
-      {ai.length > 0 && renderRow('ai')}
-    </div>
+    <>
+      <div
+        className={cx('kb-widget-dock', `is-${variant}`)}
+        role="toolbar"
+        aria-label="Quick launch widgets"
+      >
+        {social.length > 0 && renderRow('social')}
+        {social.length > 0 && ai.length > 0 && <span className="kb-widget-divider" aria-hidden />}
+        {ai.length > 0 && renderRow('ai')}
+      </div>
+      {panelRect !== null &&
+        createPortal(
+          <div
+            className="kb-wpanel-backdrop"
+            style={{
+              left: panelRect.x,
+              top: panelRect.y,
+              width: panelRect.width,
+              height: panelRect.height,
+            }}
+            aria-hidden
+          />,
+          document.body,
+        )}
+    </>
   )
 }
 

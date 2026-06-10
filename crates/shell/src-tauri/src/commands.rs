@@ -1221,7 +1221,9 @@ pub async fn create_tab_webview(
             message: format!("add_child failed: {err}"),
         })?;
 
-    // Move every overlay back to the top of the subview stack.
+    // Restore stacking above the freshly added tab webview:
+    // tabs < widget panels < overlays.
+    crate::widget_panel::promote_panels_to_front(&app);
     crate::overlay::promote_overlays_to_front(&app);
 
     // Stamp the native WKWebView so the pane-focus mouse monitor can identify

@@ -16,6 +16,7 @@ import { PaneSplitMenuSurface } from '@/overlay/surfaces/PaneSplitMenuSurface'
 import { PeekSurface } from '@/overlay/surfaces/PeekSurface'
 import { UrlbarSuggestSurface } from '@/overlay/surfaces/UrlbarSuggestSurface'
 import { VaultMenuSurface } from '@/overlay/surfaces/VaultMenuSurface'
+import { WidgetHeaderSurface } from '@/overlay/surfaces/WidgetHeaderSurface'
 import { WidgetResizeSurface } from '@/overlay/surfaces/WidgetResizeSurface'
 
 interface OverlayRootProps {
@@ -35,6 +36,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'bookmarks') return <BookmarksMenuSurface />
   if (surface === 'bmpicker') return <BookmarkPickerSurface />
   if (surface === 'widgetresize') return <WidgetResizeSurface />
+  if (surface === 'widgetheader') return <WidgetHeaderSurface />
   // eslint-disable-next-line no-console
   console.warn(`Unknown overlay surface: ${surface}`)
   return null

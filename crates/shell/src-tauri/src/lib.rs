@@ -266,6 +266,7 @@ pub fn run() {
             widget_panel::close_widget_panel,
             widget_panel::close_all_widget_panels,
             widget_panel::list_widget_panels,
+            widget_panel::reload_widget_panel,
             navguard::nav_guard_proceed,
             bookmarks::list_bookmark_folders,
             bookmarks::list_bookmarks,

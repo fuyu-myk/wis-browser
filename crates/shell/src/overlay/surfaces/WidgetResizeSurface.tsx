@@ -13,6 +13,9 @@
 import { useRef } from 'react'
 import { emit } from '@tauri-apps/api/event'
 
+import { useBrowserState } from '@/hooks/useBrowserState'
+import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
+import { useThemeApply } from '@/hooks/useThemeApply'
 import {
   WRESIZE_END_EVENT,
   WRESIZE_MOVE_EVENT,
@@ -20,6 +23,10 @@ import {
 } from '@/lib/widgetResize'
 
 export function WidgetResizeSurface() {
+  useBrowserStateEvents()
+  const { data: state } = useBrowserState()
+  useThemeApply(state?.settings)
+
   const draggingRef = useRef(false)
   const startXRef = useRef(0)
   const lastDxRef = useRef(0)

@@ -3384,6 +3384,44 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   cursor: col-resize;
   touch-action: none;
 }
+
+/* Backdrop card rendered in the chrome behind the visible widget panel. */
+.kb-wpanel-backdrop {
+  position: fixed;
+  z-index: 70;
+  background: var(--surface-raised);
+  border-radius: 0 0 12px 12px;
+  pointer-events: none;
+}
+
+/* Widget panel header bar (overlay-widgetheader): an accent-coloured strip
+   docked above the visible panel, hosting the reload button. */
+.kb-wheader-surface {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 6px;
+  background: var(--primary-500);
+  border-radius: 12px 12px 0 0;
+}
+.kb-wheader-reload {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+.kb-wheader-reload:hover { background: rgba(255, 255, 255, 0.22); }
+.kb-wheader-reload:active { transform: rotate(45deg); }
+.kb-wheader-reload svg { width: 14px; height: 14px; }
 .kb-widget-fav-img {
   width: 18px;
   height: 18px;
