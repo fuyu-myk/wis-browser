@@ -2,10 +2,11 @@
 
 use crate::bookmarks::{Bookmark, BookmarkFolder};
 use crate::credentials::CredentialRecord;
+use crate::downloads::DownloadRecord;
 use crate::error::StorageResult;
 use crate::history::{HistoryEntry, HistoryQuery};
 use crate::searches::SearchEntry;
-use wis_core::{BrowserState, WorkspaceId};
+use wis_core::{BrowserState, DownloadId, WorkspaceId};
 
 /// A pluggable persistent store for the browser's state.
 ///
@@ -153,6 +154,22 @@ pub trait Storage: Send + Sync {
 
     /// Delete a bookmark by id.
     fn delete_bookmark(&self, id: i64) -> StorageResult<()>;
+
+    // -- downloads (append-only completed-download history; see `crate::downloads`)
+
+    /// Record a completed download. Idempotent per id. Callers must skip
+    /// downloads from private/ephemeral contexts.
+    fn record_download(&self, record: &DownloadRecord) -> StorageResult<()>;
+
+    /// Completed downloads, newest first, capped at `limit`.
+    fn list_downloads(&self, limit: u32) -> StorageResult<Vec<DownloadRecord>>;
+
+    /// Remove one download from history (never touches the file). Unknown ids
+    /// are ignored.
+    fn delete_download(&self, id: DownloadId) -> StorageResult<()>;
+
+    /// Remove the entire download history (never touches the files).
+    fn clear_downloads(&self) -> StorageResult<()>;
 
     // -- session cookies (per-workspace; see migration M0011) --------------
 

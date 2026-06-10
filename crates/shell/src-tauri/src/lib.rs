@@ -330,6 +330,7 @@ pub fn run() {
             commands::refresh_filter_lists,
             external::open_in_external_browser,
             downloads::list_downloads,
+            downloads::remove_download,
             interaction_state::tab_interaction_state,
             find::tab_find_string,
             find::tab_find_clear,

@@ -12,6 +12,7 @@
 mod bookmarks;
 mod convert;
 mod credentials;
+mod downloads;
 mod history;
 mod migrations;
 mod repo;
@@ -134,6 +135,26 @@ impl Storage for SqliteStorage {
     fn clear_history(&self, workspace_id: Option<wis_core::WorkspaceId>) -> StorageResult<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         history::clear(&conn, workspace_id)
+    }
+
+    fn record_download(&self, record: &crate::downloads::DownloadRecord) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        downloads::record(&conn, record)
+    }
+
+    fn list_downloads(&self, limit: u32) -> StorageResult<Vec<crate::downloads::DownloadRecord>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        downloads::list(&conn, limit)
+    }
+
+    fn delete_download(&self, id: wis_core::DownloadId) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        downloads::delete(&conn, id)
+    }
+
+    fn clear_downloads(&self) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        downloads::clear(&conn)
     }
 
     fn save_credential(

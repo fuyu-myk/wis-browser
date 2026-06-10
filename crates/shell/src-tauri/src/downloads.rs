@@ -25,7 +25,8 @@ use serde::Serialize;
 use tauri::webview::{DownloadEvent, WebviewBuilder};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use url::Url;
-use wis_core::{DownloadId, DownloadStatus};
+use wis_core::{DownloadId, DownloadStatus, WisError, WisResult};
+use wis_storage::DownloadRecord;
 
 use crate::state::AppState;
 
@@ -74,11 +75,57 @@ pub fn attach_download_handler<R: Runtime>(
     })
 }
 
-/// Snapshot of tracked downloads, newest first.
+/// Rows of persisted history surfaced alongside the session's downloads.
+const HISTORY_LIMIT: u32 = 200;
+
+/// Downloads newest first: this session's tracked items (all statuses),
+/// then persisted completed history from earlier sessions (session items
+/// that already wrote their history row are deduplicated by id).
 #[tauri::command]
-pub fn list_downloads(state: State<'_, AppState>) -> Vec<DownloadItem> {
-    let items = state.downloads.lock().expect("downloads poisoned");
-    items.iter().rev().cloned().collect()
+pub async fn list_downloads(state: State<'_, AppState>) -> WisResult<Vec<DownloadItem>> {
+    let mut merged: Vec<DownloadItem> = {
+        let items = state.downloads.lock().expect("downloads poisoned");
+        items.iter().rev().cloned().collect()
+    };
+    let history = state
+        .storage
+        .list_downloads(HISTORY_LIMIT)
+        .map_err(|err| WisError::PersistenceFailed {
+            reason: err.to_string(),
+        })?;
+    let seen: std::collections::HashSet<DownloadId> = merged.iter().map(|item| item.id).collect();
+    merged.extend(
+        history
+            .into_iter()
+            .filter(|record| !seen.contains(&record.id))
+            .map(DownloadItem::from_record),
+    );
+
+    Ok(merged)
+}
+
+/// Remove a download from the list and persisted history (the file itself is
+/// untouched). In-flight items are kept (there is no cancel API to stop the
+/// underlying WKDownload).
+#[tauri::command]
+pub async fn remove_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: DownloadId,
+) -> WisResult<()> {
+    {
+        let mut items = state.downloads.lock().expect("downloads poisoned");
+        items.retain(|item| item.id != id || !item.status.is_terminal());
+    }
+    state
+        .storage
+        .delete_download(id)
+        .map_err(|err| WisError::PersistenceFailed {
+            reason: err.to_string(),
+        })?;
+    emit_changed(&app);
+
+    Ok(())
 }
 
 /// Decide the destination for a requested download and register it.
@@ -148,10 +195,26 @@ fn on_requested<R: Runtime>(
     true
 }
 
+impl DownloadItem {
+    /// A persisted history row, viewed as a (completed) list item.
+    fn from_record(record: DownloadRecord) -> Self {
+        Self {
+            id: record.id,
+            url: record.url,
+            filename: record.filename,
+            path: PathBuf::from(record.path),
+            received_bytes: record.bytes.max(0) as u64,
+            status: DownloadStatus::Completed,
+            private: false,
+            started_at_ms: record.completed_at.timestamp_millis().max(0) as u64,
+        }
+    }
+}
+
 /// Mark the matching in-flight download finished and quarantine the file.
 fn on_finished<R: Runtime>(app: &AppHandle<R>, url: &Url, success: bool) {
     let state = app.state::<AppState>();
-    let completed_path = {
+    let completed = {
         let mut items = state.downloads.lock().expect("downloads poisoned");
         // macOS reports no path on finish, so match the oldest in-flight
         // download of this URL.
@@ -180,16 +243,39 @@ fn on_finished<R: Runtime>(app: &AppHandle<R>, url: &Url, success: bool) {
             item.path.display()
         );
 
-        success.then(|| item.path.clone())
+        success.then(|| item.clone())
     };
 
-    if let Some(path) = completed_path {
-        if let Err(err) = set_quarantine(&path) {
-            log::warn!("quarantine xattr on {} failed: {err}", path.display());
+    if let Some(item) = completed {
+        if let Err(err) = set_quarantine(&item.path) {
+            log::warn!("quarantine xattr on {} failed: {err}", item.path.display());
+        }
+        if !item.private {
+            persist_completed(app, item);
         }
     }
 
     emit_changed(app);
+}
+
+/// Write a completed download's history row off the main thread. Private
+/// downloads never reach here.
+fn persist_completed<R: Runtime>(app: &AppHandle<R>, item: DownloadItem) {
+    let record = DownloadRecord {
+        id: item.id,
+        url: item.url,
+        filename: item.filename,
+        path: item.path.display().to_string(),
+        bytes: item.received_bytes.min(i64::MAX as u64) as i64,
+        completed_at: chrono::Utc::now(),
+    };
+    let storage = app.state::<AppState>().storage.clone();
+
+    tauri::async_runtime::spawn(async move {
+        if let Err(err) = storage.record_download(&record) {
+            log::warn!("download history write failed for {}: {err}", record.url);
+        }
+    });
 }
 
 /// The user's downloads directory, created if missing. Downloads are denied

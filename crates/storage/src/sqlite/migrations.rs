@@ -201,6 +201,21 @@ ALTER TABLE workspaces ADD COLUMN tab_folders TEXT;
 ALTER TABLE tabs ADD COLUMN folder_id TEXT;
 "#;
 
+// Completed-download history (append-only, like `history`, global rather than
+// per workspace). One row per finished download; in-flight/failed/cancelled
+// downloads live only in memory. Private/ephemeral contexts never write here.
+const M0014_DOWNLOADS: &str = r#"
+CREATE TABLE downloads (
+    id            TEXT    NOT NULL PRIMARY KEY,
+    url           TEXT    NOT NULL,
+    filename      TEXT    NOT NULL,
+    path          TEXT    NOT NULL,
+    bytes         INTEGER NOT NULL DEFAULT 0,
+    completed_at  TEXT    NOT NULL
+);
+CREATE INDEX idx_downloads_completed_at ON downloads(completed_at);
+"#;
+
 fn all() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(M0001_INITIAL),
@@ -216,6 +231,7 @@ fn all() -> Migrations<'static> {
         M::up(M0011_SESSION_COOKIES),
         M::up(M0012_SESSION_COOKIE_AGE),
         M::up(M0013_TAB_FOLDERS),
+        M::up(M0014_DOWNLOADS),
     ])
 }
 
