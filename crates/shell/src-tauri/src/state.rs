@@ -34,6 +34,10 @@ use crate::error_compat::WisShellError;
 pub struct ClosedTab {
     pub workspace_id: WorkspaceId,
     pub url: String,
+    /// Serialized WKWebView `interactionState` captured at close, so reopen
+    /// restores history/scroll/forms instead of cold-loading. `None` when the
+    /// webview was already discarded (slept) at close time.
+    pub interaction_state: Option<String>,
 }
 
 pub struct AppState {
@@ -57,6 +61,10 @@ pub struct AppState {
     /// Most-recently-closed tabs (newest last), for "reopen closed tab". Capped
     /// in-memory and per-session; private/ephemeral tabs are never recorded.
     pub closed_tabs: Mutex<Vec<ClosedTab>>,
+    /// Interaction-state blobs awaiting a reopened tab's webview creation:
+    /// `restore_closed_tab` stashes the blob under the new tab id and
+    /// `create_tab_webview` consumes it, restoring the closed tab's session.
+    pub pending_restore_states: Mutex<HashMap<wis_core::TabId, String>>,
     /// Hosts the user chose to "proceed anyway" past the navigation safety
     /// interstitial this session, so they aren't re-prompted for that host.
     pub nav_guard_bypass: Mutex<HashSet<String>>,
@@ -90,6 +98,7 @@ impl AppState {
             vault_key: Mutex::new(None),
             pending_capture: Mutex::new(None),
             closed_tabs: Mutex::new(Vec::new()),
+            pending_restore_states: Mutex::new(HashMap::new()),
             nav_guard_bypass: Mutex::new(HashSet::new()),
             restored_cookies: Mutex::new(HashSet::new()),
             #[cfg(feature = "tor")]

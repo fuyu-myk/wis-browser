@@ -415,8 +415,23 @@ export const commands = {
     y: number
     width: number
     height: number
+    /**
+     * Serialized WKWebView `interactionState` from a slept webview (read via
+     * `tabInteractionState`); when set, the webview starts on about:blank
+     * and the restore performs the navigation with history, scroll, and
+     * form state intact.
+     */
+    restoreState: string | null
   }): Promise<void> {
     return invoke('create_tab_webview', args)
+  },
+
+  /**
+   * Read a tab webview's serialized session (WKWebView `interactionState`,
+   * base64) for restoring after sleep. Null when unavailable.
+   */
+  async tabInteractionState(id: TabId): Promise<string | null> {
+    return invoke('tab_interaction_state', { id })
   },
 
   /**

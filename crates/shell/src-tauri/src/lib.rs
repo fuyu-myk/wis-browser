@@ -8,6 +8,7 @@ mod error_compat;
 mod external;
 mod favicons;
 mod find;
+mod interaction_state;
 mod menu;
 mod navguard;
 mod overlay;
@@ -259,6 +260,7 @@ pub fn run() {
             commands::set_dock_icon,
             commands::refresh_filter_lists,
             external::open_in_external_browser,
+            interaction_state::tab_interaction_state,
             find::tab_find_string,
             find::tab_find_clear,
             peek::open_peek,

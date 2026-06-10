@@ -681,27 +681,37 @@ pub async fn close_tab(app: AppHandle, state: State<'_, AppState>, id: TabId) ->
 
     // Record the tab for "reopen closed tab" before it's removed.
     {
-        let browser = state.browser.lock().await;
-        if let Ok(tab) = browser.tab(id) {
-            let url = tab.url.to_string();
-            let ephemeral = browser
-                .workspace(tab.workspace_id)
-                .map(|w| w.ephemeral)
-                .unwrap_or(true);
-            if !ephemeral && !url.starts_with("about:") {
-                let entry = crate::state::ClosedTab {
-                    workspace_id: tab.workspace_id,
-                    url,
-                };
+        let recorded = {
+            let browser = state.browser.lock().await;
+            browser.tab(id).ok().and_then(|tab| {
+                let url = tab.url.to_string();
+                let ephemeral = browser
+                    .workspace(tab.workspace_id)
+                    .map(|w| w.ephemeral)
+                    .unwrap_or(true);
 
-                drop(browser);
-                let mut ring = state.closed_tabs.lock().await;
-                ring.push(entry);
+                (!ephemeral && !url.starts_with("about:")).then_some((tab.workspace_id, url))
+            })
+        };
 
-                let overflow = ring.len().saturating_sub(CLOSED_RING_CAP);
-                if overflow > 0 {
-                    ring.drain(0..overflow);
-                }
+        if let Some((workspace_id, url)) = recorded {
+            // Capture the live session (history/scroll/forms) while the
+            // webview still exists, so reopen restores instead of cold-loads.
+            let interaction_state = app
+                .webviews()
+                .get(&format!("tab-{}", id.as_uuid()))
+                .and_then(crate::interaction_state::read);
+
+            let mut ring = state.closed_tabs.lock().await;
+            ring.push(crate::state::ClosedTab {
+                workspace_id,
+                url,
+                interaction_state,
+            });
+
+            let overflow = ring.len().saturating_sub(CLOSED_RING_CAP);
+            if overflow > 0 {
+                ring.drain(0..overflow);
             }
         }
     }
@@ -713,6 +723,14 @@ pub async fn close_tab(app: AppHandle, state: State<'_, AppState>, id: TabId) ->
 /// No-op when the ring is empty or that workspace no longer exists.
 #[tauri::command]
 pub async fn restore_closed_tab(app: AppHandle, state: State<'_, AppState>) -> WisResult<()> {
+    // Inert in private workspaces.
+    {
+        let browser = state.browser.lock().await;
+        if browser.active_workspace().ephemeral {
+            return Ok(());
+        }
+    }
+
     loop {
         let entry = {
             let mut ring = state.closed_tabs.lock().await;
@@ -730,11 +748,24 @@ pub async fn restore_closed_tab(app: AppHandle, state: State<'_, AppState>) -> W
             continue;
         }
 
-        return mutate_unit(&app, &state, |s| {
-            let (next, _tab) = s.with_new_tab(entry.workspace_id, &entry.url)?;
-            next.with_active_workspace(entry.workspace_id)
+        let new_tab_id = mutate(&app, &state, |s| {
+            let (next, tab) = s.with_new_tab(entry.workspace_id, &entry.url)?;
+            let next = next.with_active_workspace(entry.workspace_id)?;
+            Ok((next, tab.id))
         })
-        .await;
+        .await?;
+
+        // Hand the captured session to the webview the frontend is about to
+        // create for the reopened tab (consumed by `create_tab_webview`).
+        if let Some(blob) = entry.interaction_state {
+            state
+                .pending_restore_states
+                .lock()
+                .await
+                .insert(new_tab_id, blob);
+        }
+
+        return Ok(());
     }
 }
 
@@ -1061,6 +1092,7 @@ pub async fn create_tab_webview(
     y: f64,
     width: f64,
     height: f64,
+    restore_state: Option<String>,
 ) -> WisResult<()> {
     let window = app
         .get_window(&window_label)
@@ -1069,6 +1101,17 @@ pub async fn create_tab_webview(
         })?;
 
     let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
+    // Session restore: the frontend passes a blob when waking a slept tab; a
+    // reopened (Cmd+Shift+T) tab's blob waits Rust-side keyed by tab id.
+    let restore_state = match restore_state {
+        Some(blob) => Some(blob),
+        None => state.pending_restore_states.lock().await.remove(&tab_id),
+    };
+    let initial_url = if restore_state.is_some() {
+        Url::parse("about:blank").expect("about:blank is a valid URL")
+    } else {
+        parsed.clone()
+    };
 
     let label_ident = label.clone();
 
@@ -1099,7 +1142,7 @@ pub async fn create_tab_webview(
         .parse::<Url>()
         .expect("loopback proxy URL is valid");
 
-    let mut builder = WebviewBuilder::new(label, WebviewUrl::External(parsed))
+    let mut builder = WebviewBuilder::new(label, WebviewUrl::External(initial_url))
         .focused(false)
         .proxy_url(proxy_url);
     if let Some(ua) = &user_agent {
@@ -1270,6 +1313,12 @@ pub async fn create_tab_webview(
 
     // Apple-proxied Safe Browsing warning.
     crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
+
+    // Wake-from-sleep: restore the serialized session (history, scroll,
+    // forms). The restore performs its own navigation from about:blank.
+    if let Some(state_b64) = &restore_state {
+        crate::interaction_state::apply(&child, state_b64);
+    }
 
     // "Save password?" capture.
     if !ephemeral {

@@ -16,6 +16,12 @@ const PLACEHOLDER_BOUNDS: Bounds = OFFSCREEN_BOUNDS
 // How often the idle sweep checks for background webviews to discard.
 const SWEEP_INTERVAL_MS = 60_000
 
+// Most recently slept tabs whose serialized session (WKWebView
+// interactionState: history, scroll, forms) is kept for restore-on-wake.
+// Each blob can be tens of KB, so the cache is bounded; evicted tabs just
+// cold-load like before.
+const MAX_SLEEP_STATES = 30
+
 export interface Bounds {
   x: number
   y: number
@@ -72,6 +78,7 @@ async function createWebviewFor(
   tab: Tab,
   workspaceId: WorkspaceId,
   initialSize: { width: number; height: number } | null,
+  restoreState: string | null,
 ): Promise<Webview> {
   const label = labelFor(tab.id)
   const width = initialSize?.width ?? PLACEHOLDER_BOUNDS.width
@@ -86,6 +93,7 @@ async function createWebviewFor(
     y: PLACEHOLDER_BOUNDS.y,
     width,
     height,
+    restoreState,
   })
 
   const wv = await Webview.getByLabel(label)
@@ -116,6 +124,8 @@ export function useTabWebviews({
   const hiddenSinceRef = useRef<Map<TabId, number>>(new Map())
   // Tabs whose webview has been discarded ("asleep").
   const discardedRef = useRef<Set<TabId>>(new Set())
+  // Serialized sessions of slept tabs, consumed by the next wake.
+  const sleepStatesRef = useRef<Map<TabId, string>>(new Map())
 
   // Mirror props into refs so the lazily-invoked callbacks stay current without
   // re-subscribing the measurement effects.
@@ -168,6 +178,28 @@ export function useTabWebviews({
     }
   }, [])
 
+  // Discard a background webview, first capturing its serialized session so
+  // the next wake restores history/scroll/forms instead of cold-loading.
+  const sleepWebview = useCallback((id: TabId, wv: Webview) => {
+    void commands
+      .tabInteractionState(id)
+      .then((state) => {
+        if (!state) return
+        const cache = sleepStatesRef.current
+        cache.delete(id)
+        cache.set(id, state)
+        while (cache.size > MAX_SLEEP_STATES) {
+          const oldest = cache.keys().next().value
+          if (oldest === undefined) break
+          cache.delete(oldest)
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        void wv.close().catch(() => undefined)
+      })
+  }, [])
+
   // Reconcile a single webview's visibility/position against the desired layout.
   const reconcileOne = useCallback((id: TabId, wv: Webview) => {
     const rect = layoutRef.current.get(id)
@@ -204,8 +236,10 @@ export function useTabWebviews({
       map.set(tabId, PENDING as unknown as Webview)
       const rect = layoutRef.current.get(tabId)
       const initialSize = rect ? { width: rect.width, height: rect.height } : null
+      const restoreState = sleepStatesRef.current.get(tabId) ?? null
+      sleepStatesRef.current.delete(tabId)
 
-      void createWebviewFor(window, tab, wsId, initialSize).then(
+      void createWebviewFor(window, tab, wsId, initialSize, restoreState).then(
         (wv) => {
           const stillLive = allTabsRef.current.some(
             (t) => t.id === tabId && !isChromeUrl(t.url),
@@ -275,6 +309,7 @@ export function useTabWebviews({
       map.delete(id)
       visibilityRef.current.delete(id)
       hiddenSinceRef.current.delete(id)
+      sleepStatesRef.current.delete(id)
     }
     recomputeDiscarded()
   }, [allTabs, activeWorkspaceId, recomputeDiscarded])
@@ -302,7 +337,7 @@ export function useTabWebviews({
           }
           if (now - since < thresholdMs) continue
         }
-        void wv.close().catch(() => undefined)
+        sleepWebview(id, wv)
         map.delete(id)
         visibilityRef.current.delete(id)
         hiddenSinceRef.current.delete(id)
@@ -311,7 +346,7 @@ export function useTabWebviews({
       if (changed) recomputeDiscarded()
     }, SWEEP_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [recomputeDiscarded])
+  }, [recomputeDiscarded, sleepWebview])
 
   // Discard collapsed-folder tabs the moment they're collapsed, rather than
   // waiting for the next sweep. The key collapses the set to a stable string so
@@ -329,14 +364,14 @@ export function useTabWebviews({
       if (layoutRef.current.has(id)) continue
       const wv = map.get(id)
       if (wv == null || (wv as unknown) === PENDING) continue
-      void wv.close().catch(() => undefined)
+      sleepWebview(id, wv)
       map.delete(id)
       visibilityRef.current.delete(id)
       hiddenSinceRef.current.delete(id)
       changed = true
     }
     if (changed) recomputeDiscarded()
-  }, [forceSleepKey, recomputeDiscarded])
+  }, [forceSleepKey, recomputeDiscarded, sleepWebview])
 
   const syncLayout = useCallback(
     (layout: WebviewLayout, focusedTabId: TabId | null) => {
