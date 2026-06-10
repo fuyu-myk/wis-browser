@@ -90,6 +90,22 @@ pub fn run() {
                 &filter_text,
             ));
 
+            // Drop compiled rule lists from previous filter-list versions so
+            // the WebKit store doesn't accumulate stale entries forever.
+            {
+                let state = app.state::<AppState>();
+                let keep: Vec<String> = [
+                    wis_core::PrivacyMode::Strict,
+                    wis_core::PrivacyMode::Balanced,
+                    wis_core::PrivacyMode::Permissive,
+                ]
+                .into_iter()
+                .filter_map(|mode| state.content_rule_spec(mode).map(|spec| spec.identifier))
+                .collect();
+
+                content_filter::prune_stale_rule_lists(keep);
+            }
+
             // Background EasyPrivacy refresh. Runs once per launch when the
             // setting is on and the cache is stale; failures only log so
             // offline launches still proceed with the bundled fallback.
