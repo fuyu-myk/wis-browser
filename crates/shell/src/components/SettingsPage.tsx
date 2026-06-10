@@ -19,6 +19,7 @@ import type {
 import { cx } from '@/lib/cx'
 import { BROWSER_STATE_KEY, useBrowserState, useUpdateSettings } from '@/hooks/useBrowserState'
 import {
+  DownloadIcon,
   GlobeIcon,
   LockIcon,
   MonitorIcon,
@@ -50,6 +51,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'layout', label: 'Layout', icon: <PanelTopIcon /> },
   { id: 'widgets', label: 'Sidebar widgets', icon: <GridIcon /> },
   { id: 'performance', label: 'Performance', icon: <MonitorIcon /> },
+  { id: 'downloads', label: 'Downloads', icon: <DownloadIcon /> },
   { id: 'privacy', label: 'Privacy', icon: <LockIcon /> },
   { id: 'network', label: 'Network', icon: <LockIcon /> },
   { id: 'compatibility', label: 'Compatibility', icon: <GlobeIcon /> },
@@ -416,6 +418,25 @@ export function SettingsPage() {
           limitEnabled={settings.widget_panel_limit_enabled}
           limit={settings.widget_panel_limit}
         />
+      </section>
+
+      <section id="downloads" className="sec">
+        <div className="sec-h">Downloads</div>
+        <div className="row">
+          <div className="l">
+            <span>Ask where to save each download</span>
+            <span>
+              Choose a destination in a save panel instead of saving straight
+              to Downloads. The panel starts in the last folder you picked
+              {settings.download_last_dir ? ` (${settings.download_last_dir})` : ''}.
+            </span>
+          </div>
+          <Switch
+            checked={settings.download_ask_where}
+            onChange={(download_ask_where) => update.mutate({ download_ask_where })}
+            label="Ask where to save each download"
+          />
+        </div>
       </section>
 
       <section id="privacy" className="sec">

@@ -245,6 +245,10 @@ export interface UserSettings {
   widget_panel_limit: number
   /** User-supplied accelerator overrides, sparse. Keyed by `KeyAction`. */
   keybindings: Partial<Record<KeyAction, string>>
+  /** Ask where to save each download via a native save panel. */
+  download_ask_where: boolean
+  /** Directory of the last panel-chosen destination; the panel starts here. */
+  download_last_dir: string | null
 }
 
 /**
@@ -283,6 +287,8 @@ export interface UserSettingsPatch {
    * `undefined` means "no change to keybindings".
    */
   keybindings?: Partial<Record<KeyAction, string>>
+  download_ask_where?: boolean
+  download_last_dir?: string
 }
 
 // ---------------------------------------------------------------------------

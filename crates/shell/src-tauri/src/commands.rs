@@ -1597,6 +1597,16 @@ pub async fn update_settings(
         crate::webview_prefs::apply_fraud_warning_to_all_remote(&app, enabled);
     }
 
+    // Keep the sync download-prefs mirror fresh for wry's synchronous
+    // download callback.
+    {
+        let mut prefs = state
+            .download_prefs
+            .lock()
+            .expect("download_prefs poisoned");
+        prefs.ask_where = settings.download_ask_where;
+    }
+
     // Turning off "stay logged in" wipes any already-persisted sessions.
     if persistence_disabled {
         crate::cookies::purge_persisted_sessions(&app, true).await;

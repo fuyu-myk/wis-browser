@@ -125,6 +125,8 @@ fn settings_patch_round_trips_when_all_fields_set() {
             (KeyAction::FindNext, "Ctrl+G".into()),
             (KeyAction::FindPrevious, "Ctrl+Shift+G".into()),
         ])),
+        download_ask_where: Some(true),
+        download_last_dir: Some("/Users/someone/Desktop".into()),
     };
     let after: UserSettingsPatch = roundtrip(&patch);
     assert_eq!(patch, after);

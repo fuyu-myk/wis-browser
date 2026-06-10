@@ -77,6 +77,9 @@ pub struct AppState {
     /// mutex because wry's download callbacks are synchronous main-thread
     /// code that cannot await.
     pub downloads: std::sync::Mutex<Vec<crate::downloads::DownloadItem>>,
+    /// Sync mirror of the download settings (ask-where + remembered dir),
+    /// readable from the same synchronous download callbacks.
+    pub download_prefs: std::sync::Mutex<crate::downloads::DownloadPrefs>,
     /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
     /// Only present with the `tor` feature.
     #[cfg(feature = "tor")]
@@ -92,6 +95,7 @@ impl AppState {
         filter_cache_dir: PathBuf,
         initial_filter_text: &str,
     ) -> Self {
+        let download_prefs = crate::downloads::DownloadPrefs::from_settings(&browser.settings);
         Self {
             browser: Mutex::new(browser),
             storage,
@@ -108,6 +112,7 @@ impl AppState {
             nav_guard_bypass: Mutex::new(HashSet::new()),
             restored_cookies: Mutex::new(HashSet::new()),
             downloads: std::sync::Mutex::new(Vec::new()),
+            download_prefs: std::sync::Mutex::new(download_prefs),
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }

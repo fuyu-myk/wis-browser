@@ -98,6 +98,14 @@ pub struct UserSettings {
     /// persisted settings deserialise unchanged.
     #[serde(default)]
     pub keybindings: HashMap<KeyAction, String>,
+    /// When true, every download asks where to save via a native save panel
+    /// instead of landing in the default downloads directory.
+    #[serde(default)]
+    pub download_ask_where: bool,
+    /// Absolute directory of the last user-chosen download destination; the
+    /// save panel starts here next time. Only written by panel picks.
+    #[serde(default)]
+    pub download_last_dir: Option<String>,
 }
 
 fn default_filter_list_auto_update() -> bool {
@@ -155,6 +163,8 @@ impl Default for UserSettings {
             widget_panel_limit_enabled: true,
             widget_panel_limit: 3,
             keybindings: HashMap::new(),
+            download_ask_where: false,
+            download_last_dir: None,
         }
     }
 }
@@ -220,6 +230,10 @@ pub struct UserSettingsPatch {
     /// `Some(empty_map)` is a no-op (the patch is sparse, not a wipe).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keybindings: Option<HashMap<KeyAction, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download_ask_where: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download_last_dir: Option<String>,
 }
 
 impl UserSettings {
@@ -265,6 +279,10 @@ impl UserSettings {
                 .widget_panel_limit_enabled
                 .unwrap_or(self.widget_panel_limit_enabled),
             widget_panel_limit: patch.widget_panel_limit.unwrap_or(self.widget_panel_limit),
+            download_ask_where: patch.download_ask_where.unwrap_or(self.download_ask_where),
+            download_last_dir: patch
+                .download_last_dir
+                .or_else(|| self.download_last_dir.clone()),
             keybindings: match patch.keybindings {
                 None => self.keybindings.clone(),
                 Some(overrides) => {

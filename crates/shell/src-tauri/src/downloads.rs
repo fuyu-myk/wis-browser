@@ -6,10 +6,13 @@
 //! are not intercepted.
 //!
 //! Security model:
-//! - The destination is always `<downloads dir>/<leaf>`, where the leaf has
-//!   passed [`wis_core::sanitize_filename`] + [`wis_core::unique_filename`]. The
-//!   server-suggested name can never influence the directory, hide the file
-//!   (leading dot), or overwrite an existing one.
+//! - By default the destination is always `<downloads dir>/<leaf>`, where the
+//!   leaf has passed [`wis_core::sanitize_filename`] +
+//!   [`wis_core::unique_filename`]. The server-suggested name can never
+//!   influence the directory, hide the file (leading dot), or overwrite an
+//!   existing one. With the ask-where setting on, the destination is instead
+//!   whatever the user picks in the native save panel (an explicit user
+//!   gesture; the server still only influences the prefilled, sanitised name).
 //! - Completed files get the `com.apple.quarantine` xattr, so Gatekeeper
 //!   treats them like any browser download (scans executables on first open).
 //!
@@ -23,12 +26,32 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use tauri::webview::{DownloadEvent, WebviewBuilder};
-use tauri::{AppHandle, Emitter, Manager, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, State, Wry};
 use url::Url;
-use wis_core::{DownloadId, DownloadStatus, WisError, WisResult};
+use wis_core::{DownloadId, DownloadStatus, UserSettings, UserSettingsPatch, WisError, WisResult};
 use wis_storage::DownloadRecord;
 
 use crate::state::AppState;
+
+/// Sync mirror of the download-related settings, readable from wry's
+/// synchronous main-thread download callback (which cannot await the async
+/// `BrowserState` lock without risking a deadlock against commands that
+/// dispatch to the main thread while holding it). Seeded at startup, kept
+/// fresh by `update_settings` and by panel picks.
+#[derive(Debug, Clone)]
+pub struct DownloadPrefs {
+    pub ask_where: bool,
+    pub last_dir: Option<PathBuf>,
+}
+
+impl DownloadPrefs {
+    pub fn from_settings(settings: &UserSettings) -> Self {
+        Self {
+            ask_where: settings.download_ask_where,
+            last_dir: settings.download_last_dir.as_ref().map(PathBuf::from),
+        }
+    }
+}
 
 /// Emitted (payload-less) whenever any download starts, progresses, or ends;
 /// the chrome refetches via [`list_downloads`].
@@ -59,10 +82,7 @@ pub struct DownloadItem {
 
 /// Wire download handling onto a remote webview builder. `private` marks
 /// downloads from ephemeral contexts (private workspaces, Peek).
-pub fn attach_download_handler<R: Runtime>(
-    builder: WebviewBuilder<R>,
-    private: bool,
-) -> WebviewBuilder<R> {
+pub fn attach_download_handler(builder: WebviewBuilder<Wry>, private: bool) -> WebviewBuilder<Wry> {
     builder.on_download(move |webview, event| match event {
         DownloadEvent::Requested { url, destination } => {
             on_requested(webview.app_handle(), &url, destination, private)
@@ -156,15 +176,11 @@ pub async fn remove_downloads(
 /// Open a completed download with its default app. Returns `false` when the
 /// file is no longer at its recorded path (moved or deleted).
 #[tauri::command]
-pub async fn open_download(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: DownloadId,
-) -> WisResult<bool> {
+pub async fn open_download(state: State<'_, AppState>, id: DownloadId) -> WisResult<bool> {
     let Some(path) = completed_download_path(&state, id)? else {
         return Ok(false);
     };
-    let Some(valid) = validate_on_disk(&app, &path)? else {
+    let Some(valid) = validate_on_disk(&path)? else {
         return Ok(false);
     };
     spawn_open(std::process::Command::new("open"), &valid)?;
@@ -175,15 +191,11 @@ pub async fn open_download(
 /// Reveal a completed download in the file manager. Same missing-file
 /// semantics as [`open_download`].
 #[tauri::command]
-pub async fn reveal_download(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: DownloadId,
-) -> WisResult<bool> {
+pub async fn reveal_download(state: State<'_, AppState>, id: DownloadId) -> WisResult<bool> {
     let Some(path) = completed_download_path(&state, id)? else {
         return Ok(false);
     };
-    let Some(valid) = validate_on_disk(&app, &path)? else {
+    let Some(valid) = validate_on_disk(&path)? else {
         return Ok(false);
     };
     let mut cmd = std::process::Command::new("open");
@@ -225,26 +237,31 @@ fn completed_download_path(
     Ok(record.map(|r| PathBuf::from(r.path)))
 }
 
-/// Boundary check before shelling out: the file must still exist as a regular
-/// file and resolve inside the downloads directory (a recorded path is our own
-/// data, but symlink swaps and DB tampering are cheap to rule out). `None`
-/// means "not there anymore" (the moved-or-deleted case); structural
-/// violations are errors.
-fn validate_on_disk<R: Runtime>(app: &AppHandle<R>, path: &Path) -> WisResult<Option<PathBuf>> {
-    let dir = downloads_dir(app)
-        .and_then(|d| d.canonicalize().map_err(|err| err.to_string()))
-        .map_err(|err| WisError::InvalidInput {
-            message: format!("downloads dir unavailable: {err}"),
-        })?;
+/// Boundary check before shelling out: the file must still exist as a
+/// regular file directly inside the directory it was downloaded to (the
+/// recorded path's parent). A recorded path is our own data, but symlink
+/// swaps and DB tampering are cheap to rule out; custom ask-where locations
+/// are covered because the check anchors on the recorded parent rather than
+/// the default downloads directory. `None` means "not there anymore" (the
+/// moved-or-deleted case); structural violations are errors.
+fn validate_on_disk(path: &Path) -> WisResult<Option<PathBuf>> {
+    let Some(parent) = path.parent() else {
+        return Err(WisError::InvalidInput {
+            message: "download path has no parent directory".to_string(),
+        });
+    };
+    let Ok(parent_canonical) = parent.canonicalize() else {
+        return Ok(None);
+    };
     let Ok(canonical) = path.canonicalize() else {
         return Ok(None);
     };
     if !canonical.is_file() {
         return Ok(None);
     }
-    if canonical.parent() != Some(dir.as_path()) {
+    if canonical.parent() != Some(parent_canonical.as_path()) {
         return Err(WisError::InvalidInput {
-            message: "download path is outside the downloads directory".to_string(),
+            message: "download path resolves outside its recorded directory".to_string(),
         });
     }
 
@@ -260,12 +277,7 @@ fn spawn_open(mut cmd: std::process::Command, path: &Path) -> WisResult<()> {
 
 /// Decide the destination for a requested download and register it.
 /// Returning `false` denies the download.
-fn on_requested<R: Runtime>(
-    app: &AppHandle<R>,
-    url: &Url,
-    destination: &mut PathBuf,
-    private: bool,
-) -> bool {
+fn on_requested(app: &AppHandle, url: &Url, destination: &mut PathBuf, private: bool) -> bool {
     let dir = match downloads_dir(app) {
         Ok(dir) => dir,
         Err(err) => {
@@ -283,8 +295,19 @@ fn on_requested<R: Runtime>(
     let sanitized = wis_core::sanitize_filename(suggested);
 
     let state = app.state::<AppState>();
-    let id = {
-        let mut items = state.downloads.lock().expect("downloads poisoned");
+    let prefs = state
+        .download_prefs
+        .lock()
+        .expect("download_prefs poisoned")
+        .clone();
+
+    let path = if prefs.ask_where {
+        match pick_destination(app, &state, &prefs, &sanitized, &dir) {
+            Some(path) => path,
+            None => return false,
+        }
+    } else {
+        let items = state.downloads.lock().expect("downloads poisoned");
         let filename = wis_core::unique_filename(&sanitized, |candidate| {
             let target = dir.join(candidate);
             target.exists()
@@ -300,10 +323,18 @@ fn on_requested<R: Runtime>(
             return false;
         }
 
+        path
+    };
+
+    let id = {
+        let mut items = state.downloads.lock().expect("downloads poisoned");
         let item = DownloadItem {
             id: DownloadId::new(),
             url: url.to_string(),
-            filename,
+            filename: path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| wis_core::FALLBACK_FILENAME.to_string()),
             path: path.clone(),
             received_bytes: 0,
             status: DownloadStatus::InProgress,
@@ -325,6 +356,126 @@ fn on_requested<R: Runtime>(
     true
 }
 
+/// Ask-where flow: run the native save panel (starting in the remembered
+/// directory) and remember the picked directory for next time. `None` means
+/// the user cancelled (or the panel is unavailable): deny the download.
+fn pick_destination(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    prefs: &DownloadPrefs,
+    suggested: &str,
+    default_dir: &Path,
+) -> Option<PathBuf> {
+    let start_dir = prefs
+        .last_dir
+        .as_deref()
+        .filter(|dir| dir.is_dir())
+        .unwrap_or(default_dir);
+    let Some(chosen) = ask_destination(suggested, start_dir) else {
+        log::info!("download cancelled in the save panel");
+        return None;
+    };
+    // The panel already asked "replace?" for an existing file, but WKDownload
+    // refuses an existing destination, so honour the user's explicit choice
+    // by clearing the way first. Server names never reach this branch.
+    if chosen.exists() {
+        if let Err(err) = std::fs::remove_file(&chosen) {
+            log::warn!("download denied, cannot replace {}: {err}", chosen.display());
+            return None;
+        }
+    }
+    let parent = chosen.parent()?.to_path_buf();
+    {
+        let mut prefs = state
+            .download_prefs
+            .lock()
+            .expect("download_prefs poisoned");
+        prefs.last_dir = Some(parent.clone());
+    }
+    persist_last_dir(app, parent);
+
+    Some(chosen)
+}
+
+/// Persist the remembered download directory into `UserSettings` off the
+/// main thread, so it survives a restart.
+fn persist_last_dir(app: &AppHandle, dir: PathBuf) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<AppState>();
+        let patch = UserSettingsPatch {
+            download_last_dir: Some(dir.display().to_string()),
+            ..Default::default()
+        };
+        let result =
+            crate::commands::mutate_unit(&app, &state, |s| Ok(s.with_settings(patch))).await;
+
+        if let Err(err) = result {
+            log::warn!("remembering download directory failed: {err}");
+        }
+    });
+}
+
+/// Native save panel on the main thread (wry's download callback runs there;
+/// `runModal` spins a nested event loop until the user decides). Returns the
+/// chosen full path, or `None` on cancel. Downloads are macOS-only territory
+/// for this panel; other platforms behave as a cancel.
+#[cfg(target_os = "macos")]
+fn ask_destination(suggested: &str, start_dir: &Path) -> Option<PathBuf> {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+    use std::ffi::{CStr, CString};
+    use std::os::raw::c_char;
+
+    let c_dir = CString::new(start_dir.to_str()?).ok()?;
+    let c_name = CString::new(suggested).ok()?;
+
+    unsafe {
+        let panel: *mut AnyObject = msg_send![class!(NSSavePanel), savePanel];
+        if panel.is_null() {
+            return None;
+        }
+
+        let dir_string: *mut AnyObject =
+            msg_send![class!(NSString), stringWithUTF8String: c_dir.as_ptr()];
+        let dir_url: *mut AnyObject =
+            msg_send![class!(NSURL), fileURLWithPath: dir_string, isDirectory: true];
+        if !dir_url.is_null() {
+            let _: () = msg_send![panel, setDirectoryURL: dir_url];
+        }
+
+        let name_string: *mut AnyObject =
+            msg_send![class!(NSString), stringWithUTF8String: c_name.as_ptr()];
+        let _: () = msg_send![panel, setNameFieldStringValue: name_string];
+        let _: () = msg_send![panel, setCanCreateDirectories: true];
+
+        // NSModalResponseOK == 1.
+        let response: isize = msg_send![panel, runModal];
+        if response != 1 {
+            return None;
+        }
+        let url: *mut AnyObject = msg_send![panel, URL];
+        if url.is_null() {
+            return None;
+        }
+        let path_string: *mut AnyObject = msg_send![url, path];
+        if path_string.is_null() {
+            return None;
+        }
+        let utf8: *const c_char = msg_send![path_string, UTF8String];
+        if utf8.is_null() {
+            return None;
+        }
+
+        Some(PathBuf::from(CStr::from_ptr(utf8).to_string_lossy().into_owned()))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn ask_destination(_suggested: &str, _start_dir: &Path) -> Option<PathBuf> {
+    None
+}
+
 impl DownloadItem {
     /// A persisted history row, viewed as a (completed) list item.
     fn from_record(record: DownloadRecord) -> Self {
@@ -342,7 +493,7 @@ impl DownloadItem {
 }
 
 /// Mark the matching in-flight download finished and quarantine the file.
-fn on_finished<R: Runtime>(app: &AppHandle<R>, url: &Url, success: bool) {
+fn on_finished(app: &AppHandle, url: &Url, success: bool) {
     let state = app.state::<AppState>();
     let completed = {
         let mut items = state.downloads.lock().expect("downloads poisoned");
@@ -390,7 +541,7 @@ fn on_finished<R: Runtime>(app: &AppHandle<R>, url: &Url, success: bool) {
 
 /// Write a completed download's history row off the main thread. Private
 /// downloads never reach here.
-fn persist_completed<R: Runtime>(app: &AppHandle<R>, item: DownloadItem) {
+fn persist_completed(app: &AppHandle, item: DownloadItem) {
     let record = DownloadRecord {
         id: item.id,
         url: item.url,
@@ -410,7 +561,7 @@ fn persist_completed<R: Runtime>(app: &AppHandle<R>, item: DownloadItem) {
 
 /// The user's downloads directory, created if missing. Downloads are denied
 /// when it cannot be resolved, never redirected elsewhere.
-fn downloads_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+fn downloads_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .download_dir()
@@ -423,7 +574,7 @@ fn downloads_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
 /// Poll the destination file's size while the download is in flight, so the
 /// chrome can show progress (WKDownload exposes no progress callback through
 /// wry). Stops as soon as the item is terminal or gone.
-fn spawn_progress_poller<R: Runtime>(app: AppHandle<R>, id: DownloadId) {
+fn spawn_progress_poller(app: AppHandle, id: DownloadId) {
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_millis(PROGRESS_POLL_MS)).await;
@@ -462,7 +613,7 @@ fn trim_terminal(items: &mut Vec<DownloadItem>) {
     }
 }
 
-fn emit_changed<R: Runtime>(app: &AppHandle<R>) {
+fn emit_changed(app: &AppHandle) {
     if let Err(err) = app.emit(DOWNLOADS_CHANGED_EVENT, ()) {
         log::warn!("emit {DOWNLOADS_CHANGED_EVENT} failed: {err}");
     }
