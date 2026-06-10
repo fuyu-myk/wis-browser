@@ -1,6 +1,7 @@
 //! Workspace: a named group of tabs with its own accent colour,
 //! essentials, and privacy preset.
 
+use crate::background::Background;
 use crate::ids::{TabFolderId, TabId, WorkspaceId};
 use crate::pane::{PaneBranch, PaneNode, SplitDir};
 use crate::privacy::PrivacyMode;
@@ -70,6 +71,14 @@ pub struct Workspace {
     /// local SOCKS5). `None` = direct connection. Serde-defaults to `None`.
     #[serde(default)]
     pub upstream_proxy: Option<UpstreamProxy>,
+    /// Custom page background (gradient or imported wallpaper). `None` uses
+    /// the theme default. Serde-defaults to `None`.
+    #[serde(default)]
+    pub background: Option<Background>,
+    /// User-picked flat `#rrggbb` colour for the workspace dot, overriding
+    /// the `accent` preset's swatch. Cleared when a preset is picked.
+    #[serde(default)]
+    pub custom_accent: Option<String>,
 }
 
 impl Workspace {
@@ -98,6 +107,8 @@ impl Workspace {
             pane_tree: None,
             ephemeral,
             upstream_proxy: None,
+            background: None,
+            custom_accent: None,
         }
     }
 
@@ -111,6 +122,14 @@ impl Workspace {
     pub fn with_accent(&self, accent: AccentColor) -> Self {
         Self {
             accent,
+            custom_accent: None,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_custom_accent(&self, color: Option<String>) -> Self {
+        Self {
+            custom_accent: color,
             ..self.clone()
         }
     }
@@ -281,6 +300,13 @@ impl Workspace {
     pub fn with_upstream_proxy(&self, upstream_proxy: Option<UpstreamProxy>) -> Self {
         Self {
             upstream_proxy,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_background(&self, background: Option<Background>) -> Self {
+        Self {
+            background,
             ..self.clone()
         }
     }

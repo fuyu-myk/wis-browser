@@ -8,6 +8,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   AccentColor,
+  Background,
   Bookmark,
   BookmarkFolder,
   BrowserState,
@@ -208,6 +209,22 @@ export const commands = {
 
   async recolorWorkspace(id: WorkspaceId, accent: AccentColor): Promise<Workspace> {
     return invoke('recolor_workspace', { id, accent })
+  },
+
+  /** Set or clear a workspace's custom flat dot colour (null = preset). */
+  async setWorkspaceCustomAccent(
+    id: WorkspaceId,
+    color: string | null,
+  ): Promise<Workspace> {
+    return invoke('set_workspace_custom_accent', { id, color })
+  },
+
+  /** Set or clear a workspace's custom background (null = theme default). */
+  async setWorkspaceBackground(
+    id: WorkspaceId,
+    background: Background | null,
+  ): Promise<Workspace> {
+    return invoke('set_workspace_background', { id, background })
   },
 
   async setActiveWorkspace(id: WorkspaceId): Promise<void> {

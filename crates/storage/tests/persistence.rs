@@ -36,6 +36,35 @@ fn fresh_store() -> SqliteStorage {
 }
 
 #[test]
+fn workspace_background_survives_round_trip() {
+    let store = fresh_store();
+    let s0 = BrowserState::new_with_defaults();
+    let background = wis_core::Background::Gradient(wis_core::GradientSpec {
+        angle: 160,
+        opacity: 100,
+        stops: vec![
+            wis_core::GradientStop {
+                color: "#efe7ff".into(),
+                position: 0,
+            },
+            wis_core::GradientStop {
+                color: "#f7f6f3".into(),
+                position: 100,
+            },
+        ],
+    });
+    let workspace = s0.workspaces[0].with_background(Some(background.clone()));
+    let state = BrowserState {
+        workspaces: vec![workspace],
+        ..s0
+    };
+
+    store.save_state(&state).expect("save");
+    let loaded = store.load_state().expect("load").unwrap();
+    assert_eq!(loaded.workspaces[0].background, Some(background));
+}
+
+#[test]
 fn tab_folders_and_membership_survive_round_trip() {
     let store = fresh_store();
     let s0 = BrowserState::new_with_defaults();

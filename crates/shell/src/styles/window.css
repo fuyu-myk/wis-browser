@@ -2489,6 +2489,8 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   overflow: auto;
 }
 .kb-window.glass-on .kb-newtab-page { background: transparent; }
+/* A user-set workspace background beats the glass transparency. */
+.has-custom-bg .kb-window.glass-on .kb-newtab-page { background: var(--wp-grad); }
 .kb-newtab-page .inner {
   position: relative;
   text-align: center;
@@ -5686,3 +5688,252 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   transition: opacity 0.12s;
 }
 .kb-dl-row:hover .kb-dl-reveal { opacity: 1; }
+
+/* -- Workspace background editor + colour picker ------------------------- */
+.kb-ws-bg {
+  grid-column: 1 / -1;
+  margin: 4px 6px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+/* Compact sliders. */
+.kb-ws-bg input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--overlay);
+}
+.kb-ws-bg input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.kb-ws-bg-add,
+.kb-ws-bg-reset {
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 3px 7px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.kb-ws-bg-add:hover,
+.kb-ws-bg-reset:hover { background: var(--overlay); color: var(--text-primary); }
+/* Add-colour square + tentative swatch hosting the picker. */
+.kb-ws-swatch.is-add {
+  background: transparent;
+  border: 1.5px dashed var(--border-strong, rgba(128, 128, 140, 0.6));
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+}
+.kb-ws-swatch.is-add svg { width: 12px; height: 12px; }
+.kb-ws-swatch.is-pending {
+  background: transparent;
+  display: grid;
+  place-items: center;
+}
+.kb-colorpick-confirm {
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  border-radius: 7px;
+  background: var(--primary-500);
+  color: var(--text-on-accent, #fff);
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.kb-colorpick-confirm:hover { filter: brightness(1.08); }
+.kb-ws-bg-add svg { width: 11px; height: 11px; }
+.kb-ws-bg-preview {
+  height: 22px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+[data-mode="dark"] .kb-ws-bg-preview { border-color: rgba(255, 255, 255, 0.10); }
+.kb-ws-bg-angle,
+.kb-ws-bg-stop {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 52px 18px;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.kb-ws-bg-stops {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kb-ws-bg-del {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+.kb-ws-bg-del:hover:not(:disabled) { background: var(--overlay); color: var(--text-primary); }
+.kb-ws-bg-del:disabled { opacity: 0.35; cursor: default; }
+.kb-ws-bg-del svg { width: 11px; height: 11px; }
+.kb-ws-bg-actions { display: flex; gap: 6px; }
+
+.kb-colorpick { position: relative; }
+.kb-colorpick-swatch {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  padding: 0;
+}
+[data-mode="dark"] .kb-colorpick-swatch { border-color: rgba(255, 255, 255, 0.22); }
+.kb-colorpick-pop {
+  position: absolute;
+  z-index: 90;
+  top: 26px;
+  left: 0;
+  width: 180px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+.kb-colorpick-sv {
+  position: relative;
+  height: 110px;
+  border-radius: 8px;
+  background-image:
+    linear-gradient(to top, #000, transparent),
+    linear-gradient(to right, #fff, transparent);
+  cursor: crosshair;
+  touch-action: none;
+}
+.kb-colorpick-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  transform: translate(-5px, -5px);
+  pointer-events: none;
+}
+.kb-colorpick-hue {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(to right,
+    #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%);
+}
+.kb-colorpick-hue::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+}
+.kb-colorpick-alpha {
+  background: linear-gradient(to right, transparent, #888);
+}
+.kb-colorpick-hex {
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  padding: 4px 6px;
+}
+
+/* Typed angle field + settings-page sizing for the background editor. */
+.kb-ws-bg-angle-num {
+  width: 52px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 3px 6px;
+}
+.kb-settings-page .kb-ws-bg {
+  max-width: 520px;
+  margin: 4px 0 18px;
+}
+.kb-settings-page .sec .kb-ws-bg { margin-left: 0; margin-right: 0; }
+
+/* Background editor + colour picker liquid glass. */
+.glass-on .kb-ws-bg-angle-num,
+.glass-on .kb-colorpick-hex,
+.glass-on .kb-ws-bg-add,
+.glass-on .kb-ws-bg-reset {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+[data-mode="dark"].glass-on .kb-ws-bg-angle-num,
+[data-mode="dark"].glass-on .kb-colorpick-hex,
+[data-mode="dark"].glass-on .kb-ws-bg-add,
+[data-mode="dark"].glass-on .kb-ws-bg-reset {
+  background: rgba(0, 0, 0, 0.28);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.glass-on .kb-ws-bg input[type="range"] { background: rgba(255, 255, 255, 0.40); }
+[data-mode="dark"].glass-on .kb-ws-bg input[type="range"] {
+  background: rgba(255, 255, 255, 0.18);
+}
+.glass-on .kb-colorpick-pop {
+  background: rgba(255, 255, 255, 0.80);
+  border-color: rgba(255, 255, 255, 0.30);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+}
+[data-mode="dark"].glass-on .kb-colorpick-pop {
+  background: rgba(52, 52, 64, 0.62);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Settings controls liquid glass. Accent-filled primary/danger buttons
+   keep their fills so destructive/confirm actions stay unmistakable. */
+.glass-on .kb-btn:not(.is-primary):not(.is-danger),
+.glass-on .kb-text-input,
+.glass-on .kb-num-input {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+[data-mode="dark"].glass-on .kb-btn:not(.is-primary):not(.is-danger),
+[data-mode="dark"].glass-on .kb-text-input,
+[data-mode="dark"].glass-on .kb-num-input {
+  background: rgba(0, 0, 0, 0.28);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.glass-on .kb-ua-add { background: transparent; }

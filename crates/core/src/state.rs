@@ -449,6 +449,47 @@ impl BrowserState {
             .collect()
     }
 
+    /// Set or clear a workspace's custom background. Validated at the
+    /// boundary: an invalid gradient/image never enters state.
+    pub fn with_workspace_background(
+        &self,
+        id: WorkspaceId,
+        background: Option<crate::background::Background>,
+    ) -> WisResult<Self> {
+        self.workspace(id)?;
+        if let Some(bg) = &background {
+            bg.validate()?;
+        }
+        let workspaces = self.map_workspace(id, |w| w.with_background(background.clone()));
+
+        Ok(Self {
+            workspaces,
+            ..self.clone()
+        })
+    }
+
+    /// Set or clear a workspace's custom flat dot colour (validated hex).
+    pub fn with_workspace_custom_accent(
+        &self,
+        id: WorkspaceId,
+        color: Option<String>,
+    ) -> WisResult<Self> {
+        self.workspace(id)?;
+        if let Some(c) = &color {
+            if !crate::background::is_valid_hex_color(c) {
+                return Err(WisError::InvalidInput {
+                    message: "custom accent must be #rrggbb hex".to_string(),
+                });
+            }
+        }
+        let workspaces = self.map_workspace(id, |w| w.with_custom_accent(color.clone()));
+
+        Ok(Self {
+            workspaces,
+            ..self.clone()
+        })
+    }
+
     fn require_folder(&self, workspace_id: WorkspaceId, folder_id: TabFolderId) -> WisResult<()> {
         if self.workspace(workspace_id)?.has_folder(folder_id) {
             Ok(())

@@ -38,6 +38,7 @@ import { WIDGET_CATALOG, makeWidget, type WidgetCatalogEntry } from '@/lib/widge
 import { SiteDataSection } from '@/components/SiteDataSection'
 import { PasswordsSection } from '@/components/PasswordsSection'
 import { OPEN_CLEAR_DATA_EVENT } from '@/hooks/useClearDataOverlay'
+import { BackgroundEditor } from '@/components/BackgroundEditor'
 import { KeybindingInput } from '@/components/KeybindingInput'
 
 interface NavSection {
@@ -209,6 +210,12 @@ export function SettingsPage() {
     <div
       className={cx('kb-settings-page', { 'nav-right': navOnRight })}
       aria-label="Settings"
+      onFocus={(e) => {
+        const t = e.target
+        if (t instanceof HTMLInputElement && (t.type === 'number' || t.type === 'text')) {
+          t.select()
+        }
+      }}
     >
       <aside className="kb-settings-nav" aria-label="Settings sections">
         <div className="kb-settings-nav-title">Settings</div>
@@ -273,6 +280,19 @@ export function SettingsPage() {
             label="URL bar focus glow"
           />
         </div>
+        <div className="row">
+          <div className="l">
+            <span>Workspace background</span>
+            <span>
+              Applies to the current workspace
+              {activeWorkspace ? ` (${activeWorkspace.name})` : ''}. Gradients,
+              images and GIF wallpapers can be set.
+            </span>
+          </div>
+        </div>
+        {activeWorkspace && !activeWorkspace.ephemeral && (
+          <BackgroundEditor ws={activeWorkspace} />
+        )}
       </section>
 
       <section id="layout" className="sec">

@@ -216,6 +216,17 @@ CREATE TABLE downloads (
 CREATE INDEX idx_downloads_completed_at ON downloads(completed_at);
 "#;
 
+// Per-workspace custom background (gradient or imported wallpaper), stored as
+// JSON like `pane_tree`. Nullable so existing state loads as theme-default.
+const M0015_WORKSPACE_BACKGROUND: &str = r#"
+ALTER TABLE workspaces ADD COLUMN background TEXT;
+"#;
+
+// Custom flat workspace dot colour (overrides the accent preset's swatch).
+const M0016_WORKSPACE_CUSTOM_ACCENT: &str = r#"
+ALTER TABLE workspaces ADD COLUMN custom_accent TEXT;
+"#;
+
 fn all() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(M0001_INITIAL),
@@ -232,6 +243,8 @@ fn all() -> Migrations<'static> {
         M::up(M0012_SESSION_COOKIE_AGE),
         M::up(M0013_TAB_FOLDERS),
         M::up(M0014_DOWNLOADS),
+        M::up(M0015_WORKSPACE_BACKGROUND),
+        M::up(M0016_WORKSPACE_CUSTOM_ACCENT),
     ])
 }
 

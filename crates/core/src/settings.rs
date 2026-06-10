@@ -106,6 +106,10 @@ pub struct UserSettings {
     /// save panel starts here next time. Only written by panel picks.
     #[serde(default)]
     pub download_last_dir: Option<String>,
+    /// Saved custom workspace colours (#rrggbb), shown as extra swatches in
+    /// the workspace recolor grid.
+    #[serde(default)]
+    pub custom_accent_palette: Vec<String>,
 }
 
 fn default_filter_list_auto_update() -> bool {
@@ -165,6 +169,7 @@ impl Default for UserSettings {
             keybindings: HashMap::new(),
             download_ask_where: false,
             download_last_dir: None,
+            custom_accent_palette: Vec::new(),
         }
     }
 }
@@ -234,6 +239,9 @@ pub struct UserSettingsPatch {
     pub download_ask_where: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub download_last_dir: Option<String>,
+    /// Replaces the whole palette when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_accent_palette: Option<Vec<String>>,
 }
 
 impl UserSettings {
@@ -283,6 +291,9 @@ impl UserSettings {
             download_last_dir: patch
                 .download_last_dir
                 .or_else(|| self.download_last_dir.clone()),
+            custom_accent_palette: patch
+                .custom_accent_palette
+                .unwrap_or_else(|| self.custom_accent_palette.clone()),
             keybindings: match patch.keybindings {
                 None => self.keybindings.clone(),
                 Some(overrides) => {

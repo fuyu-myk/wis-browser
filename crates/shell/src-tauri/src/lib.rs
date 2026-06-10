@@ -253,6 +253,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::set_workspace_background,
+            commands::set_workspace_custom_accent,
             commands::get_browser_state,
             commands::get_workspace,
             commands::get_tab,

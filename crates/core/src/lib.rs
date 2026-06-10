@@ -4,6 +4,7 @@
 //! workspaces, tabs, settings, and the operations that produce new states
 //! from old ones.
 
+pub mod background;
 pub mod download;
 pub mod error;
 pub mod ids;
@@ -22,6 +23,7 @@ pub mod user_agent;
 pub mod widget;
 pub mod workspace;
 
+pub use background::{Background, GradientSpec, GradientStop, ImageBackground, ImageFit};
 pub use download::{sanitize_filename, unique_filename, DownloadStatus, FALLBACK_FILENAME};
 pub use error::{WisError, WisResult};
 pub use ids::{DownloadId, TabFolderId, TabId, WidgetId, WorkspaceId};

@@ -14,6 +14,7 @@ import { useNavGuardOverlay } from '@/hooks/useNavGuardOverlay'
 import { usePeekOverlay } from '@/hooks/usePeekOverlay'
 import { useKeyActions } from '@/hooks/useKeyActions'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
+import { useWorkspaceBackground } from '@/hooks/useWorkspaceBackground'
 
 import { BookmarksButton } from '@/components/BookmarksButton'
 import { Content } from '@/components/Content'
@@ -63,6 +64,8 @@ export function Window({ state, settings }: WindowProps) {
     activeWorkspace?.active_tab_id != null
       ? state.tabs.find((t) => t.id === activeWorkspace.active_tab_id) ?? null
       : null
+
+  useWorkspaceBackground(activeWorkspace ?? null)
 
   const navigateOrCreate = useNavigateOrCreateTab(activeWorkspace?.id ?? null, activeTab)
   const openSettings = () => navigateOrCreate(SETTINGS_URL)

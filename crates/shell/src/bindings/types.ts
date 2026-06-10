@@ -180,6 +180,35 @@ export interface TabFolder {
   position: number
 }
 
+export type ImageFit = 'cover' | 'contain' | 'tile'
+
+export interface GradientStop {
+  /** `#rrggbb` hex colour. */
+  color: string
+  /** Percent along the gradient line, 0..=100. */
+  position: number
+}
+
+export interface GradientSpec {
+  /** Degrees, 0..=180 (CSS linear-gradient angle). */
+  angle: number
+  /** 2..=8 stops, positions ascending. */
+  stops: GradientStop[]
+  /** Whole-gradient opacity percent, 0..=100. */
+  opacity: number
+}
+
+export interface ImageBackground {
+  /** sha256 hex of the imported wallpaper. */
+  asset: string
+  fit: ImageFit
+  dim: number
+  blur: number
+}
+
+/** A workspace's custom background (externally tagged serde enum). */
+export type Background = { gradient: GradientSpec } | { image: ImageBackground }
+
 export interface Workspace {
   id: WorkspaceId
   name: string
@@ -200,6 +229,10 @@ export interface Workspace {
   ephemeral: boolean
   /** Upstream proxy this workspace routes through (Tor/SOCKS5/HTTP); null = direct. */
   upstream_proxy: UpstreamProxy | null
+  /** Custom page background; null = theme default. */
+  background: Background | null
+  /** Custom flat dot colour overriding the accent preset; null = preset. */
+  custom_accent: string | null
 }
 
 /**
@@ -249,6 +282,8 @@ export interface UserSettings {
   download_ask_where: boolean
   /** Directory of the last panel-chosen destination; the panel starts here. */
   download_last_dir: string | null
+  /** Saved custom workspace colours (extra swatches in the recolor grid). */
+  custom_accent_palette: string[]
 }
 
 /**
@@ -289,6 +324,8 @@ export interface UserSettingsPatch {
   keybindings?: Partial<Record<KeyAction, string>>
   download_ask_where?: boolean
   download_last_dir?: string
+  /** Replaces the whole palette when present. */
+  custom_accent_palette?: string[]
 }
 
 // ---------------------------------------------------------------------------

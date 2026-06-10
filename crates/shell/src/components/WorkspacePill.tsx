@@ -12,6 +12,7 @@ import { commands } from '@/bindings/commands'
 import type { AccentColor, BrowserState, Workspace, WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { PlusIcon, XIcon } from '@/lib/icons'
+import { ColorPicker } from '@/components/controls'
 import { WisMark } from '@/components/WisMark'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { usePendingRename } from '@/hooks/usePendingRename'
@@ -164,7 +165,10 @@ export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
             <WisMark variant="solid-closed" size={16} />
           </span>
         ) : (
-          <span className={cx('kb-ws-dot', `accent-${active?.accent ?? 'primary'}`)} />
+          <span
+            className={cx('kb-ws-dot', `accent-${active?.accent ?? 'primary'}`)}
+            style={active?.custom_accent ? { background: active.custom_accent } : undefined}
+          />
         )}
         <span className="kb-ws-name">{active?.name ?? 'Workspace'}</span>
       </button>
@@ -174,6 +178,7 @@ export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
             popRef={setPopEl}
             style={{ ...style, visibility: placed ? 'visible' : 'hidden' }}
             workspaces={state.workspaces}
+            palette={state.settings.custom_accent_palette}
             activeId={state.active_workspace_id}
             onPick={() => setOpen(false)}
             initialEditingId={pendingRenameWorkspaceId}
@@ -187,6 +192,8 @@ export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
 
 interface WorkspacePopoverProps {
   workspaces: Workspace[]
+  /** Saved custom colours shared across workspaces. */
+  palette: string[]
   activeId: WorkspaceId
   onPick: () => void
   popRef: (el: HTMLDivElement | null) => void
@@ -199,6 +206,7 @@ interface WorkspacePopoverProps {
 
 function WorkspacePopover({
   workspaces,
+  palette,
   activeId,
   onPick,
   popRef,
@@ -260,6 +268,23 @@ function WorkspacePopover({
     },
   })
 
+  const customAccent = useMutation({
+    mutationFn: ({ id, hex }: { id: WorkspaceId; hex: string }) =>
+      commands.setWorkspaceCustomAccent(id, hex),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
+  })
+
+  // Saving a new colour appends it to the shared palette and applies it.
+  const addCustom = useMutation({
+    mutationFn: async ({ id, hex }: { id: WorkspaceId; hex: string }) => {
+      if (!palette.includes(hex)) {
+        await commands.updateSettings({ custom_accent_palette: [...palette, hex] })
+      }
+      return commands.setWorkspaceCustomAccent(id, hex)
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
+  })
+
   const confirmingWorkspace = workspaces.find((w) => w.id === confirmingDeleteId)
 
   return (
@@ -313,6 +338,9 @@ function WorkspacePopover({
               setRecoloringId((prev) => (prev === w.id ? null : w.id))
             }
             onRecolor={(accent) => recolor.mutate({ id: w.id, accent })}
+            onCustomAccent={(hex) => customAccent.mutate({ id: w.id, hex })}
+            onAddCustom={(hex) => addCustom.mutate({ id: w.id, hex })}
+            palette={palette}
             onDeleteRequest={() => setConfirmingDeleteId(w.id)}
           />
         ))}
@@ -353,6 +381,9 @@ interface WorkspaceRowProps {
   onRenameSubmit: (name: string) => void
   onRecolorToggle: () => void
   onRecolor: (accent: AccentColor) => void
+  onCustomAccent: (hex: string) => void
+  onAddCustom: (hex: string) => void
+  palette: string[]
   onDeleteRequest: () => void
 }
 
@@ -367,9 +398,13 @@ function WorkspaceRow({
   onRenameSubmit,
   onRecolorToggle,
   onRecolor,
+  onCustomAccent,
+  onAddCustom,
+  palette,
   onDeleteRequest,
 }: WorkspaceRowProps) {
   const [draft, setDraft] = useState(ws.name)
+  const [pendingColor, setPendingColor] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -396,6 +431,7 @@ function WorkspaceRow({
           <button
             type="button"
             className={cx('kb-ws-dot-btn', `accent-${ws.accent}`, { active: isRecoloring })}
+            style={ws.custom_accent ? { background: ws.custom_accent } : undefined}
             aria-label={`Recolor ${ws.name}`}
             onClick={(e) => {
               e.stopPropagation()
@@ -456,7 +492,7 @@ function WorkspaceRow({
               key={accent}
               type="button"
               className={cx('kb-ws-swatch', `accent-${accent}`, {
-                on: accent === ws.accent,
+                on: !ws.custom_accent && accent === ws.accent,
               })}
               aria-label={accent}
               onClick={(e) => {
@@ -465,6 +501,52 @@ function WorkspaceRow({
               }}
             />
           ))}
+          {palette.map((color) => (
+            <button
+              key={color}
+              type="button"
+              className={cx('kb-ws-swatch', { on: ws.custom_accent === color })}
+              style={{ background: color }}
+              aria-label={`Use ${color}`}
+              title={color}
+              onClick={(e) => {
+                e.stopPropagation()
+                onCustomAccent(color)
+              }}
+            />
+          ))}
+          {pendingColor === null ? (
+            <button
+              type="button"
+              className="kb-ws-swatch is-add"
+              aria-label="Add custom colour"
+              title="Add custom colour"
+              onClick={(e) => {
+                e.stopPropagation()
+                setPendingColor('#7c83ff')
+              }}
+            >
+              <PlusIcon />
+            </button>
+          ) : (
+            <span
+              className="kb-ws-swatch is-pending"
+              onClick={(e) => e.stopPropagation()}
+              role="presentation"
+            >
+              <ColorPicker
+                value={pendingColor}
+                onChange={setPendingColor}
+                label="New workspace colour"
+                autoOpen
+                onConfirm={() => {
+                  onAddCustom(pendingColor)
+                  setPendingColor(null)
+                }}
+                onCancel={() => setPendingColor(null)}
+              />
+            </span>
+          )}
         </div>
       )}
     </li>

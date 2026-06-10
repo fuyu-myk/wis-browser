@@ -417,6 +417,41 @@ pub async fn delete_workspace(
     mutate_unit_immediate(&app, &state, |s| s.with_workspace_removed(id)).await
 }
 
+/// Set or clear a workspace's custom flat dot colour (validated hex).
+#[tauri::command]
+pub async fn set_workspace_custom_accent(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: WorkspaceId,
+    color: Option<String>,
+) -> WisResult<Workspace> {
+    mutate(&app, &state, |s| {
+        let next = s.with_workspace_custom_accent(id, color.clone())?;
+        let updated = next.workspace(id)?.clone();
+
+        Ok((next, updated))
+    })
+    .await
+}
+
+/// Set or clear a workspace's custom background (validated in core before it
+/// enters state).
+#[tauri::command]
+pub async fn set_workspace_background(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: WorkspaceId,
+    background: Option<wis_core::Background>,
+) -> WisResult<Workspace> {
+    mutate(&app, &state, |s| {
+        let next = s.with_workspace_background(id, background.clone())?;
+        let updated = next.workspace(id)?.clone();
+
+        Ok((next, updated))
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn recolor_workspace(
     app: AppHandle,
