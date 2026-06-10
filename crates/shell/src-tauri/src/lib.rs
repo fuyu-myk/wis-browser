@@ -13,6 +13,7 @@ mod navguard;
 mod overlay;
 mod pane_focus;
 mod peek;
+mod save_coalescer;
 mod state;
 mod suggest;
 mod vault;
@@ -270,8 +271,20 @@ pub fn run() {
             favicons::favicon_origin_hash,
             favicons::prefetch_favicon,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Flush any debounced state save before the process goes away, so
+            // the coalescer's quiet-period window can never lose the last
+            // mutations of a session.
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                let state = app_handle.state::<state::AppState>();
+                state.save_coalescer.flush(&state.storage);
+            }
+        });
 }
 
 /// Open the state DB resiliently so a corrupt store never blocks launch or

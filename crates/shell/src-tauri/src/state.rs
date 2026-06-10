@@ -39,6 +39,10 @@ pub struct ClosedTab {
 pub struct AppState {
     pub browser: Mutex<BrowserState>,
     pub storage: Arc<dyn Storage>,
+    /// Debounced, ordered writer for [`BrowserState`] snapshots (see
+    /// [`crate::save_coalescer`]). Destructive transitions bypass the
+    /// debounce via [`write_now`](crate::save_coalescer::SaveCoalescer::write_now).
+    pub save_coalescer: Arc<crate::save_coalescer::SaveCoalescer>,
     pub tracker_blocker: RwLock<Arc<TrackerBlocker>>,
     pub resolver: Arc<dyn Resolver>,
     pub content_rules: RwLock<HashMap<PrivacyMode, Option<RuleSpec>>>,
@@ -77,6 +81,7 @@ impl AppState {
         Self {
             browser: Mutex::new(browser),
             storage,
+            save_coalescer: Arc::new(crate::save_coalescer::SaveCoalescer::new()),
             tracker_blocker: RwLock::new(tracker_blocker),
             resolver,
             content_rules: RwLock::new(build_rule_specs_from(initial_filter_text)),

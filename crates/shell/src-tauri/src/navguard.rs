@@ -70,7 +70,11 @@ async fn intake(app: AppHandle, href: String, text: String) {
         return;
     };
 
-    let anchor = if text.is_empty() { None } else { Some(text.as_str()) };
+    let anchor = if text.is_empty() {
+        None
+    } else {
+        Some(text.as_str())
+    };
     let assessment = wis_core::assess_link(&href, anchor);
     if !should_guard(&assessment) {
         return;
@@ -244,7 +248,9 @@ mod imp {
 
     use objc2::rc::Id;
     use objc2::runtime::{AnyObject, NSObject};
-    use objc2::{class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass};
+    use objc2::{
+        class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass,
+    };
 
     use super::{intake, APP, NAVGUARD_JS};
 

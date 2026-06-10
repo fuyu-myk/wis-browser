@@ -120,7 +120,10 @@ mod tests {
 
     #[test]
     fn default_profile_does_not_override() {
-        assert_eq!(resolve_profile(&UaProfile::Default, DEFAULT_MAC_OS_VERSION), None);
+        assert_eq!(
+            resolve_profile(&UaProfile::Default, DEFAULT_MAC_OS_VERSION),
+            None
+        );
     }
 
     #[test]
@@ -131,9 +134,15 @@ mod tests {
 
     #[test]
     fn empty_custom_does_not_override() {
-        assert_eq!(resolve_profile(&UaProfile::Custom("   ".into()), DEFAULT_MAC_OS_VERSION), None);
         assert_eq!(
-            resolve_profile(&UaProfile::Custom(" my-agent ".into()), DEFAULT_MAC_OS_VERSION),
+            resolve_profile(&UaProfile::Custom("   ".into()), DEFAULT_MAC_OS_VERSION),
+            None
+        );
+        assert_eq!(
+            resolve_profile(
+                &UaProfile::Custom(" my-agent ".into()),
+                DEFAULT_MAC_OS_VERSION
+            ),
             Some("my-agent".to_string())
         );
     }

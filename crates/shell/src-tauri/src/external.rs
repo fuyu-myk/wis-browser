@@ -21,7 +21,10 @@ pub async fn open_in_external_browser(url: String) -> WisResult<()> {
     let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err(WisError::InvalidInput {
-            message: format!("refusing to open a non-web URL externally: {}", parsed.scheme()),
+            message: format!(
+                "refusing to open a non-web URL externally: {}",
+                parsed.scheme()
+            ),
         });
     }
 
@@ -29,9 +32,11 @@ pub async fn open_in_external_browser(url: String) -> WisResult<()> {
 }
 
 fn spawn(mut cmd: std::process::Command) -> WisResult<()> {
-    cmd.spawn().map(|_| ()).map_err(|err| WisError::InvalidInput {
-        message: format!("failed to open external browser: {err}"),
-    })
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("failed to open external browser: {err}"),
+        })
 }
 
 #[cfg(target_os = "macos")]

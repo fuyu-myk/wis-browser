@@ -5,9 +5,12 @@
 //!   2. Snapshots the previous state for rollback.
 //!   3. Computes the next state via a pure transition function from
 //!      `wis-core`.
-//!   4. Persists the next state to the configured `Storage`.
-//!   5. On persist failure: reverts the in-memory state and surfaces a
-//!      [`WisError::PersistenceFailed`].
+//!   4. Persists the next state to the configured `Storage`: destructive
+//!      transitions (close/delete, settings) write immediately and revert
+//!      the in-memory state on failure ([`WisError::PersistenceFailed`]);
+//!      everything else queues a debounced "latest snapshot wins" write via
+//!      [`crate::save_coalescer::SaveCoalescer`], so high-frequency bursts
+//!      (drag reorders, zoom ticks, load/title sync) coalesce to one write.
 //!
 //! Read-only commands acquire the mutex briefly to clone the relevant slice.
 
@@ -45,13 +48,29 @@ async fn read_state(state: &State<'_, AppState>) -> BrowserState {
     state.browser.lock().await.clone()
 }
 
+/// How a mutation's snapshot reaches disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Persist {
+    /// Write before returning; revert the in-memory state on failure. For
+    /// destructive transitions where losing the write would surprise.
+    Immediate,
+    /// Queue a debounced write; the latest snapshot wins. For everything
+    /// else, so mutation bursts coalesce into one write.
+    Coalesced,
+}
+
 /// Drive a state-mutating transition end-to-end: compute → persist → commit
-/// (or revert on persist failure), then broadcast `browser-state-changed`
-/// invalidates its React-Query cache.
+/// (or revert on immediate-persist failure), then broadcast
+/// `browser-state-changed` so the chrome invalidates its React-Query cache.
 ///
 /// `transition` is a pure function from the current state to `(next_state,
 /// return_value)`. It must not perform I/O.
-async fn mutate<R, F>(app: &AppHandle, state: &State<'_, AppState>, transition: F) -> WisResult<R>
+async fn mutate_with<R, F>(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    persist: Persist,
+    transition: F,
+) -> WisResult<R>
 where
     F: FnOnce(&BrowserState) -> WisResult<(BrowserState, R)>,
 {
@@ -60,26 +79,57 @@ where
     let (next, value) = transition(&guard)?;
     *guard = next.clone();
 
-    let storage = state.storage.clone();
-    let persist = tokio::task::spawn_blocking(move || storage.save_state(&next))
-        .await
-        .map_err(|join_err| WisError::PersistenceFailed {
-            reason: format!("persistence task panicked: {join_err}"),
-        })?;
+    match persist {
+        Persist::Immediate => {
+            // Stamp under the state lock so sequence order matches mutation order.
+            let coalescer = state.save_coalescer.clone();
+            let seq = coalescer.next_seq();
+            let storage = state.storage.clone();
+            let result =
+                tokio::task::spawn_blocking(move || coalescer.write_now(&storage, seq, &next))
+                    .await
+                    .map_err(|join_err| WisError::PersistenceFailed {
+                        reason: format!("persistence task panicked: {join_err}"),
+                    })?;
 
-    if let Err(err) = persist {
-        log::error!("persisting state failed: {err}; reverting in-memory state");
-        *guard = previous;
+            if let Err(err) = result {
+                log::error!("persisting state failed: {err}; reverting in-memory state");
+                *guard = previous;
 
-        return Err(WisError::PersistenceFailed {
-            reason: err.to_string(),
-        });
+                return Err(WisError::PersistenceFailed {
+                    reason: err.to_string(),
+                });
+            }
+        }
+        Persist::Coalesced => {
+            state.save_coalescer.schedule(state.storage.clone(), next);
+        }
     }
 
     drop(guard);
     emit_state_changed(app);
 
     Ok(value)
+}
+
+/// [`mutate_with`] using the default debounced persistence.
+async fn mutate<R, F>(app: &AppHandle, state: &State<'_, AppState>, transition: F) -> WisResult<R>
+where
+    F: FnOnce(&BrowserState) -> WisResult<(BrowserState, R)>,
+{
+    mutate_with(app, state, Persist::Coalesced, transition).await
+}
+
+/// [`mutate_with`] for destructive transitions: immediate write + rollback.
+async fn mutate_immediate<R, F>(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    transition: F,
+) -> WisResult<R>
+where
+    F: FnOnce(&BrowserState) -> WisResult<(BrowserState, R)>,
+{
+    mutate_with(app, state, Persist::Immediate, transition).await
 }
 
 /// Convenience for transitions that don't have an additional return value.
@@ -92,6 +142,18 @@ where
     F: FnOnce(&BrowserState) -> WisResult<BrowserState>,
 {
     mutate(app, state, |s| transition(s).map(|next| (next, ()))).await
+}
+
+/// [`mutate_unit`] with immediate (destructive-op) persistence.
+async fn mutate_unit_immediate<F>(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    transition: F,
+) -> WisResult<()>
+where
+    F: FnOnce(&BrowserState) -> WisResult<BrowserState>,
+{
+    mutate_immediate(app, state, |s| transition(s).map(|next| (next, ()))).await
 }
 
 /// Favicon attach helper exposed to [`crate::favicons`] so the capture
@@ -352,7 +414,7 @@ pub async fn delete_workspace(
     state: State<'_, AppState>,
     id: WorkspaceId,
 ) -> WisResult<()> {
-    mutate_unit(&app, &state, |s| s.with_workspace_removed(id)).await
+    mutate_unit_immediate(&app, &state, |s| s.with_workspace_removed(id)).await
 }
 
 #[tauri::command]
@@ -644,7 +706,7 @@ pub async fn close_tab(app: AppHandle, state: State<'_, AppState>, id: TabId) ->
         }
     }
 
-    mutate_unit(&app, &state, |s| s.with_tab_closed(id)).await
+    mutate_unit_immediate(&app, &state, |s| s.with_tab_closed(id)).await
 }
 
 /// Reopen the most-recently-closed tab in its original workspace, activating it.
@@ -899,7 +961,7 @@ pub async fn delete_tab_folder(
     workspace_id: WorkspaceId,
     folder_id: TabFolderId,
 ) -> WisResult<()> {
-    mutate_unit(&app, &state, |s| {
+    mutate_unit_immediate(&app, &state, |s| {
         s.with_tab_folder_removed(workspace_id, folder_id)
     })
     .await
@@ -1097,7 +1159,6 @@ pub async fn create_tab_webview(
                 });
             }
 
-
             if matches!(event, PageLoadEvent::Finished) {
                 let app_for_favicon = app.clone();
                 let page_url_for_history = page_url.clone();
@@ -1128,7 +1189,8 @@ pub async fn create_tab_webview(
                 if !ephemeral {
                     let app_for_cookies = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        crate::cookies::persist_session_cookies(&app_for_cookies, workspace_id).await;
+                        crate::cookies::persist_session_cookies(&app_for_cookies, workspace_id)
+                            .await;
                     });
                 }
             }
@@ -1431,7 +1493,7 @@ pub async fn update_settings(
     let keybindings_touched = patch.keybindings.is_some();
     let theme_touched = patch.theme.is_some();
     let persistence_disabled = patch.persist_sessions == Some(false);
-    let settings = mutate(&app, &state, |s| {
+    let settings = mutate_immediate(&app, &state, |s| {
         let next = s.with_settings(patch);
         let settings = next.settings.clone();
 

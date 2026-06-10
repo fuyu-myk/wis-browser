@@ -65,7 +65,14 @@ fn add_and_list_bookmark_in_a_folder() {
     let ws = WorkspaceId::new();
     let folder = s.create_bookmark_folder(ws, "Reading").expect("folder");
     let bm = s
-        .add_bookmark(ws, Some(folder.id), "https://example.com/", "Example", None, false)
+        .add_bookmark(
+            ws,
+            Some(folder.id),
+            "https://example.com/",
+            "Example",
+            None,
+            false,
+        )
         .expect("add");
 
     let all = s.list_bookmarks(ws).expect("list");
@@ -100,7 +107,10 @@ fn deleting_a_folder_reparents_its_bookmarks_to_unfiled() {
     assert!(folders.is_empty());
     let all = s.list_bookmarks(ws).expect("list");
     assert_eq!(all.len(), 1);
-    assert_eq!(all[0].folder_id, None, "bookmark should be unfiled, not deleted");
+    assert_eq!(
+        all[0].folder_id, None,
+        "bookmark should be unfiled, not deleted"
+    );
 }
 
 #[test]
@@ -139,7 +149,8 @@ fn reorder_folders_sets_position_by_index() {
     let c = s.create_bookmark_folder(ws, "C").expect("c");
 
     // New order: c, a, b.
-    s.reorder_bookmark_folders(&[c.id, a.id, b.id]).expect("reorder");
+    s.reorder_bookmark_folders(&[c.id, a.id, b.id])
+        .expect("reorder");
 
     let folders = s.list_bookmark_folders(ws).expect("list");
     // list_folders orders by position, so the listed order reflects the reorder.

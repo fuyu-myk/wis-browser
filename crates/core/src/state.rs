@@ -438,7 +438,11 @@ impl BrowserState {
     // -- tab folders --------------------------------------------------------
 
     /// Map the single workspace `id` through `f`, cloning the rest.
-    fn map_workspace(&self, id: WorkspaceId, f: impl Fn(&Workspace) -> Workspace) -> Vec<Workspace> {
+    fn map_workspace(
+        &self,
+        id: WorkspaceId,
+        f: impl Fn(&Workspace) -> Workspace,
+    ) -> Vec<Workspace> {
         self.workspaces
             .iter()
             .map(|w| if w.id == id { f(w) } else { w.clone() })
@@ -483,8 +487,9 @@ impl BrowserState {
         name: String,
     ) -> WisResult<Self> {
         self.require_folder(workspace_id, folder_id)?;
-        let workspaces =
-            self.map_workspace(workspace_id, |w| w.with_folder_renamed(folder_id, name.clone()));
+        let workspaces = self.map_workspace(workspace_id, |w| {
+            w.with_folder_renamed(folder_id, name.clone())
+        });
 
         Ok(Self {
             workspaces,
@@ -515,8 +520,9 @@ impl BrowserState {
         collapsed: bool,
     ) -> WisResult<Self> {
         self.require_folder(workspace_id, folder_id)?;
-        let workspaces =
-            self.map_workspace(workspace_id, |w| w.with_folder_collapsed(folder_id, collapsed));
+        let workspaces = self.map_workspace(workspace_id, |w| {
+            w.with_folder_collapsed(folder_id, collapsed)
+        });
 
         Ok(Self {
             workspaces,
@@ -578,8 +584,7 @@ impl BrowserState {
         order: Vec<TabFolderId>,
     ) -> WisResult<Self> {
         self.workspace(workspace_id)?;
-        let workspaces =
-            self.map_workspace(workspace_id, |w| w.with_tab_folders_reordered(&order));
+        let workspaces = self.map_workspace(workspace_id, |w| w.with_tab_folders_reordered(&order));
 
         Ok(Self {
             workspaces,

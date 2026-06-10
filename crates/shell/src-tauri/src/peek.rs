@@ -188,7 +188,11 @@ pub async fn peek_set_reader(app: AppHandle, enabled: bool) -> WisResult<()> {
         return Ok(());
     };
 
-    let js = if enabled { READER_JS } else { "location.reload();" };
+    let js = if enabled {
+        READER_JS
+    } else {
+        "location.reload();"
+    };
     wv.eval(js).map_err(|err| WisError::InvalidInput {
         message: format!("peek reader eval: {err}"),
     })
@@ -268,7 +272,9 @@ mod imp {
 
     use objc2::rc::Id;
     use objc2::runtime::{AnyObject, NSObject};
-    use objc2::{class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass};
+    use objc2::{
+        class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass,
+    };
     use tauri::Emitter;
 
     use super::{PeekOpenEvent, APP, PEEK_JS, PEEK_OPEN_EVENT};

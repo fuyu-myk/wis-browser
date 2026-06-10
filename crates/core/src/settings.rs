@@ -62,7 +62,7 @@ pub struct UserSettings {
     #[serde(default = "default_persist_sessions")]
     pub persist_sessions: bool,
     /// Default user agent presented to remote pages. Safari by default so the
-    /// WebKit engine is identified correctly. Serde-default upgrades existing 
+    /// WebKit engine is identified correctly. Serde-default upgrades existing
     /// settings to the fix automatically.
     #[serde(default)]
     pub user_agent_profile: UaProfile,

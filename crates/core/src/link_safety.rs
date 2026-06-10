@@ -122,7 +122,10 @@ pub fn assess_link(href: &str, anchor_text: Option<&str>) -> LinkAssessment {
         Err(_) => {
             return LinkAssessment::from_warnings(vec![(
                 RiskLevel::High,
-                LinkWarning::new("malformed_url", "This link is malformed and may be deceptive."),
+                LinkWarning::new(
+                    "malformed_url",
+                    "This link is malformed and may be deceptive.",
+                ),
             )]);
         }
     };
@@ -146,7 +149,10 @@ pub fn assess_link(href: &str, anchor_text: Option<&str>) -> LinkAssessment {
         )),
         _ => out.push((
             RiskLevel::Medium,
-            LinkWarning::new("unusual_scheme", "This link uses an unusual address scheme."),
+            LinkWarning::new(
+                "unusual_scheme",
+                "This link uses an unusual address scheme.",
+            ),
         )),
     }
 

@@ -208,11 +208,7 @@ pub async fn reorder_bookmarks(
 }
 
 #[tauri::command]
-pub async fn delete_bookmark(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: i64,
-) -> WisResult<()> {
+pub async fn delete_bookmark(app: AppHandle, state: State<'_, AppState>, id: i64) -> WisResult<()> {
     let storage = state.storage.clone();
     run(move || storage.delete_bookmark(id)).await?;
     notify(&app);

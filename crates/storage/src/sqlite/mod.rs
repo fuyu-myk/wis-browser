@@ -55,9 +55,12 @@ impl SqliteStorage {
 
     fn configure(conn: &Connection) -> StorageResult<()> {
         // WAL gives us readers concurrent with writers and survives crashes
-        // mid-transaction; FULL synchronous is the safe-by-default fsync mode.
+        // mid-transaction. NORMAL synchronous is the recommended pairing with
+        // WAL: it can never corrupt the database (the WAL is synced at
+        // checkpoints), it only risks losing the most recent commit on power
+        // loss.
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.pragma_update(None, "synchronous", "FULL")?;
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
 
         Ok(())
@@ -249,7 +252,15 @@ impl Storage for SqliteStorage {
         pinned: bool,
     ) -> StorageResult<crate::bookmarks::Bookmark> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
-        bookmarks::add_bookmark(&conn, workspace_id, folder_id, url, title, favicon_hash, pinned)
+        bookmarks::add_bookmark(
+            &conn,
+            workspace_id,
+            folder_id,
+            url,
+            title,
+            favicon_hash,
+            pinned,
+        )
     }
 
     fn move_bookmark(&self, id: i64, folder_id: Option<i64>) -> StorageResult<()> {

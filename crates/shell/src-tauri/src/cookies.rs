@@ -343,11 +343,14 @@ pub async fn persist_session_cookies(app: &AppHandle, workspace_id: WorkspaceId)
         }
 
         // Encrypt before persisting.
-        let Some(sealed) = seal_cookies(&records) else { return };
+        let Some(sealed) = seal_cookies(&records) else {
+            return;
+        };
         let storage = app.state::<AppState>().storage.clone();
-        let _ =
-            tokio::task::spawn_blocking(move || storage.save_session_cookies(workspace_id, &sealed))
-                .await;
+        let _ = tokio::task::spawn_blocking(move || {
+            storage.save_session_cookies(workspace_id, &sealed)
+        })
+        .await;
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -374,7 +377,9 @@ pub async fn restore_session_cookies(app: &AppHandle, workspace_id: WorkspaceId)
         let Some(sealed) = json else { return };
         // Decrypt the snapshot. A parse/decrypt failure (e.g. a pre-encryption
         // plaintext row, or a missing key) is treated as "nothing to restore".
-        let Some(records) = open_cookies(&sealed) else { return };
+        let Some(records) = open_cookies(&sealed) else {
+            return;
+        };
         if records.is_empty() {
             return;
         }
@@ -425,7 +430,11 @@ fn seal_cookies(records: &[SessionCookie]) -> Option<String> {
     let key = session_cookie_key()?;
     let plaintext = serde_json::to_vec(records).ok()?;
     let blob = wis_secrets::encrypt(&key, &plaintext).ok()?;
-    serde_json::to_string(&SealedCookies { n: blob.nonce, c: blob.ciphertext }).ok()
+    serde_json::to_string(&SealedCookies {
+        n: blob.nonce,
+        c: blob.ciphertext,
+    })
+    .ok()
 }
 
 /// Decrypt a sealed snapshot back into the cookie list, or `None` on failure.
@@ -433,7 +442,10 @@ fn seal_cookies(records: &[SessionCookie]) -> Option<String> {
 fn open_cookies(sealed: &str) -> Option<Vec<SessionCookie>> {
     let key = session_cookie_key()?;
     let SealedCookies { n, c } = serde_json::from_str(sealed).ok()?;
-    let blob = wis_secrets::EncryptedBlob { ciphertext: c, nonce: n };
+    let blob = wis_secrets::EncryptedBlob {
+        ciphertext: c,
+        nonce: n,
+    };
     let plaintext = wis_secrets::decrypt(&key, &blob).ok()?;
     serde_json::from_slice(&plaintext).ok()
 }
@@ -490,7 +502,13 @@ async fn snapshot_session_cookies_mac(
                         continue;
                     }
 
-                    out.push(SessionCookie { name, value, domain, path, secure });
+                    out.push(SessionCookie {
+                        name,
+                        value,
+                        domain,
+                        path,
+                        secure,
+                    });
                 }
             }
 
@@ -537,7 +555,7 @@ async fn restore_session_cookies_mac(
 
         // Keys equal the documented values of the NSHTTPCookie* property
         // constants, so a plain string-keyed dictionary works with
-        // `+cookieWithProperties:`. Expiry is intentionally omitted as it's 
+        // `+cookieWithProperties:`. Expiry is intentionally omitted as it's
         // re-created as a session cookie.
         for ck in &cookies {
             let props: *mut AnyObject = msg_send![class!(NSMutableDictionary), dictionary];
@@ -550,12 +568,16 @@ async fn restore_session_cookies_mac(
             set("Name", ns_string_new(&ck.name));
             set("Value", ns_string_new(&ck.value));
             set("Domain", ns_string_new(&ck.domain));
-            set("Path", ns_string_new(if ck.path.is_empty() { "/" } else { &ck.path }));
+            set(
+                "Path",
+                ns_string_new(if ck.path.is_empty() { "/" } else { &ck.path }),
+            );
             if ck.secure {
                 set("Secure", ns_string_new("TRUE"));
             }
 
-            let cookie: *mut AnyObject = msg_send![class!(NSHTTPCookie), cookieWithProperties: props];
+            let cookie: *mut AnyObject =
+                msg_send![class!(NSHTTPCookie), cookieWithProperties: props];
 
             let finish = {
                 let shared = shared.clone();
