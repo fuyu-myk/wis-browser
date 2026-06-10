@@ -181,6 +181,74 @@ pub fn run() {
                 });
             }
 
+            // Idle proxy teardown: a workspace's loopback proxy (and its
+            // sockets/tasks) is dropped once the workspace has had no live
+            // webviews for a while; `ensure_proxy_for` lazily respawns it on
+            // the next webview creation. The active workspace is exempt so
+            // peek/widget panels never race a teardown.
+            {
+                const PROXY_IDLE_SECS: u64 = 10 * 60;
+
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut idle_since: std::collections::HashMap<
+                        wis_core::WorkspaceId,
+                        std::time::Instant,
+                    > = std::collections::HashMap::new();
+                    let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
+                    tick.tick().await; // consume the immediate first tick
+
+                    loop {
+                        tick.tick().await;
+                        let state = handle.state::<AppState>();
+
+                        // Workspaces that still have a live webview pointed at
+                        // their proxy. Widget panels and Peek always belong to
+                        // the active workspace.
+                        let (tab_workspaces, active_ws) = {
+                            let browser = state.browser.lock().await;
+                            let map: std::collections::HashMap<String, wis_core::WorkspaceId> =
+                                browser
+                                    .tabs
+                                    .iter()
+                                    .map(|t| (t.id.as_uuid().to_string(), t.workspace_id))
+                                    .collect();
+                            (map, browser.active_workspace_id)
+                        };
+                        let mut live: std::collections::HashSet<wis_core::WorkspaceId> =
+                            std::collections::HashSet::new();
+                        live.insert(active_ws);
+                        for label in handle.webviews().keys() {
+                            if let Some(uuid) = label.strip_prefix("tab-") {
+                                if let Some(ws) = tab_workspaces.get(uuid) {
+                                    live.insert(*ws);
+                                }
+                            }
+                        }
+
+                        let mut proxies = state.proxies.lock().await;
+                        let now = std::time::Instant::now();
+                        idle_since.retain(|ws, _| proxies.contains_key(ws));
+                        for ws in proxies.keys().copied().collect::<Vec<_>>() {
+                            if live.contains(&ws) {
+                                idle_since.remove(&ws);
+                                continue;
+                            }
+                            let since = *idle_since.entry(ws).or_insert(now);
+                            if now.duration_since(since).as_secs() >= PROXY_IDLE_SECS {
+                                // ProxyServer::drop signals shutdown; the
+                                // accept loop and its sockets wind down.
+                                proxies.remove(&ws);
+                                idle_since.remove(&ws);
+                                log::info!(
+                                    "workspace {ws} proxy torn down (no live webviews for {PROXY_IDLE_SECS}s)"
+                                );
+                            }
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

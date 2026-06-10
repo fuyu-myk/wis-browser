@@ -33,13 +33,27 @@ function resolve(url: string): Promise<string | null> {
   return pending
 }
 
+/** Parallel favicon fetches during the startup warm, so cold-cache launches
+ * don't fire one network request per widget all at once while first pages
+ * are loading. */
+const PREFETCH_CONCURRENCY = 4
+
 /**
  * Warm the favicon cache for a set of widget URLs (call on startup). Each
  * resolves through the shared cache, so the dock and settings render their
- * icons immediately instead of flashing the letter-tile fallback.
+ * icons immediately instead of flashing the letter-tile fallback. Fetches
+ * run at most `PREFETCH_CONCURRENCY` at a time.
  */
 export function prefetchWidgetFavicons(urls: readonly string[]): void {
-  for (const url of urls) void resolve(url)
+  const queue = [...urls]
+  const drain = (): void => {
+    const url = queue.shift()
+    if (url === undefined) return
+    void resolve(url)
+      .catch(() => undefined)
+      .finally(drain)
+  }
+  for (let i = 0; i < PREFETCH_CONCURRENCY; i++) drain()
 }
 
 /** A widget's site favicon, with a coloured-letter fallback while it loads. */
