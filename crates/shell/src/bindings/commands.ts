@@ -13,6 +13,7 @@ import type {
   BookmarkFolder,
   BrowserState,
   CredentialSummary,
+  CustomTheme,
   Decision,
   DownloadId,
   DownloadItem,
@@ -28,6 +29,7 @@ import type {
   TabFolder,
   TabFolderId,
   TabId,
+  ThemeId,
   UpstreamProxy,
   UrlSuggestions,
   UserSettings,
@@ -640,6 +642,24 @@ export const commands = {
    *  query parameter). No-op when the panel isn't live. */
   async navigateWidgetPanel(id: WidgetId, url: string): Promise<void> {
     return invoke('navigate_widget_panel', { id, url })
+  },
+
+  // -- custom themes ----------------------------------------------------------
+
+  /** Activate a custom theme (null = built-in presets). */
+  async setActiveTheme(id: ThemeId | null): Promise<void> {
+    return invoke('set_active_theme', { id })
+  },
+
+  /** Save a theme as a .wistheme file. Resolves false on cancel. */
+  async exportTheme(theme: CustomTheme): Promise<boolean> {
+    return invoke('export_theme', { theme })
+  },
+
+  /** Open and validate a .wistheme file; null on cancel. The returned theme
+   *  carries a fresh id and is not yet in settings. */
+  async importTheme(): Promise<CustomTheme | null> {
+    return invoke('import_theme')
   },
 
   // -- settings -------------------------------------------------------------

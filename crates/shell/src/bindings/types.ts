@@ -16,12 +16,14 @@ declare const WorkspaceIdBrand: unique symbol
 declare const WidgetIdBrand: unique symbol
 declare const TabFolderIdBrand: unique symbol
 declare const DownloadIdBrand: unique symbol
+declare const ThemeIdBrand: unique symbol
 
 export type TabId = string & { readonly [TabIdBrand]: never }
 export type WorkspaceId = string & { readonly [WorkspaceIdBrand]: never }
 export type WidgetId = string & { readonly [WidgetIdBrand]: never }
 export type TabFolderId = string & { readonly [TabFolderIdBrand]: never }
 export type DownloadId = string & { readonly [DownloadIdBrand]: never }
+export type ThemeId = string & { readonly [ThemeIdBrand]: never }
 
 // ---------------------------------------------------------------------------
 // Enums: serialised by serde as snake_case strings.
@@ -211,6 +213,31 @@ export interface ImageBackground {
 /** A workspace's custom background (externally tagged serde enum). */
 export type Background = { gradient: GradientSpec } | { image: ImageBackground }
 
+/** One mode's editable theme tokens (all hex colours). */
+export interface ModeTokens {
+  accent: string
+  bg: string
+  surface: string
+  surface_raised: string
+  chrome_bg: string
+  content_bg: string
+  text_primary: string
+  text_secondary: string
+  border: string
+}
+
+export interface ThemeTokens {
+  light: ModeTokens
+  dark: ModeTokens
+}
+
+/** A user-built chrome theme. */
+export interface CustomTheme {
+  id: ThemeId
+  name: string
+  tokens: ThemeTokens
+}
+
 /** Per-mode background memory: what each mode last looked like. */
 export interface BackgroundDrafts {
   gradient: GradientSpec | null
@@ -294,6 +321,10 @@ export interface UserSettings {
   download_last_dir: string | null
   /** Saved custom workspace colours (extra swatches in the recolor grid). */
   custom_accent_palette: string[]
+  /** User-built chrome themes. */
+  custom_themes: CustomTheme[]
+  /** Active custom theme; null = built-in accent presets. */
+  active_theme: ThemeId | null
 }
 
 /**
@@ -336,6 +367,8 @@ export interface UserSettingsPatch {
   download_last_dir?: string
   /** Replaces the whole palette when present. */
   custom_accent_palette?: string[]
+  /** Replaces the whole theme list when present. */
+  custom_themes?: CustomTheme[]
 }
 
 // ---------------------------------------------------------------------------

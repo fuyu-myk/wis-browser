@@ -128,6 +128,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
         download_ask_where: Some(true),
         download_last_dir: Some("/Users/someone/Desktop".into()),
         custom_accent_palette: Some(vec!["#aabbcc".into()]),
+        custom_themes: Some(Vec::new()),
     };
     let after: UserSettingsPatch = roundtrip(&patch);
     assert_eq!(patch, after);

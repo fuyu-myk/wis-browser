@@ -74,3 +74,4 @@ define_id!(
     "Identifier for a side widget (WhatsApp, Telegram, etc)."
 );
 define_id!(DownloadId, "dl", "Identifier for a single download.");
+define_id!(ThemeId, "thm", "Identifier for a custom chrome theme.");

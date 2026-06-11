@@ -14,10 +14,12 @@ mod menu;
 mod navguard;
 mod overlay;
 mod pane_focus;
+mod panels;
 mod peek;
 mod save_coalescer;
 mod state;
 mod suggest;
+mod themes;
 mod vault;
 mod wallpapers;
 mod webview_prefs;
@@ -259,6 +261,9 @@ pub fn run() {
             commands::set_workspace_icon,
             commands::set_tab_folder_icon,
             wallpapers::import_wallpaper,
+            themes::set_active_theme,
+            themes::export_theme,
+            themes::import_theme,
             commands::set_workspace_custom_accent,
             commands::get_browser_state,
             commands::get_workspace,

@@ -32,13 +32,14 @@ import {
 import { DEFAULT_KEYMAP, actionLabel, allActions, effectiveKeymap } from '@/lib/palette'
 import type { KeyAction } from '@/bindings/types'
 
-import { Segmented, SwatchRow, Switch } from '@/components/controls'
+import { Segmented, Switch } from '@/components/controls'
 import { WidgetFavicon } from '@/components/WidgetFavicon'
 import { WIDGET_CATALOG, makeWidget, type WidgetCatalogEntry } from '@/lib/widgets'
 import { SiteDataSection } from '@/components/SiteDataSection'
 import { PasswordsSection } from '@/components/PasswordsSection'
 import { OPEN_CLEAR_DATA_EVENT } from '@/hooks/useClearDataOverlay'
 import { BackgroundEditor } from '@/components/BackgroundEditor'
+import { ThemesSection } from '@/components/ThemesSection'
 import { KeybindingInput } from '@/components/KeybindingInput'
 
 interface NavSection {
@@ -123,17 +124,6 @@ const SEARCH_ENGINE_OPTIONS = [
   { value: 'google' as const, label: 'Google' },
   { value: 'bing' as const, label: 'Bing' },
 ] satisfies ReadonlyArray<{ value: SearchEngine; label: string }>
-
-const ACCENT_OPTIONS = [
-  { value: 'primary' as const, swatchClass: 'fav-pri', label: 'Periwinkle' },
-  { value: 'mint' as const, swatchClass: 'fav-mint', label: 'Mint' },
-  { value: 'rose' as const, swatchClass: 'fav-rose', label: 'Rose' },
-  { value: 'sun' as const, swatchClass: 'fav-sun', label: 'Sun' },
-  { value: 'lila' as const, swatchClass: 'fav-lila', label: 'Lila' },
-  { value: 'azur' as const, swatchClass: 'fav-azur', label: 'Azur' },
-  { value: 'gray' as const, swatchClass: 'fav-gray', label: 'Gray' },
-  { value: 'ink' as const, swatchClass: 'fav-ink', label: 'Ink' },
-] satisfies ReadonlyArray<{ value: AccentColor; swatchClass: string; label: string }>
 
 const PRIVACY_OPTIONS = [
   { value: 'strict' as const, label: 'Strict' },
@@ -248,18 +238,6 @@ export function SettingsPage() {
         </div>
         <div className="row">
           <div className="l">
-            <span>Accent</span>
-            <span>Recolours the chrome highlights</span>
-          </div>
-        </div>
-        <SwatchRow
-          value={settings.accent}
-          onChange={(accent) => update.mutate({ accent })}
-          options={ACCENT_OPTIONS}
-          ariaLabel="Accent colour"
-        />
-        <div className="row">
-          <div className="l">
             <span>Liquid glass</span>
             <span>Blur and translucency</span>
           </div>
@@ -293,6 +271,7 @@ export function SettingsPage() {
         {activeWorkspace && !activeWorkspace.ephemeral && (
           <BackgroundEditor ws={activeWorkspace} />
         )}
+        <ThemesSection />
       </section>
 
       <section id="layout" className="sec">

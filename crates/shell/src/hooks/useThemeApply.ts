@@ -4,12 +4,18 @@
  * so the CSS selectors in `tokens.css` / `window.css` have a single
  * source of attributes.
  *
+ * Custom themes: when `active_theme` is set, the theme's tokens for the
+ * effective mode are injected as inline CSS variables on `<body>` (inline
+ * wins over the `[data-accent]`/`[data-mode]` rules), so the whole chrome
+ * re-themes with zero component changes. Cleared when no theme is active.
+ *
  * Also reacts to OS-level light/dark changes when `theme === 'system'`.
  */
 
 import { useEffect } from 'react'
 
 import type { UserSettings } from '@/bindings/types'
+import { themeVars, THEME_VAR_KEYS } from '@/lib/theme'
 
 export function useThemeApply(settings: UserSettings | undefined) {
   useEffect(() => {
@@ -24,6 +30,18 @@ export function useThemeApply(settings: UserSettings | undefined) {
             : 'light'
           : settings.theme
       body.setAttribute('data-mode', mode)
+
+      const active = settings.active_theme
+        ? settings.custom_themes.find((t) => t.id === settings.active_theme)
+        : undefined
+      if (active) {
+        const vars = themeVars(mode === 'dark' ? active.tokens.dark : active.tokens.light)
+        for (const [key, value] of Object.entries(vars)) {
+          body.style.setProperty(key, value)
+        }
+      } else {
+        for (const key of THEME_VAR_KEYS) body.style.removeProperty(key)
+      }
     }
     applyMode()
 

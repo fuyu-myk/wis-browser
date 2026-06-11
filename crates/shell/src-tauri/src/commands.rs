@@ -1631,6 +1631,12 @@ pub async fn update_settings(
     state: State<'_, AppState>,
     patch: UserSettingsPatch,
 ) -> WisResult<UserSettings> {
+    if let Some(themes) = &patch.custom_themes {
+        for theme in themes {
+            theme.validate()?;
+        }
+    }
+
     let keybindings_touched = patch.keybindings.is_some();
     let theme_touched = patch.theme.is_some();
     let persistence_disabled = patch.persist_sessions == Some(false);

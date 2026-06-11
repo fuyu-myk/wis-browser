@@ -490,6 +490,28 @@ impl BrowserState {
         })
     }
 
+    /// Activate a custom theme by id, or `None` for the built-in presets.
+    /// The id must reference an existing custom theme.
+    pub fn with_active_theme(&self, id: Option<crate::ids::ThemeId>) -> WisResult<Self> {
+        if let Some(theme_id) = id {
+            let exists = self.settings.custom_themes.iter().any(|t| t.id == theme_id);
+            if !exists {
+                return Err(WisError::InvalidInput {
+                    message: format!("unknown theme: {theme_id}"),
+                });
+            }
+        }
+        let settings = crate::settings::UserSettings {
+            active_theme: id,
+            ..self.settings.clone()
+        };
+
+        Ok(Self {
+            settings,
+            ..self.clone()
+        })
+    }
+
     fn validate_icon(icon: &Option<String>) -> WisResult<()> {
         if let Some(raw) = icon {
             crate::icon::parse_icon_ref(raw)?;

@@ -2,10 +2,12 @@
 
 use std::collections::HashMap;
 
+use crate::ids::ThemeId;
 use crate::keybinding::KeyAction;
 use crate::layout::{LayoutMode, RailSide, ThemeMode};
 use crate::privacy::PrivacyMode;
 use crate::search::SearchEngine;
+use crate::theme::CustomTheme;
 use crate::user_agent::UaProfile;
 use crate::widget::Widget;
 use crate::workspace::AccentColor;
@@ -110,6 +112,12 @@ pub struct UserSettings {
     /// the workspace recolor grid.
     #[serde(default)]
     pub custom_accent_palette: Vec<String>,
+    /// User-built chrome themes (see [`crate::theme`]).
+    #[serde(default)]
+    pub custom_themes: Vec<CustomTheme>,
+    /// Active custom theme; `None` uses the built-in accent presets.
+    #[serde(default)]
+    pub active_theme: Option<ThemeId>,
 }
 
 fn default_filter_list_auto_update() -> bool {
@@ -170,6 +178,8 @@ impl Default for UserSettings {
             download_ask_where: false,
             download_last_dir: None,
             custom_accent_palette: Vec::new(),
+            custom_themes: Vec::new(),
+            active_theme: None,
         }
     }
 }
@@ -242,6 +252,9 @@ pub struct UserSettingsPatch {
     /// Replaces the whole palette when present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_accent_palette: Option<Vec<String>>,
+    /// Replaces the whole theme list when present (validated boundary-side).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_themes: Option<Vec<CustomTheme>>,
 }
 
 impl UserSettings {
@@ -294,6 +307,10 @@ impl UserSettings {
             custom_accent_palette: patch
                 .custom_accent_palette
                 .unwrap_or_else(|| self.custom_accent_palette.clone()),
+            custom_themes: patch
+                .custom_themes
+                .unwrap_or_else(|| self.custom_themes.clone()),
+            active_theme: self.active_theme,
             keybindings: match patch.keybindings {
                 None => self.keybindings.clone(),
                 Some(overrides) => {
