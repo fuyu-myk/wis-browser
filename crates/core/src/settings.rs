@@ -93,6 +93,17 @@ pub struct UserSettings {
     /// Only consulted when [`Self::widget_panel_limit_enabled`].
     #[serde(default = "default_widget_panel_limit")]
     pub widget_panel_limit: u32,
+    /// When false, dismissing (or switching away from) a widget panel
+    /// destroys its webview outright instead of keeping it hidden for an
+    /// instant re-show. Logins persist in the workspace data store either
+    /// way; off trades reopen speed for reclaiming each panel's WebContent
+    /// process (often hundreds of MB) immediately.
+    #[serde(default = "default_widget_keep_loaded")]
+    pub widget_keep_loaded: bool,
+    /// Minutes a hidden widget panel stays loaded before it is reclaimed.
+    /// Only consulted when [`Self::widget_keep_loaded`].
+    #[serde(default = "default_widget_sleep_minutes")]
+    pub widget_sleep_minutes: u32,
     /// User-supplied accelerator overrides keyed by [`KeyAction`]. Each
     /// entry replaces the corresponding entry from [`crate::default_keymap`]
     /// at runtime (see [`crate::effective_keymap`]). Absent entries fall
@@ -148,7 +159,15 @@ fn default_widget_panel_limit_enabled() -> bool {
 }
 
 fn default_widget_panel_limit() -> u32 {
-    3
+    2
+}
+
+fn default_widget_keep_loaded() -> bool {
+    true
+}
+
+fn default_widget_sleep_minutes() -> u32 {
+    5
 }
 
 impl Default for UserSettings {
@@ -176,7 +195,9 @@ impl Default for UserSettings {
             ua_site_overrides: HashMap::new(),
             sidebar_widgets: Vec::new(),
             widget_panel_limit_enabled: true,
-            widget_panel_limit: 3,
+            widget_panel_limit: 2,
+            widget_keep_loaded: true,
+            widget_sleep_minutes: 5,
             keybindings: HashMap::new(),
             download_ask_where: false,
             download_last_dir: None,
@@ -244,6 +265,10 @@ pub struct UserSettingsPatch {
     pub widget_panel_limit_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub widget_panel_limit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub widget_keep_loaded: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub widget_sleep_minutes: Option<u32>,
     /// Merged onto the existing `keybindings` map. Sparse entries replace
     /// just those actions; absent actions keep their current binding.
     /// `Some(empty_map)` is a no-op (the patch is sparse, not a wipe).
@@ -306,6 +331,10 @@ impl UserSettings {
                 .widget_panel_limit_enabled
                 .unwrap_or(self.widget_panel_limit_enabled),
             widget_panel_limit: patch.widget_panel_limit.unwrap_or(self.widget_panel_limit),
+            widget_keep_loaded: patch.widget_keep_loaded.unwrap_or(self.widget_keep_loaded),
+            widget_sleep_minutes: patch
+                .widget_sleep_minutes
+                .unwrap_or(self.widget_sleep_minutes),
             download_ask_where: patch.download_ask_where.unwrap_or(self.download_ask_where),
             download_last_dir: patch
                 .download_last_dir

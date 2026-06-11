@@ -134,10 +134,10 @@ export function useWidgetPanel(): {
 
   const wsId = state?.active_workspace_id ?? null
   const ephemeral = state?.workspaces.find((w) => w.id === wsId)?.ephemeral ?? false
-  const sleepEnabled = state?.settings.tab_sleep_enabled ?? true
-  const sleepMinutes = state?.settings.tab_sleep_minutes ?? 15
-  const sleepRef = useRef({ enabled: sleepEnabled, minutes: sleepMinutes })
-  sleepRef.current = { enabled: sleepEnabled, minutes: sleepMinutes }
+  const keepLoaded = state?.settings.widget_keep_loaded ?? true
+  const sleepMinutes = state?.settings.widget_sleep_minutes ?? 5
+  const sleepRef = useRef({ keepLoaded, minutes: sleepMinutes })
+  sleepRef.current = { keepLoaded, minutes: sleepMinutes }
   const limitEnabled = state?.settings.widget_panel_limit_enabled ?? true
   const limitCount = state?.settings.widget_panel_limit ?? DEFAULT_PANEL_LIMIT
   const limitRef = useRef({ enabled: limitEnabled, count: limitCount })
@@ -277,7 +277,7 @@ export function useWidgetPanel(): {
   const armIdleTimer = useCallback(
     (id: WidgetId) => {
       clearTimer(id)
-      if (!sleepRef.current.enabled) return
+      if (!sleepRef.current.keepLoaded) return
       timersRef.current.set(
         id,
         window.setTimeout(() => destroyOne(id), sleepRef.current.minutes * 60_000),
@@ -286,13 +286,18 @@ export function useWidgetPanel(): {
     [clearTimer, destroyOne],
   )
 
-  /** Hide a panel, keeping it live for an instant re-show. */
+  /** Hide a panel, keeping it live for an instant re-show; with
+   * keep-loaded off, destroy outright so its process is reclaimed now. */
   const hideOne = useCallback(
     (id: WidgetId) => {
+      if (!sleepRef.current.keepLoaded) {
+        destroyOne(id)
+        return
+      }
       void commands.hideWidgetPanel(id).catch(() => undefined)
       armIdleTimer(id)
     },
-    [armIdleTimer],
+    [armIdleTimer, destroyOne],
   )
 
   /**
@@ -529,6 +534,15 @@ export function useWidgetPanel(): {
       un?.()
     }
   }, [dismiss])
+
+  // Flipping keep-loaded off reclaims every hidden panel on the spot (the
+  // visible one stays and is destroyed when dismissed).
+  useEffect(() => {
+    if (keepLoaded) return
+    for (const id of Array.from(liveRef.current.keys())) {
+      if (id !== visibleRef.current) destroyOne(id)
+    }
+  }, [keepLoaded, destroyOne])
 
   // Reflect limit changes immediately: trim the pool as soon as the cap is
   // lowered (or re-enabled).

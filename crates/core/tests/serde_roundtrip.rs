@@ -118,6 +118,8 @@ fn settings_patch_round_trips_when_all_fields_set() {
         }]),
         widget_panel_limit_enabled: Some(false),
         widget_panel_limit: Some(5),
+        widget_keep_loaded: Some(false),
+        widget_sleep_minutes: Some(7),
         keybindings: Some(HashMap::from([
             (KeyAction::NewTab, "Ctrl+T".into()),
             (KeyAction::CloseTab, "Ctrl+W".into()),

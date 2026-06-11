@@ -441,6 +441,42 @@ export function SettingsPage() {
         </div>
         <div className="row">
           <div className="l">
+            <span>Keep widget panels loaded</span>
+            <span>
+              Dismissed widget panels stay loaded for instant reopening. Turn
+              off to free each panel's memory the moment it closes; logins
+              persist either way.
+            </span>
+          </div>
+          <Switch
+            checked={settings.widget_keep_loaded}
+            onChange={(widget_keep_loaded) => update.mutate({ widget_keep_loaded })}
+            label="Keep widget panels loaded"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
+            <span>Reclaim hidden panels after</span>
+            <span>Minutes a hidden widget panel stays loaded before it is closed.</span>
+          </div>
+          <input
+            type="number"
+            className="kb-num-input"
+            min={1}
+            max={1440}
+            step={1}
+            value={settings.widget_sleep_minutes}
+            disabled={!settings.widget_keep_loaded}
+            onChange={(e) => {
+              const n = Math.round(Number(e.currentTarget.value))
+              if (!Number.isFinite(n)) return
+              update.mutate({ widget_sleep_minutes: Math.min(1440, Math.max(1, n)) })
+            }}
+            aria-label="Widget panel reclaim minutes"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
             <span>Limit loaded widget panels</span>
             <span>
               Cap how many recently used widget panels stay loaded for instant
