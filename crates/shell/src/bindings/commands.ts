@@ -211,6 +211,20 @@ export const commands = {
     return invoke('recolor_workspace', { id, accent })
   },
 
+  /** Set or clear a folder's icon (encoded `glyph:`/`glyph-fill:`/`emoji:`). */
+  async setTabFolderIcon(
+    workspaceId: WorkspaceId,
+    folderId: TabFolderId,
+    icon: string | null,
+  ): Promise<void> {
+    return invoke('set_tab_folder_icon', { workspaceId, folderId, icon })
+  },
+
+  /** Set or clear a workspace's icon (encoded `glyph:`/`glyph-fill:`/`emoji:`). */
+  async setWorkspaceIcon(id: WorkspaceId, icon: string | null): Promise<void> {
+    return invoke('set_workspace_icon', { id, icon })
+  },
+
   /** Set or clear a workspace's custom flat dot colour (null = preset). */
   async setWorkspaceCustomAccent(
     id: WorkspaceId,

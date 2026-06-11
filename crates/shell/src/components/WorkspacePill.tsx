@@ -13,6 +13,8 @@ import type { AccentColor, BrowserState, Workspace, WorkspaceId } from '@/bindin
 import { cx } from '@/lib/cx'
 import { PlusIcon, XIcon } from '@/lib/icons'
 import { ColorPicker } from '@/components/controls'
+import { IconPicker } from '@/components/IconPicker'
+import { renderIconRef } from '@/lib/iconGlyphs'
 import { WisMark } from '@/components/WisMark'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { usePendingRename } from '@/hooks/usePendingRename'
@@ -166,9 +168,19 @@ export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
           </span>
         ) : (
           <span
-            className={cx('kb-ws-dot', `accent-${active?.accent ?? 'primary'}`)}
-            style={active?.custom_accent ? { background: active.custom_accent } : undefined}
-          />
+            className={cx('kb-ws-dot', `accent-${active?.accent ?? 'primary'}`, {
+              'has-icon': !!active?.icon,
+            })}
+            style={
+              active?.custom_accent
+                ? active.icon
+                  ? { color: active.custom_accent }
+                  : { background: active.custom_accent }
+                : undefined
+            }
+          >
+            {renderIconRef(active?.icon, 13)}
+          </span>
         )}
         <span className="kb-ws-name">{active?.name ?? 'Workspace'}</span>
       </button>
@@ -274,6 +286,12 @@ function WorkspacePopover({
     onSuccess: () => void qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
   })
 
+  const setIcon = useMutation({
+    mutationFn: ({ id, icon }: { id: WorkspaceId; icon: string | null }) =>
+      commands.setWorkspaceIcon(id, icon),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
+  })
+
   // Saving a new colour appends it to the shared palette and applies it.
   const addCustom = useMutation({
     mutationFn: async ({ id, hex }: { id: WorkspaceId; hex: string }) => {
@@ -339,6 +357,7 @@ function WorkspacePopover({
             }
             onRecolor={(accent) => recolor.mutate({ id: w.id, accent })}
             onCustomAccent={(hex) => customAccent.mutate({ id: w.id, hex })}
+            onIcon={(icon) => setIcon.mutate({ id: w.id, icon })}
             onAddCustom={(hex) => addCustom.mutate({ id: w.id, hex })}
             palette={palette}
             onDeleteRequest={() => setConfirmingDeleteId(w.id)}
@@ -382,6 +401,7 @@ interface WorkspaceRowProps {
   onRecolorToggle: () => void
   onRecolor: (accent: AccentColor) => void
   onCustomAccent: (hex: string) => void
+  onIcon: (icon: string | null) => void
   onAddCustom: (hex: string) => void
   palette: string[]
   onDeleteRequest: () => void
@@ -399,6 +419,7 @@ function WorkspaceRow({
   onRecolorToggle,
   onRecolor,
   onCustomAccent,
+  onIcon,
   onAddCustom,
   palette,
   onDeleteRequest,
@@ -430,14 +451,25 @@ function WorkspaceRow({
         ) : (
           <button
             type="button"
-            className={cx('kb-ws-dot-btn', `accent-${ws.accent}`, { active: isRecoloring })}
-            style={ws.custom_accent ? { background: ws.custom_accent } : undefined}
+            className={cx('kb-ws-dot-btn', `accent-${ws.accent}`, {
+              active: isRecoloring,
+              'has-icon': !!ws.icon,
+            })}
+            style={
+              ws.custom_accent
+                ? ws.icon
+                  ? { color: ws.custom_accent }
+                  : { background: ws.custom_accent }
+                : undefined
+            }
             aria-label={`Recolor ${ws.name}`}
             onClick={(e) => {
               e.stopPropagation()
               onRecolorToggle()
             }}
-          />
+          >
+            {renderIconRef(ws.icon, 13)}
+          </button>
         )}
         {isEditing ? (
           <input
@@ -486,7 +518,8 @@ function WorkspaceRow({
         <XIcon />
       </button>
       {isRecoloring && (
-        <div className="kb-ws-swatches" role="menu" aria-label="Recolor workspace">
+        <div className="kb-ws-editpop" role="menu" aria-label="Customize workspace">
+        <div className="kb-ws-swatches">
           {ACCENTS.map((accent) => (
             <button
               key={accent}
@@ -547,6 +580,8 @@ function WorkspaceRow({
               />
             </span>
           )}
+        </div>
+        {!ws.ephemeral && <IconPicker value={ws.icon} onPick={onIcon} />}
         </div>
       )}
     </li>

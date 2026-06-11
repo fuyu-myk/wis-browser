@@ -19,6 +19,7 @@ import type {
   WorkspaceId,
 } from '@/bindings/types'
 import { cx } from '@/lib/cx'
+import { renderIconRef } from '@/lib/iconGlyphs'
 import { LockIcon, XIcon } from '@/lib/icons'
 import { tabDisplayName } from '@/lib/url'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
@@ -624,7 +625,9 @@ export function HorizontalTabs({
           onPointerDown={(e) => startFolderReorderDrag(e, folder.id)}
           onClick={() => toggleCollapsed(false)}
           onContextMenu={(e) => openIslandMenu(e, islandTarget)}
-        />
+        >
+          {renderIconRef(folder.icon, 11)}
+        </button>
       )
     }
     const memberSum = members.reduce((s, m) => s + sizeFor(m.id === activeTabId), 0)
@@ -687,7 +690,10 @@ export function HorizontalTabs({
               }}
             />
           ) : (
-            <span className="h-island-label">{folder.name}</span>
+            <span className="h-island-label">
+              {renderIconRef(folder.icon, 11)}
+              {folder.name}
+            </span>
           )}
         </div>
         {members.map((tab) => renderTab(tab))}

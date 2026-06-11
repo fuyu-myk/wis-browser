@@ -1682,6 +1682,16 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 }
 [data-mode="dark"] .kb-tabfolder-menu { background: #26262e; }
 .glass-on .kb-tabfolder-menu {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(255, 255, 255, 0.30);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+}
+[data-mode="dark"].glass-on .kb-tabfolder-menu {
+  background: rgba(38, 38, 46, 0.72);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+.glass-on .kb-tabfolder-menu {
   background: rgba(255, 255, 255, 0.85);
   border-color: rgba(255, 255, 255, 0.30);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
@@ -1795,7 +1805,11 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-chevron-btn,
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-body,
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-newfolder-row span { display: none; }
-.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-dot { display: block; }
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-dot {
+  display: inline-grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.92);
+}
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-newfolder-row {
   justify-content: flex-start;
   padding-left: 10px;
@@ -5138,6 +5152,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-ws-pill,
 .kb-side.kb-rail:not(.is-expanded) .kb-ws-pill {
   padding: 0 7px;
+  justify-content: center;
 }
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-ws-name,
 .kb-side.kb-rail:not(.is-expanded) .kb-ws-name { display: none; }
@@ -5396,29 +5411,39 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 .kb-ws-menu button.danger { color: var(--destructive); }
 .kb-ws-menu button:disabled { opacity: 0.4; cursor: default; }
 
-.kb-ws-swatches {
+/* Floating customize card under the row: swatch grid + icon picker,
+   centered on the popover row. */
+.kb-ws-editpop {
   position: absolute;
   top: calc(100% + 2px);
-  right: 4px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 90;
   background: color-mix(in oklab, var(--surface) 96%, transparent);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: var(--shadow-pop);
   padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: max-content;
+  max-width: 232px;
+}
+.glass-on .kb-ws-editpop {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(255, 255, 255, 0.30);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+}
+[data-mode="dark"].glass-on .kb-ws-editpop {
+  background: rgba(38, 38, 46, 0.72);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+.kb-ws-swatches {
   display: grid;
   grid-template-columns: repeat(4, 22px);
   gap: 6px;
-}
-.glass-on .kb-ws-swatches {
-  background: rgba(255,255,255,0.92);
-  border-color: rgba(255,255,255,0.30);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  backdrop-filter: blur(22px) saturate(180%);
-}
-[data-mode="dark"].glass-on .kb-ws-swatches {
-  background: rgba(38,38,46,0.92);
-  border-color: rgba(255,255,255,0.10);
 }
 .kb-ws-swatch {
   width: 22px; height: 22px;
@@ -5977,3 +6002,104 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   position: absolute;
   inset: 0;
 }
+
+/* -- Icon picker + icon rendering inside dots ---------------------------- */
+.kb-iconpick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px;
+}
+.kb-iconpick-tabs {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.kb-iconpick-tabs button {
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.kb-iconpick-tabs button.is-on {
+  background: var(--overlay);
+  color: var(--text-primary);
+  border-color: var(--border-strong, var(--border));
+}
+.kb-iconpick-none { margin-left: auto; }
+.kb-iconpick-none:disabled { opacity: 0.4; cursor: default; }
+.kb-iconpick-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 24px);
+  gap: 2px;
+}
+.kb-iconpick-cell {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+.kb-iconpick-cell:hover { background: var(--overlay); color: var(--text-primary); }
+.kb-iconpick-cell.is-on {
+  border-color: var(--primary-500);
+  color: var(--text-primary);
+}
+.kb-icon-emoji { line-height: 1; font-size: 13px; }
+
+/* Dots host their icon centered, tinted for contrast on the accent fill. */
+.kb-ws-dot,
+.kb-ws-dot-btn {
+  display: inline-grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.92);
+}
+.h-island-circle {
+  display: inline-grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.92);
+}
+.h-island-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Icon replaces the workspace circle: transparent dot, glyph tinted with the
+   workspace colour (preset accents expose --accent; custom uses inline
+   color). Emoji render at natural colours with no circle behind. */
+.kb-ws-dot.has-icon,
+.kb-ws-dot-btn.has-icon {
+  background: transparent !important;
+  border-radius: 0;
+  color: var(--accent, var(--primary-500));
+  width: 16px;
+  height: 16px;
+}
+.kb-ws-dot .kb-icon-emoji,
+.kb-ws-dot-btn .kb-icon-emoji {
+  display: block;
+  line-height: 1;
+}
+.kb-tabfolder-dot .kb-icon-emoji {
+  display: block;
+  line-height: 1;
+  font-size: 8px !important;
+  transform: translateX(0.5px);
+}
+.kb-ws-editpop .kb-iconpick { padding: 0; }
+
+.kb-tabfolder-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+

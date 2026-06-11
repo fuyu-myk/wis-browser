@@ -178,6 +178,8 @@ export interface TabFolder {
   collapsed: boolean
   /** Order among a workspace's folders (ascending). */
   position: number
+  /** Encoded icon reference (`glyph:`/`glyph-fill:`/`emoji:`); null = colour pill. */
+  icon: string | null
 }
 
 export type ImageFit = 'cover' | 'contain' | 'tile'

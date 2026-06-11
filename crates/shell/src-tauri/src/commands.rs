@@ -1024,6 +1024,32 @@ pub async fn recolor_tab_folder(
     .await
 }
 
+/// Set or clear a folder's icon (validated encoded reference).
+#[tauri::command]
+pub async fn set_tab_folder_icon(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    folder_id: TabFolderId,
+    icon: Option<String>,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| {
+        s.with_tab_folder_icon(workspace_id, folder_id, icon.clone())
+    })
+    .await
+}
+
+/// Set or clear a workspace's icon (validated encoded reference).
+#[tauri::command]
+pub async fn set_workspace_icon(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: WorkspaceId,
+    icon: Option<String>,
+) -> WisResult<()> {
+    mutate_unit(&app, &state, |s| s.with_workspace_icon(id, icon.clone())).await
+}
+
 #[tauri::command]
 pub async fn set_tab_folder_collapsed(
     app: AppHandle,

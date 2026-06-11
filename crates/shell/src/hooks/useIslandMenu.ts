@@ -22,7 +22,7 @@ export const ISLAND_MENU_READY = 'wis-islandmenu-ready'
 export const ISLAND_MENU_DONE = 'wis-islandmenu-done'
 
 const MENU_W = 240
-const MENU_H = 126
+const MENU_H = 246
 const MARGIN = 8
 const PANE_FOCUS_EVENT = 'wis-pane-focus'
 

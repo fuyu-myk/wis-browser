@@ -12,6 +12,8 @@ import type { AccentColor, TabFolder, WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { MoreIcon } from '@/lib/icons'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import { renderIconRef } from '@/lib/iconGlyphs'
+import { IconPicker } from '@/components/IconPicker'
 
 const ACCENTS: AccentColor[] = [
   'primary',
@@ -79,6 +81,11 @@ export function TabFolderHeader({
   const rename = useMutation({
     mutationFn: (name: string) => commands.renameTabFolder(workspaceId, folder.id, name),
     onSuccess: invalidate,
+  })
+  const setIcon = useMutation({
+    mutationFn: (icon: string | null) =>
+      commands.setTabFolderIcon(workspaceId, folder.id, icon),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
   })
   const recolor = useMutation({
     mutationFn: (accent: AccentColor) => commands.recolorTabFolder(workspaceId, folder.id, accent),
@@ -185,7 +192,9 @@ export function TabFolderHeader({
           }
         }}
       >
-        <span className="kb-tabfolder-dot" aria-hidden />
+        <span className="kb-tabfolder-dot" aria-hidden>
+          {renderIconRef(folder.icon, 10)}
+        </span>
         <button
           type="button"
           className="kb-tabfolder-chevron-btn"
@@ -222,6 +231,7 @@ export function TabFolderHeader({
               startRename()
             }}
           >
+            {renderIconRef(folder.icon, 11)}
             {folder.name}
           </span>
         )}
@@ -242,6 +252,10 @@ export function TabFolderHeader({
 
       {menuOpen && (
         <div className="kb-tabfolder-menu" role="menu">
+          <IconPicker
+            value={folder.icon}
+            onPick={(icon) => setIcon.mutate(icon)}
+          />
           <div className="kb-tabfolder-swatches" role="group" aria-label="Recolor folder">
             {ACCENTS.map((accent) => (
               <button

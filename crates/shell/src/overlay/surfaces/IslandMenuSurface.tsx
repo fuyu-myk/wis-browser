@@ -9,6 +9,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { commands } from '@/bindings/commands'
 import type { AccentColor } from '@/bindings/types'
 import { cx } from '@/lib/cx'
+import { IconPicker } from '@/components/IconPicker'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
@@ -85,9 +86,20 @@ export function IslandMenuSurface() {
   }
 
   const glassOn = state?.settings.glass_enabled ?? true
+  const folderIcon =
+    state?.workspaces
+      .find((w) => w.id === target.workspaceId)
+      ?.tab_folders.find((f) => f.id === target.folderId)?.icon ?? null
+
+  const setIcon = (icon: string | null) => {
+    void commands
+      .setTabFolderIcon(target.workspaceId, target.folderId, icon)
+      .catch(() => undefined)
+  }
 
   return (
     <div className={cx('kb-islandmenu', { 'glass-on': glassOn })} role="menu">
+      <IconPicker value={folderIcon} onPick={setIcon} />
       <div className="kb-islandmenu-swatches" role="group" aria-label="Recolor folder">
         {ACCENTS.map((accent) => (
           <button

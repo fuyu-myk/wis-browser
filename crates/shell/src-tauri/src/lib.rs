@@ -256,6 +256,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::set_workspace_background,
+            commands::set_workspace_icon,
+            commands::set_tab_folder_icon,
             wallpapers::import_wallpaper,
             commands::set_workspace_custom_accent,
             commands::get_browser_state,

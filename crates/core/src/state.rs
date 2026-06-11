@@ -490,6 +490,44 @@ impl BrowserState {
         })
     }
 
+    fn validate_icon(icon: &Option<String>) -> WisResult<()> {
+        if let Some(raw) = icon {
+            crate::icon::parse_icon_ref(raw)?;
+        }
+        Ok(())
+    }
+
+    /// Set or clear a workspace's icon (validated encoded reference).
+    pub fn with_workspace_icon(&self, id: WorkspaceId, icon: Option<String>) -> WisResult<Self> {
+        self.workspace(id)?;
+        Self::validate_icon(&icon)?;
+        let workspaces = self.map_workspace(id, |w| w.with_icon(icon.clone()));
+
+        Ok(Self {
+            workspaces,
+            ..self.clone()
+        })
+    }
+
+    /// Set or clear a folder's icon (validated encoded reference).
+    pub fn with_tab_folder_icon(
+        &self,
+        workspace_id: WorkspaceId,
+        folder_id: TabFolderId,
+        icon: Option<String>,
+    ) -> WisResult<Self> {
+        self.require_folder(workspace_id, folder_id)?;
+        Self::validate_icon(&icon)?;
+        let workspaces = self.map_workspace(workspace_id, |w| {
+            w.with_folder_icon(folder_id, icon.clone())
+        });
+
+        Ok(Self {
+            workspaces,
+            ..self.clone()
+        })
+    }
+
     fn require_folder(&self, workspace_id: WorkspaceId, folder_id: TabFolderId) -> WisResult<()> {
         if self.workspace(workspace_id)?.has_folder(folder_id) {
             Ok(())

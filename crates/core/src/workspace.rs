@@ -132,6 +132,13 @@ impl Workspace {
         }
     }
 
+    pub fn with_icon(&self, icon: Option<String>) -> Self {
+        Self {
+            icon,
+            ..self.clone()
+        }
+    }
+
     pub fn with_custom_accent(&self, color: Option<String>) -> Self {
         Self {
             custom_accent: color,
@@ -251,6 +258,10 @@ impl Workspace {
 
     pub fn with_folder_recolored(&self, id: TabFolderId, accent: AccentColor) -> Self {
         self.map_folder(id, |f| f.with_accent(accent))
+    }
+
+    pub fn with_folder_icon(&self, id: TabFolderId, icon: Option<String>) -> Self {
+        self.map_folder(id, |f| f.with_icon(icon.clone()))
     }
 
     pub fn with_folder_collapsed(&self, id: TabFolderId, collapsed: bool) -> Self {

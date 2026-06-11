@@ -16,6 +16,10 @@ pub struct TabFolder {
     pub collapsed: bool,
     /// Order among a workspace's folders (ascending).
     pub position: u32,
+    /// Encoded icon reference (see [`crate::icon`]); `None` keeps the plain
+    /// colour pill. Serde-defaults so existing folders load unchanged.
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 impl TabFolder {
@@ -26,6 +30,7 @@ impl TabFolder {
             accent,
             collapsed: false,
             position,
+            icon: None,
         }
     }
 
@@ -53,6 +58,13 @@ impl TabFolder {
     pub fn with_position(&self, position: u32) -> Self {
         Self {
             position,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_icon(&self, icon: Option<String>) -> Self {
+        Self {
+            icon,
             ..self.clone()
         }
     }
