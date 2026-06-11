@@ -549,6 +549,50 @@ export function useWidgetPanel(): {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTabId])
 
+  // Follow the content host while visible: the collapsible sidebar's
+  // expand/collapse transition moves the host edge frame by frame, and the
+  // panel (with its header, grip and backdrop) must retract along with it
+  // instead of staying where it opened.
+  useEffect(() => {
+    if (activeWidgetId === null) return
+    const host = document.querySelector('.kb-content-host')
+    if (!host) return
+    let last: DOMRect | null = null
+    const apply = () => {
+      const r = host.getBoundingClientRect()
+      const unchanged =
+        last !== null &&
+        Math.abs(r.left - last.left) < 0.5 &&
+        Math.abs(r.top - last.top) < 0.5 &&
+        Math.abs(r.width - last.width) < 0.5 &&
+        Math.abs(r.height - last.height) < 0.5
+      const first = last === null
+      last = r
+      if (first || unchanged) return
+      if (resizeBaseRef.current) return // a grip drag owns the bounds
+      const geo = computeGeometry(sideRef.current, widthRef.current)
+      if (!geo) return
+      cancelPanelAnim()
+      void commands
+        .setWidgetPanelBounds(
+          activeWidgetId, geo.panel.x, geo.panel.y, geo.panel.width, geo.panel.height,
+        )
+        .catch(() => undefined)
+      void commands
+        .setOverlayBounds(
+          'widgetheader', geo.header.x, geo.header.y, geo.header.width, geo.header.height,
+        )
+        .catch(() => undefined)
+      void commands
+        .setOverlayBounds('widgetresize', geo.grip.x, geo.grip.y, geo.grip.width, geo.grip.height)
+        .catch(() => undefined)
+      setPanelRect(geo.panel)
+    }
+    const ro = new ResizeObserver(apply)
+    ro.observe(host)
+    return () => ro.disconnect()
+  }, [activeWidgetId, cancelPanelAnim])
+
   // Track window resizes while visible.
   useEffect(() => {
     if (activeWidgetId === null) return
