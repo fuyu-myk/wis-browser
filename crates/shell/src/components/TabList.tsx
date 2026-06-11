@@ -246,7 +246,13 @@ export function TabList({
     const el = activeTabId
       ? root?.querySelector<HTMLElement>(`[data-tab-id="${activeTabId}"]`)
       : null
-    if (!root || !el || el.closest('.kb-foldwrap:not(.is-open)')) {
+    const inner = el?.closest<HTMLElement>('.kb-foldwrap-inner')
+    if (
+      !root ||
+      !el ||
+      el.closest('.kb-foldwrap:not(.is-open)') ||
+      (inner !== null && inner !== undefined && inner.getBoundingClientRect().height < 4)
+    ) {
       setBarTop(null)
       return
     }

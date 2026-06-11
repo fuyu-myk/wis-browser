@@ -1802,8 +1802,10 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-count,
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-more,
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-chevron-btn,
-.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-body,
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-newfolder-row span { display: none; }
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-foldwrap {
+  grid-template-rows: 0fr;
+}
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-tabfolder-dot {
   display: inline-grid;
   place-items: center;
@@ -6499,9 +6501,14 @@ body.is-tab-dragging .kb-loose {
    natural width inside the scroller. */
 .kb-tabs-h-wrap.compact.is-scrolling .h-loose-group { flex: 0 0 auto; }
 
-.h-island.is-closing {
+.h-island.is-closing,
+.h-island.is-opening {
   transition: flex-basis var(--dur-med) var(--ease-standard);
 }
+
+/* While the strip itself is resizing (sidebar expand/contract, window
+   resize), tabs must track each measurement instead of easing toward it. */
+.kb-tabs-h-wrap.is-strip-resizing .h-tab { --reflow-dur: 0s; }
 
 /* Folder islands keep only their clip-path grow/shrink; tabs inside them
    ride that sweep. */

@@ -230,6 +230,7 @@ export function HorizontalTabs({
   const stripRef = useRef<HTMLDivElement>(null)
   const activeRef = useRef<HTMLDivElement>(null)
   const [stripWidth, setStripWidth] = useState(0)
+  const [stripResizing, setStripResizing] = useState(false)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
   const folderDropRef = useRef<TabFolderId | null | undefined>(undefined)
   const [folderDropHint, setFolderDropHint] = useState<string | null>(null)
@@ -241,6 +242,8 @@ export function HorizontalTabs({
   const [folderReorderDrop, setFolderReorderDrop] = useState<number | null>(null)
   const [renamingId, setRenamingId] = useState<TabFolderId | null>(null)
   const [closingIslandId, setClosingIslandId] = useState<TabFolderId | null>(null)
+  const [openingIslandId, setOpeningIslandId] = useState<TabFolderId | null>(null)
+  const [openingArmed, setOpeningArmed] = useState(false)
   // Live parting state per drag kind.
   const [dragPart, setDragPart] = useState<{ id: TabId; size: number } | null>(null)
   const [pinDragId, setPinDragId] = useState<TabId | null>(null)
@@ -253,6 +256,19 @@ export function HorizontalTabs({
     runPendingGlide(stripRef.current, pendingGlideRef)
   })
   const [closingIds, setClosingIds] = useState<ReadonlySet<TabId>>(new Set())
+  useLayoutEffect(() => {
+    if (openingIslandId === null || openingArmed) return
+    const raf = requestAnimationFrame(() => setOpeningArmed(true))
+    return () => cancelAnimationFrame(raf)
+  }, [openingIslandId, openingArmed])
+  useEffect(() => {
+    if (openingIslandId === null || !openingArmed) return
+    const t = window.setTimeout(() => {
+      setOpeningIslandId(null)
+      setOpeningArmed(false)
+    }, 240)
+    return () => window.clearTimeout(t)
+  }, [openingIslandId, openingArmed])
   useEffect(
     () =>
       onTabClosing((id) => {
@@ -596,11 +612,25 @@ export function HorizontalTabs({
   useLayoutEffect(() => {
     const strip = stripRef.current
     if (!strip) return
-    const update = () => setStripWidth(strip.clientWidth)
+    let timer: number | null = null
+    let prevW = 0
+    const update = () => {
+      const w = strip.clientWidth
+      if (prevW !== 0 && Math.abs(prevW - w) > 0.5) {
+        setStripResizing(true)
+        if (timer !== null) window.clearTimeout(timer)
+        timer = window.setTimeout(() => setStripResizing(false), 160)
+      }
+      prevW = w
+      setStripWidth(w)
+    }
     update()
     const ro = new ResizeObserver(update)
     ro.observe(strip)
-    return () => ro.disconnect()
+    return () => {
+      ro.disconnect()
+      if (timer !== null) window.clearTimeout(timer)
+    }
   }, [])
 
   useLayoutEffect(() => {
@@ -682,7 +712,9 @@ export function HorizontalTabs({
           'is-dragsource': isSource,
         })}
         style={{
-          flex: lifted ? '0 0 0px' : `0 0 ${sizeFor(isActive)}px`,
+          flex: lifted
+            ? '0 0 0px'
+            : `${loose && !sizing.scrolling && dragPart === null ? '1 1' : '0 0'} ${sizeFor(isActive)}px`,
           ...(lifted ? { marginLeft: `${-GAP_PX}px` } : {}),
           ...(shift !== 0 && dragPart
             ? { transform: `translateX(${shift * dragPart.size}px)` }
@@ -829,7 +861,11 @@ export function HorizontalTabs({
           title={`${folder.name} (${members.length})`}
           aria-label={`${folder.name}, ${members.length} tabs`}
           onPointerDown={(e) => startFolderReorderDrag(e, folder.id)}
-          onClick={() => toggleCollapsed(false)}
+          onClick={() => {
+            setOpeningIslandId(folder.id)
+            setOpeningArmed(false)
+            toggleCollapsed(false)
+          }}
           onContextMenu={(e) => openIslandMenu(e, islandTarget)}
         >
           {renderIconRef(folder.icon, 11)}
@@ -851,9 +887,11 @@ export function HorizontalTabs({
       dragScopeRef.current === folder.id &&
       dropTarget !== null &&
       dropTarget.index >= 0
-    const islandW = closing
-      ? ISLAND_CIRCLE_W
-      : nameW +
+    const opening = openingIslandId === folder.id
+    const islandW =
+      closing || (opening && !openingArmed)
+        ? ISLAND_CIRCLE_W
+        : nameW +
         memberSum +
         sizedMembers.length * GAP_PX +
         ISLAND_PILL_PAD * 2 +
@@ -865,6 +903,7 @@ export function HorizontalTabs({
         className={cx('h-island', {
           'is-drop': folderDropHint === folder.id,
           'is-closing': closingIslandId === folder.id,
+          'is-opening': opening,
           'is-dragsource': isIslandSource,
         })}
         style={{ flex: `0 0 ${islandW}px`, ...(islandStyle ?? {}) }}
@@ -970,6 +1009,7 @@ export function HorizontalTabs({
         'is-many': isMany,
         'is-scrolling': sizing.scrolling,
         'is-inactive-compact': inactiveCompact,
+        'is-strip-resizing': stripResizing,
       })}
       ref={wrapRef}
       onClick={onStripClick}
