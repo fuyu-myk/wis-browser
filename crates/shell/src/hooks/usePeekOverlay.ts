@@ -20,13 +20,22 @@ const PEEK_READY_EVENT = 'wis-peek-ready'
 interface PeekPayload {
   href: string
   text: string
+  /** Click point in the source page's viewport coords (-1 = unknown). */
+  x?: number
+  y?: number
+}
+
+interface PeekShowPayload extends PeekPayload {
+  /** Click point translated to window coords for the grow-from-link origin. */
+  originX?: number
+  originY?: number
 }
 
 export function usePeekOverlay(): void {
   const overlay = useOverlay('peek')
   const openRef = useRef(false)
   // Last requested peek, replayed when the surface announces it is ready.
-  const pendingRef = useRef<PeekPayload | null>(null)
+  const pendingRef = useRef<PeekShowPayload | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -40,10 +49,19 @@ export function usePeekOverlay(): void {
     })
 
     const showFor = async (p: PeekPayload) => {
-      pendingRef.current = p
+      // Translate the link's page-viewport click point into window coords
+      // for the grow-from-link origin.
+      const host = document
+        .querySelector('.kb-content-host')
+        ?.getBoundingClientRect()
+      const shown: PeekShowPayload =
+        p.x != null && p.y != null && p.x >= 0 && host
+          ? { ...p, originX: host.left + p.x, originY: host.top + p.y }
+          : { ...p }
+      pendingRef.current = shown
       await overlay.show(fullRect())
       openRef.current = true
-      void emit(PEEK_SHOW_EVENT, p)
+      void emit(PEEK_SHOW_EVENT, shown)
     }
 
     void listen<PeekPayload>(PEEK_OPEN_EVENT, (e) => {

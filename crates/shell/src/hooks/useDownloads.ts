@@ -17,12 +17,14 @@ interface UseDownloadsReturn {
   downloads: DownloadItem[]
   /** Truthy while any download is in flight (drives the button indicator). */
   active: boolean
+  /** True once the first fetch has landed (gates transition detection). */
+  ready: boolean
 }
 
 export function useDownloads(): UseDownloadsReturn {
   const qc = useQueryClient()
 
-  const { data: downloads = [] } = useQuery({
+  const { data: downloads = [], isFetched } = useQuery({
     queryKey: DOWNLOADS_KEY,
     queryFn: () => commands.listDownloads(),
     staleTime: 0,
@@ -44,5 +46,9 @@ export function useDownloads(): UseDownloadsReturn {
     }
   }, [qc])
 
-  return { downloads, active: downloads.some((d) => d.status === 'in_progress') }
+  return {
+    downloads,
+    active: downloads.some((d) => d.status === 'in_progress'),
+    ready: isFetched,
+  }
 }

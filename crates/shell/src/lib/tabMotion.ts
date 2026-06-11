@@ -113,6 +113,23 @@ export function patchTabFolder(
   )
 }
 
+/**
+ * Directional content slide for a workspace switch ('right' = the new
+ * workspace sits to the right, content enters from the right). Imperative
+ * WAAPI, so no remount or layout changes are needed.
+ */
+export function workspaceSlideIn(el: HTMLElement | null, dir: 'left' | 'right'): void {
+  if (!el || document.body.classList.contains('motion-off')) return
+  const dx = dir === 'right' ? 44 : -44
+  el.animate(
+    [
+      { transform: `translateX(${dx}px)`, opacity: 0 },
+      { transform: 'translateX(0)', opacity: 1 },
+    ],
+    { duration: 240, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' },
+  )
+}
+
 /** A drop landing waiting for the post-commit layout to glide into. */
 export interface PendingGlide {
   selector: string

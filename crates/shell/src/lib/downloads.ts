@@ -7,6 +7,8 @@ import type { DownloadItem } from '@/bindings/types'
 export const DOWNLOADS_OPEN_EVENT = 'wis:downloads-open'
 /** Tauri event the popup broadcasts after closing itself. */
 export const DOWNLOADS_CLOSED_EVENT = 'wis-downloads-closed'
+/** Tauri event the chrome emits each time the popup overlay is shown. */
+export const DOWNLOADS_SHOWN_EVENT = 'wis-downloads-shown'
 /** Tauri event the backend emits on any download change. */
 export const DOWNLOADS_CHANGED_EVENT = 'downloads-changed'
 

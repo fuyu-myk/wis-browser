@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
@@ -161,6 +161,29 @@ export function SettingsPage() {
 
   const mainRef = useRef<HTMLDivElement | null>(null)
   const [activeSection, setActiveSection] = useState<string>(NAV_SECTIONS[0].id)
+  // Non-null while a click-initiated smooth scroll is in flight.
+  const scrollLockRef = useRef<number | null>(null)
+  const navRef = useRef<HTMLElement | null>(null)
+  const [navInd, setNavInd] = useState<{
+    top: number
+    height: number
+    left: number
+    width: number
+  } | null>(null)
+  useLayoutEffect(() => {
+    const btn = navRef.current?.querySelector<HTMLElement>('button.is-active')
+    if (!btn) {
+      setNavInd(null)
+      return
+    }
+    setNavInd({
+      top: btn.offsetTop,
+      height: btn.offsetHeight,
+      left: btn.offsetLeft,
+      width: btn.offsetWidth,
+    })
+  }, [activeSection])
+
 
   // Highlight the section currently dominating the viewport.
   useEffect(() => {
@@ -172,6 +195,7 @@ export function SettingsPage() {
     if (observed.length === 0) return
     const obs = new IntersectionObserver(
       (entries) => {
+        if (scrollLockRef.current !== null) return
         const visible = entries
           .filter((e) => e.isIntersecting)
           .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
@@ -192,6 +216,12 @@ export function SettingsPage() {
     (settings.layout === 'top_tabs' && settings.top_tabs_rail_side === 'right')
 
   const scrollTo = (id: string) => {
+    // Optimistic: the indicator moves on the click.
+    setActiveSection(id)
+    if (scrollLockRef.current !== null) window.clearTimeout(scrollLockRef.current)
+    scrollLockRef.current = window.setTimeout(() => {
+      scrollLockRef.current = null
+    }, 700)
     const el = mainRef.current?.querySelector(`#${id}`)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
@@ -207,8 +237,20 @@ export function SettingsPage() {
         }
       }}
     >
-      <aside className="kb-settings-nav" aria-label="Settings sections">
+      <aside className="kb-settings-nav" aria-label="Settings sections" ref={navRef}>
         <div className="kb-settings-nav-title">Settings</div>
+        {navInd !== null && (
+          <span
+            className="kb-settings-nav-ind"
+            style={{
+              top: navInd.top,
+              height: navInd.height,
+              left: navInd.left,
+              width: navInd.width,
+            }}
+            aria-hidden
+          />
+        )}
         {NAV_SECTIONS.map((s) => (
           <button
             key={s.id}

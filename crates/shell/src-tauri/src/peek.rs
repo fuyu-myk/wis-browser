@@ -42,6 +42,10 @@ pub fn set_app_handle(app: AppHandle) {
 struct PeekOpenEvent {
     href: String,
     text: String,
+    /// Click point in the source page's viewport coords (-1 when unknown);
+    /// the chrome translates it for the grow-from-link origin.
+    x: f64,
+    y: f64,
 }
 
 /// Create (or replace) the isolated preview webview pointed at `url`, positioned
@@ -222,12 +226,12 @@ const PEEK_JS: &str = r#"(function () {
     if (!href || href.toLowerCase().indexOf('javascript:') === 0) return null;
     return a;
   }
-  function fire(a) {
+  function fire(a, e) {
     var href = a.href || '';
     var text = (a.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
     try {
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.wisPeek) {
-        window.webkit.messageHandlers.wisPeek.postMessage({ href: href, text: text });
+        window.webkit.messageHandlers.wisPeek.postMessage({ href: href, text: text, x: e.clientX, y: e.clientY });
       }
     } catch (err) {}
   }
@@ -236,7 +240,7 @@ const PEEK_JS: &str = r#"(function () {
     if (!a) return;
     e.preventDefault();
     e.stopPropagation();
-    fire(a);
+    fire(a, e);
   }, true);
   document.addEventListener('click', function (e) {
     if (linkAt(e)) { e.preventDefault(); e.stopPropagation(); }
@@ -344,6 +348,22 @@ mod imp {
         nsstring_to_string(v)
     }
 
+    unsafe fn dict_f64(dict: *mut AnyObject, key: &str) -> Option<f64> {
+        let k = ns_string(key);
+        let v: *mut AnyObject = msg_send![dict, objectForKey: k];
+        if v.is_null() {
+            return None;
+        }
+
+        let is_num: bool = msg_send![v, isKindOfClass: class!(NSNumber)];
+        if !is_num {
+            return None;
+        }
+
+        let d: f64 = msg_send![v, doubleValue];
+        Some(d)
+    }
+
     unsafe fn handle_message(message: *mut AnyObject) {
         if message.is_null() {
             return;
@@ -366,9 +386,11 @@ mod imp {
             return;
         }
         let text = dict_string(body, "text").unwrap_or_default();
+        let x = dict_f64(body, "x").unwrap_or(-1.0);
+        let y = dict_f64(body, "y").unwrap_or(-1.0);
 
         if let Some(app) = APP.get() {
-            let _ = app.emit(PEEK_OPEN_EVENT, PeekOpenEvent { href, text });
+            let _ = app.emit(PEEK_OPEN_EVENT, PeekOpenEvent { href, text, x, y });
         }
     }
 

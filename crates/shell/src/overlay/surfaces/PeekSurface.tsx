@@ -9,7 +9,7 @@
  * banner (not a floating popover) for the same reason.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
@@ -27,6 +27,9 @@ const PEEK_READY_EVENT = 'wis-peek-ready'
 interface PeekPayload {
   href: string
   text: string
+  /** Click point in window coords (set by the chrome) for the grow origin. */
+  originX?: number
+  originY?: number
 }
 
 const RISK_LABEL: Record<LinkAssessment['risk'], string> = {
@@ -116,9 +119,12 @@ export function PeekSurface() {
       const p = e.payload
       if (openRef.current && p.href === hrefRef.current) return // de-dupe replays
       textRef.current = p.text
+      originRef.current =
+        p.originX != null && p.originY != null ? { x: p.originX, y: p.originY } : null
       openedHrefRef.current = null
       setAssessment(null)
       setReader(false)
+      setGrown(false)
       setHref(p.href)
       setOpen(true)
     }).then((fn) => {
@@ -134,10 +140,54 @@ export function PeekSurface() {
     }
   }, [])
 
+  // Grow the card from the Opt+clicked link's position (transform-origin at
+  // the click point, approximate in split layouts).
+  const [grown, setGrown] = useState(false)
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  const originRef = useRef<{ x: number; y: number } | null>(null)
+  useLayoutEffect(() => {
+    if (!open) return
+    const card = cardRef.current
+    if (!card || document.body.classList.contains('motion-off')) {
+      setGrown(true)
+      return
+    }
+    const r = card.getBoundingClientRect()
+    const o = originRef.current
+    card.style.transformOrigin = o
+      ? `${Math.round(o.x - r.left)}px ${Math.round(o.y - r.top)}px`
+      : '50% 50%'
+    const anim = card.animate(
+      [
+        { transform: 'scale(0.3)', opacity: 0.4 },
+        { transform: 'scale(1)', opacity: 1 },
+      ],
+      { duration: 260, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' },
+    )
+    anim.addEventListener('finish', () => setGrown(true))
+    return () => anim.cancel()
+  }, [open, href])
+
+  // Esc dismisses (the confirm dialog first, then the peek itself).
+  useEffect(() => {
+    if (!open) return
+    void commands.focusWebview('overlay-peek').catch(() => undefined)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (confirmOpenRef.current) {
+        setConfirmOpen(false)
+        return
+      }
+      close()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, close])
+
   // Keep the native preview tiled to the body hole (initial + on any resize of
   // the hole, e.g. when the warning banner appears).
   useEffect(() => {
-    if (!open) return
+    if (!open || !grown) return
     const el = bodyRef.current
     if (!el) return
     syncPeek()
@@ -149,18 +199,19 @@ export function PeekSurface() {
       ro.disconnect()
       window.removeEventListener('resize', onResize)
     }
-  }, [open, syncPeek])
+  }, [open, grown, syncPeek])
 
   // Hide the live preview offscreen while the confirmation is up so it can't
-  // composite over the dialog; restore it on cancel.
+  // composite over the dialog; restore it on cancel. Also gated on the grow:
+  // this path otherwise creates the native preview mid-entrance.
   useEffect(() => {
-    if (!open) return
+    if (!open || !grown) return
     if (confirmOpen) {
       void commands.setPeekBounds(100000, 100000, 320, 240).catch(() => undefined)
     } else {
       syncPeek()
     }
-  }, [confirmOpen, open, syncPeek])
+  }, [confirmOpen, open, grown, syncPeek])
 
   const toggleReader = useCallback(() => {
     const next = !reader
@@ -193,6 +244,7 @@ export function PeekSurface() {
       role="presentation"
     >
       <div
+        ref={cardRef}
         className={cx('kb-peek-card', { 'glass-on': glassOn })}
         onClick={(e) => e.stopPropagation()}
       >

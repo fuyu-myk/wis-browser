@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { emit } from '@tauri-apps/api/event'
+import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
@@ -21,6 +21,7 @@ import {
   statusLabel,
   DOWNLOADS_CLOSED_EVENT,
   DOWNLOADS_KEY,
+  DOWNLOADS_SHOWN_EVENT,
   POPUP_LIMIT,
 } from '@/lib/downloads'
 import { useBrowserState } from '@/hooks/useBrowserState'
@@ -48,6 +49,8 @@ export function DownloadsMenuSurface() {
       ? (state?.tabs.find((t) => t.id === activeWorkspace.active_tab_id) ?? null)
       : null
 
+  // Monotonic reveal sequence (see reveal below); closes bump it too.
+  const revealSeqRef = useRef(0)
   // Per-row "file may have been moved or deleted" notice, cleared on refetch.
   const [missing, setMissing] = useState<Set<DownloadId>>(new Set())
   const [confirmRemove, setConfirmRemove] = useState<DownloadItem | null>(null)
@@ -57,6 +60,8 @@ export function DownloadsMenuSurface() {
 
   const close = useCallback(() => {
     setConfirmRemove(null)
+    revealSeqRef.current += 1
+    setVisible(false)
     void commands.hideOverlay('downloads').catch(() => undefined)
     void emit(DOWNLOADS_CLOSED_EVENT).catch(() => undefined)
   }, [])
@@ -65,6 +70,34 @@ export function DownloadsMenuSurface() {
   useEffect(() => {
     void commands.focusWebview('overlay-downloads').catch(() => undefined)
   }, [])
+
+  const [visible, setVisible] = useState(false)
+  const [openNonce, setOpenNonce] = useState(0)
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null
+    let cancelled = false
+    const reveal = () => {
+      // Sequence token: a close or a newer reveal supersedes this one.
+      const seq = ++revealSeqRef.current
+      void qc
+        .refetchQueries({ queryKey: DOWNLOADS_KEY })
+        .catch(() => undefined)
+        .finally(() => {
+          if (cancelled || seq !== revealSeqRef.current) return
+          setOpenNonce((n) => n + 1)
+          setVisible(true)
+        })
+    }
+    void listen<void>(DOWNLOADS_SHOWN_EVENT, reveal).then((fn) => {
+      if (cancelled) fn()
+      else unlisten = fn
+    })
+    reveal()
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [qc])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -104,9 +137,12 @@ export function DownloadsMenuSurface() {
 
   const latest = downloads.slice(0, POPUP_LIMIT)
 
+  if (!visible) return null
+
   return (
     <div className={cx('kb-dlmenu-backdrop', { 'glass-on': glassOn })} onMouseDown={close} role="presentation">
       <div
+        key={openNonce}
         className={cx('kb-dlmenu', `side-${side}`, {
           'glass-on': glassOn,
           'is-top-tabs': layout === 'top_tabs',
@@ -124,10 +160,11 @@ export function DownloadsMenuSurface() {
             <p className="kb-dlmenu-empty">No downloads yet.</p>
           ) : (
             <ul className="kb-dlmenu-list">
-              {latest.map((item) => (
+              {latest.map((item, i) => (
                 <DownloadRow
                   key={item.id}
                   item={item}
+                  index={i}
                   missing={missing.has(item.id)}
                   onOpen={() => openFile(item)}
                   onRemove={() => setConfirmRemove(item)}
@@ -163,15 +200,20 @@ export function DownloadsMenuSurface() {
 
 interface DownloadRowProps {
   item: DownloadItem
+  /** Position in the visible list, staggering the slide-in entrance. */
+  index: number
   missing: boolean
   onOpen: () => void
   onRemove: () => void
 }
 
-function DownloadRow({ item, missing, onOpen, onRemove }: DownloadRowProps) {
+function DownloadRow({ item, index, missing, onOpen, onRemove }: DownloadRowProps) {
   const inFlight = isInProgress(item)
   return (
-    <li className={cx('kb-dlmenu-row', { 'is-missing': missing })}>
+    <li
+      className={cx('kb-dlmenu-row', { 'is-missing': missing })}
+      style={{ animationDelay: `${Math.min(index, 8) * 24}ms` }}
+    >
       <button
         type="button"
         className="kb-dlmenu-tile"

@@ -152,6 +152,7 @@ export function Sidebar({
         selectedFolderId={activeWorkspace?.selected_folder_id ?? null}
         onSplitMenuOpenChange={setTabMenuOpen}
         onFolderEditingChange={setFolderEditing}
+        workspaceOrder={state.workspaces.map((w) => w.id)}
       />
       <WidgetDock widgets={settings.sidebar_widgets} variant="sidebar" />
     </aside>

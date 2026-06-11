@@ -23,6 +23,7 @@ import {
   runPendingGlide,
   type PendingGlide,
 } from '@/lib/tabMotion'
+import { useWorkspaceSlide } from '@/hooks/useWorkspaceSlide'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { useFolderTarget } from '@/hooks/useFolderTarget'
 import {
@@ -52,6 +53,8 @@ interface TabListProps {
   onSplitMenuOpenChange?: (open: boolean) => void
   /** Notified while any folder is being renamed/edited (keep sidebar open). */
   onFolderEditingChange?: (editing: boolean) => void
+  /** Workspace ids in display order, for the directional switch slide. */
+  workspaceOrder?: WorkspaceId[]
 }
 
 const ACCENTS: AccentColor[] = [
@@ -94,6 +97,7 @@ export function TabList({
   selectedFolderId,
   onSplitMenuOpenChange,
   onFolderEditingChange,
+  workspaceOrder,
 }: TabListProps) {
   const qc = useQueryClient()
   const invalidate = () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
@@ -264,6 +268,9 @@ export function TabList({
     const r = rootRef.current?.getBoundingClientRect()
     return !!r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
   }
+
+  // Workspace switches slide the list in from the travel direction.
+  useWorkspaceSlide('sidebar-tabs', workspaceId, workspaceOrder, rootRef)
 
   // Sliding active-tab bar.
   const [barTop, setBarTop] = useState<number | null>(null)

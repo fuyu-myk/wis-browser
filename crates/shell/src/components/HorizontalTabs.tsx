@@ -35,6 +35,7 @@ import {
   runPendingGlide,
   type PendingGlide,
 } from '@/lib/tabMotion'
+import { useWorkspaceSlide } from '@/hooks/useWorkspaceSlide'
 import {
   useTabSplit,
   tabDropTarget,
@@ -59,6 +60,8 @@ interface HorizontalTabsProps {
   folders: TabFolder[]
   /** The folder new tabs file into, highlighted in the theme colour. */
   selectedFolderId: TabFolderId | null
+  /** Workspace ids in display order, for the directional switch slide. */
+  workspaceOrder?: WorkspaceId[]
   /** Rail edge: drives section order, where pinned sits nearest to the rail. */
   railSide: RailSide
   /** The active theme accent; a folder using it needs a contrast active ring. */
@@ -151,6 +154,7 @@ export function HorizontalTabs({
   tabs,
   activeTabId,
   pinnedTabIds,
+  workspaceOrder,
   folders,
   selectedFolderId,
   railSide,
@@ -227,6 +231,8 @@ export function HorizontalTabs({
 
   const discardedTabs = useDiscardedTabs()
   const wrapRef = useRef<HTMLDivElement>(null)
+  // Workspace switches slide the strip in from the travel direction.
+  useWorkspaceSlide('top-strip', workspaceId, workspaceOrder, wrapRef)
   const stripRef = useRef<HTMLDivElement>(null)
   const activeRef = useRef<HTMLDivElement>(null)
   const [stripWidth, setStripWidth] = useState(0)

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
@@ -11,6 +11,7 @@ import { useBrowserState } from '@/hooks/useBrowserState'
 import { useActivePrivacyMode } from '@/hooks/useActivePrivacyMode'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 import { useWindowIconSwap } from '@/hooks/useWindowIcon'
+import { useWorkspaceSlide } from '@/hooks/useWorkspaceSlide'
 import { WisMark } from '@/components/WisMark'
 
 /** DOM event the chrome dispatches when Cmd+F fires on the launchpad,
@@ -95,6 +96,20 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
     return () => window.removeEventListener(FOCUS_LAUNCHPAD_SEARCH_EVENT, onFocus)
   }, [])
 
+  // Workspace switches slide the launchpad content in from the travel
+  // direction, over the stationary wallpaper.
+  const innerRef = useRef<HTMLDivElement>(null)
+  const wsOrder = useMemo(
+    () => state?.workspaces.map((w) => w.id),
+    [state?.workspaces],
+  )
+  useWorkspaceSlide(
+    'launchpad',
+    state?.active_workspace_id ?? null,
+    wsOrder,
+    innerRef,
+  )
+
   // Shared wallpaper canvas: the backdrop is laid out once against the whole
   // content host and this pane reveals its slice.
   const rootRef = useRef<HTMLDivElement>(null)
@@ -130,7 +145,7 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
 
   return (
     <div className="kb-newtab-page" ref={rootRef}>
-      <div className="inner">
+      <div className="inner" ref={innerRef}>
         <div className="kb-hero">
           <div
             className="brand-row"

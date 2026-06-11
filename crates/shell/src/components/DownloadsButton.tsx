@@ -1,3 +1,6 @@
+import { useEffect, useRef, useState } from 'react'
+
+import type { DownloadId, DownloadStatus } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { DownloadIcon } from '@/lib/icons'
 import { DOWNLOADS_OPEN_EVENT } from '@/lib/downloads'
@@ -11,14 +14,46 @@ interface DownloadsButtonProps {
   anchor?: 'left' | 'right'
 }
 
-/** Opens the downloads popup (palette-style overlay) via a DOM event. A small
- * pulsing dot marks an in-flight download. */
+/** Opens the downloads popup (palette-style overlay) via a DOM event. A badge
+ * reports download state: a spinner while one runs, then a transient green
+ * check on completion or amber exclamation on failure. */
 export function DownloadsButton({ variant, anchor = 'left' }: DownloadsButtonProps) {
-  const { active } = useDownloads()
+  const { downloads, active, ready } = useDownloads()
   const className =
     variant === 'rail'
       ? cx('kb-circle-btn', 'kb-rail-dl')
       : cx('kb-dl-fixed', `is-${anchor}`)
+
+  // Status transitions flash a verdict: a download that was pending (or so
+  // fast it appears already finished between refetches) shows its outcome
+  // briefly; failure wins over success in the same batch. The baseline is
+  // the first loaded snapshot, so persisted history never flashes at start.
+  const [flash, setFlash] = useState<'done' | 'failed' | null>(null)
+  const prevRef = useRef<Map<DownloadId, DownloadStatus> | null>(null)
+  useEffect(() => {
+    if (!ready) return
+    const prev = prevRef.current
+    prevRef.current = new Map(downloads.map((d) => [d.id, d.status]))
+    if (prev === null) return
+    let done = false
+    let failed = false
+    for (const d of downloads) {
+      const p = prev.get(d.id)
+      const wasPending = p === 'in_progress' || p === undefined
+      if (!wasPending || p === d.status) continue
+      if (d.status === 'completed') done = true
+      else if (d.status === 'failed') failed = true
+    }
+    if (failed) setFlash('failed')
+    else if (done) setFlash('done')
+  }, [downloads, ready])
+  useEffect(() => {
+    if (flash === null) return
+    const t = window.setTimeout(() => setFlash(null), 3200)
+    return () => window.clearTimeout(t)
+  }, [flash])
+
+  const badge = active ? 'active' : flash
 
   return (
     <button
@@ -29,7 +64,26 @@ export function DownloadsButton({ variant, anchor = 'left' }: DownloadsButtonPro
       onClick={() => window.dispatchEvent(new CustomEvent(DOWNLOADS_OPEN_EVENT))}
     >
       <DownloadIcon />
-      {active ? <span className="kb-dl-active-dot" aria-hidden /> : null}
+      {badge === 'active' && <span className="kb-dl-badge is-active" aria-hidden />}
+      {badge === 'done' && (
+        <span className="kb-dl-badge is-done" aria-hidden>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        </span>
+      )}
+      {badge === 'failed' && (
+        <span className="kb-dl-badge is-failed" aria-hidden>
+          !
+        </span>
+      )}
     </button>
   )
 }

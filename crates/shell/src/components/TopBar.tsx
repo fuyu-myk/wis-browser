@@ -74,6 +74,7 @@ export function TopBar({ state }: TopBarProps) {
           folders={activeWorkspace?.tab_folders ?? []}
           selectedFolderId={activeWorkspace?.selected_folder_id ?? null}
           railSide={state.settings.top_tabs_rail_side}
+          workspaceOrder={state.workspaces.map((w) => w.id)}
           themeAccent={state.settings.accent}
           integrateUrlBar={false}
           compact

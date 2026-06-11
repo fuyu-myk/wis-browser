@@ -4689,8 +4689,21 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   color: var(--text-primary);
 }
 .kb-settings-nav button.is-active {
-  background: color-mix(in oklab, var(--primary-400) 18%, transparent);
   color: var(--text-primary);
+}
+/* Sliding section indicator: one pill glides between nav items. */
+.kb-settings-nav { position: relative; }
+.kb-settings-nav button { position: relative; z-index: 1; }
+.kb-settings-nav-ind {
+  position: absolute;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--primary-400) 18%, transparent);
+  transition:
+    top var(--dur-med) var(--ease-standard),
+    height var(--dur-med) var(--ease-standard),
+    left var(--dur-med) var(--ease-standard),
+    width var(--dur-med) var(--ease-standard);
+  pointer-events: none;
 }
 .kb-settings-nav button svg {
   width: 14px;
@@ -5573,20 +5586,6 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 /* In-flight indicator dot on either button variant. The fixed bubble is
    already absolutely positioned (a positioning context for the dot). */
 .kb-rail-dl { position: relative; }
-.kb-dl-active-dot {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--primary-500);
-  animation: kb-dl-pulse 1.2s ease-in-out infinite;
-}
-@keyframes kb-dl-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.45; transform: scale(0.8); }
-}
 
 /* Popup card, mirroring the bookmarks popup. */
 .kb-dlmenu-backdrop {
@@ -5598,6 +5597,66 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .kb-dlmenu-backdrop.glass-on { background: rgba(0, 0, 0, 0.08); }
 [data-mode="dark"] .kb-dlmenu-backdrop { background: rgba(0, 0, 0, 0.34); }
 [data-mode="dark"] .kb-dlmenu-backdrop.glass-on { background: rgba(0, 0, 0, 0.12); }
+/* Popup entrance: the card fades in and the rows follow with a small
+   stagger (replayed per open via the keyed card). */
+@keyframes kb-dlmenu-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes kb-dlrow-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.kb-dlmenu { animation: kb-dlmenu-in var(--dur-med) var(--ease-standard); }
+.kb-dlmenu-row { animation: kb-dlrow-in var(--dur-med) var(--ease-standard) both; }
+
+/* Downloads button status badge: spinner while a download runs, then a
+   green check (or amber exclamation on failure) pops in briefly. */
+.kb-rail-dl {
+  position: relative;
+}
+.kb-dl-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.kb-dl-badge.is-active {
+  border: 2px solid color-mix(in oklab, var(--primary-500) 30%, transparent);
+  border-top-color: var(--primary-500);
+  background: var(--surface-raised);
+  animation: kb-spin 0.9s linear infinite;
+}
+@keyframes kb-spin {
+  to { transform: rotate(360deg); }
+}
+.kb-dl-badge.is-done {
+  background: #2f9e63;
+  color: #fff;
+  animation: kb-badge-pop var(--dur-slow) var(--ease-emphasized);
+}
+.kb-dl-badge.is-done svg {
+  width: 9px;
+  height: 9px;
+}
+.kb-dl-badge.is-failed {
+  background: #d9a13b;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  animation: kb-badge-pop var(--dur-slow) var(--ease-emphasized);
+}
+@keyframes kb-badge-pop {
+  from { transform: scale(0.2); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
 .kb-dlmenu {
   position: absolute;
   bottom: 184px;

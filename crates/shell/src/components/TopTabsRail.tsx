@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { BrowserState, RailSide } from '@/bindings/types'
 import { cx } from '@/lib/cx'
@@ -26,7 +26,18 @@ interface TopTabsRailProps {
  */
 export function TopTabsRail({ state, side, onOpenSettings, onOpenHistory }: TopTabsRailProps) {
   const [workspacePopoverOpen, setWorkspacePopoverOpen] = useState(false)
-  const expanded = workspacePopoverOpen
+  // Hold the expansion briefly after the popover closes.
+  const [linger, setLinger] = useState(false)
+  const prevOpenRef = useRef(false)
+  useEffect(() => {
+    const was = prevOpenRef.current
+    prevOpenRef.current = workspacePopoverOpen
+    if (!was || workspacePopoverOpen) return
+    setLinger(true)
+    const t = window.setTimeout(() => setLinger(false), 320)
+    return () => window.clearTimeout(t)
+  }, [workspacePopoverOpen])
+  const expanded = workspacePopoverOpen || linger
   const activeWorkspace =
     state.workspaces.find((w) => w.id === state.active_workspace_id) ?? null
 

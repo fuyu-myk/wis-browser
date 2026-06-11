@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { useOverlay } from '@/hooks/useOverlay'
-import { DOWNLOADS_CLOSED_EVENT, DOWNLOADS_OPEN_EVENT } from '@/lib/downloads'
+import { DOWNLOADS_CLOSED_EVENT, DOWNLOADS_OPEN_EVENT, DOWNLOADS_SHOWN_EVENT } from '@/lib/downloads'
 
 export function useDownloadsOverlay(): void {
   const overlay = useOverlay('downloads')
@@ -25,16 +25,17 @@ export function useDownloadsOverlay(): void {
   })
 
   const open = useCallback(async () => {
-    await overlay.show(fullRect())
     openRef.current = true
+    await overlay.show(fullRect())
     // Force the popup to refetch on every open so it never shows stale data.
     void emit('browser-state-changed').catch(() => undefined)
     void emit('downloads-changed').catch(() => undefined)
+    void emit(DOWNLOADS_SHOWN_EVENT).catch(() => undefined)
   }, [overlay])
 
   const close = useCallback(async () => {
-    await overlay.hide()
     openRef.current = false
+    await overlay.hide()
   }, [overlay])
 
   useEffect(() => {
