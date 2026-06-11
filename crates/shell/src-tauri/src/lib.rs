@@ -1,6 +1,7 @@
 mod biometrics;
 mod bookmarks;
 mod capture;
+mod clipboard;
 mod commands;
 mod content_filter;
 mod cookies;
@@ -341,6 +342,7 @@ pub fn run() {
             commands::set_dock_icon,
             commands::refresh_filter_lists,
             external::open_in_external_browser,
+            clipboard::copy_text,
             downloads::list_downloads,
             downloads::remove_download,
             downloads::remove_downloads,

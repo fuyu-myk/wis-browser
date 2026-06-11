@@ -18,6 +18,8 @@ import { listen } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import { closeTabAnimated } from '@/lib/tabClose'
+import { DOWNLOADS_OPEN_EVENT } from '@/lib/downloads'
+import { BOOKMARK_PAGE_EVENT, BOOKMARKS_OPEN_EVENT } from '@/lib/bookmarkMenu'
 import type { AccentColor, BrowserState, KeyAction, PaneNode, Tab, TabId, Workspace, WorkspaceId } from '@/bindings/types'
 import { HISTORY_URL, NEW_TAB_URL, SETTINGS_URL } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
@@ -321,6 +323,47 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
     case 'unsplit_panes': {
       if (!ctx.activeWorkspace) return
       await commands.unsplitPanes(ctx.activeWorkspace.id)
+      ctx.invalidate()
+      return
+    }
+    case 'open_downloads': {
+      window.dispatchEvent(new CustomEvent(DOWNLOADS_OPEN_EVENT))
+      return
+    }
+    case 'toggle_bookmarks': {
+      // Private workspaces have no bookmarks; the glyph is hidden there too.
+      if (ctx.activeWorkspace?.ephemeral) return
+      window.dispatchEvent(new CustomEvent(BOOKMARKS_OPEN_EVENT))
+      return
+    }
+    case 'bookmark_page': {
+      // The URL-bar star owns the bookmark flow (folder memory, auto-pin,
+      // picker); this just pushes its button.
+      window.dispatchEvent(new CustomEvent(BOOKMARK_PAGE_EVENT))
+      return
+    }
+    case 'pin_tab': {
+      if (!ctx.activeTab || !ctx.activeWorkspace) return
+      const pinned = ctx.activeWorkspace.pinned_tab_ids.includes(ctx.activeTab.id)
+      await commands.pinTab(ctx.activeTab.id, !pinned)
+      ctx.invalidate()
+      return
+    }
+    case 'duplicate_tab': {
+      if (!ctx.activeTab || !ctx.activeWorkspace) return
+      await commands.createTab(ctx.activeWorkspace.id, ctx.activeTab.url)
+      ctx.invalidate()
+      return
+    }
+    case 'copy_url': {
+      if (!ctx.activeTab) return
+      await commands.copyText(ctx.activeTab.url)
+      return
+    }
+    case 'toggle_sidebar': {
+      const settings = ctx.state?.settings
+      if (!settings || settings.layout === 'top_tabs') return
+      await commands.updateSettings({ sidebar_collapsible: !settings.sidebar_collapsible })
       ctx.invalidate()
       return
     }

@@ -20,7 +20,7 @@ import { SearchIcon } from '@/lib/icons'
 import { isChromeUrl, isSearchQuery, normaliseUrl, SEARCH_ENGINES } from '@/lib/url'
 import { bookmarkFoldersKey, bookmarksKey } from '@/lib/bookmarkKeys'
 import { useBookmarkSync } from '@/hooks/useBookmarkSync'
-import { BMPICKER_OPEN_EVENT, lastFolderKey, PIN_CAP } from '@/lib/bookmarkMenu'
+import { BMPICKER_OPEN_EVENT, BOOKMARK_PAGE_EVENT, lastFolderKey, PIN_CAP } from '@/lib/bookmarkMenu'
 import {
   CAPTURE_LOGIN_EVENT,
   VAULTMENU_CLOSE_EVENT,
@@ -541,6 +541,15 @@ function BookmarkStar({ activeTab }: { activeTab: Tab | null }) {
       width,
     }).catch(() => undefined)
   }
+
+  // The bookmark_page keybinding pushes this button. Re-registered per
+  // render so the handler always closes over the current bookmark state.
+  useEffect(() => {
+    if (!bookmarkable) return
+    const handler = () => void onClick()
+    window.addEventListener(BOOKMARK_PAGE_EVENT, handler)
+    return () => window.removeEventListener(BOOKMARK_PAGE_EVENT, handler)
+  })
 
   if (!bookmarkable) return null
 

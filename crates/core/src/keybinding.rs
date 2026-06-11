@@ -77,6 +77,20 @@ pub enum KeyAction {
     ZoomIn,
     ZoomOut,
     ZoomReset,
+    /// Toggle the downloads popup.
+    OpenDownloads,
+    /// Toggle the bookmarks popup.
+    ToggleBookmarks,
+    /// Bookmark (or un-bookmark) the active page, like the URL-bar star.
+    BookmarkPage,
+    /// Pin or unpin the active tab.
+    PinTab,
+    /// Open a new tab with the active tab's URL.
+    DuplicateTab,
+    /// Copy the active tab's URL to the clipboard.
+    CopyUrl,
+    /// Toggle the fixed/floating (auto-collapsing) sidebar mode.
+    ToggleSidebar,
 }
 
 impl KeyAction {
@@ -131,6 +145,13 @@ impl KeyAction {
             Self::ZoomIn => "zoom_in",
             Self::ZoomOut => "zoom_out",
             Self::ZoomReset => "zoom_reset",
+            Self::OpenDownloads => "open_downloads",
+            Self::ToggleBookmarks => "toggle_bookmarks",
+            Self::BookmarkPage => "bookmark_page",
+            Self::PinTab => "pin_tab",
+            Self::DuplicateTab => "duplicate_tab",
+            Self::CopyUrl => "copy_url",
+            Self::ToggleSidebar => "toggle_sidebar",
         }
     }
 
@@ -147,7 +168,7 @@ impl KeyAction {
     }
 }
 
-const ALL_ACTIONS: [KeyAction; 47] = [
+const ALL_ACTIONS: [KeyAction; 54] = [
     KeyAction::NewTab,
     KeyAction::NewWorkspace,
     KeyAction::CloseTab,
@@ -195,6 +216,13 @@ const ALL_ACTIONS: [KeyAction; 47] = [
     KeyAction::ZoomIn,
     KeyAction::ZoomOut,
     KeyAction::ZoomReset,
+    KeyAction::OpenDownloads,
+    KeyAction::ToggleBookmarks,
+    KeyAction::BookmarkPage,
+    KeyAction::PinTab,
+    KeyAction::DuplicateTab,
+    KeyAction::CopyUrl,
+    KeyAction::ToggleSidebar,
 ];
 
 /// Default keyboard accelerators. `NewWindow` has no entry on purpose: the
@@ -244,6 +272,13 @@ pub fn default_keymap() -> HashMap<KeyAction, String> {
         (KeyAction::ZoomIn, "Cmd+="),
         (KeyAction::ZoomOut, "Cmd+-"),
         (KeyAction::ZoomReset, "Cmd+0"),
+        (KeyAction::OpenDownloads, "Cmd+J"),
+        (KeyAction::ToggleBookmarks, "Alt+Cmd+B"),
+        (KeyAction::BookmarkPage, "Cmd+Shift+B"),
+        (KeyAction::PinTab, "Cmd+Shift+P"),
+        (KeyAction::DuplicateTab, "Cmd+Shift+K"),
+        (KeyAction::CopyUrl, "Cmd+Shift+C"),
+        (KeyAction::ToggleSidebar, "Cmd+S"),
     ];
     pairs.iter().map(|(a, s)| (*a, (*s).to_string())).collect()
 }

@@ -134,6 +134,13 @@ export const DEFAULT_KEYMAP: Partial<Record<KeyAction, string>> = {
   zoom_in: 'Cmd+=',
   zoom_out: 'Cmd+-',
   zoom_reset: 'Cmd+0',
+  open_downloads: 'Cmd+J',
+  toggle_bookmarks: 'Alt+Cmd+B',
+  bookmark_page: 'Cmd+Shift+B',
+  pin_tab: 'Cmd+Shift+P',
+  duplicate_tab: 'Cmd+Shift+K',
+  copy_url: 'Cmd+Shift+C',
+  toggle_sidebar: 'Cmd+S',
 }
 
 const ACTION_LABELS: Record<KeyAction, string> = {
@@ -184,6 +191,13 @@ const ACTION_LABELS: Record<KeyAction, string> = {
   zoom_in: 'Zoom in',
   zoom_out: 'Zoom out',
   zoom_reset: 'Reset zoom',
+  open_downloads: 'Show downloads',
+  toggle_bookmarks: 'Show bookmarks',
+  bookmark_page: 'Bookmark this page',
+  pin_tab: 'Pin or unpin tab',
+  duplicate_tab: 'Duplicate tab',
+  copy_url: 'Copy current URL',
+  toggle_sidebar: 'Toggle floating sidebar',
 }
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS) as KeyAction[]

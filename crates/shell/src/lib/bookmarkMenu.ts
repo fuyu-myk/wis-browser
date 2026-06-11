@@ -12,6 +12,9 @@ import type { WorkspaceId } from '@/bindings/types'
 
 /** DOM event: glyph → chrome hook, toggles the bookmarks popup. */
 export const BOOKMARKS_OPEN_EVENT = 'wis-bookmarks-open'
+/** DOM event asking the URL-bar star to toggle the bookmark for the active
+ * page (dispatched by the bookmark_page keybinding). */
+export const BOOKMARK_PAGE_EVENT = 'wis-bookmark-page'
 /** Tauri: surface → chrome hook, resets the toggle after close. */
 export const BOOKMARKS_CLOSED_EVENT = 'wis-bookmarks-closed'
 

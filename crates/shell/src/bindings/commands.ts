@@ -378,6 +378,11 @@ export const commands = {
     return invoke('pin_tab', { id, pinned })
   },
 
+  /** Copy plain text to the system clipboard (native pasteboard). */
+  async copyText(text: string): Promise<void> {
+    return invoke('copy_text', { text })
+  },
+
   // -- tab folders ----------------------------------------------------------
 
   async createTabFolder(

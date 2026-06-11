@@ -108,6 +108,13 @@ fn build_menu(
         )?)
         .separator()
         .item(&action_item(app, keymap, KeyAction::CloseTab, "Close Tab")?)
+        .separator()
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::OpenDownloads,
+            "Show Downloads",
+        )?)
         .build()?;
 
     let edit_menu = SubmenuBuilder::new(app, "Edit")
@@ -132,6 +139,13 @@ fn build_menu(
             KeyAction::FindPrevious,
             "Find Previous",
         )?)
+        .separator()
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::CopyUrl,
+            "Copy Current URL",
+        )?)
         .build()?;
 
     let view_menu = SubmenuBuilder::new(app, "View")
@@ -150,6 +164,13 @@ fn build_menu(
             keymap,
             KeyAction::ZoomReset,
             "Actual Size",
+        )?)
+        .separator()
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::ToggleSidebar,
+            "Toggle Floating Sidebar",
         )?)
         .separator()
         .item(&action_item(
@@ -201,6 +222,21 @@ fn build_menu(
             keymap,
             KeyAction::ClearBrowsingData,
             "Clear Browsing Data…",
+        )?)
+        .build()?;
+
+    let bookmarks_menu = SubmenuBuilder::new(app, "Bookmarks")
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::BookmarkPage,
+            "Bookmark This Page",
+        )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::ToggleBookmarks,
+            "Show Bookmarks",
         )?)
         .build()?;
 
@@ -272,6 +308,18 @@ fn build_menu(
             keymap,
             KeyAction::RestoreClosedTab,
             "Reopen Closed Tab",
+        )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::PinTab,
+            "Pin or Unpin Tab",
+        )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::DuplicateTab,
+            "Duplicate Tab",
         )?)
         .separator()
         .item(&action_item(
@@ -361,6 +409,7 @@ fn build_menu(
             &edit_menu,
             &view_menu,
             &history_menu,
+            &bookmarks_menu,
             &tabs_menu,
             &panes_menu,
             &window_menu,

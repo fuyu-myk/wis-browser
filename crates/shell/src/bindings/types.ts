@@ -111,6 +111,13 @@ export type KeyAction =
   | 'zoom_in'
   | 'zoom_out'
   | 'zoom_reset'
+  | 'open_downloads'
+  | 'toggle_bookmarks'
+  | 'bookmark_page'
+  | 'pin_tab'
+  | 'duplicate_tab'
+  | 'copy_url'
+  | 'toggle_sidebar'
 
 export type AccentColor =
   | 'primary'
