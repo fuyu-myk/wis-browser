@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 
@@ -8,11 +15,20 @@ import type { AccentColor, TabFolder, TabFolderId, TabId, WorkspaceId, Tab } fro
 import { cx } from '@/lib/cx'
 import { FolderPlusIcon, PlusIcon, XIcon } from '@/lib/icons'
 import { tabDisplayName } from '@/lib/url'
+import {
+  partOffset,
+  patchFolderOrder,
+  patchTabFolder,
+  patchTabOrder,
+  runPendingGlide,
+  type PendingGlide,
+} from '@/lib/tabMotion'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { useFolderTarget } from '@/hooks/useFolderTarget'
 import {
   useTabSplit,
   tabDropTarget,
+  insertedAmong,
   reorderedAmong,
   type TabReorder,
   type DropTarget,
@@ -124,11 +140,15 @@ export function TabList({
   })
   const reorder = useMutation({
     mutationFn: (order: TabId[]) => commands.reorderTabs(workspaceId, order),
+    // Optimistic: a drop re-renders in the new order on the same frame.
+    onMutate: (order) => patchTabOrder(qc, workspaceId, order),
     onSuccess: invalidate,
   })
   const assign = useMutation({
     mutationFn: (args: { tabId: TabId; folderId: TabFolderId | null }) =>
       commands.assignTabToFolder(args.tabId, args.folderId),
+    // Optimistic: filing renders on the drop frame.
+    onMutate: (args) => patchTabFolder(qc, args.tabId, args.folderId),
     onSuccess: invalidate,
   })
   const createFolder = useMutation({
@@ -142,6 +162,7 @@ export function TabList({
   })
   const reorderFolders = useMutation({
     mutationFn: (order: TabFolderId[]) => commands.reorderTabFolders(workspaceId, order),
+    onMutate: (order) => patchFolderOrder(qc, workspaceId, order),
     onSuccess: invalidate,
   })
   const { syncToTab } = useFolderTarget(workspaceId, selectedFolderId)
@@ -165,6 +186,17 @@ export function TabList({
   // Folder drag-to-reorder (separate from tab dragging).
   const folderDraggedRef = useRef(false)
   const [folderDropIndex, setFolderDropIndex] = useState<number | null>(null)
+  // Live parting.
+  const [dragPart, setDragPart] = useState<{ id: TabId; size: number } | null>(null)
+  const [folderDragPart, setFolderDragPart] = useState<{
+    id: TabFolderId
+    size: number
+  } | null>(null)
+  const pendingGlideRef = useRef<PendingGlide | null>(null)
+  // Land the dropped element once the optimistic reorder has rendered.
+  useLayoutEffect(() => {
+    runPendingGlide(rootRef.current, pendingGlideRef)
+  })
 
   const [editingFolders, setEditingFolders] = useState<Set<TabFolderId>>(new Set())
   const reportEditing = useCallback((folderId: TabFolderId, editing: boolean) => {
@@ -207,9 +239,52 @@ export function TabList({
     return !!r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
   }
 
+  // Sliding active-tab bar.
+  const [barTop, setBarTop] = useState<number | null>(null)
+  const measureBar = useCallback(() => {
+    const root = rootRef.current
+    const el = activeTabId
+      ? root?.querySelector<HTMLElement>(`[data-tab-id="${activeTabId}"]`)
+      : null
+    if (!root || !el || el.closest('.kb-foldwrap:not(.is-open)')) {
+      setBarTop(null)
+      return
+    }
+    const rootRect = root.getBoundingClientRect()
+    const r = el.getBoundingClientRect()
+    const next = r.top - rootRect.top + r.height / 2 - 9
+    setBarTop((prev) => (prev !== null && Math.abs(prev - next) < 0.5 ? prev : next))
+  }, [activeTabId])
+  useLayoutEffect(() => {
+    measureBar()
+  })
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    const onEnd = (e: TransitionEvent) => {
+      if (e.propertyName === 'grid-template-rows') measureBar()
+    }
+    root.addEventListener('transitionend', onEnd)
+    return () => root.removeEventListener('transitionend', onEnd)
+  }, [measureBar])
+
+  const folderIsOpen = (id: TabFolderId): boolean =>
+    sortedFolders.find((f) => f.id === id)?.collapsed === false
+
   const makeReorder = (tab: Tab): TabReorder => ({
     targetAtPoint: (x, y) => {
       const zone = folderZoneAt(x, y)
+      // Foreign open folder.
+      if (zone !== undefined && zone !== tab.folder_id && folderIsOpen(zone)) {
+        const body = folderBodyEl(zone)
+        const t = body ? tabDropTarget(body, 'y', x, y) : null
+        if (t) {
+          folderDropRef.current = undefined
+          setFolderDropHint(null)
+          dragScopeRef.current = zone
+          return t
+        }
+      }
       if (tab.folder_id == null) {
         // Loose tab: drop onto a folder to file it, else reorder among loose.
         if (zone !== undefined) {
@@ -239,7 +314,14 @@ export function TabList({
         return FOLDER_DROP
       }
       if (withinRoot(x, y)) {
-        // Empty / loose area: take the tab out of its folder.
+        // Loose area.
+        const t = looseRef.current ? tabDropTarget(looseRef.current, 'y', x, y) : null
+        if (t) {
+          folderDropRef.current = undefined
+          setFolderDropHint(null)
+          dragScopeRef.current = 'loose'
+          return t
+        }
         folderDropRef.current = null
         setFolderDropHint('loose')
         dragScopeRef.current = null
@@ -251,7 +333,15 @@ export function TabList({
       return null
     },
     onTarget: setDropTarget,
-    onDrop: (idx) => {
+    onDragChange: (dragging) => {
+      if (!dragging) {
+        setDragPart(null)
+        return
+      }
+      const el = rootRef.current?.querySelector<HTMLElement>(`[data-tab-id="${tab.id}"]`)
+      setDragPart({ id: tab.id, size: (el?.getBoundingClientRect().height ?? 29) + 1 })
+    },
+    onDrop: (idx, ghostRect) => {
       const drop = folderDropRef.current
       const scope = dragScopeRef.current
       folderDropRef.current = undefined
@@ -263,13 +353,38 @@ export function TabList({
         }
         return
       }
+      const glide = () => {
+        if (ghostRect) {
+          pendingGlideRef.current = { selector: `[data-tab-id="${tab.id}"]`, rect: ghostRect }
+        }
+      }
       const fullOrder = tabs.map((t) => t.id)
       if (scope === 'loose' && tab.folder_id == null) {
         const next = reorderedAmong(fullOrder, looseIds, tab.id, idx)
+        if (next) {
+          glide()
+          reorder.mutate(next)
+        }
+      } else if (scope === 'loose' && tab.folder_id != null) {
+        // Positional unfile into the loose list.
+        const next = insertedAmong(fullOrder, looseIds, tab.id, idx)
+        glide()
+        assign.mutate({ tabId: tab.id, folderId: null })
         if (next) reorder.mutate(next)
       } else if (scope && tab.folder_id != null && scope === tab.folder_id) {
         const memberIds = new Set(membersOf(tab.folder_id).map((m) => m.id))
         const next = reorderedAmong(fullOrder, memberIds, tab.id, idx)
+        if (next) {
+          glide()
+          reorder.mutate(next)
+        }
+      } else if (scope && scope !== 'loose') {
+        // File into an open folder at the targeted slot.
+        const folderId = scope as TabFolderId
+        const memberIds = new Set(membersOf(folderId).map((m) => m.id))
+        const next = insertedAmong(fullOrder, memberIds, tab.id, idx)
+        glide()
+        assign.mutate({ tabId: tab.id, folderId })
         if (next) reorder.mutate(next)
       }
     },
@@ -314,6 +429,13 @@ export function TabList({
         if (accent) ghost.classList.add(`accent-${accent}`)
         ghost.style.width = `${rect.width}px`
         document.body.appendChild(ghost)
+        const zone = rootRef.current?.querySelector<HTMLElement>(
+          `[data-folder-zone="${folderId}"]`,
+        )
+        setFolderDragPart({
+          id: folderId,
+          size: (zone?.getBoundingClientRect().height ?? rect.height) + 2,
+        })
       }
       if (ghost) {
         ghost.style.left = `${ev.clientX - grabX}px`
@@ -325,23 +447,43 @@ export function TabList({
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
+      const ghostRect = ghost?.getBoundingClientRect()
       ghost?.remove()
       if (begun) document.body.classList.remove('is-tab-dragging')
       setFolderDropIndex(null)
+      setFolderDragPart(null)
       if (begun && lastIndex != null) {
         const next = moveInList(order, folderId, lastIndex)
-        if (next) reorderFolders.mutate(next)
+        if (next) {
+          if (ghostRect) {
+            pendingGlideRef.current = {
+              selector: `[data-folder-id="${folderId}"]`,
+              rect: ghostRect,
+            }
+          }
+          reorderFolders.mutate(next)
+        }
       }
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   }
 
-  const renderTab = (tab: Tab, opts: { scope?: string; index?: number; inFolder?: boolean } = {}) => {
-    const showDrop =
+  const renderTab = (
+    tab: Tab,
+    opts: { scope?: string; index?: number; inFolder?: boolean; fromIndex?: number } = {},
+  ) => {
+    const parting =
+      dragPart !== null &&
+      dropTarget !== null &&
+      dropTarget.index >= 0 &&
       opts.scope !== undefined &&
       dragScopeRef.current === opts.scope &&
-      dropTarget?.anchorIndex === opts.index
+      opts.fromIndex !== undefined
+    const shift = parting ? partOffset(opts.index ?? -1, opts.fromIndex ?? -1, dropTarget.index) : 0
+    const isSource = dragPart?.id === tab.id
+    // Optimistic resize.
+    const lifted = isSource && dragScopeRef.current !== opts.scope
     return (
       <div
         key={tab.id}
@@ -352,9 +494,14 @@ export function TabList({
           active: tab.id === activeTabId,
           'in-folder': opts.inFolder,
           asleep: discardedTabs.has(tab.id) && tab.id !== activeTabId,
-          'drop-before': showDrop && dropTarget?.side === 'before',
-          'drop-after': showDrop && dropTarget?.side === 'after',
+          'is-dragsource': isSource,
+          'is-lifted': lifted,
         })}
+        style={
+          shift !== 0 && dragPart
+            ? { transform: `translateY(${shift * dragPart.size}px)` }
+            : undefined
+        }
         role="button"
         tabIndex={0}
         onPointerDown={(e) => startTabDrag(e, tab.id, makeReorder(tab))}
@@ -392,6 +539,18 @@ export function TabList({
     )
   }
 
+  const looseFrom = dragPart ? looseTabs.findIndex((t) => t.id === dragPart.id) : -1
+
+  // Optimistic expansion.
+  const expandFor = (scopeId: string, list: Tab[]): number =>
+    dragPart !== null &&
+    dragScopeRef.current === scopeId &&
+    dropTarget !== null &&
+    dropTarget.index >= 0 &&
+    !list.some((t) => t.id === dragPart.id)
+      ? dragPart.size
+      : 0
+
   return (
     <div className="kb-tabs" ref={rootRef}>
       <div className="group-label">tabs</div>
@@ -407,15 +566,26 @@ export function TabList({
 
       {sortedFolders.map((folder, idx) => {
         const members = membersOf(folder.id)
+        const folderShift =
+          folderDragPart && folderDropIndex !== null
+            ? partOffset(
+                idx,
+                sortedFolders.findIndex((f) => f.id === folderDragPart.id),
+                folderDropIndex,
+              )
+            : 0
         return (
           <div
             key={folder.id}
             data-folder-zone={folder.id}
             className={cx('kb-tabfolder', `accent-${folder.accent}`, {
-              'drop-before': folderDropIndex === idx,
-              'drop-after':
-                folderDropIndex === sortedFolders.length && idx === sortedFolders.length - 1,
+              'is-dragsource': folderDragPart?.id === folder.id,
             })}
+            style={
+              folderShift !== 0 && folderDragPart
+                ? { transform: `translateY(${folderShift * folderDragPart.size}px)` }
+                : undefined
+            }
           >
             <TabFolderHeader
               workspaceId={workspaceId}
@@ -430,9 +600,20 @@ export function TabList({
             />
             <div className={cx('kb-foldwrap', { 'is-open': !folder.collapsed })}>
               <div className="kb-foldwrap-inner">
-                <div className="kb-tabfolder-body" data-folder-body={folder.id}>
+                <div
+                  className="kb-tabfolder-body"
+                  data-folder-body={folder.id}
+                  style={{ paddingBottom: expandFor(folder.id, members) || undefined }}
+                >
                   {members.map((tab, mi) =>
-                    renderTab(tab, { scope: folder.id, index: mi, inFolder: true }),
+                    renderTab(tab, {
+                      scope: folder.id,
+                      index: mi,
+                      inFolder: true,
+                      fromIndex: dragPart
+                        ? members.findIndex((m) => m.id === dragPart.id)
+                        : -1,
+                    }),
                   )}
                 </div>
               </div>
@@ -454,9 +635,15 @@ export function TabList({
       <div
         className={cx('kb-loose', { 'is-drop': folderDropHint === 'loose' })}
         ref={looseRef}
+        style={{ paddingBottom: expandFor('loose', looseTabs) || undefined }}
       >
-        {looseTabs.map((tab, i) => renderTab(tab, { scope: 'loose', index: i }))}
+        {looseTabs.map((tab, i) =>
+          renderTab(tab, { scope: 'loose', index: i, fromIndex: looseFrom }),
+        )}
       </div>
+      {barTop !== null && (
+        <span key={workspaceId} className="kb-active-bar" style={{ top: barTop }} aria-hidden />
+      )}
     </div>
   )
 }

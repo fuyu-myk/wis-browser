@@ -6410,6 +6410,72 @@ body.motion-off .kb-window *::after {
 .kb-window.rail-right .h-island-name { order: 2; }
 .kb-window.rail-right .h-island-name .h-island-chevron { order: 2; }
 
+/* Drag-reorder choreography: while a drag is live, the source element keeps
+   its slot hidden under the floating ghost and siblings part around the
+   insertion point with a short glide. The landing animation (glide and
+   settle) is driven from script against these same elements. */
+body.is-tab-dragging .kb-tab,
+body.is-tab-dragging .h-tab,
+body.is-tab-dragging .h-pin-circle,
+body.is-tab-dragging .h-island,
+body.is-tab-dragging .h-island-circle,
+body.is-tab-dragging .kb-tabs .kb-tabfolder {
+  transition: transform var(--dur-fast) var(--ease-standard);
+}
+/* Islands also animate their width open while an outside tab targets a
+   slot inside them; tabs animate their slot collapsing when lifted toward
+   another list (optimistic resize). */
+body.is-tab-dragging .h-island {
+  transition: transform var(--dur-fast) var(--ease-standard),
+    flex-basis var(--dur-fast) var(--ease-standard);
+}
+body.is-tab-dragging .h-tab {
+  transition: transform var(--dur-fast) var(--ease-standard),
+    flex-basis var(--dur-fast) var(--ease-standard),
+    margin var(--dur-fast) var(--ease-standard);
+}
+/* Sidebar rows: the lifted source collapses; targeted lists grow a slot via
+   inline padding. Max-height bounds make the collapse animatable. */
+body.is-tab-dragging .kb-tab {
+  transition: transform var(--dur-fast) var(--ease-standard),
+    max-height var(--dur-fast) var(--ease-standard),
+    padding var(--dur-fast) var(--ease-standard),
+    margin var(--dur-fast) var(--ease-standard);
+  max-height: 40px;
+}
+body.is-tab-dragging .kb-tab.is-lifted {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-top: -1px;
+  overflow: hidden;
+}
+body.is-tab-dragging .kb-tabfolder-body,
+body.is-tab-dragging .kb-loose {
+  transition: padding var(--dur-fast) var(--ease-standard);
+}
+.is-dragsource { visibility: hidden !important; }
+
+/* Sliding active-tab bar (sidebar list): one indicator glides between rows;
+   the per-row marker is disabled in its favour below. */
+.kb-tabs { position: relative; }
+.kb-tabs .kb-tab.active::after { content: none; }
+.kb-active-bar {
+  position: absolute;
+  right: 2px;
+  width: 3px;
+  height: 18px;
+  border-radius: 3px;
+  background: var(--primary-500);
+  z-index: 2;
+  pointer-events: none;
+  transition: top var(--dur-med) var(--ease-standard);
+}
+.layout-sidebar-right .kb-active-bar {
+  right: auto;
+  left: 2px;
+}
+
 /* Loose tabs animate inside a flex item whose width comes from the
    container (strip minus the fixed folder/pinned widths), so mid-animation
    over/under-fill cannot move the neighbours. Tabs anchor to the corner

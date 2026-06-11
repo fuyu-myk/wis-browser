@@ -28,8 +28,17 @@ import { LockIcon, XIcon } from '@/lib/icons'
 import { tabDisplayName } from '@/lib/url'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import {
+  partOffset,
+  patchFolderOrder,
+  patchTabFolder,
+  patchTabOrder,
+  runPendingGlide,
+  type PendingGlide,
+} from '@/lib/tabMotion'
+import {
   useTabSplit,
   tabDropTarget,
+  insertedAmong,
   reorderedAmong,
   type TabReorder,
   type DropTarget,
@@ -161,11 +170,16 @@ export function HorizontalTabs({
   })
   const reorder = useMutation({
     mutationFn: (order: TabId[]) => commands.reorderTabs(workspaceId, order),
+    // Optimistic: drops re-render in the new order on the same frame, so the
+    // glide-into-place animation has its final slot to land in.
+    onMutate: (order) => patchTabOrder(qc, workspaceId, order),
     onSuccess: invalidate,
   })
   const assign = useMutation({
     mutationFn: (a: { tabId: TabId; folderId: TabFolderId | null }) =>
       commands.assignTabToFolder(a.tabId, a.folderId),
+    // Optimistic: filing renders on the drop frame so the glide can land.
+    onMutate: (a) => patchTabFolder(qc, a.tabId, a.folderId),
     onSuccess: invalidate,
   })
   const setCollapsed = useMutation({
@@ -196,6 +210,7 @@ export function HorizontalTabs({
   })
   const reorderFolders = useMutation({
     mutationFn: (order: TabFolderId[]) => commands.reorderTabFolders(workspaceId, order),
+    onMutate: (order) => patchFolderOrder(qc, workspaceId, order),
     onSuccess: invalidate,
   })
   const { setTarget, syncToTab } = useFolderTarget(workspaceId, selectedFolderId)
@@ -218,12 +233,25 @@ export function HorizontalTabs({
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
   const folderDropRef = useRef<TabFolderId | null | undefined>(undefined)
   const [folderDropHint, setFolderDropHint] = useState<string | null>(null)
+  // Which list a positional tab reorder targets: 'loose' or a folder id.
+  const dragScopeRef = useRef<string | null>(null)
   const pinDraggedRef = useRef(false)
   const [pinDropIndex, setPinDropIndex] = useState<number | null>(null)
   const folderReorderRef = useRef(false)
   const [folderReorderDrop, setFolderReorderDrop] = useState<number | null>(null)
   const [renamingId, setRenamingId] = useState<TabFolderId | null>(null)
   const [closingIslandId, setClosingIslandId] = useState<TabFolderId | null>(null)
+  // Live parting state per drag kind.
+  const [dragPart, setDragPart] = useState<{ id: TabId; size: number } | null>(null)
+  const [pinDragId, setPinDragId] = useState<TabId | null>(null)
+  const [islandDragPart, setIslandDragPart] = useState<{
+    id: TabFolderId
+    size: number
+  } | null>(null)
+  const pendingGlideRef = useRef<PendingGlide | null>(null)
+  useLayoutEffect(() => {
+    runPendingGlide(stripRef.current, pendingGlideRef)
+  })
   const [closingIds, setClosingIds] = useState<ReadonlySet<TabId>>(new Set())
   useEffect(
     () =>
@@ -287,6 +315,21 @@ export function HorizontalTabs({
     targetAtPoint: (x, y) => {
       const fid = islandAt(x, y)
       if (fid !== undefined) {
+        // Expanded island.
+        const group = folderGroups.find((g) => g.folder.id === fid)
+        if (group !== undefined && !group.folder.collapsed) {
+          const islandEl = stripRef.current?.querySelector<HTMLElement>(
+            `[data-island-id="${fid}"]`,
+          )
+          const t = islandEl ? tabDropTarget(islandEl, 'x', x, y, '[data-mtab-id]') : null
+          if (t) {
+            folderDropRef.current = undefined
+            setFolderDropHint(null)
+            dragScopeRef.current = fid
+            return t
+          }
+        }
+        dragScopeRef.current = null
         if (fid === tab.folder_id) {
           folderDropRef.current = undefined
           setFolderDropHint(null)
@@ -297,36 +340,89 @@ export function HorizontalTabs({
         return ISLAND_DROP
       }
       if (tab.folder_id != null && withinStrip(x, y)) {
+        // Member over the open strip.
+        const t = stripRef.current ? tabDropTarget(stripRef.current, 'x', x, y) : null
+        if (t) {
+          folderDropRef.current = undefined
+          setFolderDropHint(null)
+          dragScopeRef.current = 'loose'
+          return t
+        }
         folderDropRef.current = null
         setFolderDropHint('loose')
+        dragScopeRef.current = null
         return ISLAND_DROP
       }
       folderDropRef.current = undefined
       setFolderDropHint(null)
       if (tab.folder_id == null && stripRef.current) {
+        dragScopeRef.current = 'loose'
         return tabDropTarget(stripRef.current, 'x', x, y)
       }
+      dragScopeRef.current = null
       return null
     },
     onTarget: setDropTarget,
-    onDrop: (idx) => {
+    onDragChange: (dragging) => {
+      if (!dragging) {
+        setDragPart(null)
+        return
+      }
+      const el = stripRef.current?.querySelector<HTMLElement>(
+        `[data-tab-id="${tab.id}"], [data-mtab-id="${tab.id}"]`,
+      )
+      setDragPart({ id: tab.id, size: (el?.getBoundingClientRect().width ?? 120) + GAP_PX })
+    },
+    onDrop: (idx, ghostRect) => {
       const drop = folderDropRef.current
+      const scope = dragScopeRef.current
       folderDropRef.current = undefined
       setFolderDropHint(null)
+      dragScopeRef.current = null
+      const glide = (selector: string) => {
+        if (ghostRect) pendingGlideRef.current = { selector, rect: ghostRect }
+      }
       if (drop !== undefined) {
         if (drop !== (tab.folder_id ?? null)) {
           assign.mutate({ tabId: tab.id, folderId: drop })
         }
         return
       }
-      if (tab.folder_id == null) {
-        const next = reorderedAmong(
-          tabs.map((t) => t.id),
-          looseIds,
-          tab.id,
-          idx,
+      const fullOrder = tabs.map((t) => t.id)
+      if (scope === 'loose') {
+        if (tab.folder_id == null) {
+          const next = reorderedAmong(fullOrder, looseIds, tab.id, idx)
+          if (next) {
+            glide(`[data-tab-id="${tab.id}"]`)
+            reorder.mutate(next)
+          }
+        } else {
+          // Positional unfile into the loose strip.
+          const next = insertedAmong(fullOrder, looseIds, tab.id, idx)
+          glide(`[data-tab-id="${tab.id}"]`)
+          assign.mutate({ tabId: tab.id, folderId: null })
+          if (next) reorder.mutate(next)
+        }
+        return
+      }
+      if (scope) {
+        const folderId = scope as TabFolderId
+        const memberIds = new Set(
+          (folderGroups.find((g) => g.folder.id === folderId)?.members ?? []).map((m) => m.id),
         )
-        if (next) reorder.mutate(next)
+        if (tab.folder_id === folderId) {
+          const next = reorderedAmong(fullOrder, memberIds, tab.id, idx)
+          if (next) {
+            glide(`[data-mtab-id="${tab.id}"]`)
+            reorder.mutate(next)
+          }
+        } else {
+          // File into the open island at the targeted slot.
+          const next = insertedAmong(fullOrder, memberIds, tab.id, idx)
+          glide(`[data-mtab-id="${tab.id}"]`)
+          assign.mutate({ tabId: tab.id, folderId })
+          if (next) reorder.mutate(next)
+        }
       }
     },
   })
@@ -388,6 +484,7 @@ export function HorizontalTabs({
         ghost.style.width = `${rect.width}px`
         ghost.style.height = `${rect.height}px`
         document.body.appendChild(ghost)
+        setPinDragId(tabId)
       }
       if (ghost) {
         ghost.style.left = `${ev.clientX - grabX}px`
@@ -399,12 +496,19 @@ export function HorizontalTabs({
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
+      const ghostRect = ghost?.getBoundingClientRect()
       ghost?.remove()
       if (begun) document.body.classList.remove('is-tab-dragging')
       setPinDropIndex(null)
+      setPinDragId(null)
       if (begun && lastIndex != null) {
         const next = reorderedAmong(fullOrder, pinnedSet, tabId, lastIndex)
-        if (next) reorder.mutate(next)
+        if (next) {
+          if (ghostRect) {
+            pendingGlideRef.current = { selector: `[data-pin-id="${tabId}"]`, rect: ghostRect }
+          }
+          reorder.mutate(next)
+        }
       }
     }
     window.addEventListener('pointermove', move)
@@ -449,6 +553,13 @@ export function HorizontalTabs({
         ghost.style.width = `${rect.width}px`
         ghost.style.height = `${rect.height}px`
         document.body.appendChild(ghost)
+        const island = stripRef.current?.querySelector<HTMLElement>(
+          `[data-island-id="${folderId}"]`,
+        )
+        setIslandDragPart({
+          id: folderId,
+          size: (island?.getBoundingClientRect().width ?? rect.width) + GAP_PX,
+        })
       }
       if (ghost) {
         ghost.style.left = `${ev.clientX - grabX}px`
@@ -460,12 +571,22 @@ export function HorizontalTabs({
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
+      const ghostRect = ghost?.getBoundingClientRect()
       ghost?.remove()
       if (begun) document.body.classList.remove('is-tab-dragging')
       setFolderReorderDrop(null)
+      setIslandDragPart(null)
       if (begun && lastIndex != null) {
         const next = moveInList(order, folderId, lastIndex)
-        if (next) reorderFolders.mutate(next)
+        if (next) {
+          if (ghostRect) {
+            pendingGlideRef.current = {
+              selector: `[data-island-id="${folderId}"]`,
+              rect: ghostRect,
+            }
+          }
+          reorderFolders.mutate(next)
+        }
       }
     }
     window.addEventListener('pointermove', move)
@@ -520,14 +641,37 @@ export function HorizontalTabs({
   const sizeFor = (isActive: boolean) =>
     isActive && activeVisible ? sizing.activeSize : sizing.inactiveSize
 
-  const renderTab = (tab: Tab, opts: { looseIndex?: number } = {}) => {
+  const renderTab = (
+    tab: Tab,
+    opts: {
+      looseIndex?: number
+      memberOf?: TabFolderId
+      memberIndex?: number
+      memberFrom?: number
+    } = {},
+  ) => {
     const isActive = tab.id === activeTabId
     const loose = opts.looseIndex !== undefined
+    const member = opts.memberOf !== undefined
+    const scope = dragScopeRef.current
+    const isSource = dragPart?.id === tab.id
+    // Optimistic resize.
+    const lifted = isSource && scope !== (member ? opts.memberOf : loose ? 'loose' : null)
+    let shift = 0
+    if (dragPart && dropTarget !== null && dropTarget.index >= 0) {
+      if (loose && scope === 'loose') {
+        const from = looseTabs.findIndex((t) => t.id === dragPart.id)
+        shift = partOffset(opts.looseIndex ?? -1, from, dropTarget.index, railSide === 'right' ? 1 : -1)
+      } else if (member && scope === opts.memberOf) {
+        shift = partOffset(opts.memberIndex ?? -1, opts.memberFrom ?? -1, dropTarget.index)
+      }
+    }
     return (
       <div
         key={tab.id}
         ref={isActive ? activeRef : undefined}
         {...(loose ? { 'data-tab-id': tab.id } : {})}
+        {...(member ? { 'data-mtab-id': tab.id } : {})}
         role="button"
         tabIndex={0}
         className={cx('h-tab', {
@@ -535,12 +679,15 @@ export function HorizontalTabs({
           active: isActive,
           asleep: discardedTabs.has(tab.id) && !isActive,
           'as-urlbar': isActive && integrateUrlBar,
-          'drop-before':
-            loose && dropTarget?.anchorIndex === opts.looseIndex && dropTarget?.side === 'before',
-          'drop-after':
-            loose && dropTarget?.anchorIndex === opts.looseIndex && dropTarget?.side === 'after',
+          'is-dragsource': isSource,
         })}
-        style={{ flex: `0 0 ${sizeFor(isActive)}px` }}
+        style={{
+          flex: lifted ? '0 0 0px' : `0 0 ${sizeFor(isActive)}px`,
+          ...(lifted ? { marginLeft: `${-GAP_PX}px` } : {}),
+          ...(shift !== 0 && dragPart
+            ? { transform: `translateX(${shift * dragPart.size}px)` }
+            : {}),
+        }}
         onPointerDown={(e) => startTabDrag(e, tab.id, makeReorder(tab))}
         onClick={() => {
           if (draggedRef.current) {
@@ -583,16 +730,24 @@ export function HorizontalTabs({
     )
   }
 
-  const renderPinCircle = (tab: Tab, i: number) => (
+  const renderPinCircle = (tab: Tab, i: number) => {
+    const pinFrom = pinDragId ? pinnedTabs.findIndex((t) => t.id === pinDragId) : -1
+    const shift =
+      pinDragId && pinDropIndex !== null && pinFrom >= 0
+        ? partOffset(i, pinFrom, pinDropIndex)
+        : 0
+    return (
     <button
       key={tab.id}
       type="button"
       data-pin-id={tab.id}
       className={cx('h-pin-circle', {
         active: tab.id === activeTabId,
-        'drop-before': pinDropIndex === i,
-        'drop-after': pinDropIndex === pinnedTabs.length && i === pinnedTabs.length - 1,
+        'is-dragsource': pinDragId === tab.id,
       })}
+      style={
+        shift !== 0 ? { transform: `translateX(${shift * (PIN_CIRCLE_W + GAP_PX)}px)` } : undefined
+      }
       title={tabDisplayName(tab)}
       aria-label={tabDisplayName(tab)}
       onPointerDown={(e) => startPinDrag(e, tab.id)}
@@ -608,7 +763,8 @@ export function HorizontalTabs({
     >
       <TabFavicon tab={tab} />
     </button>
-  )
+    )
+  }
 
   const renderFolder = ({ folder, members }: FolderGroup, index: number) => {
     const memberActive = members.some((m) => m.id === activeTabId)
@@ -621,11 +777,18 @@ export function HorizontalTabs({
       accent: folder.accent,
       name: folder.name,
     }
-    const reorderClasses = {
-      'reorder-before': folderReorderDrop === index,
-      'reorder-after':
-        folderReorderDrop === folderGroups.length && index === folderGroups.length - 1,
-    }
+    const islandFrom = islandDragPart
+      ? folderGroups.findIndex((g) => g.folder.id === islandDragPart.id)
+      : -1
+    const islandShift =
+      islandDragPart && folderReorderDrop !== null && islandFrom >= 0
+        ? partOffset(index, islandFrom, folderReorderDrop)
+        : 0
+    const islandStyle =
+      islandShift !== 0 && islandDragPart
+        ? { transform: `translateX(${islandShift * islandDragPart.size}px)` }
+        : undefined
+    const isIslandSource = islandDragPart?.id === folder.id
     const toggleCollapsed = (collapsed: boolean) => {
       if (folderReorderRef.current) {
         folderReorderRef.current = false
@@ -660,8 +823,9 @@ export function HorizontalTabs({
             selected: isSelected,
             'ring-contrast': isThemeAccent,
             'is-drop': folderDropHint === folder.id,
-            ...reorderClasses,
+            'is-dragsource': isIslandSource,
           })}
+          style={islandStyle}
           title={`${folder.name} (${members.length})`}
           aria-label={`${folder.name}, ${members.length} tabs`}
           onPointerDown={(e) => startFolderReorderDrag(e, folder.id)}
@@ -673,10 +837,27 @@ export function HorizontalTabs({
       )
     }
     const closing = closingIslandId === folder.id
-    const memberSum = members.reduce((s, m) => s + sizeFor(m.id === activeTabId), 0)
+    const memberFrom = dragPart ? members.findIndex((m) => m.id === dragPart.id) : -1
+    // Optimistic resize.
+    const liftedOut =
+      memberFrom >= 0 && dragPart !== null && dragScopeRef.current !== folder.id
+    const sizedMembers = liftedOut
+      ? members.filter((m) => m.id !== dragPart?.id)
+      : members
+    const memberSum = sizedMembers.reduce((s, m) => s + sizeFor(m.id === activeTabId), 0)
+    const externalTarget =
+      dragPart !== null &&
+      memberFrom < 0 &&
+      dragScopeRef.current === folder.id &&
+      dropTarget !== null &&
+      dropTarget.index >= 0
     const islandW = closing
       ? ISLAND_CIRCLE_W
-      : nameW + memberSum + members.length * GAP_PX + ISLAND_PILL_PAD * 2
+      : nameW +
+        memberSum +
+        sizedMembers.length * GAP_PX +
+        ISLAND_PILL_PAD * 2 +
+        (externalTarget && dragPart ? dragPart.size : 0)
     return (
       <div
         key={folder.id}
@@ -684,9 +865,9 @@ export function HorizontalTabs({
         className={cx('h-island', {
           'is-drop': folderDropHint === folder.id,
           'is-closing': closingIslandId === folder.id,
-          ...reorderClasses,
+          'is-dragsource': isIslandSource,
         })}
-        style={{ flex: `0 0 ${islandW}px` }}
+        style={{ flex: `0 0 ${islandW}px`, ...(islandStyle ?? {}) }}
       >
         <div
           className={cx('h-island-name', `accent-${folder.accent}`, {
@@ -749,7 +930,9 @@ export function HorizontalTabs({
             </span>
           )}
         </div>
-        {members.map((tab) => renderTab(tab))}
+        {members.map((tab, i) =>
+          renderTab(tab, { memberOf: folder.id, memberIndex: i, memberFrom }),
+        )}
       </div>
     )
   }

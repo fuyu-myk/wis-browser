@@ -59,7 +59,11 @@ export interface DropTarget {
 export interface TabReorder {
   targetAtPoint: (x: number, y: number) => DropTarget | null
   onTarget: (target: DropTarget | null) => void
-  onDrop: (index: number) => void
+  /** Commit the new order; `ghostRect` is where the drag image landed, for
+   * the glide-into-place animation. */
+  onDrop: (index: number, ghostRect?: DOMRect) => void
+  /** Drag lifecycle: true once the threshold is passed, false on release. */
+  onDragChange?: (dragging: boolean) => void
 }
 
 interface UseTabSplitReturn {
@@ -87,12 +91,13 @@ export function tabDropTarget(
   axis: 'x' | 'y',
   clientX: number,
   clientY: number,
+  selector = '[data-tab-id]',
 ): DropTarget | null {
   const rect = container.getBoundingClientRect()
   if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
     return null
   }
-  const els = Array.from(container.querySelectorAll<HTMLElement>('[data-tab-id]'))
+  const els = Array.from(container.querySelectorAll<HTMLElement>(selector))
   if (els.length === 0) return null
   const pos = axis === 'y' ? clientY : clientX
   for (let i = 0; i < els.length; i++) {
@@ -161,6 +166,32 @@ export function reorderedWithPinned(
   if (!next) return null
   let i = 0
   return fullOrder.map((id) => (pinned.has(id) ? id : next[i++]))
+}
+
+/**
+ * Insert a tab from outside the `movable` subset at `insertion` (indexing the
+ * rendered subset), keeping every other tab's slot in the full order. The
+ * dragged tab's folder assignment is changed separately by the caller.
+ * Returns null when the order is unchanged.
+ */
+export function insertedAmong(
+  fullOrder: TabId[],
+  movable: ReadonlySet<TabId>,
+  draggedId: TabId,
+  insertion: number,
+): TabId[] | null {
+  const subset = fullOrder.filter((id) => movable.has(id) && id !== draggedId)
+  const without = fullOrder.filter((id) => id !== draggedId)
+  const out = [...without]
+  if (subset.length === 0) {
+    out.push(draggedId)
+  } else {
+    const anchor = subset[Math.min(insertion, subset.length - 1)]
+    const at = out.indexOf(anchor) + (insertion >= subset.length ? 1 : 0)
+    out.splice(at, 0, draggedId)
+  }
+  if (out.length === fullOrder.length && out.every((id, i) => id === fullOrder[i])) return null
+  return out
 }
 
 /**
@@ -296,6 +327,7 @@ export function useTabSplit({
         document.body.appendChild(ghost)
         positionGhost(ev.clientX, ev.clientY)
         window.dispatchEvent(new CustomEvent('wis-tabdrag-begin', { detail: tabId }))
+        reorder?.onDragChange?.(true)
       }
       positionGhost(ev.clientX, ev.clientY)
       // Over the strip → show a reorder indicator; over the content → null, so
@@ -308,12 +340,14 @@ export function useTabSplit({
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
+      const ghostRect = ghost?.getBoundingClientRect()
       ghost?.remove()
       ghost = null
       if (begun) document.body.classList.remove('is-tab-dragging')
       if (begun && reorder) {
         reorder.onTarget(null)
-        if (lastTarget != null) reorder.onDrop(lastTarget.index)
+        reorder.onDragChange?.(false)
+        if (lastTarget != null) reorder.onDrop(lastTarget.index, ghostRect)
       }
     }
     window.addEventListener('pointermove', move)
