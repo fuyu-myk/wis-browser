@@ -2522,12 +2522,30 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
    image without blurring the launchpad content. */
 .has-custom-img .kb-newtab-page,
 .has-custom-img .kb-window.glass-on .kb-newtab-page { background: none; }
+/* Shared wallpaper canvas: the backdrop pseudo-elements span the whole
+   content host. */
 .has-custom-img .kb-newtab-page::before {
   content: "";
   position: absolute;
-  /* Over-extend by the blur radius so the softened edges never reveal a
-     transparent halo inside the page. */
-  inset: calc(-2 * var(--wp-blur, 0px));
+  left: calc(-1 * var(--wp-off-x, 0px) - 2 * max(var(--wp-blur, 0px), 18px));
+  top: calc(-1 * var(--wp-off-y, 0px) - 2 * max(var(--wp-blur, 0px), 18px));
+  width: calc(var(--wp-host-w, 100%) + 4 * max(var(--wp-blur, 0px), 18px));
+  height: calc(var(--wp-host-h, 100%) + 4 * max(var(--wp-blur, 0px), 18px));
+  background: var(--wp-grad);
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  filter: blur(max(var(--wp-blur, 0px), 18px));
+  transform: translateZ(0);
+  pointer-events: none;
+}
+.has-custom-img .kb-newtab-page::after {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--wp-off-x, 0px) - 2 * var(--wp-blur, 0px));
+  top: calc(-1 * var(--wp-off-y, 0px) - 2 * var(--wp-blur, 0px));
+  width: calc(var(--wp-host-w, 100%) + 4 * var(--wp-blur, 0px));
+  height: calc(var(--wp-host-h, 100%) + 4 * var(--wp-blur, 0px));
   background: var(--wp-grad);
   background-size: var(--wp-bg-size, cover);
   background-repeat: var(--wp-bg-repeat, no-repeat);
@@ -4518,6 +4536,7 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 }
 .kb-omnisearch input {
   flex: 1;
+  min-width: 0;
   background: transparent;
   border: 0;
   outline: 0;

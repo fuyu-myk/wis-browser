@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
@@ -95,8 +95,41 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
     return () => window.removeEventListener(FOCUS_LAUNCHPAD_SEARCH_EVENT, onFocus)
   }, [])
 
+  // Shared wallpaper canvas: the backdrop is laid out once against the whole
+  // content host and this pane reveals its slice.
+  const rootRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    const host = el.closest<HTMLElement>('.kb-content-host')
+    const apply = () => {
+      const h = host?.getBoundingClientRect()
+      const r = el.getBoundingClientRect()
+      if (!h || h.width === 0 || h.height === 0) {
+        el.style.removeProperty('--wp-host-w')
+        el.style.removeProperty('--wp-host-h')
+        el.style.removeProperty('--wp-off-x')
+        el.style.removeProperty('--wp-off-y')
+        return
+      }
+      el.style.setProperty('--wp-host-w', `${h.width}px`)
+      el.style.setProperty('--wp-host-h', `${h.height}px`)
+      el.style.setProperty('--wp-off-x', `${r.left - h.left}px`)
+      el.style.setProperty('--wp-off-y', `${r.top - h.top}px`)
+    }
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(el)
+    if (host) ro.observe(host)
+    window.addEventListener('resize', apply)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', apply)
+    }
+  }, [])
+
   return (
-    <div className="kb-newtab-page">
+    <div className="kb-newtab-page" ref={rootRef}>
       <div className="inner">
         <div className="kb-hero">
           <div
