@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
 import type { PaneBranch, PaneNode, Tab, TabId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
@@ -7,6 +7,9 @@ import { isChromeUrl } from '@/lib/url'
 const RATIO_SCALE = 1000
 const MIN_FRACTION = 0.05
 const MAX_FRACTION = 0.95
+
+/** Duration of the chrome-side pane glide on splits (matches the CSS). */
+export const PANE_GLIDE_MS = 260
 
 /**
  * Where a dragged tab lands on a pane: an edge (`left`/`right`/`top`/`bottom`)
@@ -31,6 +34,10 @@ interface PaneViewProps {
   /** The tab being dragged, dropped against a pane side. */
   movedTabId: TabId | null
   onPaneDrop: (targetTabId: TabId, movedTabId: TabId, side: PaneSide) => void
+  /** Leaves added by the last structural change: their slot glides open. */
+  newLeafIds: ReadonlySet<TabId>
+  /** Leaves being removed: their slot glides shut before the tree commits. */
+  closingLeafIds: ReadonlySet<TabId>
 }
 
 /**
@@ -113,6 +120,13 @@ function PaneLeaf({
   )
 }
 
+/** True when every leaf under `node` is being removed (whole side closes). */
+function subtreeCloses(node: PaneNode, closing: ReadonlySet<TabId>): boolean {
+  if (closing.size === 0) return false
+  if (node.kind === 'leaf') return closing.has(node.tab)
+  return subtreeCloses(node.first, closing) && subtreeCloses(node.second, closing)
+}
+
 function paneLabel(tab: Tab): string {
   return tab.title?.trim() || tab.url
 }
@@ -129,14 +143,62 @@ function PaneSplit({
   dragActive,
   movedTabId,
   onPaneDrop,
+  newLeafIds,
+  closingLeafIds,
 }: PaneSplitProps) {
   const { dir, ratio, first, second } = node
   const row = dir === 'horizontal'
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [dragRatio, setDragRatio] = useState<number | null>(null)
   const effRatio = dragRatio ?? ratio
-  const firstGrow = effRatio
-  const secondGrow = RATIO_SCALE - effRatio
+
+  // Entrance: a split mounted around a brand-new leaf starts that slot at
+  // zero and glides it open (flex-grow transition while .is-entering).
+  const [enterFrom] = useState<'first' | 'second' | null>(() => {
+    if (document.body.classList.contains('motion-off')) return null
+    if (first.kind === 'leaf' && newLeafIds.has(first.tab)) return 'first'
+    if (second.kind === 'leaf' && newLeafIds.has(second.tab)) return 'second'
+    return null
+  })
+  const [entered, setEntered] = useState(enterFrom === null)
+  const [settled, setSettled] = useState(enterFrom === null)
+  useLayoutEffect(() => {
+    if (entered) return
+    const raf = requestAnimationFrame(() => setEntered(true))
+    return () => cancelAnimationFrame(raf)
+  }, [entered])
+  useEffect(() => {
+    if (!entered || settled) return
+    const t = window.setTimeout(() => setSettled(true), PANE_GLIDE_MS + 40)
+    return () => window.clearTimeout(t)
+  }, [entered, settled])
+
+  // Exit: while TabWebViewHost keeps painting the outgoing tree, the child
+  // whose subtree is being removed glides shut.
+  const exitTo: 'first' | 'second' | null = subtreeCloses(first, closingLeafIds)
+    ? 'first'
+    : subtreeCloses(second, closingLeafIds)
+      ? 'second'
+      : null
+  const [exitArmed, setExitArmed] = useState(false)
+  useLayoutEffect(() => {
+    if (exitTo === null) {
+      setExitArmed(false)
+      return
+    }
+    const raf = requestAnimationFrame(() => setExitArmed(true))
+    return () => cancelAnimationFrame(raf)
+  }, [exitTo])
+
+  let firstGrow = effRatio
+  let secondGrow = RATIO_SCALE - effRatio
+  if (exitTo !== null && exitArmed) {
+    firstGrow = exitTo === 'first' ? 0 : RATIO_SCALE
+    secondGrow = exitTo === 'second' ? 0 : RATIO_SCALE
+  } else if (!entered) {
+    firstGrow = enterFrom === 'first' ? 0 : RATIO_SCALE
+    secondGrow = enterFrom === 'second' ? 0 : RATIO_SCALE
+  }
 
   const onDividerDown = (e: React.PointerEvent) => {
     e.preventDefault()
@@ -175,10 +237,18 @@ function PaneSplit({
     dragActive,
     movedTabId,
     onPaneDrop,
+    newLeafIds,
+    closingLeafIds,
   }
 
   return (
-    <div ref={containerRef} className={cx('pane-split', row ? 'is-row' : 'is-col')}>
+    <div
+      ref={containerRef}
+      className={cx('pane-split', row ? 'is-row' : 'is-col', {
+        'is-entering': !settled,
+        'is-exiting': exitTo !== null,
+      })}
+    >
       <div className="pane-slot" style={{ flex: `${firstGrow} 1 0%` }}>
         <PaneView node={first} path={[...path, 'first']} {...childProps} />
       </div>

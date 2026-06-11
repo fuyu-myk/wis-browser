@@ -31,7 +31,7 @@ interface DragState {
  * favicon along its row to reorder, which persists to settings.
  */
 export function WidgetDock({ widgets, variant = 'sidebar' }: WidgetDockProps) {
-  const { activeWidgetId, toggleWidget, panelRect } = useWidgetPanel()
+  const { activeWidgetId, toggleWidget, panelRect, panelSide } = useWidgetPanel()
   const update = useUpdateSettings()
   const axis: 'x' | 'y' = variant === 'rail' ? 'y' : 'x'
 
@@ -160,7 +160,8 @@ export function WidgetDock({ widgets, variant = 'sidebar' }: WidgetDockProps) {
       {panelRect !== null &&
         createPortal(
           <div
-            className="kb-wpanel-backdrop"
+            key={activeWidgetId ?? 'none'}
+            className={cx('kb-wpanel-backdrop', { 'is-right': panelSide === 'right' })}
             style={{
               left: panelRect.x,
               top: panelRect.y,

@@ -27,6 +27,14 @@ const WIDTH_STORAGE_KEY = 'wis-widget-panel-width'
 const GRIP_WIDTH = 14
 /** Height of the accent header bar docked above the panel (reload button). */
 const HEADER_HEIGHT = 30
+/** Duration of the panel's slide-in entrance. */
+const PANEL_ANIM_MS = 220
+
+/** Slide distance from the dock edge. Capped at 48px to exactly match the
+ * backdrop's CSS slide (--wpanel-slide), so the panel keeps covering it. */
+function panelSlideDistance(panelWidth: number): number {
+  return Math.min(48, Math.round(panelWidth * 0.15))
+}
 
 interface Rect {
   x: number
@@ -98,6 +106,8 @@ export function useWidgetPanel(): {
   activeWidgetId: WidgetId | null
   toggleWidget: (widget: Widget) => void
   panelRect: { x: number; y: number; width: number; height: number } | null
+  /** Dock side the panel grows out of (drives the backdrop grow origin). */
+  panelSide: 'left' | 'right' 
 } {
   const { data: state } = useBrowserState()
   const [activeWidgetId, setActiveWidgetId] = useState<WidgetId | null>(null)
@@ -187,6 +197,50 @@ export function useWidgetPanel(): {
     [showGrip, showHeader],
   )
 
+  /** Animation handle for the panel's grow-outward entrance. */
+  const panelAnimRef = useRef<number | null>(null)
+  const cancelPanelAnim = useCallback(() => {
+    if (panelAnimRef.current !== null) {
+      cancelAnimationFrame(panelAnimRef.current)
+      panelAnimRef.current = null
+    }
+  }, [])
+
+  /**
+   * Slide the panel in from the dock edge at full size (position-only, like
+   * the split-pane entrance, so the page never reflows mid-animation; plain
+   * ease-out, no spring). The header tracks the same offset, written via the
+   * raw bounds command first (already ensured by showChrome) so it lands in
+   * the same IPC drain as the panel write. id null animates the header
+   * alone: create paths reveal the panel itself at full size on load.
+   */
+  const animatePanelIn = useCallback(
+    (id: WidgetId | null, panel: Rect) => {
+      cancelPanelAnim()
+      const dir = sideRef.current === 'left' ? -1 : 1
+      const dist = panelSlideDistance(panel.width)
+      const t0 = performance.now()
+      const step = (now: number) => {
+        const t = Math.min(1, (now - t0) / PANEL_ANIM_MS)
+        const e = 1 - Math.pow(1 - t, 3)
+        const x = Math.round(panel.x + dir * dist * (1 - e))
+        void commands
+          .setOverlayBounds(
+            'widgetheader', x, panel.y - HEADER_HEIGHT, panel.width, HEADER_HEIGHT,
+          )
+          .catch(() => undefined)
+        if (id !== null) {
+          void commands
+            .setWidgetPanelBounds(id, x, panel.y, panel.width, panel.height)
+            .catch(() => undefined)
+        }
+        panelAnimRef.current = t < 1 ? requestAnimationFrame(step) : null
+      }
+      panelAnimRef.current = requestAnimationFrame(step)
+    },
+    [cancelPanelAnim],
+  )
+
   /** Destroy one panel webview and forget it. */
   const destroyOne = useCallback(
     (id: WidgetId) => {
@@ -194,6 +248,7 @@ export function useWidgetPanel(): {
       liveRef.current.delete(id)
       void commands.closeWidgetPanel(id).catch(() => undefined)
       if (visibleRef.current === id) {
+        cancelPanelAnim()
         visibleRef.current = null
         setActiveWidgetId(null)
         setPanelRect(null)
@@ -205,6 +260,7 @@ export function useWidgetPanel(): {
 
   /** Destroy every live panel (workspace switch, unmount). */
   const destroyAll = useCallback(() => {
+    cancelPanelAnim()
     for (const t of timersRef.current.values()) window.clearTimeout(t)
     timersRef.current.clear()
     liveRef.current.clear()
@@ -250,12 +306,13 @@ export function useWidgetPanel(): {
       destroyOne(visible)
       return
     }
+    cancelPanelAnim()
     visibleRef.current = null
     setActiveWidgetId(null)
     setPanelRect(null)
     hideGrip()
     hideOne(visible)
-  }, [ephemeral, destroyOne, hideGrip, hideOne])
+  }, [cancelPanelAnim, ephemeral, destroyOne, hideGrip, hideOne])
 
   /**
    * Evict least-recently-used hidden panels until at most `target` remain.
@@ -318,13 +375,31 @@ export function useWidgetPanel(): {
         // Hide the previous panel first: panels created later stack higher,
         // so revealing the target under a still-visible newer panel would
         // leave it covered.
+        const stale = () => visibleRef.current !== widget.id
         if (previous !== null) hideOne(previous)
         await showChrome(geo)
+        if (stale()) {
+          hideGrip()
+          return
+        }
+        const off = document.body.classList.contains('motion-off')
+        const grow = !off && wasLive
+        // Create paths: slide the header strip in step with the backdrop.
+        if (!off && !grow) animatePanelIn(null, panel)
+        const dir = sideRef.current === 'left' ? -1 : 1
+        const sx = grow ? panel.x + dir * panelSlideDistance(panel.width) : panel.x
         if (wasLive) {
           const shown = await commands.showWidgetPanel(
-            widget.id, panel.x, panel.y, panel.width, panel.height,
+            widget.id, sx, panel.y, panel.width, panel.height,
           )
-          if (!shown) {
+          if (stale()) {
+            hideOne(widget.id)
+            hideGrip()
+            return
+          }
+          if (shown) {
+            if (grow) animatePanelIn(widget.id, panel)
+          } else {
             await commands.openWidgetPanel(
               widget.id, url, panel.x, panel.y, panel.width, panel.height, dark,
             )
@@ -334,10 +409,23 @@ export function useWidgetPanel(): {
             widget.id, url, panel.x, panel.y, panel.width, panel.height, dark,
           )
         }
+        if (stale()) {
+          hideOne(widget.id)
+          hideGrip()
+        }
       }
       void run().catch(fail)
     },
-    [dismiss, clearTimer, evictDownTo, hideOne, showChrome, hideGrip],
+    [
+      dismiss,
+      clearTimer,
+      evictDownTo,
+      hideOne,
+      showChrome,
+      hideGrip,
+      animatePanelIn,
+      cancelPanelAnim,
+    ],
   )
 
   // Grip drags from the overlay surface: resize the visible panel live,
@@ -381,6 +469,7 @@ export function useWidgetPanel(): {
 
     track(
       listen(WRESIZE_START_EVENT, () => {
+        cancelPanelAnim()
         if (visibleRef.current === null) return
         const geo = computeGeometry(sideRef.current, widthRef.current)
         if (!geo) return
@@ -482,5 +571,5 @@ export function useWidgetPanel(): {
   // Reclaim every webview when the dock unmounts (e.g. layout switch).
   useEffect(() => destroyAll, [destroyAll])
 
-  return { activeWidgetId, toggleWidget, panelRect }
+  return { activeWidgetId, toggleWidget, panelRect, panelSide: side }
 }

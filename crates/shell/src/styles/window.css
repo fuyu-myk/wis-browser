@@ -62,6 +62,13 @@
 }
 .pane-split.is-row { flex-direction: row; }
 .pane-split.is-col { flex-direction: column; }
+/* Split entrance: the chrome skeleton glides open while the webviews are
+   tucked away (same preview look as divider drags); they reveal at the
+   final rects when the glide settles. Duration matches PANE_GLIDE_MS. */
+.pane-split.is-entering > .pane-slot,
+.pane-split.is-exiting > .pane-slot {
+  transition: flex-grow 260ms var(--ease-standard);
+}
 .pane-slot {
   display: flex;
   min-width: 0;
@@ -3445,7 +3452,16 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   background: var(--surface-raised);
   border-radius: 0 0 12px 12px;
   pointer-events: none;
+  /* Slides in from the dock edge in step with the panel entrance. */
+  --wpanel-slide: -48px;
+  animation: kb-wpanel-slide 220ms var(--ease-standard);
 }
+.kb-wpanel-backdrop.is-right { --wpanel-slide: 48px; }
+@keyframes kb-wpanel-slide {
+  from { transform: translateX(var(--wpanel-slide)); opacity: 0.5; }
+  to { transform: translateX(0); opacity: 1; }
+}
+body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 
 /* Widget panel header bar (overlay-widgetheader): an accent-coloured strip
    docked above the visible panel, hosting the reload button. */

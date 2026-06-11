@@ -8,7 +8,7 @@ import { useOverlay } from '@/hooks/useOverlay'
 import { useTabWebviews, type Bounds, type WebviewLayout } from '@/hooks/useTabWebviews'
 
 import { FOCUS_LAUNCHPAD_SEARCH_EVENT } from '@/components/NewTabPage'
-import { PaneView, type PaneSide } from '@/components/SplitPaneHost'
+import { PANE_GLIDE_MS, PaneView, type PaneSide } from '@/components/SplitPaneHost'
 
 const KEYACTION_EVENT = 'wis-keyaction'
 const FIND_FOCUS_EVENT = 'wis-overlay-find-focus'
@@ -58,6 +58,72 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     return activeTab ? { kind: 'leaf', tab: activeTab.id } : null
   }, [activeWorkspace?.pane_tree, activeTab])
   const treeKey = useMemo(() => JSON.stringify(effectiveTree), [effectiveTree])
+
+  // A split adding a pane while others persist plays the chrome-side glide.
+  const leaves = useMemo(() => leafIdsOf(effectiveTree), [effectiveTree])
+  const prevLeavesRef = useRef<ReadonlySet<TabId>>(new Set())
+  const prevTreeRef = useRef<PaneNode | null>(null)
+  const prevLeaves = prevLeavesRef.current
+  const paneDiff = useMemo(() => {
+    const added = new Set<TabId>()
+    const removed = new Set<TabId>()
+    let persisting = false
+    for (const id of leaves) {
+      if (prevLeaves.has(id)) persisting = true
+      else added.add(id)
+    }
+    for (const id of prevLeaves) {
+      if (!leaves.has(id)) removed.add(id)
+    }
+    return { added, removed, persisting }
+  }, [leaves, prevLeaves])
+  const motionOff = document.body.classList.contains('motion-off')
+  const newLeafIds =
+    !motionOff && paneDiff.persisting && paneDiff.added.size > 0 && paneDiff.removed.size === 0
+      ? paneDiff.added
+      : EMPTY_LEAVES
+  const [paneAnim, setPaneAnim] = useState(false)
+  const paneAnimRef = useRef(false)
+  if (newLeafIds.size > 0) paneAnimRef.current = true
+  const paneAnimTimerRef = useRef<number | null>(null)
+  // Removals (pane close, Cmd+Opt+U unsplit) keep painting the outgoing
+  // tree while its closing slots glide shut, then commit the new tree.
+  const [exitAnim, setExitAnim] = useState<{
+    tree: PaneNode
+    closing: ReadonlySet<TabId>
+  } | null>(null)
+  const wantExit =
+    !motionOff &&
+    paneDiff.persisting &&
+    paneDiff.removed.size > 0 &&
+    paneDiff.added.size === 0 &&
+    prevTreeRef.current !== null &&
+    prevTreeRef.current.kind === 'split'
+  if (wantExit && exitAnim === null && prevTreeRef.current !== null) {
+    setExitAnim({ tree: prevTreeRef.current, closing: paneDiff.removed })
+    paneAnimRef.current = true
+  }
+  useLayoutEffect(() => {
+    prevLeavesRef.current = leaves
+    prevTreeRef.current = effectiveTree
+  }, [leaves, effectiveTree])
+  useLayoutEffect(() => {
+    if (newLeafIds.size === 0 && exitAnim === null) return
+    setPaneAnim(true)
+    if (paneAnimTimerRef.current !== null) window.clearTimeout(paneAnimTimerRef.current)
+    paneAnimTimerRef.current = window.setTimeout(() => {
+      paneAnimTimerRef.current = null
+      paneAnimRef.current = false
+      setPaneAnim(false)
+      setExitAnim(null)
+    }, PANE_GLIDE_MS + 60)
+  }, [newLeafIds, exitAnim])
+  useEffect(
+    () => () => {
+      if (paneAnimTimerRef.current !== null) window.clearTimeout(paneAnimTimerRef.current)
+    },
+    [],
+  )
 
   const createTabs = useMemo(
     () => workspaceTabs.filter((t) => !isChromeUrl(t.url)),
@@ -161,7 +227,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     const host = hostRef.current
     if (!host) return
     const measure = () => {
-      if (resizingRef.current || draggingRef.current) {
+      if (resizingRef.current || draggingRef.current || paneAnimRef.current) {
         syncLayout(new Map<TabId, Bounds>(), null)
         return
       }
@@ -203,7 +269,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
       window.removeEventListener('resize', onResize)
       document.removeEventListener('transitionend', onTransitionEnd, true)
     }
-  }, [treeKey, focusWebviewId, syncLayout, resizing, draggingTab])
+  }, [treeKey, focusWebviewId, syncLayout, resizing, draggingTab, paneAnim])
 
   // Compute the bottom strip's bounds in window coordinates from the content
   // host. The find overlay surface fills this strip.
@@ -304,7 +370,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     <div ref={hostRef} className="kb-content-host">
       {effectiveTree ? (
         <PaneView
-          node={effectiveTree}
+          node={exitAnim?.tree ?? effectiveTree}
           path={[]}
           tabsById={tabsById}
           focusedId={activeWorkspace?.active_tab_id ?? null}
@@ -313,8 +379,27 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
           dragActive={!!draggingTab}
           movedTabId={draggingTab}
           onPaneDrop={handlePaneDrop}
+          newLeafIds={newLeafIds}
+          closingLeafIds={exitAnim?.closing ?? EMPTY_LEAVES}
         />
       ) : null}
     </div>
   )
+}
+
+const EMPTY_LEAVES: ReadonlySet<TabId> = new Set()
+
+/** Collect the tab ids of every leaf in a pane tree. */
+function leafIdsOf(node: PaneNode | null): ReadonlySet<TabId> {
+  const out = new Set<TabId>()
+  const walk = (n: PaneNode | null): void => {
+    if (!n) return
+    if (n.kind === 'leaf') out.add(n.tab)
+    else {
+      walk(n.first)
+      walk(n.second)
+    }
+  }
+  walk(node)
+  return out
 }

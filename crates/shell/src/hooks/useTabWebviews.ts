@@ -415,3 +415,4 @@ function applyBounds(wv: Webview, bounds: Bounds): void {
     .setTabWebviewBounds(wv.label, bounds.x, bounds.y, bounds.width, bounds.height)
     .catch(() => undefined)
 }
+
