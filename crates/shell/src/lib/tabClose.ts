@@ -1,8 +1,9 @@
 /**
  * Animated tab close, usable from any chrome surface: broadcasts the closing
- * id (Tauri event, so overlay webviews can initiate too), lets every tab list
- * play its exit, then issues the close command. The backend's
- * `browser-state-changed` refresh removes the row after the animation.
+ * id (Tauri event, so overlay webviews can initiate too) and issues the close
+ * command immediately (optimistic: the webview tears down and the new active
+ * tab takes over on the spot). The tab strips keep rendering a ghost row for
+ * the closed tab until its exit animation has played.
  */
 
 import { emit, listen } from '@tauri-apps/api/event'
@@ -15,9 +16,7 @@ export const TAB_EXIT_MS = 180
 
 export function closeTabAnimated(id: TabId): void {
   void emit(TAB_CLOSING_EVENT, id).catch(() => undefined)
-  window.setTimeout(() => {
-    void commands.closeTab(id).catch(() => undefined)
-  }, TAB_EXIT_MS)
+  void commands.closeTab(id).catch(() => undefined)
 }
 
 /** Subscribe to closing-tab broadcasts; returns a cleanup function. */

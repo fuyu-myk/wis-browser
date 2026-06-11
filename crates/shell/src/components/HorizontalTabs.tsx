@@ -305,9 +305,35 @@ export function HorizontalTabs({
     setRenamingId(null)
   }
 
+  // Optimistic close: the backend removes the tab immediately, while the
+  // strip keeps a ghost row in place until the exit animation finishes.
+  const prevTabsRef = useRef<Tab[]>(tabs)
+  const displayTabs = (() => {
+    if (closingIds.size === 0) return tabs
+    const have = new Set(tabs.map((t) => t.id))
+    const prev = prevTabsRef.current
+    const ghosts = prev.filter((t) => closingIds.has(t.id) && !have.has(t.id))
+    if (ghosts.length === 0) return tabs
+    const merged = [...tabs]
+    for (const g of ghosts) {
+      merged.splice(
+        Math.min(
+          prev.findIndex((t) => t.id === g.id),
+          merged.length,
+        ),
+        0,
+        g,
+      )
+    }
+    return merged
+  })()
+  useEffect(() => {
+    prevTabsRef.current = displayTabs
+  })
+
   const pinnedSet = new Set(pinnedTabIds)
-  const pinnedTabs = tabs.filter((t) => pinnedSet.has(t.id))
-  const stripTabs = tabs.filter((t) => !pinnedSet.has(t.id))
+  const pinnedTabs = displayTabs.filter((t) => pinnedSet.has(t.id))
+  const stripTabs = displayTabs.filter((t) => !pinnedSet.has(t.id))
 
   // Sections: folders (islands) grouped together, then loose tabs.
   const folderGroups: FolderGroup[] = [...folders]

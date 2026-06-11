@@ -212,12 +212,38 @@ export function TabList({
     onFolderEditingChange?.(editingFolders.size > 0)
   }, [editingFolders, onFolderEditingChange])
 
+  // Optimistic close: the backend removes the tab immediately, while the
+  // strip keeps a ghost row in place until the exit animation finishes.
+  const prevTabsRef = useRef<Tab[]>(tabs)
+  const displayTabs = (() => {
+    if (closingIds.size === 0) return tabs
+    const have = new Set(tabs.map((t) => t.id))
+    const prev = prevTabsRef.current
+    const ghosts = prev.filter((t) => closingIds.has(t.id) && !have.has(t.id))
+    if (ghosts.length === 0) return tabs
+    const merged = [...tabs]
+    for (const g of ghosts) {
+      merged.splice(
+        Math.min(
+          prev.findIndex((t) => t.id === g.id),
+          merged.length,
+        ),
+        0,
+        g,
+      )
+    }
+    return merged
+  })()
+  useEffect(() => {
+    prevTabsRef.current = displayTabs
+  })
+
   const pinnedSet = new Set(pinnedTabIds)
-  const looseTabs = tabs.filter((t) => !pinnedSet.has(t.id) && t.folder_id == null)
+  const looseTabs = displayTabs.filter((t) => !pinnedSet.has(t.id) && t.folder_id == null)
   const looseIds = new Set(looseTabs.map((t) => t.id))
   const sortedFolders = [...folders].sort((a, b) => a.position - b.position)
   const membersOf = (folderId: TabFolderId) =>
-    tabs.filter((t) => !pinnedSet.has(t.id) && t.folder_id === folderId)
+    displayTabs.filter((t) => !pinnedSet.has(t.id) && t.folder_id === folderId)
 
   const folderZoneAt = (x: number, y: number): TabFolderId | undefined => {
     const root = rootRef.current
