@@ -17,6 +17,7 @@ import { useEffect, useRef } from 'react'
 import { listen } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
+import { closeTabAnimated } from '@/lib/tabClose'
 import type { AccentColor, BrowserState, KeyAction, PaneNode, Tab, TabId, Workspace, WorkspaceId } from '@/bindings/types'
 import { HISTORY_URL, NEW_TAB_URL, SETTINGS_URL } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
@@ -108,17 +109,23 @@ export function useKeyActions(): void {
 // double-mount race.
 // ---------------------------------------------------------------------------
 
-const activeDispatchRef: { current: ((action: KeyAction) => void) | null } = {
-  current: null,
+type KeyActionGlobals = typeof globalThis & {
+  __wisKeyactionDispatch?: (action: KeyAction) => void
+  __wisKeyactionListening?: boolean
+}
+const keyactionGlobals = globalThis as KeyActionGlobals
+
+const activeDispatchRef = {
+  set current(fn: ((action: KeyAction) => void) | null) {
+    keyactionGlobals.__wisKeyactionDispatch = fn ?? undefined
+  },
 }
 
-let keyActionListenerEnsured = false
-
 function ensureKeyActionListener(): void {
-  if (keyActionListenerEnsured) return
-  keyActionListenerEnsured = true
+  if (keyactionGlobals.__wisKeyactionListening) return
+  keyactionGlobals.__wisKeyactionListening = true
   void listen<KeyActionEvent>(KEYACTION_EVENT, (e) => {
-    activeDispatchRef.current?.(e.payload.action)
+    keyactionGlobals.__wisKeyactionDispatch?.(e.payload.action)
   })
 }
 
@@ -178,7 +185,7 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
     }
     case 'close_tab': {
       if (!ctx.activeTab) return
-      await commands.closeTab(ctx.activeTab.id)
+      closeTabAnimated(ctx.activeTab.id)
       ctx.invalidate()
       return
     }
@@ -280,7 +287,7 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
     }
     case 'close_pane': {
       if (!ctx.activeTab) return
-      await commands.closeTab(ctx.activeTab.id)
+      closeTabAnimated(ctx.activeTab.id)
       ctx.invalidate()
       return
     }

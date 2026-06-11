@@ -189,6 +189,7 @@ export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
           <WorkspacePopover
             popRef={setPopEl}
             style={{ ...style, visibility: placed ? 'visible' : 'hidden' }}
+            placed={placed}
             workspaces={state.workspaces}
             palette={state.settings.custom_accent_palette}
             activeId={state.active_workspace_id}
@@ -204,6 +205,8 @@ export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
 
 interface WorkspacePopoverProps {
   workspaces: Workspace[]
+  /** Position resolved; the enter animation waits for this. */
+  placed: boolean
   /** Saved custom colours shared across workspaces. */
   palette: string[]
   activeId: WorkspaceId
@@ -218,6 +221,7 @@ interface WorkspacePopoverProps {
 
 function WorkspacePopover({
   workspaces,
+  placed,
   palette,
   activeId,
   onPick,
@@ -308,7 +312,7 @@ function WorkspacePopover({
   return (
     <div
       ref={popRef}
-      className="kb-ws-pop"
+      className={cx('kb-ws-pop', { 'is-in': placed })}
       role="dialog"
       aria-label="Workspaces"
       style={style}

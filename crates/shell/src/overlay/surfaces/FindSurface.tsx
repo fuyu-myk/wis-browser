@@ -15,6 +15,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
+const SINK_MS = 220
+
 import { commands } from '@/bindings/commands'
 import type { KeyAction, Tab } from '@/bindings/types'
 import { cx } from '@/lib/cx'
@@ -70,17 +72,23 @@ export function FindSurface() {
     [],
   )
 
+  // Open/visible state drives a CSS transition.
+  const [open, setOpen] = useState(false)
+
   const requestClose = useCallback(() => {
     setQuery('')
     setStatus('idle')
     if (activeTabIdRef.current) {
       void commands.tabFindClear(activeTabIdRef.current as Tab['id']).catch(() => undefined)
     }
-    // Tell the chrome so it stops tracking the overlay as visible (and
-    // skips bounds resync on window resize). Tauri events propagate to
-    // every webview, including this one's listeners.
-    void emit(FIND_CLOSE_REQUEST_EVENT)
-    void commands.hideOverlay('find').catch(() => undefined)
+    // Sink to the bottom edge, then tell the chrome so it stops tracking the
+    // overlay as visible (and skips bounds resync on window resize). Tauri
+    // events propagate to every webview, including this one's listeners.
+    setOpen(false)
+    window.setTimeout(() => {
+      void emit(FIND_CLOSE_REQUEST_EVENT)
+      void commands.hideOverlay('find').catch(() => undefined)
+    }, SINK_MS)
   }, [])
 
   // Focus the input the moment the chrome tells the surface to.
@@ -88,6 +96,7 @@ export function FindSurface() {
     let unlisten: UnlistenFn | null = null
     let cancelled = false
     void listen<void>(FIND_FOCUS_EVENT, () => {
+      setOpen(true)
       void commands.focusWebview('overlay-find').catch(() => undefined)
       const focusInput = () => {
         const el = inputRef.current
@@ -146,7 +155,10 @@ export function FindSurface() {
   const glassOn = state?.settings.glass_enabled ?? true
 
   return (
-    <div className={cx('kb-findbar-wrap', { 'glass-on': glassOn })} role="search">
+    <div
+      className={cx('kb-findbar-wrap', { 'glass-on': glassOn, 'is-open': open })}
+      role="search"
+    >
       <div
         className={cx('kb-findbar-pill', {
           'is-no-match': status === 'no_match',

@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import { useMutation } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
@@ -26,6 +28,8 @@ interface NavRowProps {
  */
 export function NavRow({ activeTab, circular = false }: NavRowProps) {
   const btnClass = circular ? 'kb-circle-btn' : 'kb-iconbtn'
+  // Bumped per press; keying the icon wrapper replays the spin each time.
+  const [spinNonce, setSpinNonce] = useState(0)
 
   const back = useMutation({
     mutationFn: (id: Tab['id']) => commands.tabGoBack(id),
@@ -66,9 +70,19 @@ export function NavRow({ activeTab, circular = false }: NavRowProps) {
         className={btnClass}
         aria-label="Refresh"
         disabled={!navigable}
-        onClick={() => activeTab && reload.mutate(activeTab.id)}
+        onClick={() => {
+          if (!activeTab) return
+          reload.mutate(activeTab.id)
+          setSpinNonce((n) => n + 1)
+        }}
       >
-        <RefreshIcon />
+        <span
+          key={spinNonce}
+          className={cx('kb-reload-spin', { 'is-spinning': spinNonce > 0 })}
+          aria-hidden
+        >
+          <RefreshIcon />
+        </span>
       </button>
     </div>
   )

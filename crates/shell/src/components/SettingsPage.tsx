@@ -238,6 +238,26 @@ export function SettingsPage() {
         </div>
         <div className="row">
           <div className="l">
+            <span>Motion</span>
+            <span>
+              Reduced keeps the same timings without the springiness; Off
+              disables non-essential animation. Follows the OS reduce-motion
+              preference when set to Full.
+            </span>
+          </div>
+          <Segmented
+            value={settings.motion}
+            onChange={(motion) => update.mutate({ motion })}
+            options={[
+              { value: 'full' as const, label: 'Full' },
+              { value: 'reduced' as const, label: 'Reduced' },
+              { value: 'off' as const, label: 'Off' },
+            ]}
+            ariaLabel="Animation level"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
             <span>Liquid glass</span>
             <span>Blur and translucency</span>
           </div>

@@ -39,3 +39,16 @@ pub enum RailSide {
     Left,
     Right,
 }
+
+/// How much chrome animation plays. `Reduced` keeps every duration but
+/// flattens springy easings (no overshoot); `Off` disables non-essential
+/// motion entirely. The OS reduce-motion preference maps `Full` down to
+/// `Reduced` at apply time.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MotionLevel {
+    #[default]
+    Full,
+    Reduced,
+    Off,
+}

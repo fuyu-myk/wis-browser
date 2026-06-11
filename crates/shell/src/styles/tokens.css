@@ -35,6 +35,16 @@
 
   --transition-speed: 220ms;
 
+  /* Motion tokens: every chrome transition draws from these, so the motion
+     setting can retune the whole app in one place. Reduced motion keeps the
+     durations and flattens the springy easings to standard. */
+  --dur-fast: 120ms;
+  --dur-med: 200ms;
+  --dur-slow: 280ms;
+  --ease-standard: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0.9, 0.2, 1.2);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
   --sb-w: 240px;
 }
 

@@ -37,6 +37,8 @@ export type SearchEngine = 'duckduckgo' | 'google' | 'bing'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
+export type MotionLevel = 'full' | 'reduced' | 'off'
+
 export type PrivacyMode = 'strict' | 'balanced' | 'permissive'
 
 export type SplitDir = 'horizontal' | 'vertical'
@@ -325,6 +327,8 @@ export interface UserSettings {
   custom_themes: CustomTheme[]
   /** Active custom theme; null = built-in accent presets. */
   active_theme: ThemeId | null
+  /** Chrome animation level. */
+  motion: MotionLevel
 }
 
 /**
@@ -369,6 +373,7 @@ export interface UserSettingsPatch {
   custom_accent_palette?: string[]
   /** Replaces the whole theme list when present. */
   custom_themes?: CustomTheme[]
+  motion?: MotionLevel
 }
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import {
+import { useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -8,9 +8,13 @@ import {
 } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
+const ISLAND_EXIT_MS = 200
+
 import { commands } from '@/bindings/commands'
+import { closeTabAnimated, onTabClosing, TAB_EXIT_MS } from '@/lib/tabClose'
 import type {
   AccentColor,
+  BrowserState,
   RailSide,
   Tab,
   TabFolder,
@@ -167,6 +171,27 @@ export function HorizontalTabs({
   const setCollapsed = useMutation({
     mutationFn: (a: { folderId: TabFolderId; collapsed: boolean }) =>
       commands.setTabFolderCollapsed(workspaceId, a.folderId, a.collapsed),
+    // Optimistic: the island and the strip reflow on this frame instead of
+    // after the IPC round trip.
+    onMutate: (a) => {
+      qc.setQueryData<BrowserState>([...BROWSER_STATE_KEY], (old) =>
+        old
+          ? {
+              ...old,
+              workspaces: old.workspaces.map((ws) =>
+                ws.id === workspaceId
+                  ? {
+                      ...ws,
+                      tab_folders: ws.tab_folders.map((f) =>
+                        f.id === a.folderId ? { ...f, collapsed: a.collapsed } : f,
+                      ),
+                    }
+                  : ws,
+              ),
+            }
+          : old,
+      )
+    },
     onSuccess: invalidate,
   })
   const reorderFolders = useMutation({
@@ -198,6 +223,22 @@ export function HorizontalTabs({
   const folderReorderRef = useRef(false)
   const [folderReorderDrop, setFolderReorderDrop] = useState<number | null>(null)
   const [renamingId, setRenamingId] = useState<TabFolderId | null>(null)
+  const [closingIslandId, setClosingIslandId] = useState<TabFolderId | null>(null)
+  const [closingIds, setClosingIds] = useState<ReadonlySet<TabId>>(new Set())
+  useEffect(
+    () =>
+      onTabClosing((id) => {
+        setClosingIds((prev) => new Set(prev).add(id))
+        window.setTimeout(() => {
+          setClosingIds((prev) => {
+            const next = new Set(prev)
+            next.delete(id)
+            return next
+          })
+        }, TAB_EXIT_MS + 400)
+      }),
+    [],
+  )
   const [draft, setDraft] = useState('')
   const renameInputRef = useRef<HTMLInputElement>(null)
   // Set true right before an Escape-cancel so the input's blur skips saving.
@@ -235,7 +276,7 @@ export function HorizontalTabs({
   let collapsedCount = 0
   let expandedCount = 0
   for (const g of folderGroups) {
-    if (g.folder.collapsed) collapsedCount += 1
+    if (g.folder.collapsed || g.folder.id === closingIslandId) collapsedCount += 1
     else {
       expandedCount += 1
       sizableTabs.push(...g.members)
@@ -490,6 +531,7 @@ export function HorizontalTabs({
         role="button"
         tabIndex={0}
         className={cx('h-tab', {
+          'is-closing': closingIds.has(tab.id),
           active: isActive,
           asleep: discardedTabs.has(tab.id) && !isActive,
           'as-urlbar': isActive && integrateUrlBar,
@@ -532,7 +574,7 @@ export function HorizontalTabs({
           aria-label="Close tab"
           onClick={(e) => {
             e.stopPropagation()
-            close.mutate(tab.id)
+            closeTabAnimated(tab.id)
           }}
         >
           <XIcon />
@@ -630,13 +672,20 @@ export function HorizontalTabs({
         </button>
       )
     }
+    const closing = closingIslandId === folder.id
     const memberSum = members.reduce((s, m) => s + sizeFor(m.id === activeTabId), 0)
-    const islandW = nameW + memberSum + members.length * GAP_PX + ISLAND_PILL_PAD * 2
+    const islandW = closing
+      ? ISLAND_CIRCLE_W
+      : nameW + memberSum + members.length * GAP_PX + ISLAND_PILL_PAD * 2
     return (
       <div
         key={folder.id}
         data-island-id={folder.id}
-        className={cx('h-island', { 'is-drop': folderDropHint === folder.id, ...reorderClasses })}
+        className={cx('h-island', {
+          'is-drop': folderDropHint === folder.id,
+          'is-closing': closingIslandId === folder.id,
+          ...reorderClasses,
+        })}
         style={{ flex: `0 0 ${islandW}px` }}
       >
         <div
@@ -666,7 +715,11 @@ export function HorizontalTabs({
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation()
-              toggleCollapsed(true)
+              setClosingIslandId(folder.id)
+              window.setTimeout(() => {
+                toggleCollapsed(true)
+                setClosingIslandId(null)
+              }, ISLAND_EXIT_MS)
             }}
           >
             <CollapseChevron />
@@ -712,12 +765,20 @@ export function HorizontalTabs({
   const pinnedEls = pinnedTabs.map((tab, i) => renderPinCircle(tab, i))
   const folderEls = folderGroups.map((g, i) => renderFolder(g, i))
   const looseEls = looseTabs.map((tab, i) => renderTab(tab, { looseIndex: i }))
+  // Loose tabs live in their own flex item sized by the container, so their
+  // width animations can never push the folders and pinned circles around.
+  const looseGroup =
+    looseEls.length > 0 ? (
+      <div className="h-loose-group" key="loose-group">
+        {looseEls}
+      </div>
+    ) : null
   // Rail-side ordering: pinned sits nearest the rail. Left rail →
   // pinned | folders | loose; right rail → loose | folders | pinned.
   const ordered =
     railSide === 'right'
-      ? [...looseEls, ...folderEls, ...pinnedEls]
-      : [...pinnedEls, ...folderEls, ...looseEls]
+      ? [looseGroup, ...folderEls, ...pinnedEls]
+      : [...pinnedEls, ...folderEls, looseGroup]
 
   return (
     <div

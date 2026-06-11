@@ -21,13 +21,23 @@ export function useCommandPaletteOverlay(): void {
   const overlay = useOverlay('palette')
   const openRef = useRef(false)
 
+  // The palette centers over the content (webview) area.
+  const contentRect = () => {
+    const host = document.querySelector('.kb-content-host')
+    const r = host?.getBoundingClientRect()
+    if (!r || r.width === 0) {
+      return { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }
+    }
+    return {
+      x: Math.round(r.x),
+      y: Math.round(r.y),
+      width: Math.round(r.width),
+      height: Math.round(r.height),
+    }
+  }
+
   const open = useCallback(async () => {
-    await overlay.show({
-      x: 0,
-      y: 0,
-      width: window.innerWidth,
-      height: window.innerHeight,
-    })
+    await overlay.show(contentRect())
     openRef.current = true
     await emit(PALETTE_FOCUS_EVENT).catch(() => undefined)
   }, [overlay])
@@ -51,12 +61,7 @@ export function useCommandPaletteOverlay(): void {
   useEffect(() => {
     const onResize = () => {
       if (!openRef.current) return
-      void overlay.show({
-        x: 0,
-        y: 0,
-        width: window.innerWidth,
-        height: window.innerHeight,
-      })
+      void overlay.show(contentRect())
     }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)

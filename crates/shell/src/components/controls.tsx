@@ -5,6 +5,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -54,8 +55,27 @@ export function Segmented<T extends string>({
   options,
   ariaLabel,
 }: SegmentedProps<T>) {
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const [thumb, setThumb] = useState<{ left: number; width: number } | null>(null)
+
+  // The sliding thumb tracks the checked option's box; measured because
+  // option widths are content-driven.
+  useLayoutEffect(() => {
+    const btn = rootRef.current?.querySelector<HTMLButtonElement>(
+      'button[aria-checked="true"]',
+    )
+    if (btn) setThumb({ left: btn.offsetLeft, width: btn.offsetWidth })
+  }, [value, options])
+
   return (
-    <div role="radiogroup" aria-label={ariaLabel} className="kb-segmented">
+    <div role="radiogroup" aria-label={ariaLabel} className="kb-segmented" ref={rootRef}>
+      {thumb && (
+        <span
+          className="kb-segmented-thumb"
+          style={{ transform: `translateX(${thumb.left}px)`, width: thumb.width }}
+          aria-hidden
+        />
+      )}
       {options.map((opt) => (
         <button
           key={opt.value}

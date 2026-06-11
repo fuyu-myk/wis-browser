@@ -50,10 +50,25 @@ export function useThemeApply(settings: UserSettings | undefined) {
     body.classList.toggle('compact', settings.compact)
     body.classList.toggle('url-glow-on', settings.url_bar_focus_glow)
 
-    if (settings.theme !== 'system') return
-    const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const onChange = () => applyMode()
-    media.addEventListener('change', onChange)
-    return () => media.removeEventListener('change', onChange)
+    // Motion tier: the OS reduce-motion preference caps Full at Reduced.
+    const reduceMedia = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const applyMotion = () => {
+      const effective =
+        settings.motion === 'full' && reduceMedia.matches ? 'reduced' : settings.motion
+      body.classList.toggle('motion-reduced', effective === 'reduced')
+      body.classList.toggle('motion-off', effective === 'off')
+    }
+    applyMotion()
+    reduceMedia.addEventListener('change', applyMotion)
+
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+    const onThemeChange = () => applyMode()
+    if (settings.theme === 'system') {
+      themeMedia.addEventListener('change', onThemeChange)
+    }
+    return () => {
+      reduceMedia.removeEventListener('change', applyMotion)
+      themeMedia.removeEventListener('change', onThemeChange)
+    }
   }, [settings])
 }

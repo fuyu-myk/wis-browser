@@ -31,7 +31,7 @@
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .kb-urlbar-key:hover { background: var(--overlay); color: var(--primary-400); }
 .kb-urlbar-key:disabled { opacity: 0.5; cursor: default; }
@@ -126,7 +126,7 @@
   margin: auto;
   border-radius: 2px;
   background: transparent;
-  transition: background 0.12s;
+  transition: background var(--dur-fast);
 }
 .pane-divider.is-vertical::after { width: 2px; height: 92%; }
 .pane-divider.is-horizontal::after { width: 92%; height: 2px; }
@@ -314,7 +314,7 @@ body.is-overlay-surface:not(.glass-on) {
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .kb-panemenu-btn:hover {
   background: color-mix(in oklab, var(--primary-400) 18%, transparent);
@@ -347,13 +347,13 @@ body.is-overlay-surface:not(.glass-on) {
 }
 [data-mode="dark"] .kb-tabctx { background: #26262e; }
 .kb-tabctx.glass-on {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.72);
   border-color: rgba(255, 255, 255, 0.30);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
   backdrop-filter: blur(28px) saturate(180%);
 }
 [data-mode="dark"] .kb-tabctx.glass-on {
-  background: rgba(28, 28, 34, 0.85);
+  background: rgba(28, 28, 34, 0.72);
   border-color: rgba(255, 255, 255, 0.08);
 }
 .kb-tabctx-split { display: flex; align-items: center; justify-content: center; gap: 3px; }
@@ -406,7 +406,6 @@ body.is-overlay-surface:not(.glass-on) {
   align-items: center;
   gap: 8px;
   max-width: calc(100% - 32px);
-  animation: kb-findbar-in 140ms cubic-bezier(.2,.9,.2,1.2);
 }
 @keyframes kb-findbar-in {
   from { opacity: 0; transform: translate(-50%, 8px); }
@@ -488,7 +487,7 @@ body.is-overlay-surface:not(.glass-on) {
   cursor: pointer;
   flex-shrink: 0;
   box-shadow: var(--shadow-pop);
-  transition: background .12s, color .12s, transform .12s;
+  transition: background var(--dur-fast), color var(--dur-fast), transform var(--dur-fast);
 }
 .kb-findbar-circle:hover {
   background: color-mix(in oklab, var(--chrome-bg) 80%, white 20%);
@@ -791,7 +790,7 @@ body.is-overlay-surface:not(.glass-on) {
   font: inherit;
   font-size: 12px;
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, opacity 0.12s;
+  transition: background var(--dur-fast), border-color var(--dur-fast), opacity var(--dur-fast);
 }
 [data-mode="dark"] .kb-vaultmenu-btn {
   color: rgba(255, 255, 255, 0.92);
@@ -998,13 +997,13 @@ body.is-overlay-surface:not(.glass-on) {
   cursor: pointer;
   opacity: 0;
   visibility: hidden;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .kb-urlsug-x svg { width: 13px; height: 13px; }
 .kb-urlsug-row.is-active .kb-urlsug-x {
   opacity: 1;
   visibility: visible;
-  animation: kb-del-fade-in 0.12s ease;
+  animation: kb-del-fade-in var(--dur-fast) ease;
 }
 .kb-urlsug-x:hover {
   background: color-mix(in oklab, var(--danger-500, #e5484d) 16%, transparent);
@@ -1058,7 +1057,7 @@ body.is-overlay-surface:not(.glass-on) {
   background: var(--chrome-bg);
   display: grid;
   overflow: hidden;
-  transition: background 0.35s ease;
+  transition: background var(--dur-slow) ease;
 }
 /* Glass mode: the entire window carries one uniform dark frosted tint
    on top of the OS vibrancy. Inner chrome surfaces (sidebar, topbar,
@@ -1103,7 +1102,7 @@ body.is-overlay-surface:not(.glass-on) {
   position: absolute;
   top: 0; bottom: 0;
   width: 52px;
-  transition: width 0.26s cubic-bezier(.2,.7,.3,1), background 0.3s, box-shadow 0.26s;
+  transition: width var(--dur-slow) var(--ease-standard), background var(--dur-slow), box-shadow var(--dur-slow);
   z-index: 30;
   overflow: hidden;
 }
@@ -1115,7 +1114,7 @@ body.is-overlay-surface:not(.glass-on) {
 .kb-window.collapsible.layout-sidebar-left  .kb-main { padding-left: 52px; }
 .kb-window.collapsible.layout-sidebar-right .kb-main { padding-right: 52px; padding-left: 8px; }
 .kb-window.collapsible .kb-main {
-  transition: padding 0.26s cubic-bezier(.2,.7,.3,1);
+  transition: padding var(--dur-slow) var(--ease-standard);
 }
 .kb-window.collapsible.layout-sidebar-left .kb-side.is-expanded ~ .kb-main {
   padding-left: var(--sb-w);
@@ -1140,7 +1139,7 @@ body.is-overlay-surface:not(.glass-on) {
   padding: 12px 10px;
   gap: 10px;
   background: var(--chrome-tint);
-  transition: background 0.35s, border-color 0.35s;
+  transition: background var(--dur-slow), border-color var(--dur-slow);
 }
 .layout-sidebar-left  .kb-side,
 .layout-sidebar-right .kb-side { padding-top: 34px; }
@@ -1256,7 +1255,7 @@ body.is-overlay-surface:not(.glass-on) {
   color: var(--text-secondary);
   font-size: 12.5px;
   cursor: text;
-  transition: background .2s, box-shadow .15s;
+  transition: background var(--dur-med), box-shadow var(--dur-fast);
 }
 .kb-urlbar:hover { background: var(--surface-raised); }
 
@@ -1318,7 +1317,7 @@ body.is-overlay-surface:not(.glass-on) {
   border-radius: 8px;
   display: inline-flex; align-items: center; justify-content: center;
   color: var(--text-secondary);
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
   flex-shrink: 0;
 }
 .kb-iconbtn:hover { background: var(--overlay); color: var(--text-primary); }
@@ -1374,7 +1373,7 @@ body.is-overlay-surface:not(.glass-on) {
   background: var(--surface);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .kb-pinned-glyph:hover { background: var(--surface-raised); color: var(--text-primary); }
 .kb-pinned-glyph svg { width: 16px; height: 16px; color: var(--primary-500); }
@@ -1404,7 +1403,7 @@ body.is-overlay-surface:not(.glass-on) {
   background: var(--surface-raised);
   cursor: pointer;
   overflow: hidden;
-  transition: border-color 0.12s, background 0.12s;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
 }
 .kb-pinned-cell:hover { border-color: var(--border-strong); background: var(--overlay); }
 .kb-pinned-cell.active {
@@ -1439,7 +1438,7 @@ body.is-overlay-surface:not(.glass-on) {
   color: var(--text-secondary);
   cursor: pointer;
   position: relative;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
   text-align: left;
   width: 100%;
 }
@@ -1520,7 +1519,7 @@ body.is-overlay-surface:not(.glass-on) {
   border-radius: 8px;
   color: var(--text-primary);
   font-size: 12.5px;
-  transition: background .12s, color .12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
   border: 0;
   background: transparent;
   cursor: pointer;
@@ -1584,7 +1583,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   border-radius: 8px;
   cursor: pointer;
   color: var(--text-primary);
-  transition: background 0.12s;
+  transition: background var(--dur-fast);
 }
 .kb-tabfolder-head:hover { background: var(--overlay); }
 /* Selected = the target for new tabs, ringed in the theme colour. */
@@ -1610,7 +1609,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   flex-shrink: 0;
 }
 .kb-tabfolder-chevron-btn:hover { background: var(--overlay); }
-.kb-tabfolder-chevron { transition: transform 0.15s; color: var(--text-tertiary); }
+.kb-tabfolder-chevron { transition: transform var(--dur-fast); color: var(--text-tertiary); }
 .kb-tabfolder-chevron.collapsed { transform: rotate(-90deg); }
 /* Accent pill shown only when the sidebar is collapsed (folder = a colour). */
 .kb-tabfolder-dot {
@@ -1787,7 +1786,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   border-radius: 8px;
   color: var(--text-secondary);
   font-size: 12px;
-  transition: background .12s, color .12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
   border: 0;
   background: transparent;
   cursor: pointer;
@@ -1893,7 +1892,12 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   font-size: 12.5px;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background .15s, color .15s, box-shadow .15s, transform .15s;
+  /* flex-basis animates strip reflow: folder collapse, spawns, active-tab
+     sizing all glide instead of snapping. Transients stay inside
+     .h-loose-group, so folders and pinned circles never shift. */
+  transition: background var(--dur-fast), color var(--dur-fast),
+    box-shadow var(--dur-fast), transform var(--dur-fast),
+    flex-basis var(--reflow-dur, var(--dur-med)) var(--ease-standard);
   border: 2px solid transparent;
   box-sizing: border-box;
   background: color-mix(in oklab, var(--surface) 40%, transparent);
@@ -2005,7 +2009,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   border: 0;
   border-radius: 50%;
   cursor: pointer;
-  transition: transform 0.12s;
+  transition: transform var(--dur-fast);
 }
 .kb-topbar .h-island-circle:hover { transform: scale(1.08); }
 .kb-topbar .h-island-circle.active {
@@ -2037,7 +2041,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   justify-content: center;
   overflow: hidden;
   background: var(--surface-raised);
-  transition: transform 0.12s;
+  transition: transform var(--dur-fast);
 }
 [data-mode="dark"] .kb-topbar .h-pin-circle { background: rgba(255, 255, 255, 0.10); }
 .glass-on .kb-topbar .h-pin-circle { background: rgba(255, 255, 255, 0.55); }
@@ -2233,7 +2237,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   padding: 12px 10px;
   gap: 10px;
   background: var(--chrome-tint);
-  transition: width 0.26s cubic-bezier(.2,.7,.3,1), background 0.3s;
+  transition: width var(--dur-slow) var(--ease-standard), background var(--dur-slow);
   overflow: hidden;
 }
 .kb-side.kb-rail.is-left  { left: 0; padding-top: 56px; }
@@ -2287,7 +2291,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 
 .kb-window.has-rail .kb-main,
 .kb-window.has-rail .kb-topbar {
-  transition: padding 0.26s cubic-bezier(.2,.7,.3,1);
+  transition: padding var(--dur-slow) var(--ease-standard);
 }
 .kb-window.has-rail.rail-left  .kb-side.kb-rail.is-expanded ~ .kb-main {
   padding-left: var(--sb-w);
@@ -2422,7 +2426,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   box-shadow: var(--shadow-soft);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background .12s, color .12s, transform .12s;
+  transition: background var(--dur-fast), color var(--dur-fast), transform var(--dur-fast);
 }
 .glass-on .kb-circle-btn {
   background: rgba(255,255,255,0.55);
@@ -2626,7 +2630,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   font-size: 12.5px;
   border-radius: 999px;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .kb-history-scope button.is-on {
   background: var(--surface);
@@ -2682,7 +2686,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
 }
 .kb-history-btn:hover:not(:disabled) {
   background: var(--overlay);
@@ -2788,7 +2792,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   color: var(--text-tertiary);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s, background 0.12s, color 0.12s;
+  transition: opacity var(--dur-fast), background var(--dur-fast), color var(--dur-fast);
 }
 .kb-history-row:hover .kb-history-del { opacity: 1; }
 .kb-history-del:hover { background: var(--overlay); color: var(--text-primary); }
@@ -2843,7 +2847,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   background: var(--surface);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-pop);
-  animation: kb-modal-pop 140ms cubic-bezier(.2,.9,.2,1.2);
+  animation: kb-modal-pop 140ms var(--ease-emphasized);
 }
 @keyframes kb-modal-pop {
   from { opacity: 0; transform: scale(0.96); }
@@ -2877,7 +2881,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
 }
 .kb-modal-btn:hover { background: var(--overlay); color: var(--text-primary); }
 .kb-modal-btn.is-primary {
@@ -2906,7 +2910,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   font-size: 12.5px;
   border-radius: 999px;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .kb-cbd-scope button.is-on {
   background: var(--surface);
@@ -3011,12 +3015,12 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   cursor: pointer;
   opacity: 0;
   visibility: hidden;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .kb-sitedata-row.is-hover .kb-sitedata-del {
   opacity: 1;
   visibility: visible;
-  animation: kb-del-fade-in 0.12s ease;
+  animation: kb-del-fade-in var(--dur-fast) ease;
 }
 @keyframes kb-del-fade-in {
   from { opacity: 0; }
@@ -3117,7 +3121,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .kb-vault-action:hover { background: var(--overlay); color: var(--text-primary); }
 .kb-vault-del {
@@ -3126,7 +3130,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; border-radius: 6px; background: transparent;
   color: var(--text-tertiary); cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .kb-vault-del:hover { background: color-mix(in oklab, var(--danger, #e5484d) 14%, transparent); color: var(--danger, #e5484d); }
 .kb-vault-del svg { width: 13px; height: 13px; }
@@ -3364,7 +3368,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   width: 32px;
   flex-shrink: 0;
   align-self: flex-start;
-  transition: width 0.2s ease;
+  transition: width var(--dur-med) ease;
   margin-left: 1px;
 }
 .kb-window.collapsible.layout-sidebar-right .kb-side .kb-widget-dock.is-sidebar {
@@ -3413,7 +3417,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   background: transparent;
   cursor: pointer;
   padding: 0;
-  transition: background var(--transition-speed) ease, transform 0.12s ease;
+  transition: background var(--transition-speed) ease, transform var(--dur-fast) ease;
 }
 .kb-widget-btn:hover { background: var(--overlay); }
 .kb-widget-btn:active { transform: translateY(1px); }
@@ -3464,7 +3468,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   color: #fff;
   cursor: pointer;
   padding: 0;
-  transition: background 0.12s ease, transform 0.12s ease;
+  transition: background var(--dur-fast) ease, transform var(--dur-fast) ease;
 }
 .kb-wheader-reload:hover { background: rgba(255, 255, 255, 0.22); }
 .kb-wheader-reload:active { transform: rotate(45deg); }
@@ -3944,7 +3948,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
 }
 .kb-bm-pill:hover { background: var(--overlay); color: var(--text-primary); }
 .kb-bm-pill.active {
@@ -4014,7 +4018,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   cursor: pointer;
   overflow: hidden;
   padding: 0;
-  transition: border-color 0.12s, transform 0.06s;
+  transition: border-color var(--dur-fast), transform 0.06s;
 }
 .kb-bm-fav:hover { border-color: var(--border-strong); }
 .kb-bm-fav:active { transform: translateY(1px); }
@@ -4075,7 +4079,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   box-shadow: var(--shadow-soft);
   z-index: 60;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, transform 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast), transform var(--dur-fast);
 }
 .glass-on .kb-bm-fixed {
   background: rgba(255, 255, 255, 0.55);
@@ -4349,11 +4353,11 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   cursor: grab;
   color: var(--text-tertiary, #8a8a92);
   opacity: 0;
-  transition: opacity 0.12s;
+  transition: opacity var(--dur-fast);
 }
 .kb-bmmenu-folder-grip:active { cursor: grabbing; }
 .kb-bmmenu-folder-head:hover .kb-bmmenu-folder-grip { opacity: 0.7; }
-.kb-bmmenu-caret { flex-shrink: 0; transition: transform 0.12s; color: var(--text-secondary); }
+.kb-bmmenu-caret { flex-shrink: 0; transition: transform var(--dur-fast); color: var(--text-secondary); }
 .kb-bmmenu-caret.open { transform: rotate(90deg); }
 .kb-bmmenu-folder-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .kb-bmmenu-folder-count { font-size: 11px; color: var(--text-tertiary, #8a8a92); }
@@ -4487,7 +4491,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   box-shadow: var(--shadow-pop);
   color: var(--text-primary);
   font-size: 14px;
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
 }
 .kb-omnisearch svg { width: 16px; height: 16px; opacity: 0.7; flex-shrink: 0; }
 .kb-omnisearch:focus-within {
@@ -4554,7 +4558,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   justify-content: center;
   background: var(--surface-raised);
   box-shadow: var(--shadow-soft);
-  transition: transform .15s, background .15s;
+  transition: transform var(--dur-fast), background var(--dur-fast);
   overflow: hidden;
 }
 .kb-quicklink:hover .ql-tile { transform: translateY(-2px); }
@@ -4641,7 +4645,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   background: transparent;
   border: 0;
   cursor: pointer;
-  transition: background .12s, color .12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .kb-settings-nav button:hover {
   background: var(--overlay);
@@ -4751,7 +4755,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   min-width: 64px;
   text-align: center;
   cursor: pointer;
-  transition: background .12s, border-color .12s, color .12s;
+  transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
 }
 .kb-keybind-pill:hover {
   background: var(--surface-raised);
@@ -4780,7 +4784,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background .12s, color .12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .kb-keybind-reset:hover {
   background: var(--overlay);
@@ -4860,7 +4864,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  transition: background .12s, color .12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
   border: 0;
   background: transparent;
   cursor: pointer;
@@ -4904,7 +4908,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   background: var(--border-strong);
   position: relative;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background var(--dur-med);
   flex-shrink: 0;
   border: 0;
   padding: 0;
@@ -4918,7 +4922,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   position: absolute;
   top: 3px;
   left: 3px;
-  transition: left 0.2s;
+  transition: left var(--dur-med);
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 .kb-switch.on { background: var(--primary-500); }
@@ -4937,7 +4941,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   border: 1px solid var(--border);
   cursor: pointer;
   position: relative;
-  transition: transform .12s;
+  transition: transform var(--dur-fast);
   padding: 0;
 }
 .kb-swatch:hover { transform: scale(1.08); }
@@ -5005,7 +5009,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   box-shadow: var(--shadow-soft);
   z-index: 60;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, transform 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast), transform var(--dur-fast);
 }
 /* Fixed stack, bottom-up: settings 14px, history 56px, VPN 98px, bookmarks 140px. */
 .kb-history-fixed { bottom: 56px; }
@@ -5053,7 +5057,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   box-shadow: var(--shadow-soft);
   z-index: 60;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, transform 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast), transform var(--dur-fast);
 }
 .glass-on .kb-vpn-fixed {
   background: rgba(255, 255, 255, 0.55);
@@ -5119,7 +5123,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: background .12s, padding 0.26s cubic-bezier(.2,.7,.3,1);
+  transition: background var(--dur-fast), padding var(--dur-slow) var(--ease-standard);
 }
 .kb-ws-pill:hover { background: var(--surface-raised); }
 .glass-on .kb-ws-pill {
@@ -5148,11 +5152,14 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   text-overflow: ellipsis;
 }
 
-/* Dot animation. */
+/* Collapsed: only the dot/glyph shows. */
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-ws-pill,
 .kb-side.kb-rail:not(.is-expanded) .kb-ws-pill {
   padding: 0 7px;
-  justify-content: center;
+}
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-ws-pill:has(.has-icon),
+.kb-side.kb-rail:not(.is-expanded) .kb-ws-pill:has(.has-icon) {
+  padding: 0 4px;
 }
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-ws-name,
 .kb-side.kb-rail:not(.is-expanded) .kb-ws-name { display: none; }
@@ -5170,16 +5177,16 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   display: flex;
   flex-direction: column;
   gap: 4px;
-  animation: kb-pop-in .15s cubic-bezier(.2,.9,.2,1.2);
 }
+.kb-ws-pop.is-in { animation: kb-drop-in var(--dur-med) var(--ease-standard); }
 .glass-on .kb-ws-pop {
-  background: rgba(255,255,255,0.85);
+  background: rgba(255,255,255,0.72);
   border-color: rgba(255,255,255,0.30);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
   backdrop-filter: blur(28px) saturate(180%);
 }
 [data-mode="dark"].glass-on .kb-ws-pop {
-  background: rgba(28,28,34,0.85);
+  background: rgba(28,28,34,0.72);
   border-color: rgba(255,255,255,0.08);
 }
 .kb-ws-pop-head {
@@ -5241,7 +5248,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   display: flex;
   align-items: center;
   border-radius: 8px;
-  transition: background .12s;
+  transition: background var(--dur-fast);
 }
 .kb-ws-row:hover { background: var(--overlay); }
 .kb-ws-row.active { background: var(--surface); }
@@ -5264,7 +5271,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   cursor: pointer;
   flex-shrink: 0;
   background: var(--primary-500);
-  transition: transform .12s, box-shadow .12s;
+  transition: transform var(--dur-fast), box-shadow var(--dur-fast);
 }
 .kb-ws-dot-btn:hover { transform: scale(1.15); }
 .kb-ws-dot-btn.active { box-shadow: 0 0 0 2px var(--primary-300); }
@@ -5294,7 +5301,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   color: var(--text-tertiary);
   cursor: pointer;
   opacity: 0;
-  transition: opacity .12s, background .12s, color .12s;
+  transition: opacity var(--dur-fast), background var(--dur-fast), color var(--dur-fast);
 }
 .kb-ws-row:hover .kb-ws-row-delete { opacity: 1; }
 .kb-ws-row-delete:hover { background: var(--overlay); color: var(--destructive); }
@@ -5508,7 +5515,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   box-shadow: var(--shadow-soft);
   z-index: 60;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, transform 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast), transform var(--dur-fast);
 }
 .glass-on .kb-dl-fixed {
   background: rgba(255, 255, 255, 0.55);
@@ -5661,7 +5668,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   color: var(--text-tertiary);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s, background 0.12s, color 0.12s;
+  transition: opacity var(--dur-fast), background var(--dur-fast), color var(--dur-fast);
 }
 .kb-dlmenu-row:hover .kb-dlmenu-del { opacity: 1; }
 .kb-dlmenu-del:hover { background: var(--overlay); color: var(--text-primary); }
@@ -5731,7 +5738,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
 .kb-dl-reveal {
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.12s;
+  transition: opacity var(--dur-fast);
 }
 .kb-dl-row:hover .kb-dl-reveal { opacity: 1; }
 
@@ -6236,4 +6243,214 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   max-width: 560px;
   font-size: 12px;
   color: var(--destructive, #c0392b);
+}
+
+/* -- Motion tiers ---------------------------------------------------------
+   Reduced: identical durations, springiness flattened (no overshoot).
+   Off: non-essential motion disabled outright. */
+body.motion-reduced {
+  --ease-emphasized: var(--ease-standard);
+}
+body.motion-off .kb-window *,
+body.motion-off .kb-window *::before,
+body.motion-off .kb-window *::after {
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+}
+
+/* -- expansion, spawn, control, palette motion --------------- */
+
+/* Segmented sliding thumb: the active background is one element gliding
+   between options (springy on Full, flat on Reduced via the easing token). */
+.kb-segmented { position: relative; }
+.kb-segmented-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  border-radius: 100px;
+  background: var(--surface-raised);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+  transition: transform var(--dur-med) var(--ease-emphasized),
+    width var(--dur-med) var(--ease-emphasized);
+}
+.kb-segmented button { position: relative; z-index: 1; }
+.kb-segmented button.on { background: transparent; box-shadow: none; }
+.glass-on .kb-segmented-thumb { background: rgba(255, 255, 255, 0.85); }
+[data-mode="dark"].glass-on .kb-segmented-thumb { background: rgba(255, 255, 255, 0.16); }
+
+/* Switch knob picks up the springy ease. */
+.kb-switch::after { transition: left var(--dur-med) var(--ease-emphasized); }
+
+/* Sidebar folder body: dropdown grows from the header (and folds back),
+   one standard movement across Full and Reduced. */
+.kb-foldwrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-med) var(--ease-standard);
+}
+.kb-foldwrap.is-open { grid-template-rows: 1fr; }
+.kb-foldwrap-inner { overflow: hidden; min-height: 0; }
+
+/* Top-tabs island grows out of (and shrinks back into) its header. */
+@keyframes kb-island-grow {
+  from { clip-path: inset(0 calc(100% - 40px) 0 0 round 14px); opacity: 0.6; }
+  to { clip-path: inset(0 0 0 0 round 14px); opacity: 1; }
+}
+@keyframes kb-island-shrink {
+  from { clip-path: inset(0 0 0 0 round 14px); opacity: 1; }
+  to { clip-path: inset(0 calc(100% - 40px) 0 0 round 14px); opacity: 0; }
+}
+.h-island { animation: kb-island-grow var(--dur-med) var(--ease-standard); }
+.h-island.is-closing {
+  animation: kb-island-shrink var(--dur-med) var(--ease-standard) forwards;
+  pointer-events: none;
+}
+/* Rail on the right: the island sweeps out of (and into) its rail-side edge. */
+@keyframes kb-island-grow-r {
+  from { clip-path: inset(0 0 0 calc(100% - 40px) round 14px); opacity: 0.6; }
+  to { clip-path: inset(0 0 0 0 round 14px); opacity: 1; }
+}
+@keyframes kb-island-shrink-r {
+  from { clip-path: inset(0 0 0 0 round 14px); opacity: 1; }
+  to { clip-path: inset(0 0 0 calc(100% - 40px) round 14px); opacity: 0; }
+}
+.kb-window.rail-right .h-island {
+  animation-name: kb-island-grow-r;
+}
+.kb-window.rail-right .h-island.is-closing {
+  animation-name: kb-island-shrink-r;
+}
+.h-island-circle { animation: kb-scale-pop var(--dur-fast) var(--ease-standard); }
+@keyframes kb-scale-pop {
+  from { transform: scale(0.6); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* Tab spawn/close: new rows grow in with elasticity, closing rows collapse
+   with the exit curve while siblings take the space. */
+@keyframes kb-tab-in {
+  from { max-height: 0; opacity: 0; transform: scaleY(0.7); }
+  to { max-height: 40px; opacity: 1; transform: scaleY(1); }
+}
+.kb-tab.is-new {
+  animation: kb-tab-in var(--dur-slow) var(--ease-emphasized);
+  transform-origin: top;
+  overflow: hidden;
+}
+@keyframes kb-tab-out {
+  from { max-height: 40px; opacity: 1; }
+  to { max-height: 0; opacity: 0; }
+}
+.kb-tab.is-closing {
+  animation: kb-tab-out 180ms var(--ease-exit) forwards;
+  overflow: hidden;
+  pointer-events: none;
+}
+.h-tab { animation: kb-scale-pop var(--dur-med) var(--ease-emphasized); }
+@keyframes kb-tab-out-h {
+  from { max-width: 260px; opacity: 1; }
+  to { max-width: 0; min-width: 0; padding-left: 0; padding-right: 0; opacity: 0; }
+}
+.h-tab.is-closing {
+  animation: kb-tab-out-h 180ms var(--ease-exit) forwards;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Palette + find bar rise from the bottom edge and sink back on dismiss. */
+@keyframes kb-rise-in {
+  from { transform: translateY(80vh); opacity: 0.4; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes kb-sink-out {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(80vh); opacity: 0; }
+}
+.kb-palette { animation: kb-rise-in var(--dur-slow) var(--ease-standard); }
+.kb-palette.is-closing {
+  animation: kb-sink-out 220ms var(--ease-exit) forwards;
+  pointer-events: none;
+}
+.kb-palette-backdrop.is-closing { opacity: 0; transition: opacity 220ms var(--ease-exit); }
+.kb-palette-backdrop { border-radius: 12px; overflow: hidden; }
+.kb-findbar-wrap {
+  transform: translateX(-50%) translateY(160%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform var(--dur-med) var(--ease-standard),
+    opacity var(--dur-med) var(--ease-standard);
+}
+.kb-findbar-wrap.is-open {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Dropdown/popover standard enter for the cards that lacked one. */
+@keyframes kb-drop-in {
+  from { transform: translateY(-10px) scale(0.94); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+.kb-tabfolder-menu,
+.kb-colorpick-pop,
+.kb-tabctx,
+.kb-islandmenu {
+  animation: kb-drop-in var(--dur-med) var(--ease-standard);
+}
+/* The editpop centers via translateX; its enter keyframes must carry it. */
+@keyframes kb-drop-in-centered {
+  from { transform: translateX(-50%) translateY(-10px) scale(0.94); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0) scale(1); opacity: 1; }
+}
+.kb-ws-editpop { animation: kb-drop-in-centered var(--dur-med) var(--ease-standard); }
+
+/* Rail on the right: the island's header chip docks on the rail-nearest
+   (right) end via flex order. */
+.kb-window.rail-right .h-island-name { order: 2; }
+.kb-window.rail-right .h-island-name .h-island-chevron { order: 2; }
+
+/* Loose tabs animate inside a flex item whose width comes from the
+   container (strip minus the fixed folder/pinned widths), so mid-animation
+   over/under-fill cannot move the neighbours. Tabs anchor to the corner
+   opposite the rail, so the outermost tab never moves either; transients
+   resolve at the folder seam, where the clip reads as tabs sliding behind
+   the island. */
+.kb-topbar .h-loose-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Transient overflow stays inside the bar: clip horizontally at the
+     group's bounds, with vertical headroom for shadows and rings. */
+  clip-path: inset(-20px 0);
+  justify-content: flex-end;
+}
+.kb-window.rail-right .kb-topbar .h-loose-group { justify-content: flex-start; }
+.kb-tabs-h-wrap.compact .h-loose-group { gap: 4px; }
+/* Overflowing strips scroll item-by-item again: the group must keep its
+   natural width inside the scroller. */
+.kb-tabs-h-wrap.compact.is-scrolling .h-loose-group { flex: 0 0 auto; }
+
+.h-island.is-closing {
+  transition: flex-basis var(--dur-med) var(--ease-standard);
+}
+
+/* Folder islands keep only their clip-path grow/shrink; tabs inside them
+   ride that sweep. */
+.h-island .h-tab { --reflow-dur: 0s; }
+
+/* Reload icon spins once per press (keyed remount replays it). */
+@keyframes kb-spin-once {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.kb-reload-spin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.kb-reload-spin.is-spinning {
+  animation: kb-spin-once 420ms var(--ease-standard);
 }

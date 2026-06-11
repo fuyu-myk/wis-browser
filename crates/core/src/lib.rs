@@ -33,7 +33,7 @@ pub use error::{WisError, WisResult};
 pub use icon::{parse_icon_ref, IconRef};
 pub use ids::{DownloadId, TabFolderId, TabId, ThemeId, WidgetId, WorkspaceId};
 pub use keybinding::{default_keymap, effective_keymap, KeyAction};
-pub use layout::{LayoutMode, RailSide, ThemeMode};
+pub use layout::{LayoutMode, MotionLevel, RailSide, ThemeMode};
 pub use link_safety::{assess_link, LinkAssessment, LinkWarning, RiskLevel};
 pub use pane::{PaneBranch, PaneNode, SplitDir};
 pub use privacy::{PerSitePolicy, PrivacyMode};

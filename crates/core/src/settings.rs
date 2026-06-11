@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::ids::ThemeId;
 use crate::keybinding::KeyAction;
-use crate::layout::{LayoutMode, RailSide, ThemeMode};
+use crate::layout::{LayoutMode, MotionLevel, RailSide, ThemeMode};
 use crate::privacy::PrivacyMode;
 use crate::search::SearchEngine;
 use crate::theme::CustomTheme;
@@ -118,6 +118,9 @@ pub struct UserSettings {
     /// Active custom theme; `None` uses the built-in accent presets.
     #[serde(default)]
     pub active_theme: Option<ThemeId>,
+    /// Chrome animation level (see [`MotionLevel`]).
+    #[serde(default)]
+    pub motion: MotionLevel,
 }
 
 fn default_filter_list_auto_update() -> bool {
@@ -180,6 +183,7 @@ impl Default for UserSettings {
             custom_accent_palette: Vec::new(),
             custom_themes: Vec::new(),
             active_theme: None,
+            motion: MotionLevel::Full,
         }
     }
 }
@@ -255,6 +259,8 @@ pub struct UserSettingsPatch {
     /// Replaces the whole theme list when present (validated boundary-side).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_themes: Option<Vec<CustomTheme>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motion: Option<MotionLevel>,
 }
 
 impl UserSettings {
@@ -311,6 +317,7 @@ impl UserSettings {
                 .custom_themes
                 .unwrap_or_else(|| self.custom_themes.clone()),
             active_theme: self.active_theme,
+            motion: patch.motion.unwrap_or(self.motion),
             keybindings: match patch.keybindings {
                 None => self.keybindings.clone(),
                 Some(overrides) => {

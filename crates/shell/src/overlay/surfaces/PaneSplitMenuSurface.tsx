@@ -56,6 +56,9 @@ export function PaneSplitMenuSurface() {
   workspaceIdRef.current = activeWorkspace?.id ?? null
 
   const [target, setTarget] = useState<OpenPayload | null>(null)
+  // Bumped per open so the card remounts (and replays its enter animation)
+  // even when the menu was already showing for another tab.
+  const [openNonce, setOpenNonce] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -63,6 +66,7 @@ export function PaneSplitMenuSurface() {
     let cancelled = false
     void listen<OpenPayload>(OPEN_EVENT, (e) => {
       setTarget(e.payload)
+      setOpenNonce((n) => n + 1)
       void commands.focusWebview('overlay-tabmenu').catch(() => undefined)
     }).then((fn) => {
       if (cancelled) fn()
@@ -142,7 +146,12 @@ export function PaneSplitMenuSurface() {
   const glassOn = state?.settings.glass_enabled ?? true
 
   return (
-    <div ref={menuRef} className={cx('kb-tabctx', { 'glass-on': glassOn })} role="menu">
+    <div
+      ref={menuRef}
+      key={openNonce}
+      className={cx('kb-tabctx', { 'glass-on': glassOn })}
+      role="menu"
+    >
       <div className="kb-tabctx-split">
         {DIRECTIONS.map(({ dir, split, first, label }) => (
           <button

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
+
 import { commands } from '@/bindings/commands'
+import { closeTabAnimated, onTabClosing, TAB_EXIT_MS } from '@/lib/tabClose'
 import type { AccentColor, TabFolder, TabFolderId, TabId, WorkspaceId, Tab } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { FolderPlusIcon, PlusIcon, XIcon } from '@/lib/icons'
@@ -79,6 +81,33 @@ export function TabList({
 }: TabListProps) {
   const qc = useQueryClient()
   const invalidate = () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
+
+  // Spawn/close choreography: ids appearing after first render animate in;
+  // a closing tab plays its exit before the close command removes it.
+  const knownIdsRef = useRef<Set<TabId> | null>(null)
+  const currentIds = new Set(tabs.map((t) => t.id))
+  const newIds =
+    knownIdsRef.current === null
+      ? new Set<TabId>()
+      : new Set(tabs.map((t) => t.id).filter((id) => !knownIdsRef.current?.has(id)))
+  useEffect(() => {
+    knownIdsRef.current = currentIds
+  })
+  const [closingIds, setClosingIds] = useState<ReadonlySet<TabId>>(new Set())
+  useEffect(
+    () =>
+      onTabClosing((id) => {
+        setClosingIds((prev) => new Set(prev).add(id))
+        window.setTimeout(() => {
+          setClosingIds((prev) => {
+            const next = new Set(prev)
+            next.delete(id)
+            return next
+          })
+        }, TAB_EXIT_MS + 400)
+      }),
+    [],
+  )
   const setActive = useMutation({
     mutationFn: (id: TabId) => commands.setActiveTab(id),
     onSuccess: invalidate,
@@ -318,6 +347,8 @@ export function TabList({
         key={tab.id}
         data-tab-id={tab.id}
         className={cx('kb-tab', {
+          'is-new': newIds.has(tab.id),
+          'is-closing': closingIds.has(tab.id),
           active: tab.id === activeTabId,
           'in-folder': opts.inFolder,
           asleep: discardedTabs.has(tab.id) && tab.id !== activeTabId,
@@ -352,7 +383,7 @@ export function TabList({
           aria-label="Close tab"
           onClick={(e) => {
             e.stopPropagation()
-            close.mutate(tab.id)
+            closeTabAnimated(tab.id)
           }}
         >
           <XIcon />
@@ -397,13 +428,15 @@ export function TabList({
               onHeaderPointerDown={(e) => startFolderDrag(e, folder.id)}
               onEditingChange={(e) => reportEditing(folder.id, e)}
             />
-            {!folder.collapsed && (
-              <div className="kb-tabfolder-body" data-folder-body={folder.id}>
-                {members.map((tab, mi) =>
-                  renderTab(tab, { scope: folder.id, index: mi, inFolder: true }),
-                )}
+            <div className={cx('kb-foldwrap', { 'is-open': !folder.collapsed })}>
+              <div className="kb-foldwrap-inner">
+                <div className="kb-tabfolder-body" data-folder-body={folder.id}>
+                  {members.map((tab, mi) =>
+                    renderTab(tab, { scope: folder.id, index: mi, inFolder: true }),
+                  )}
+                </div>
               </div>
-            )}
+            </div>
           </div>
         )
       })}

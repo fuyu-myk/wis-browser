@@ -21,6 +21,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { KeyboardEvent } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
+const SINK_MS = 220
+
 import { commands } from '@/bindings/commands'
 import type { KeyAction, Tab, UserSettingsPatch } from '@/bindings/types'
 import { cx } from '@/lib/cx'
@@ -58,7 +60,13 @@ export function PaletteSurface() {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
 
+  const [closing, setClosing] = useState(false)
+  const [openNonce, setOpenNonce] = useState(0)
   const close = useCallback(async () => {
+    // Sink back to the bottom edge before the overlay hides.
+    setClosing(true)
+    await new Promise((resolve) => setTimeout(resolve, SINK_MS))
+    setClosing(false)
     setQuery('')
     setHighlight(0)
     await commands.hideOverlay('palette').catch(() => undefined)
@@ -163,6 +171,7 @@ export function PaletteSurface() {
     let unlisten: UnlistenFn | null = null
     let cancelled = false
     void listen<void>(PALETTE_FOCUS_EVENT, () => {
+      setOpenNonce((n) => n + 1)
       void commands.focusWebview('overlay-palette').catch(() => undefined)
       const focusInput = () => {
         const el = inputRef.current
@@ -229,14 +238,15 @@ export function PaletteSurface() {
 
   return (
     <div
-      className={cx('kb-palette-backdrop', { 'glass-on': glassOn })}
+      className={cx('kb-palette-backdrop', { 'glass-on': glassOn, 'is-closing': closing })}
       role="presentation"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) void close()
       }}
     >
       <div
-        className={cx('kb-palette', { 'glass-on': glassOn })}
+        key={openNonce}
+        className={cx('kb-palette', { 'glass-on': glassOn, 'is-closing': closing })}
         role="dialog"
         aria-label="Command palette"
         onMouseDown={(e) => e.stopPropagation()}
