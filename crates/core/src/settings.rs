@@ -104,6 +104,16 @@ pub struct UserSettings {
     /// Only consulted when [`Self::widget_keep_loaded`].
     #[serde(default = "default_widget_sleep_minutes")]
     pub widget_sleep_minutes: u32,
+    /// When true, hidden widget panels are reclaimed oldest-first whenever
+    /// their combined WebContent footprint exceeds
+    /// [`Self::widget_memory_cap_mb`]. Only consulted when
+    /// [`Self::widget_keep_loaded`].
+    #[serde(default = "default_widget_memory_cap_enabled")]
+    pub widget_memory_cap_enabled: bool,
+    /// Combined footprint (MB) hidden widget panels may hold before the
+    /// oldest is reclaimed.
+    #[serde(default = "default_widget_memory_cap_mb")]
+    pub widget_memory_cap_mb: u32,
     /// User-supplied accelerator overrides keyed by [`KeyAction`]. Each
     /// entry replaces the corresponding entry from [`crate::default_keymap`]
     /// at runtime (see [`crate::effective_keymap`]). Absent entries fall
@@ -170,6 +180,14 @@ fn default_widget_sleep_minutes() -> u32 {
     5
 }
 
+fn default_widget_memory_cap_enabled() -> bool {
+    true
+}
+
+fn default_widget_memory_cap_mb() -> u32 {
+    500
+}
+
 impl Default for UserSettings {
     fn default() -> Self {
         Self {
@@ -198,6 +216,8 @@ impl Default for UserSettings {
             widget_panel_limit: 2,
             widget_keep_loaded: true,
             widget_sleep_minutes: 5,
+            widget_memory_cap_enabled: true,
+            widget_memory_cap_mb: 500,
             keybindings: HashMap::new(),
             download_ask_where: false,
             download_last_dir: None,
@@ -269,6 +289,10 @@ pub struct UserSettingsPatch {
     pub widget_keep_loaded: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub widget_sleep_minutes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub widget_memory_cap_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub widget_memory_cap_mb: Option<u32>,
     /// Merged onto the existing `keybindings` map. Sparse entries replace
     /// just those actions; absent actions keep their current binding.
     /// `Some(empty_map)` is a no-op (the patch is sparse, not a wipe).
@@ -335,6 +359,12 @@ impl UserSettings {
             widget_sleep_minutes: patch
                 .widget_sleep_minutes
                 .unwrap_or(self.widget_sleep_minutes),
+            widget_memory_cap_enabled: patch
+                .widget_memory_cap_enabled
+                .unwrap_or(self.widget_memory_cap_enabled),
+            widget_memory_cap_mb: patch
+                .widget_memory_cap_mb
+                .unwrap_or(self.widget_memory_cap_mb),
             download_ask_where: patch.download_ask_where.unwrap_or(self.download_ask_where),
             download_last_dir: patch
                 .download_last_dir

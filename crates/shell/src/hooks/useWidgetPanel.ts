@@ -138,6 +138,10 @@ export function useWidgetPanel(): {
   const sleepMinutes = state?.settings.widget_sleep_minutes ?? 5
   const sleepRef = useRef({ keepLoaded, minutes: sleepMinutes })
   sleepRef.current = { keepLoaded, minutes: sleepMinutes }
+  const memCapEnabled = state?.settings.widget_memory_cap_enabled ?? true
+  const memCapMb = state?.settings.widget_memory_cap_mb ?? 500
+  const memCapMbRef = useRef(memCapMb)
+  memCapMbRef.current = memCapMb
   const limitEnabled = state?.settings.widget_panel_limit_enabled ?? true
   const limitCount = state?.settings.widget_panel_limit ?? DEFAULT_PANEL_LIMIT
   const limitRef = useRef({ enabled: limitEnabled, count: limitCount })
@@ -543,6 +547,44 @@ export function useWidgetPanel(): {
       if (id !== visibleRef.current) destroyOne(id)
     }
   }, [keepLoaded, destroyOne])
+
+  // Memory-pressure eviction: when the hidden panels' combined WebContent
+  // footprint exceeds the cap, reclaim them oldest-first until back under.
+  // Complements the count cap with a size-based one.
+  useEffect(() => {
+    if (!keepLoaded || !memCapEnabled) return
+    let cancelled = false
+    const sweep = async () => {
+      const hidden = Array.from(liveRef.current.entries()).filter(
+        ([id]) => id !== visibleRef.current,
+      )
+      if (hidden.length === 0) return
+      const rows = await commands.listWebviewMemory().catch(() => null)
+      if (!rows || cancelled) return
+      const prefix = 'widget-panel-'
+      const bytesById = new Map(
+        rows
+          .filter((r) => r.label.startsWith(prefix))
+          .map((r) => [r.label.slice(prefix.length), r.bytes] as const),
+      )
+      let total = 0
+      for (const [id] of hidden) total += bytesById.get(String(id)) ?? 0
+      const capBytes = memCapMbRef.current * 1024 * 1024
+      if (total <= capBytes) return
+      const lru = [...hidden].sort((a, b) => a[1] - b[1])
+      for (const [id] of lru) {
+        if (total <= capBytes) break
+        total -= bytesById.get(String(id)) ?? 0
+        destroyOne(id)
+      }
+    }
+    const t = window.setInterval(() => void sweep(), 30_000)
+    void sweep()
+    return () => {
+      cancelled = true
+      window.clearInterval(t)
+    }
+  }, [keepLoaded, memCapEnabled, destroyOne])
 
   // Reflect limit changes immediately: trim the pool as soon as the cap is
   // lowered (or re-enabled).

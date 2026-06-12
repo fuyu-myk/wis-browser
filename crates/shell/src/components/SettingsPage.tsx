@@ -235,6 +235,14 @@ export function SettingsPage() {
         const t = e.target
         if (t instanceof HTMLInputElement && (t.type === 'number' || t.type === 'text')) {
           t.select()
+          t.dataset.selectAll = '1'
+        }
+      }}
+      onMouseUp={(e) => {
+        const t = e.target
+        if (t instanceof HTMLInputElement && t.dataset.selectAll === '1') {
+          delete t.dataset.selectAll
+          e.preventDefault()
         }
       }}
     >
@@ -474,6 +482,33 @@ export function SettingsPage() {
               update.mutate({ widget_sleep_minutes: Math.min(1440, Math.max(1, n)) })
             }}
             aria-label="Widget panel reclaim minutes"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
+            <span>Cap hidden panel memory</span>
+            <span>
+              Reclaim hidden widget panels oldest-first when together they
+              hold more memory than the cap.
+            </span>
+          </div>
+          <Switch
+            checked={settings.widget_memory_cap_enabled}
+            onChange={(widget_memory_cap_enabled) =>
+              update.mutate({ widget_memory_cap_enabled })
+            }
+            label="Cap hidden panel memory"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
+            <span>Memory cap</span>
+            <span>Combined footprint (MB) hidden panels may hold.</span>
+          </div>
+          <MemoryCapInput
+            value={settings.widget_memory_cap_mb}
+            disabled={!settings.widget_keep_loaded || !settings.widget_memory_cap_enabled}
+            onCommit={(widget_memory_cap_mb) => update.mutate({ widget_memory_cap_mb })}
           />
         </div>
         <div className="row">
@@ -736,6 +771,51 @@ function KeyboardShortcutsSection({
         })}
       </div>
     </section>
+  )
+}
+
+const DEFAULT_WIDGET_MEMORY_CAP_MB = 500
+
+/** Free-typing draft input for the memory cap: clamps to 100..8192 only on
+ * blur/Enter, and an emptied field resets to the default. The page-level
+ * focus handler already selects the text on click. */
+function MemoryCapInput({
+  value,
+  disabled,
+  onCommit,
+}: {
+  value: number
+  disabled: boolean
+  onCommit: (mb: number) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = () => {
+    if (draft === null) return
+    const trimmed = draft.trim()
+    setDraft(null)
+    const n = Math.round(Number(trimmed))
+    if (trimmed === '' || !Number.isFinite(n)) {
+      onCommit(DEFAULT_WIDGET_MEMORY_CAP_MB)
+      return
+    }
+    onCommit(Math.min(8192, Math.max(100, n)))
+  }
+  return (
+    <input
+      type="number"
+      className="kb-num-input"
+      min={100}
+      max={8192}
+      step={50}
+      value={draft ?? String(value)}
+      disabled={disabled}
+      onChange={(e) => setDraft(e.currentTarget.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+      }}
+      aria-label="Hidden panel memory cap in MB"
+    />
   )
 }
 

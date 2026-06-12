@@ -326,6 +326,10 @@ export interface UserSettings {
   widget_keep_loaded: boolean
   /** Minutes a hidden widget panel stays loaded before reclaim. */
   widget_sleep_minutes: number
+  /** Evict hidden panels oldest-first past the combined footprint cap. */
+  widget_memory_cap_enabled: boolean
+  /** Combined hidden-panel footprint cap, in MB. */
+  widget_memory_cap_mb: number
   /** User-supplied accelerator overrides, sparse. Keyed by `KeyAction`. */
   keybindings: Partial<Record<KeyAction, string>>
   /** Ask where to save each download via a native save panel. */
@@ -374,6 +378,8 @@ export interface UserSettingsPatch {
   widget_panel_limit?: number
   widget_keep_loaded?: boolean
   widget_sleep_minutes?: number
+  widget_memory_cap_enabled?: boolean
+  widget_memory_cap_mb?: number
   /**
    * Sparse map of accelerator overrides. An entry replaces just that
    * action's binding; an empty string acts as "reset to default".
