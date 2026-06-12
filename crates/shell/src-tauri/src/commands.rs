@@ -1663,6 +1663,8 @@ pub async fn update_settings(
     }
 
     let keybindings_touched = patch.keybindings.is_some();
+    let userscripts_touched = patch.userscripts.is_some();
+    let cosmetic_touched = patch.user_cosmetic_rules.is_some();
     let theme_touched = patch.theme.is_some();
     let persistence_disabled = patch.persist_sessions == Some(false);
     let fraud_warning_changed = patch.fraud_warning_enabled;
@@ -1679,6 +1681,13 @@ pub async fn update_settings(
         if let Err(err) = crate::menu::apply_menu(&app, &effective) {
             log::warn!("menu rebuild after keybindings change failed: {err}");
         }
+    }
+
+    if userscripts_touched {
+        state.refresh_userscripts_cache(settings.userscripts.clone());
+    }
+    if cosmetic_touched {
+        state.refresh_user_cosmetic_cache(settings.user_cosmetic_rules.clone());
     }
 
     if theme_touched {
@@ -1840,6 +1849,34 @@ pub async fn set_dock_icon(app: AppHandle, variant: String) -> WisResult<()> {
     let _ = (app, variant);
 
     Ok(())
+}
+
+/// Import a `.user.js` file via the native open panel, parse its metadata,
+/// and return the parsed script for the UI to add to settings. `None` when
+/// the user cancels.
+#[tauri::command]
+pub async fn import_userscript(
+    app: AppHandle,
+) -> WisResult<Option<wis_core::userscript::Userscript>> {
+    let Some(path) = crate::panels::run_open_panel(&app, &["js"])? else {
+        return Ok(None);
+    };
+
+    let size = std::fs::metadata(&path)
+        .map(|m| m.len())
+        .unwrap_or(u64::MAX);
+    if size > wis_core::userscript::MAX_SOURCE_BYTES as u64 {
+        return Err(WisError::InvalidInput {
+            message: "user script file is too large".to_string(),
+        });
+    }
+
+    let source = std::fs::read_to_string(&path).map_err(|err| WisError::InvalidInput {
+        message: format!("read user script: {err}"),
+    })?;
+    let script = wis_core::userscript::Userscript::from_source(&source)?;
+
+    Ok(Some(script))
 }
 
 /// Start the element picker ("zapper") on a tab's webview: the user clicks

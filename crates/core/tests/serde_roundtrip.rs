@@ -127,6 +127,10 @@ fn settings_patch_round_trips_when_all_fields_set() {
             "example.test".to_string(),
             vec![".ad".to_string()],
         )])),
+        userscripts: Some(vec![wis_core::userscript::Userscript::from_source(
+            "// ==UserScript==\n// @name T\n// @match *\n// ==/UserScript==\n",
+        )
+        .unwrap()]),
         keybindings: Some(HashMap::from([
             (KeyAction::NewTab, "Ctrl+T".into()),
             (KeyAction::CloseTab, "Ctrl+W".into()),

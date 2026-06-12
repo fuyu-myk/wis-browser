@@ -406,6 +406,7 @@ pub fn run() {
             clipboard::copy_text,
             memory::list_webview_memory,
             commands::start_element_picker,
+            commands::import_userscript,
             downloads::list_downloads,
             downloads::remove_download,
             downloads::remove_downloads,

@@ -335,6 +335,8 @@ export interface UserSettings {
   filter_subscriptions: string[]
   /** Element-picker hide rules, keyed by host. */
   user_cosmetic_rules: Record<string, string[]>
+  /** Tampermonkey-style user scripts. */
+  userscripts: Userscript[]
   /** User-supplied accelerator overrides, sparse. Keyed by `KeyAction`. */
   keybindings: Partial<Record<KeyAction, string>>
   /** Ask where to save each download via a native save panel. */
@@ -387,6 +389,7 @@ export interface UserSettingsPatch {
   widget_memory_cap_mb?: number
   filter_subscriptions?: string[]
   user_cosmetic_rules?: Record<string, string[]>
+  userscripts?: Userscript[]
   /**
    * Sparse map of accelerator overrides. An entry replaces just that
    * action's binding; an empty string acts as "reset to default".
@@ -502,6 +505,19 @@ export interface SiteDataEntry {
 // ---------------------------------------------------------------------------
 
 export type DownloadStatus = 'in_progress' | 'completed' | 'failed' | 'cancelled'
+
+export type RunAt = 'document-start' | 'document-end' | 'document-idle'
+
+/** A Tampermonkey-style user script. */
+export interface Userscript {
+  id: string
+  name: string
+  enabled: boolean
+  matches: string[]
+  excludes: string[]
+  run_at: RunAt
+  source: string
+}
 
 /** One webview's WebContent process footprint (task manager readout). */
 export interface WebviewMemory {

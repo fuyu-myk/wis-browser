@@ -43,6 +43,7 @@ import { ThemesSection } from '@/components/ThemesSection'
 import { KeybindingInput } from '@/components/KeybindingInput'
 import { TaskManagerSection } from '@/components/TaskManagerSection'
 import { FilterListsSection } from '@/components/FilterListsSection'
+import { UserscriptsSection } from '@/components/UserscriptsSection'
 
 interface NavSection {
   id: string
@@ -664,6 +665,10 @@ export function SettingsPage() {
           onChange={(filter_subscriptions) => update.mutate({ filter_subscriptions })}
           cosmeticRules={settings.user_cosmetic_rules}
           onCosmeticChange={(user_cosmetic_rules) => update.mutate({ user_cosmetic_rules })}
+        />
+        <UserscriptsSection
+          scripts={settings.userscripts}
+          onChange={(userscripts) => update.mutate({ userscripts })}
         />
         <div className="row">
           <div className="l">

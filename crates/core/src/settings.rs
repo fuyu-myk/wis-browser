@@ -9,6 +9,7 @@ use crate::privacy::PrivacyMode;
 use crate::search::SearchEngine;
 use crate::theme::CustomTheme;
 use crate::user_agent::UaProfile;
+use crate::userscript::Userscript;
 use crate::widget::Widget;
 use crate::workspace::AccentColor;
 use serde::{Deserialize, Serialize};
@@ -121,6 +122,9 @@ pub struct UserSettings {
     /// persisted settings deserialise unchanged.
     #[serde(default)]
     pub keybindings: HashMap<KeyAction, String>,
+    /// User scripts (Tampermonkey-style), injected into matching pages.
+    #[serde(default)]
+    pub userscripts: Vec<Userscript>,
     /// User element-hiding rules from the element picker ("zapper"), keyed
     /// by exact host. Each value is a list of CSS selectors hidden on that
     /// host. Applied via the cosmetic-filtering channel on page load.
@@ -239,6 +243,7 @@ impl Default for UserSettings {
             widget_memory_cap_mb: 500,
             filter_subscriptions: default_filter_subscriptions(),
             user_cosmetic_rules: std::collections::HashMap::new(),
+            userscripts: Vec::new(),
             keybindings: HashMap::new(),
             download_ask_where: false,
             download_last_dir: None,
@@ -320,6 +325,9 @@ pub struct UserSettingsPatch {
     /// Replaces the whole map (the zapper/UI sends the full map).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_cosmetic_rules: Option<std::collections::HashMap<String, Vec<String>>>,
+    /// Replaces the whole user-script list (the UI sends the full list).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub userscripts: Option<Vec<Userscript>>,
     /// Merged onto the existing `keybindings` map. Sparse entries replace
     /// just those actions; absent actions keep their current binding.
     /// `Some(empty_map)` is a no-op (the patch is sparse, not a wipe).
@@ -398,6 +406,9 @@ impl UserSettings {
             user_cosmetic_rules: patch
                 .user_cosmetic_rules
                 .unwrap_or_else(|| self.user_cosmetic_rules.clone()),
+            userscripts: patch
+                .userscripts
+                .unwrap_or_else(|| self.userscripts.clone()),
             download_ask_where: patch.download_ask_where.unwrap_or(self.download_ask_where),
             download_last_dir: patch
                 .download_last_dir

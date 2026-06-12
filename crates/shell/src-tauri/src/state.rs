@@ -57,6 +57,9 @@ pub struct AppState {
     /// without locking the async browser mutex. Refreshed on every settings
     /// change and on each zapper add.
     pub user_cosmetic_rules: RwLock<HashMap<String, Vec<String>>>,
+    /// Sync read-cache of `UserSettings.userscripts`, so the synchronous
+    /// navigation hook can pick matching scripts without the async mutex.
+    pub userscripts: RwLock<Vec<wis_core::userscript::Userscript>>,
     pub filter_cache_dir: PathBuf,
     pub proxies: Mutex<HashMap<WorkspaceId, ProxyServer>>,
     /// Password-vault master key, present only while the vault is unlocked.
@@ -102,6 +105,7 @@ impl AppState {
     ) -> Self {
         let download_prefs = crate::downloads::DownloadPrefs::from_settings(&browser.settings);
         let initial_user_cosmetic_rules = browser.settings.user_cosmetic_rules.clone();
+        let initial_userscripts = browser.settings.userscripts.clone();
         Self {
             browser: Mutex::new(browser),
             storage,
@@ -110,6 +114,7 @@ impl AppState {
             resolver,
             content_rules: RwLock::new(build_rule_specs_from(initial_filter_text)),
             user_cosmetic_rules: RwLock::new(initial_user_cosmetic_rules),
+            userscripts: RwLock::new(initial_userscripts),
             filter_cache_dir,
             proxies: Mutex::new(HashMap::new()),
             vault_key: Mutex::new(None),
@@ -143,6 +148,34 @@ impl AppState {
             .get(host)
             .cloned()
             .unwrap_or_default()
+    }
+
+    /// Replace the user-script read-cache (after a settings change).
+    pub fn refresh_userscripts_cache(&self, scripts: Vec<wis_core::userscript::Userscript>) {
+        let mut guard = self.userscripts.write().expect("userscripts poisoned");
+        *guard = scripts;
+    }
+
+    /// Enabled user scripts matching `url`, split by run-at into
+    /// `(document_start_sources, document_end_sources)`.
+    pub fn matching_userscripts(&self, url: &str) -> (Vec<String>, Vec<String>) {
+        use wis_core::userscript::RunAt;
+        let guard = self.userscripts.read().expect("userscripts poisoned");
+        let mut start = Vec::new();
+        let mut end = Vec::new();
+
+        for script in guard.iter() {
+            if !script.matches_url(url) {
+                continue;
+            }
+
+            match script.run_at {
+                RunAt::DocumentStart => start.push(script.source.clone()),
+                RunAt::DocumentEnd | RunAt::DocumentIdle => end.push(script.source.clone()),
+            }
+        }
+
+        (start, end)
     }
 
     /// The content-filter rule spec for a privacy mode, or `None` when the

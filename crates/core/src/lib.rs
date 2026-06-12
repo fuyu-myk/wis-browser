@@ -22,6 +22,7 @@ pub mod tab;
 pub mod tab_folder;
 pub mod theme;
 pub mod user_agent;
+pub mod userscript;
 pub mod widget;
 pub mod workspace;
 
@@ -31,7 +32,7 @@ pub use background::{
 pub use download::{sanitize_filename, unique_filename, DownloadStatus, FALLBACK_FILENAME};
 pub use error::{WisError, WisResult};
 pub use icon::{parse_icon_ref, IconRef};
-pub use ids::{DownloadId, TabFolderId, TabId, ThemeId, WidgetId, WorkspaceId};
+pub use ids::{DownloadId, TabFolderId, TabId, ThemeId, UserscriptId, WidgetId, WorkspaceId};
 pub use keybinding::{default_keymap, effective_keymap, KeyAction};
 pub use layout::{LayoutMode, MotionLevel, RailSide, ThemeMode};
 pub use link_safety::{assess_link, LinkAssessment, LinkWarning, RiskLevel};

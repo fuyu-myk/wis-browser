@@ -20,16 +20,18 @@ pub fn set_app_handle(app: AppHandle) {
     let _ = APP.set(app);
 }
 
-/// Marker prefix identifying the per-page scriptlet user script, so the
-/// navigation swap can drop the previous page's payload while re-adding
+/// Shared prefix on every per-page injected user script, so the navigation
+/// swap can drop the previous page's scripts (start + end) while re-adding
 /// every other user script (WebKit only offers removeAllUserScripts).
-const SCRIPTLET_MARKER: &str = "/*wis-scriptlets*/";
+const INJECT_MARKER_PREFIX: &str = "/*wis-inject";
+const START_MARKER: &str = "/*wis-inject-start*/";
+const END_MARKER: &str = "/*wis-inject-end*/";
 
-/// Swap the document-start scriptlet payload for an upcoming navigation.
-/// Called from the tab webview's `on_navigation` hook, which runs inside
-/// WebKit's decide-policy on the main thread, so the new user script is in
-/// place before the next document is created. Scriptlet rules (uBO
-/// `+js(...)`) must run before the page's own scripts.
+/// Swap the per-page injected scripts for an upcoming navigation: adblock
+/// scriptlets and document-start user scripts run before the page's scripts;
+/// document-end user scripts run after the DOM parses. Called from the tab
+/// webview's `on_navigation` hook (inside WebKit's decide-policy on the main
+/// thread), so the scripts are in place before the next document is created.
 pub fn swap_scriptlets(app: &tauri::AppHandle, label: &str, url: &str) {
     use tauri::Manager;
 
@@ -40,22 +42,36 @@ pub fn swap_scriptlets(app: &tauri::AppHandle, label: &str, url: &str) {
         return;
     };
 
-    let blocker = {
-        let state = app.state::<crate::state::AppState>();
+    let state = app.state::<crate::state::AppState>();
+    let scriptlets = {
         let guard = state
             .tracker_blocker
             .read()
             .expect("tracker_blocker poisoned");
-        guard.clone()
+        guard.scriptlets_for_page(url)
     };
-    let payload = blocker.scriptlets_for_page(url);
+    let (start_scripts, end_scripts) = state.matching_userscripts(url);
 
-    // An empty payload still swaps, clearing the previous site's scriptlets.
+    // Document-start bundle: adblock scriptlets first, then start scripts.
+    let mut start = scriptlets;
+    for src in &start_scripts {
+        start.push_str("\n;(function(){try{");
+        start.push_str(src);
+        start.push_str("}catch(e){}})();");
+    }
+    let mut end = String::new();
+    for src in &end_scripts {
+        end.push_str(";(function(){try{");
+        end.push_str(src);
+        end.push_str("}catch(e){}})();\n");
+    }
+
+    // Empty payloads still swap, clearing the previous page's scripts.
     #[cfg(target_os = "macos")]
-    imp::swap_scriptlet_script(&webview, &payload);
+    imp::swap_injected_scripts(&webview, &start, &end);
 
     #[cfg(not(target_os = "macos"))]
-    let _ = (webview, payload);
+    let _ = (webview, start, end);
 }
 
 /// Injected page script: collects classes/ids and applies returned CSS.
@@ -171,7 +187,7 @@ mod imp {
     };
     use tauri::Manager;
 
-    use super::{APP, COSMETIC_JS, PICKER_JS, SCRIPTLET_MARKER};
+    use super::{APP, COSMETIC_JS, END_MARKER, INJECT_MARKER_PREFIX, PICKER_JS, START_MARKER};
 
     declare_class!(
         struct ZapHandler;
@@ -392,17 +408,23 @@ mod imp {
         }
     }
 
-    /// Replace the marked scriptlet user script: re-add every other script,
-    /// then append the new payload (document start, main frame only; the
-    /// payload was computed for the main document's URL).
-    pub fn swap_scriptlet_script<R: tauri::Runtime>(
+    /// Replace the per-page injected scripts: drop every previously injected
+    /// script (shared marker prefix), re-add every other (non-injected) user
+    /// script, then add the new document-start and document-end payloads.
+    pub fn swap_injected_scripts<R: tauri::Runtime>(
         webview: &tauri::webview::Webview<R>,
-        payload: &str,
+        start_payload: &str,
+        end_payload: &str,
     ) {
-        let source = if payload.is_empty() {
+        let start_src = if start_payload.is_empty() {
             String::new()
         } else {
-            format!("{SCRIPTLET_MARKER}\ntry{{{payload}}}catch(e){{}}")
+            format!("{START_MARKER}\n{start_payload}")
+        };
+        let end_src = if end_payload.is_empty() {
+            String::new()
+        } else {
+            format!("{END_MARKER}\n{end_payload}")
         };
         let _ = webview.with_webview(move |w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
@@ -426,7 +448,7 @@ mod imp {
             } else {
                 msg_send![existing, count]
             };
-            let marker = ns_string(SCRIPTLET_MARKER);
+            let marker = ns_string(INJECT_MARKER_PREFIX);
             let mut keep: Vec<*mut AnyObject> = Vec::with_capacity(count);
             for i in 0..count {
                 let script: *mut AnyObject = msg_send![existing, objectAtIndex: i];
@@ -447,10 +469,12 @@ mod imp {
                 let _: () = msg_send![script, release];
             }
 
-            if !source.is_empty() {
-                let src = ns_string(&source);
+            let add = |source: &str, injection_time: isize| {
+                if source.is_empty() {
+                    return;
+                }
+                let src = ns_string(source);
                 let script: *mut AnyObject = msg_send![class!(WKUserScript), alloc];
-                let injection_time: isize = 0; // WKUserScriptInjectionTimeAtDocumentStart
                 let script: *mut AnyObject = msg_send![
                     script,
                     initWithSource: src,
@@ -459,7 +483,9 @@ mod imp {
                 ];
                 let _: () = msg_send![controller, addUserScript: script];
                 let _: () = msg_send![script, release];
-            }
+            };
+            add(&start_src, 0); // WKUserScriptInjectionTimeAtDocumentStart
+            add(&end_src, 1); // WKUserScriptInjectionTimeAtDocumentEnd
         });
     }
 

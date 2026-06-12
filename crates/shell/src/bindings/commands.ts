@@ -39,6 +39,7 @@ import type {
   Workspace,
   WorkspaceId,
   WebviewMemory,
+  Userscript,
 } from '@/bindings/types'
 
 export const commands = {
@@ -735,6 +736,11 @@ export const commands = {
   /** Start the element picker ("zapper") on a tab's webview. */
   async startElementPicker(id: TabId): Promise<void> {
     return invoke('start_element_picker', { id })
+  },
+
+  /** Import a `.user.js` file via the native open panel (null = cancelled). */
+  async importUserscript(): Promise<Userscript | null> {
+    return invoke('import_userscript')
   },
 
   /**
