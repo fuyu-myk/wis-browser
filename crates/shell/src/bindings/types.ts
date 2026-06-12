@@ -313,6 +313,7 @@ export interface UserSettings {
   persist_sessions: boolean
   /** WebKit fraudulent-website warning (Apple-proxied Safe Browsing). */
   fraud_warning_enabled: boolean
+  media_extensions_enabled: boolean
   /** Default user agent presented to remote pages. */
   user_agent_profile: UaProfile
   /** Per-host user agent overrides, keyed by `www.`-stripped host. */
@@ -376,6 +377,7 @@ export interface UserSettingsPatch {
   tab_sleep_minutes?: number
   persist_sessions?: boolean
   fraud_warning_enabled?: boolean
+  media_extensions_enabled?: boolean
   user_agent_profile?: UaProfile
   /** Replaces the whole override map when present. */
   ua_site_overrides?: Record<string, UaProfile>

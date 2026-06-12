@@ -121,7 +121,7 @@ pub async fn open_widget_panel(
         return Ok(());
     }
 
-    let (workspace_id, ephemeral, privacy_mode, user_agent, fraud_warning) = {
+    let (workspace_id, ephemeral, privacy_mode, user_agent, fraud_warning, media_extensions) = {
         let browser = state.browser.lock().await;
         let ws_id = browser.active_workspace_id;
         let (ephemeral, privacy_mode) = browser
@@ -141,6 +141,7 @@ pub async fn open_widget_panel(
             privacy_mode,
             user_agent,
             browser.settings.fraud_warning_enabled,
+            browser.settings.media_extensions_enabled,
         )
     };
 
@@ -247,6 +248,7 @@ pub async fn open_widget_panel(
 
     // Apple-proxied Safe Browsing warning.
     crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
+    crate::webview_prefs::apply_media_extensions(&child, media_extensions);
 
     // Keep overlays (incl. the resize strip) above the freshly added panel.
     crate::overlay::promote_overlays_to_front(&app);

@@ -79,7 +79,7 @@ pub async fn open_peek(
         let _ = existing.close();
     }
 
-    let (active_ws, user_agent, fraud_warning) = {
+    let (active_ws, user_agent, fraud_warning, media_extensions) = {
         let browser = state.browser.lock().await;
         let user_agent = wis_core::ua_for_host(
             parsed.host_str().unwrap_or_default(),
@@ -91,6 +91,7 @@ pub async fn open_peek(
             browser.active_workspace_id,
             user_agent,
             browser.settings.fraud_warning_enabled,
+            browser.settings.media_extensions_enabled,
         )
     };
     let proxy_port = state
@@ -129,6 +130,7 @@ pub async fn open_peek(
 
     // Apple-proxied Safe Browsing warning.
     crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
+    crate::webview_prefs::apply_media_extensions(&child, media_extensions);
 
     // Round the preview's corners so it sits cleanly inside the card.
     #[cfg(target_os = "macos")]

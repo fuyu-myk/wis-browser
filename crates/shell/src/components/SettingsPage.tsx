@@ -649,6 +649,21 @@ export function SettingsPage() {
         </div>
         <div className="row">
           <div className="l">
+            <span>Streaming media support</span>
+            <span>
+              Enable Media Source + Encrypted Media Extensions (adaptive
+              video and the FairPlay DRM key system). On by default; turning
+              it off may break video on some streaming sites.
+            </span>
+          </div>
+          <Switch
+            checked={settings.media_extensions_enabled}
+            onChange={(media_extensions_enabled) => update.mutate({ media_extensions_enabled })}
+            label="Streaming media support"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
             <span>Auto-update filter lists</span>
             <span>Fetch filter lists on launch, cache for 24 hours.</span>
           </div>

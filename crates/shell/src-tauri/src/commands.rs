@@ -1194,7 +1194,7 @@ pub async fn create_tab_webview(
 
     let label_ident = label.clone();
 
-    let (ephemeral, user_agent, fraud_warning, nav_privacy_mode) = {
+    let (ephemeral, user_agent, fraud_warning, media_extensions, nav_privacy_mode) = {
         let browser = state.browser.lock().await;
         let ephemeral = browser
             .workspace(workspace_id)
@@ -1215,6 +1215,7 @@ pub async fn create_tab_webview(
             ephemeral,
             user_agent,
             browser.settings.fraud_warning_enabled,
+            browser.settings.media_extensions_enabled,
             nav_privacy_mode,
         )
     };
@@ -1412,6 +1413,9 @@ pub async fn create_tab_webview(
 
     // Apple-proxied Safe Browsing warning.
     crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
+
+    // MSE + EME/FairPlay (adaptive streaming + DRM key system).
+    crate::webview_prefs::apply_media_extensions(&child, media_extensions);
 
     // Wake-from-sleep: restore the serialized session (history, scroll,
     // forms). The restore performs its own navigation from about:blank.
@@ -1668,6 +1672,7 @@ pub async fn update_settings(
     let theme_touched = patch.theme.is_some();
     let persistence_disabled = patch.persist_sessions == Some(false);
     let fraud_warning_changed = patch.fraud_warning_enabled;
+    let media_extensions_changed = patch.media_extensions_enabled;
     let settings = mutate_immediate(&app, &state, |s| {
         let next = s.with_settings(patch);
         let settings = next.settings.clone();
@@ -1696,6 +1701,10 @@ pub async fn update_settings(
 
     if let Some(enabled) = fraud_warning_changed {
         crate::webview_prefs::apply_fraud_warning_to_all_remote(&app, enabled);
+    }
+
+    if let Some(enabled) = media_extensions_changed {
+        crate::webview_prefs::apply_media_extensions_to_all_remote(&app, enabled);
     }
 
     // Keep the sync download-prefs mirror fresh for wry's synchronous
