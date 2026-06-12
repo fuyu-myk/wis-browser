@@ -122,6 +122,14 @@ const RAIL_SIDE_OPTIONS = [
   { value: 'right' as const, label: 'Right', icon: <SidebarRightIcon /> },
 ] satisfies ReadonlyArray<{ value: RailSide; label: string; icon: React.ReactNode }>
 
+/* Accordion limit for top-strip folder islands; '0' means no limit. */
+const EXPANDED_FOLDER_LIMIT_OPTIONS = [
+  { value: '1' as const, label: '1' },
+  { value: '2' as const, label: '2' },
+  { value: '3' as const, label: '3' },
+  { value: '0' as const, label: 'No limit' },
+] satisfies ReadonlyArray<{ value: string; label: string }>
+
 const SEARCH_ENGINE_OPTIONS = [
   { value: 'duckduckgo' as const, label: 'DuckDuckGo' },
   { value: 'google' as const, label: 'Google' },
@@ -380,6 +388,22 @@ export function SettingsPage() {
               }
               options={RAIL_SIDE_OPTIONS}
               ariaLabel="Rail side"
+            />
+          </div>
+        )}
+        {settings.layout === 'top_tabs' && (
+          <div className="row">
+            <div className="l">
+              <span>Open folders</span>
+              <span>Folders expanded at once; opening more collapses the oldest</span>
+            </div>
+            <Segmented
+              value={String(settings.top_tabs_max_expanded_folders) as '0' | '1' | '2' | '3'}
+              onChange={(v) =>
+                update.mutate({ top_tabs_max_expanded_folders: Number(v) })
+              }
+              options={EXPANDED_FOLDER_LIMIT_OPTIONS}
+              ariaLabel="Expanded folder limit"
             />
           </div>
         )}

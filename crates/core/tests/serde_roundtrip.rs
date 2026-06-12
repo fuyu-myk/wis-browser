@@ -87,6 +87,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
     let patch = UserSettingsPatch {
         layout: Some(LayoutMode::TopTabs),
         top_tabs_rail_side: Some(wis_core::RailSide::Right),
+        top_tabs_max_expanded_folders: Some(3),
         theme: Some(ThemeMode::Light),
         accent: Some(wis_core::AccentColor::Mint),
         glass_enabled: Some(true),
@@ -177,6 +178,43 @@ fn tab_sleep_patch_applies_and_leaves_others_untouched() {
     // Untouched fields keep their prior values.
     assert_eq!(patched.layout, base.layout);
     assert_eq!(patched.theme, base.theme);
+}
+
+#[test]
+fn top_tabs_expanded_folder_limit_defaults_to_two() {
+    let s = UserSettings::default();
+    assert_eq!(s.top_tabs_max_expanded_folders, 2);
+}
+
+#[test]
+fn top_tabs_expanded_folder_limit_patch_applies_and_zero_means_no_limit() {
+    let base = UserSettings::default();
+    let patched = base.with_patch(UserSettingsPatch {
+        top_tabs_max_expanded_folders: Some(0),
+        ..Default::default()
+    });
+    assert_eq!(patched.top_tabs_max_expanded_folders, 0);
+    // Untouched fields keep their prior values.
+    assert_eq!(patched.layout, base.layout);
+    assert_eq!(patched.top_tabs_rail_side, base.top_tabs_rail_side);
+}
+
+#[test]
+fn user_settings_without_expanded_folder_limit_deserialises_to_default() {
+    // Settings persisted before the limit existed must still load as 2.
+    let json = r#"{
+        "layout": "top_tabs",
+        "theme": "system",
+        "accent": "primary",
+        "glass_enabled": true,
+        "sidebar_collapsible": true,
+        "compact": false,
+        "default_privacy_mode": "balanced",
+        "doh_resolver": null,
+        "homepage": null
+    }"#;
+    let parsed: UserSettings = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.top_tabs_max_expanded_folders, 2);
 }
 
 #[test]

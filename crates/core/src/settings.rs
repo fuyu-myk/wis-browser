@@ -24,6 +24,12 @@ pub struct UserSettings {
     /// switching to TopTabs feels continuous.
     #[serde(default)]
     pub top_tabs_rail_side: RailSide,
+    /// Maximum folder islands expanded at once in the top-tabs strip:
+    /// expanding one past the limit collapses the least-recently-expanded
+    /// (accordion). `0` means no limit. Enforced by the top-tabs UI only;
+    /// the sidebar tree allows any number of open folders.
+    #[serde(default = "default_top_tabs_max_expanded_folders")]
+    pub top_tabs_max_expanded_folders: u32,
     pub theme: ThemeMode,
     pub accent: AccentColor,
     pub glass_enabled: bool,
@@ -171,6 +177,10 @@ pub struct UserSettings {
     pub motion: MotionLevel,
 }
 
+fn default_top_tabs_max_expanded_folders() -> u32 {
+    2
+}
+
 fn default_filter_list_auto_update() -> bool {
     true
 }
@@ -235,6 +245,7 @@ impl Default for UserSettings {
         Self {
             layout: LayoutMode::SidebarLeft,
             top_tabs_rail_side: RailSide::Left,
+            top_tabs_max_expanded_folders: 2,
             theme: ThemeMode::System,
             accent: AccentColor::Primary,
             glass_enabled: true,
@@ -286,6 +297,8 @@ pub struct UserSettingsPatch {
     pub layout: Option<LayoutMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top_tabs_rail_side: Option<RailSide>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_tabs_max_expanded_folders: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<ThemeMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -378,6 +391,9 @@ impl UserSettings {
         Self {
             layout: patch.layout.unwrap_or(self.layout),
             top_tabs_rail_side: patch.top_tabs_rail_side.unwrap_or(self.top_tabs_rail_side),
+            top_tabs_max_expanded_folders: patch
+                .top_tabs_max_expanded_folders
+                .unwrap_or(self.top_tabs_max_expanded_folders),
             theme: patch.theme.unwrap_or(self.theme),
             accent: patch.accent.unwrap_or(self.accent),
             glass_enabled: patch.glass_enabled.unwrap_or(self.glass_enabled),

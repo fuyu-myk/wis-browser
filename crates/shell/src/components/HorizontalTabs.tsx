@@ -72,6 +72,11 @@ interface HorizontalTabsProps {
   integrateUrlBar: boolean
   /** Render as a smaller, centered tab strip. */
   compact?: boolean
+  /**
+   * Max islands expanded at once: expanding past the limit collapses the
+   * least-recently-expanded (accordion). 0 means no limit.
+   */
+  maxExpandedFolders?: number
 }
 
 /* Phase boundary: active tab can't shrink below this (in px). */
@@ -80,6 +85,12 @@ const COMPACT_MINIMUM_CURRENT_TAB_SIZE = 180
 /* Final floor: inactive tabs can't shrink below this (favicon visible). */
 const MINIMUM_TAB_SIZE = 44
 const COMPACT_MINIMUM_TAB_SIZE = 40
+/* Cap on expanded-island members: filing a tab compacts it into the pill
+   instead of keeping its loose share (loose tabs absorb the slack via
+   flex-grow). The active member caps at the active floor instead, so its
+   title stays readable. */
+const MEMBER_TAB_MAX = 150
+const COMPACT_MEMBER_TAB_MAX = 120
 const GAP_PX = 4
 /* Fixed widths reserved by islands before sizing the flexible tabs. */
 const ISLAND_CIRCLE_W = 30
@@ -87,6 +98,12 @@ const ISLAND_NAME_W = 96
 const ISLAND_NAME_W_COMPACT = 74
 const ISLAND_PILL_PAD = 3
 const PIN_CIRCLE_W = 30
+/* Speaker button on audible/muted tabs (never shrinks), plus the in-tab
+   flex gap it introduces: reserved per audio tab so the minimum sizes
+   still fit favicon + speaker. */
+const AUDIO_BTN_W = 16
+const TAB_CONTENT_GAP = 8
+const COMPACT_TAB_CONTENT_GAP = 6
 
 /** A non-reorder drop target: "assign to island", not "insert here". */
 const ISLAND_DROP: DropTarget = { index: -1, anchorIndex: -1, side: 'before' }
@@ -132,7 +149,7 @@ function computeSizing(
   minInactive: number,
 ): SizingResult {
   if (n <= 0 || budget <= 0) {
-    return { activeSize: minActive, inactiveSize: minInactive, scrolling: false }
+    return { activeSize: minActive, inactiveSize: minInactive, scrolling: n > 0 }
   }
 
   const equalSize = budget / n
@@ -163,6 +180,7 @@ export function HorizontalTabs({
   themeAccent,
   integrateUrlBar,
   compact = false,
+  maxExpandedFolders = 0,
 }: HorizontalTabsProps) {
   const qc = useQueryClient()
   const invalidate = () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
@@ -360,6 +378,55 @@ export function HorizontalTabs({
       expandedCount += 1
       sizableTabs.push(...g.members)
     }
+  }
+
+  // Accordion bookkeeping: which expanded islands were opened least recently.
+  // Session-scoped per workspace, seeded in position order (oldest first).
+  const expandRecencyRef = useRef<{ ws: WorkspaceId; order: TabFolderId[] } | null>(null)
+  if (expandRecencyRef.current?.ws !== workspaceId) {
+    expandRecencyRef.current = {
+      ws: workspaceId,
+      order: folderGroups.filter((g) => !g.folder.collapsed).map((g) => g.folder.id),
+    }
+  }
+
+  // Expand an island; past the limit, the least-recently-expanded expanded
+  // island collapses with the usual exit sweep (extras, only possible after
+  // the limit was lowered mid-session, collapse on the same frame).
+  const expandIsland = (folderId: TabFolderId) => {
+    if (folderReorderRef.current) {
+      folderReorderRef.current = false
+      return
+    }
+    const recOrder = expandRecencyRef.current?.order ?? []
+    const expandedIds = folderGroups
+      .filter((g) => !g.folder.collapsed && g.folder.id !== folderId)
+      .map((g) => g.folder.id)
+    // Oldest first; islands missing from the recency list count as oldest.
+    const byAge = [
+      ...expandedIds.filter((id) => !recOrder.includes(id)),
+      ...recOrder.filter((id) => expandedIds.includes(id)),
+    ]
+    const over = maxExpandedFolders > 0 ? expandedIds.length + 1 - maxExpandedFolders : 0
+    const victims = byAge.slice(0, Math.max(0, over))
+    for (const extra of victims.slice(1)) {
+      setCollapsed.mutate({ folderId: extra, collapsed: true })
+    }
+    if (victims.length > 0) {
+      const victim = victims[0]
+      setClosingIslandId(victim)
+      window.setTimeout(() => {
+        setCollapsed.mutate({ folderId: victim, collapsed: true })
+        setClosingIslandId(null)
+      }, ISLAND_EXIT_MS)
+    }
+    expandRecencyRef.current = {
+      ws: workspaceId,
+      order: [...recOrder.filter((id) => id !== folderId), folderId],
+    }
+    setOpeningIslandId(folderId)
+    setOpeningArmed(false)
+    setCollapsed.mutate({ folderId, collapsed: false })
   }
 
   const makeReorder = (tab: Tab): TabReorder => ({
@@ -686,8 +753,12 @@ export function HorizontalTabs({
 
   const n = sizableTabs.length
   const activeVisible = sizableTabs.some((t) => t.id === activeTabId)
+  const hasAudioIcon = (t: Tab) => tabAudio.audible.has(t.id) || tabAudio.muted.has(t.id)
+  const audioExtra = AUDIO_BTN_W + (compact ? COMPACT_TAB_CONTENT_GAP : TAB_CONTENT_GAP)
+  const audioCount = sizableTabs.reduce((c, t) => c + (hasAudioIcon(t) ? 1 : 0), 0)
   // Reserve the pinned circles, islands' fixed parts (circles, name chips +
-  // pill padding), and every gap, so the flexible tabs fill exactly what's left.
+  // pill padding), every gap, and the audio tabs' speaker buttons, so the
+  // flexible tabs fill exactly what's left.
   const expandedMembers = n - looseTabs.length
   const topLevelCount = pinnedTabs.length + folderGroups.length + looseTabs.length
   const totalGaps =
@@ -696,15 +767,28 @@ export function HorizontalTabs({
     pinnedTabs.length * PIN_CIRCLE_W +
     collapsedCount * ISLAND_CIRCLE_W +
     expandedCount * (nameW + ISLAND_PILL_PAD * 2)
-  const available = Math.max(0, stripWidth - fixedWidth - totalGaps)
+  const available = Math.max(0, stripWidth - fixedWidth - totalGaps - audioCount * audioExtra)
   const sizing = computeSizing(n, available, minActive, minInactive)
 
   const isMany = sizing.activeSize !== sizing.inactiveSize
   const inactiveCloseThreshold = compact ? 90 : 130
   const inactiveCompact = isMany && sizing.inactiveSize < inactiveCloseThreshold
 
-  const sizeFor = (isActive: boolean) =>
-    isActive && activeVisible ? sizing.activeSize : sizing.inactiveSize
+  const sizeFor = (tab: Tab) => {
+    const base =
+      tab.id === activeTabId && activeVisible ? sizing.activeSize : sizing.inactiveSize
+    return base + (hasAudioIcon(tab) ? audioExtra : 0)
+  }
+  // Expanded-island members: same share as loose tabs, but capped (see
+  // MEMBER_TAB_MAX) so filing always reads as the tab tucking into the pill.
+  const memberSizeFor = (tab: Tab) => {
+    const isActive = tab.id === activeTabId && activeVisible
+    const base = Math.min(
+      isActive ? sizing.activeSize : sizing.inactiveSize,
+      isActive ? minActive : compact ? COMPACT_MEMBER_TAB_MAX : MEMBER_TAB_MAX,
+    )
+    return base + (hasAudioIcon(tab) ? audioExtra : 0)
+  }
 
   const renderTab = (
     tab: Tab,
@@ -726,7 +810,7 @@ export function HorizontalTabs({
     if (dragPart && dropTarget !== null && dropTarget.index >= 0) {
       if (loose && scope === 'loose') {
         const from = looseTabs.findIndex((t) => t.id === dragPart.id)
-        shift = partOffset(opts.looseIndex ?? -1, from, dropTarget.index, railSide === 'right' ? 1 : -1)
+        shift = partOffset(opts.looseIndex ?? -1, from, dropTarget.index, railSide === 'right' ? -1 : 1)
       } else if (member && scope === opts.memberOf) {
         shift = partOffset(opts.memberIndex ?? -1, opts.memberFrom ?? -1, dropTarget.index)
       }
@@ -749,7 +833,9 @@ export function HorizontalTabs({
         style={{
           flex: lifted
             ? '0 0 0px'
-            : `${loose && !sizing.scrolling && dragPart === null ? '1 1' : '0 0'} ${sizeFor(isActive)}px`,
+            : `${loose && !sizing.scrolling && dragPart === null ? '1 1' : '0 0'} ${
+                member ? memberSizeFor(tab) : sizeFor(tab)
+              }px`,
           ...(lifted ? { marginLeft: `${-GAP_PX}px` } : {}),
           ...(shift !== 0 && dragPart
             ? { transform: `translateX(${shift * dragPart.size}px)` }
@@ -902,11 +988,7 @@ export function HorizontalTabs({
           title={`${folder.name} (${members.length})`}
           aria-label={`${folder.name}, ${members.length} tabs`}
           onPointerDown={(e) => startFolderReorderDrag(e, folder.id)}
-          onClick={() => {
-            setOpeningIslandId(folder.id)
-            setOpeningArmed(false)
-            toggleCollapsed(false)
-          }}
+          onClick={() => expandIsland(folder.id)}
           onContextMenu={(e) => openIslandMenu(e, islandTarget)}
         >
           {renderIconRef(folder.icon, 11)}
@@ -921,7 +1003,7 @@ export function HorizontalTabs({
     const sizedMembers = liftedOut
       ? members.filter((m) => m.id !== dragPart?.id)
       : members
-    const memberSum = sizedMembers.reduce((s, m) => s + sizeFor(m.id === activeTabId), 0)
+    const memberSum = sizedMembers.reduce((s, m) => s + memberSizeFor(m), 0)
     const externalTarget =
       dragPart !== null &&
       memberFrom < 0 &&
@@ -1028,20 +1110,17 @@ export function HorizontalTabs({
   const pinnedEls = pinnedTabs.map((tab, i) => renderPinCircle(tab, i))
   const folderEls = folderGroups.map((g, i) => renderFolder(g, i))
   const looseEls = looseTabs.map((tab, i) => renderTab(tab, { looseIndex: i }))
-  // Loose tabs live in their own flex item sized by the container, so their
-  // width animations can never push the folders and pinned circles around.
-  const looseGroup =
-    looseEls.length > 0 ? (
-      <div className="h-loose-group" key="loose-group">
-        {looseEls}
+  // Folders and loose tabs flow together in one scrollable run.
+  const runEls =
+    railSide === 'right' ? [...looseEls, ...folderEls] : [...folderEls, ...looseEls]
+  const stripRun =
+    runEls.length > 0 ? (
+      <div className="h-strip-run" key="strip-run">
+        {runEls}
       </div>
     ) : null
-  // Rail-side ordering: pinned sits nearest the rail. Left rail →
-  // pinned | folders | loose; right rail → loose | folders | pinned.
-  const ordered =
-    railSide === 'right'
-      ? [looseGroup, ...folderEls, ...pinnedEls]
-      : [...pinnedEls, ...folderEls, looseGroup]
+  // Rail-side ordering: pinned sits nearest the rail.
+  const ordered = railSide === 'right' ? [stripRun, ...pinnedEls] : [...pinnedEls, stripRun]
 
   return (
     <div

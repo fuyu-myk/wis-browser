@@ -78,6 +78,7 @@ export function TopBar({ state }: TopBarProps) {
           themeAccent={state.settings.accent}
           integrateUrlBar={false}
           compact
+          maxExpandedFolders={state.settings.top_tabs_max_expanded_folders}
         />
       </div>
     </div>

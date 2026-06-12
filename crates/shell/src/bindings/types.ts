@@ -293,6 +293,12 @@ export type UaProfile = 'default' | 'safari' | 'chrome' | { custom: string }
 export interface UserSettings {
   layout: LayoutMode
   top_tabs_rail_side: RailSide
+  /**
+   * Max folder islands expanded at once in the top-tabs strip (accordion:
+   * expanding past the limit collapses the least-recently-expanded).
+   * 0 means no limit. Top-tabs UI only; the sidebar tree is unrestricted.
+   */
+  top_tabs_max_expanded_folders: number
   theme: ThemeMode
   accent: AccentColor
   glass_enabled: boolean
@@ -364,6 +370,7 @@ export interface UserSettings {
 export interface UserSettingsPatch {
   layout?: LayoutMode
   top_tabs_rail_side?: RailSide
+  top_tabs_max_expanded_folders?: number
   theme?: ThemeMode
   accent?: AccentColor
   glass_enabled?: boolean

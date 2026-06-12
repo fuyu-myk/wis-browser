@@ -294,7 +294,9 @@ export function TabList({
     }
     const rootRect = root.getBoundingClientRect()
     const r = el.getBoundingClientRect()
-    const next = r.top - rootRect.top + r.height / 2 - 9
+    // The bar is absolutely positioned inside the scrolling list, so its
+    // `top` is in content coordinates: add the scroll offset.
+    const next = r.top - rootRect.top + root.scrollTop + r.height / 2 - 9
     setBarTop((prev) => (prev !== null && Math.abs(prev - next) < 0.5 ? prev : next))
   }, [activeTabId])
   useLayoutEffect(() => {

@@ -1972,8 +1972,8 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   color: var(--text-secondary);
   cursor: pointer;
   /* flex-basis animates strip reflow: folder collapse, spawns, active-tab
-     sizing all glide instead of snapping. Transients stay inside
-     .h-loose-group, so folders and pinned circles never shift. */
+     sizing all glide instead of snapping. Transients stay inside the
+     corner-anchored .h-strip-run, so the pinned circles never shift. */
   transition: background var(--dur-fast), color var(--dur-fast),
     box-shadow var(--dur-fast), transform var(--dur-fast),
     flex-basis var(--reflow-dur, var(--dur-med)) var(--ease-standard);
@@ -2031,6 +2031,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   align-items: center;
   gap: 3px;
   height: 28px;
+  min-width: 0;
   padding: 0 9px 0 5px;
   border: 0;
   border-radius: 10px;
@@ -2272,20 +2273,15 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: 8px; }
   margin: 0;
   overflow: hidden;
 }
+/* The strip itself never scrolls: pinned circles keep their slots, and
+   folders + loose tabs scroll together inside .h-strip-run. */
 .kb-tabs-h-wrap.compact .tabs-h {
   flex: 1;
   min-width: 0;
   min-height: 34px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  scroll-behavior: smooth;
   gap: 4px;
   justify-content: center;
 }
-.kb-tabs-h-wrap.compact .tabs-h::-webkit-scrollbar { display: none; }
-/* Once the row overflows, lay out from the start so scroll reaches every item. */
-.kb-tabs-h-wrap.compact.is-scrolling .tabs-h { justify-content: flex-start; }
 .kb-tabs-h-wrap.is-inactive-compact .h-tab:not(.active) {
   padding: 0 8px;
 }
@@ -6768,28 +6764,33 @@ body.is-tab-dragging .kb-loose {
   left: 2px;
 }
 
-/* Loose tabs animate inside a flex item whose width comes from the
-   container (strip minus the fixed folder/pinned widths), so mid-animation
-   over/under-fill cannot move the neighbours. Tabs anchor to the corner
-   opposite the rail, so the outermost tab never moves either; transients
-   resolve at the folder seam, where the clip reads as tabs sliding behind
-   the island. */
-.kb-topbar .h-loose-group {
+/* Folder islands and loose tabs flow in one scrollable run.
+   Only the pinned circles sit outside it, so they stay anchored however the
+   run overflows. */
+.kb-topbar .h-strip-run {
   display: flex;
   align-items: center;
   gap: 6px;
   flex: 1 1 auto;
   min-width: 0;
-  /* Transient overflow stays inside the bar: clip horizontally at the
-     group's bounds, with vertical headroom for shadows and rings. */
+  /* Non-scrolling strips still clip transient overflow inside the bar. */
   clip-path: inset(-20px 0);
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
-.kb-window.rail-right .kb-topbar .h-loose-group { justify-content: flex-start; }
-.kb-tabs-h-wrap.compact .h-loose-group { gap: 4px; }
-/* Overflowing strips scroll item-by-item again: the group must keep its
-   natural width inside the scroller. */
-.kb-tabs-h-wrap.compact.is-scrolling .h-loose-group { flex: 0 0 auto; }
+.kb-window.rail-right .kb-topbar .h-strip-run { justify-content: flex-end; }
+.kb-tabs-h-wrap.compact .h-strip-run {
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+  padding: 20px 2px;
+  margin: -20px -2px;
+}
+.kb-tabs-h-wrap.compact .h-strip-run::-webkit-scrollbar { display: none; }
+/* Once the run overflows, lay out from the start: start-side overflow
+   would be unreachable by scrolling. */
+.kb-tabs-h-wrap.compact.is-scrolling .h-strip-run { justify-content: flex-start; }
 
 .h-island.is-closing,
 .h-island.is-opening {
