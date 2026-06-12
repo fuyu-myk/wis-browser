@@ -756,6 +756,8 @@ pub async fn close_tab(app: AppHandle, state: State<'_, AppState>, id: TabId) ->
         }
     }
 
+    crate::audio::forget_tab(&app, id);
+
     mutate_unit_immediate(&app, &state, |s| s.with_tab_closed(id)).await
 }
 
@@ -1426,6 +1428,18 @@ pub async fn create_tab_webview(
 
     // MSE + EME/FairPlay (adaptive streaming + DRM key system).
     crate::webview_prefs::apply_media_extensions(&child, media_extensions);
+
+    // A muted tab stays muted across sleep/wake webview recreation.
+    {
+        let muted = state
+            .muted_tabs
+            .lock()
+            .expect("muted_tabs poisoned")
+            .contains(&tab_id.as_uuid().to_string());
+        if muted {
+            crate::audio::apply_page_muted(&child, true);
+        }
+    }
 
     // Wake-from-sleep: restore the serialized session (history, scroll,
     // forms). The restore performs its own navigation from about:blank.

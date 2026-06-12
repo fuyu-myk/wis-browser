@@ -47,6 +47,8 @@ import {
 
 import { useFolderTarget } from '@/hooks/useFolderTarget'
 import { useIslandMenu } from '@/hooks/useIslandMenu'
+import { useTabAudio } from '@/hooks/useTabAudio'
+import { TabAudioButton } from '@/components/TabAudioButton'
 import { TabFavicon } from '@/components/TabFavicon'
 import { useDiscardedTabs } from '@/components/DiscardedTabsContext'
 
@@ -164,6 +166,7 @@ export function HorizontalTabs({
 }: HorizontalTabsProps) {
   const qc = useQueryClient()
   const invalidate = () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
+  const tabAudio = useTabAudio()
   const setActive = useMutation({
     mutationFn: (id: TabId) => commands.setActiveTab(id),
     onSuccess: invalidate,
@@ -776,6 +779,12 @@ export function HorizontalTabs({
         ) : (
           <>
             <TabFavicon tab={tab} />
+            <TabAudioButton
+              id={tab.id}
+              audible={tabAudio.audible.has(tab.id)}
+              muted={tabAudio.muted.has(tab.id)}
+              onToggle={tabAudio.toggleMute}
+            />
             <span className="ttl">{tabDisplayName(tab)}</span>
           </>
         )}

@@ -250,6 +250,18 @@ pub async fn open_widget_panel(
     crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
     crate::webview_prefs::apply_media_extensions(&child, media_extensions);
 
+    // A muted widget stays muted across panel reclaim/reopen.
+    {
+        let muted = state
+            .muted_widgets
+            .lock()
+            .expect("muted_widgets poisoned")
+            .contains(&id);
+        if muted {
+            crate::audio::apply_page_muted(&child, true);
+        }
+    }
+
     // Keep overlays (incl. the resize strip) above the freshly added panel.
     crate::overlay::promote_overlays_to_front(&app);
     notify_panels_changed(&app);
@@ -464,6 +476,41 @@ pub async fn close_all_widget_panels(app: AppHandle) -> WisResult<()> {
     }
 
     Ok(())
+}
+
+/// Mute or unmute widget `id`'s page (engine-level, so messaging pings stay
+/// silent too). Session-scoped: re-applied when a reclaimed panel reopens.
+#[tauri::command]
+pub async fn set_widget_panel_muted(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    muted: bool,
+) -> WisResult<()> {
+    let label = panel_label(&id)?;
+    {
+        let mut set = state.muted_widgets.lock().expect("muted_widgets poisoned");
+        if muted {
+            set.insert(id);
+        } else {
+            set.remove(&id);
+        }
+    }
+    if let Some(wv) = app.webviews().get(&label).cloned() {
+        crate::audio::apply_page_muted(&wv, muted);
+    }
+
+    Ok(())
+}
+
+/// Whether widget `id` is currently muted.
+#[tauri::command]
+pub async fn widget_panel_muted(state: State<'_, AppState>, id: String) -> WisResult<bool> {
+    Ok(state
+        .muted_widgets
+        .lock()
+        .expect("muted_widgets poisoned")
+        .contains(&id))
 }
 
 /// Widget ids of the currently live panel webviews (visible or hidden), for

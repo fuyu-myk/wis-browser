@@ -1,3 +1,4 @@
+mod audio;
 mod biometrics;
 mod bookmarks;
 mod capture;
@@ -225,6 +226,9 @@ pub fn run() {
             // App handle for the video-popout message handler.
             video_popout::set_app_handle(app.handle().clone());
 
+            // Per-tab audibility poll (tab audio icons + click-to-mute).
+            audio::start_poll(app.handle().clone());
+
             // Periodically snapshot session cookies for activated workspaces so
             // logins survive a restart even when no page reload occurs (e.g. a
             // cookie set via fetch). Restore happens per-workspace on first tab.
@@ -434,6 +438,10 @@ pub fn run() {
             widget_panel::navigate_widget_panel,
             video_popout::open_video_popout,
             video_popout::close_video_popout,
+            audio::set_tab_muted,
+            audio::tab_audio_state,
+            widget_panel::set_widget_panel_muted,
+            widget_panel::widget_panel_muted,
             navguard::nav_guard_proceed,
             bookmarks::list_bookmark_folders,
             bookmarks::list_bookmarks,

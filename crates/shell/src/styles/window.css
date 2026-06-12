@@ -1216,6 +1216,7 @@ body.is-overlay-surface:not(.glass-on) {
 .kb-window.collapsible .kb-side:not(.is-expanded) .ver,
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-tab .ttl,
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-tab .close,
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-tab .kb-tab-audio,
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-urlbar .domain,
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-urlbar .path,
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-newtab-row span,
@@ -1537,6 +1538,39 @@ body.is-overlay-surface:not(.glass-on) {
 .kb-topbar .h-tab .fav { overflow: hidden; }
 .kb-topbar .h-tab .fav img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .kb-tab .ttl { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Audio-playing tab: speaker beside the favicon, slashed while muted.
+   Never shrinks (the title gives way first), so favicon + speaker stay
+   visible however narrow the tab gets. */
+.kb-tab .fav,
+.kb-topbar .h-tab .fav { flex: 0 0 auto; }
+.kb-tab .kb-tab-audio,
+.kb-topbar .h-tab .kb-tab-audio {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.kb-tab .kb-tab-audio:hover,
+.kb-topbar .h-tab .kb-tab-audio:hover {
+  background: var(--overlay);
+  color: var(--text-primary);
+}
+.kb-tab .kb-tab-audio svg,
+.kb-topbar .h-tab .kb-tab-audio svg { width: 12px; height: 12px; }
+[data-mode="dark"] .kb-tab .kb-tab-audio,
+[data-mode="dark"] .kb-topbar .h-tab .kb-tab-audio { color: rgba(255,255,255,0.65); }
+[data-mode="dark"] .kb-tab .kb-tab-audio:hover,
+[data-mode="dark"] .kb-topbar .h-tab .kb-tab-audio:hover { color: white; }
 .kb-tab .close {
   width: 16px; height: 16px;
   border-radius: 4px;
@@ -3564,6 +3598,23 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .kb-wheader-reload:hover { background: rgba(255, 255, 255, 0.22); }
 .kb-wheader-reload:active { transform: rotate(45deg); }
 .kb-wheader-reload svg { width: 14px; height: 14px; }
+/* Mute toggle: same chip as reload, without the rotate flourish. */
+.kb-wheader-mute {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  padding: 0;
+  margin-right: 2px;
+  transition: background var(--dur-fast) ease;
+}
+.kb-wheader-mute:hover { background: rgba(255, 255, 255, 0.22); }
+.kb-wheader-mute svg { width: 14px; height: 14px; }
 .kb-widget-fav-img {
   width: 18px;
   height: 18px;

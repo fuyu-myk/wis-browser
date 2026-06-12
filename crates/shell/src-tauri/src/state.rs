@@ -92,6 +92,15 @@ pub struct AppState {
     /// A sync mutex because the `wisPopout` script-message handler is
     /// synchronous main-thread code that cannot await.
     pub video_popout: std::sync::Mutex<crate::video_popout::VideoPopoutState>,
+    /// Tab uuids whose webview reported audible playback on the last audio
+    /// poll (see [`crate::audio`]).
+    pub audible_tabs: std::sync::Mutex<HashSet<String>>,
+    /// Tab uuids the user muted (session-scoped; re-applied when a slept
+    /// tab's webview is recreated).
+    pub muted_tabs: std::sync::Mutex<HashSet<String>>,
+    /// Widget ids whose panel the user muted (session-scoped; re-applied
+    /// when a reclaimed panel is reopened).
+    pub muted_widgets: std::sync::Mutex<HashSet<String>>,
     /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
     /// Only present with the `tor` feature.
     #[cfg(feature = "tor")]
@@ -130,6 +139,9 @@ impl AppState {
             downloads: std::sync::Mutex::new(Vec::new()),
             download_prefs: std::sync::Mutex::new(download_prefs),
             video_popout: std::sync::Mutex::new(Default::default()),
+            audible_tabs: std::sync::Mutex::new(HashSet::new()),
+            muted_tabs: std::sync::Mutex::new(HashSet::new()),
+            muted_widgets: std::sync::Mutex::new(HashSet::new()),
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }

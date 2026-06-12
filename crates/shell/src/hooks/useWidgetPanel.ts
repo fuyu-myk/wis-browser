@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { Widget, WidgetId } from '@/bindings/types'
@@ -7,7 +7,9 @@ import { useBrowserState } from '@/hooks/useBrowserState'
 import { useOverlay } from '@/hooks/useOverlay'
 import { DEFAULT_PANEL_LIMIT, effectiveWidgetUrl } from '@/lib/widgets'
 import {
+  WPANEL_MUTE_EVENT,
   WPANEL_RELOAD_EVENT,
+  WPANEL_STATE_EVENT,
   WRESIZE_END_EVENT,
   WRESIZE_MOVE_EVENT,
   WRESIZE_START_EVENT,
@@ -114,6 +116,16 @@ export function useWidgetPanel(): {
   const [panelRect, setPanelRect] = useState<Rect | null>(null)
   const visibleRef = useRef<WidgetId | null>(null)
   visibleRef.current = activeWidgetId
+
+  // Push the visible widget's mute state to the header surface so its
+  // toggle renders correctly on every show.
+  useEffect(() => {
+    if (activeWidgetId === null) return
+    void commands
+      .widgetPanelMuted(activeWidgetId)
+      .then((muted) => emit(WPANEL_STATE_EVENT, { muted }))
+      .catch(() => undefined)
+  }, [activeWidgetId])
   /** Live panel webviews by widget id -> last-used timestamp (for LRU). */
   const liveRef = useRef<Map<WidgetId, number>>(new Map())
   /** Idle-destroy timers for hidden panels. */
@@ -499,6 +511,22 @@ export function useWidgetPanel(): {
       listen(WPANEL_RELOAD_EVENT, () => {
         const visible = visibleRef.current
         if (visible !== null) void commands.reloadWidgetPanel(visible).catch(() => undefined)
+      }),
+    )
+    // Mute toggle from the header surface: engine-level page mute, so
+    // messaging pings stay silent too. The new state echoes back to the
+    // surface so its icon flips.
+    track(
+      listen(WPANEL_MUTE_EVENT, () => {
+        const visible = visibleRef.current
+        if (visible === null) return
+        void commands
+          .widgetPanelMuted(visible)
+          .then(async (muted) => {
+            await commands.setWidgetPanelMuted(visible, !muted)
+            await emit(WPANEL_STATE_EVENT, { muted: !muted })
+          })
+          .catch(() => undefined)
       }),
     )
     return () => {

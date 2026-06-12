@@ -684,6 +684,28 @@ export const commands = {
     return invoke('close_video_popout', { label })
   },
 
+  // -- tab audio --------------------------------------------------------------
+
+  /** Mute or unmute a tab's page (engine-level; survives sleep/wake). */
+  async setTabMuted(id: TabId, muted: boolean): Promise<void> {
+    return invoke('set_tab_muted', { id, muted })
+  },
+
+  /** Current audible + muted tab uuids, for the chrome's initial render. */
+  async tabAudioState(): Promise<{ audible: string[]; muted: string[] }> {
+    return invoke('tab_audio_state')
+  },
+
+  /** Mute or unmute widget `id`'s panel page (pings stay silent too). */
+  async setWidgetPanelMuted(id: WidgetId, muted: boolean): Promise<void> {
+    return invoke('set_widget_panel_muted', { id, muted })
+  },
+
+  /** Whether widget `id` is currently muted. */
+  async widgetPanelMuted(id: WidgetId): Promise<boolean> {
+    return invoke('widget_panel_muted', { id })
+  },
+
   // -- custom themes ----------------------------------------------------------
 
   /** Activate a custom theme (null = built-in presets). */

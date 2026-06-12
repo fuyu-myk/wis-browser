@@ -6,3 +6,11 @@ export const WRESIZE_START_EVENT = 'wis-wresize-start'
 export const WRESIZE_MOVE_EVENT = 'wis-wresize-move'
 export const WRESIZE_END_EVENT = 'wis-wresize-end'
 export const WPANEL_RELOAD_EVENT = 'wis-wpanel-reload'
+/** Header mute button clicked; the chrome toggles the visible widget. */
+export const WPANEL_MUTE_EVENT = 'wis-wpanel-mute'
+/** Chrome -> header surface: the visible widget's state, `{ muted }`. */
+export const WPANEL_STATE_EVENT = 'wis-wpanel-state'
+
+export interface WPanelStatePayload {
+  muted: boolean
+}

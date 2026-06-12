@@ -35,9 +35,11 @@ import {
   type DropTarget,
 } from '@/hooks/useTabSplit'
 
+import { TabAudioButton } from '@/components/TabAudioButton'
 import { TabFavicon } from '@/components/TabFavicon'
 import { TabFolderHeader } from '@/components/TabFolderHeader'
 import { useDiscardedTabs } from '@/components/DiscardedTabsContext'
+import { useTabAudio } from '@/hooks/useTabAudio'
 
 interface TabListProps {
   workspaceId: WorkspaceId
@@ -128,6 +130,7 @@ export function TabList({
       }),
     [],
   )
+  const tabAudio = useTabAudio()
   const setActive = useMutation({
     mutationFn: (id: TabId) => commands.setActiveTab(id),
     onSuccess: invalidate,
@@ -562,6 +565,12 @@ export function TabList({
         }}
       >
         <TabFavicon tab={tab} />
+        <TabAudioButton
+          id={tab.id}
+          audible={tabAudio.audible.has(tab.id)}
+          muted={tabAudio.muted.has(tab.id)}
+          onToggle={tabAudio.toggleMute}
+        />
         <span className="ttl">{tabDisplayName(tab)}</span>
         <button
           type="button"

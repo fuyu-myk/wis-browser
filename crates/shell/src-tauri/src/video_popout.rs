@@ -1075,6 +1075,13 @@ const POPOUT_JS: &str = r#"(function () {
     '#__wis-popout-x{position:absolute;top:10px;right:10px;width:28px;height:28px;border:0;border-radius:50%;background:rgba(15,15,20,0.62);color:#fff;font-size:17px;line-height:28px;text-align:center;padding:0;cursor:pointer;opacity:0;transition:opacity 0.18s ease,background 0.18s ease;z-index:3;}' +
     '#__wis-popout-overlay:hover #__wis-popout-x,#__wis-popout-overlay.is-fresh #__wis-popout-x{opacity:1;}' +
     '#__wis-popout-x:hover{background:rgba(15,15,20,0.85);}' +
+    '#__wis-popout-vol{position:absolute;left:10px;bottom:10px;display:flex;align-items:center;gap:6px;height:28px;padding:0 10px 0 3px;border-radius:14px;background:rgba(15,15,20,0.62);opacity:0;transition:opacity 0.18s ease;z-index:3;}' +
+    '#__wis-popout-overlay:hover #__wis-popout-vol,#__wis-popout-overlay.is-fresh #__wis-popout-vol{opacity:1;}' +
+    '#__wis-popout-vol button{width:24px;height:24px;border:0;border-radius:50%;background:transparent;color:#fff;cursor:pointer;padding:0;display:grid;place-items:center;}' +
+    '#__wis-popout-vol button:hover{background:rgba(255,255,255,0.18);}' +
+    '#__wis-popout-vol button svg{width:15px;height:15px;display:block;}' +
+    '#__wis-popout-vol input{-webkit-appearance:none;appearance:none;width:72px;height:3px;border-radius:2px;background:rgba(255,255,255,0.35);outline:none;cursor:pointer;margin:0;}' +
+    '#__wis-popout-vol input::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:11px;height:11px;border-radius:50%;background:#fff;border:0;}' +
     '.__wis-popout-corner{position:absolute;width:18px;height:18px;z-index:2;}' +
     '.__wis-popout-corner[data-corner=nw]{top:0;left:0;cursor:nwse-resize;}' +
     '.__wis-popout-corner[data-corner=se]{bottom:0;right:0;cursor:nwse-resize;}' +
@@ -1124,9 +1131,26 @@ const POPOUT_JS: &str = r#"(function () {
     paused.id = '__wis-popout-paused';
     var badge = document.createElement('div');
     badge.id = '__wis-popout-badge';
+    var vol = document.createElement('div');
+    vol.id = '__wis-popout-vol';
+    var volBtn = document.createElement('button');
+    volBtn.type = 'button';
+    var volOn = volIcon(false);
+    var volOff = volIcon(true);
+    volBtn.appendChild(volOn);
+    volBtn.appendChild(volOff);
+    var volSlider = document.createElement('input');
+    volSlider.type = 'range';
+    volSlider.min = '0';
+    volSlider.max = '1';
+    volSlider.step = '0.01';
+    volSlider.setAttribute('aria-label', 'Volume');
+    vol.appendChild(volBtn);
+    vol.appendChild(volSlider);
     overlay.appendChild(x);
     overlay.appendChild(paused);
     overlay.appendChild(badge);
+    overlay.appendChild(vol);
 
     // Reparent the video to <html> while popped.
     // The original slot is restored on exit.
@@ -1140,19 +1164,28 @@ const POPOUT_JS: &str = r#"(function () {
     active = {
       video: v, style: style, overlay: overlay, restore: restore,
       x: x, paused: paused, badge: badge,
+      vol: vol, volBtn: volBtn, volOn: volOn, volOff: volOff,
+      volSlider: volSlider, volDragging: false,
       watch: 0, freshTimer: 0, clickTimer: 0, lastClick: 0, down: null,
       aspectTimer: 0
     };
 
     syncPaused();
+    syncVolume();
     v.addEventListener('play', syncPaused);
     v.addEventListener('pause', syncPaused);
     v.addEventListener('resize', onAspect);
+    v.addEventListener('volumechange', syncVolume);
+    volBtn.addEventListener('click', onVolButton);
+    volSlider.addEventListener('input', onVolSlider);
+    volSlider.addEventListener('pointerdown', function () { if (active) active.volDragging = true; });
+    volSlider.addEventListener('pointerup', function () { if (active) active.volDragging = false; });
+    volSlider.addEventListener('pointercancel', function () { if (active) active.volDragging = false; });
     overlay.addEventListener('pointerdown', onDown);
     overlay.addEventListener('pointermove', onMove);
     overlay.addEventListener('pointerup', onUp);
     overlay.addEventListener('pointercancel', onCancel);
-    overlay.addEventListener('wheel', prevent, { passive: false });
+    overlay.addEventListener('wheel', onWheel, { passive: false });
     overlay.addEventListener('contextmenu', prevent);
     x.addEventListener('click', onClose);
     window.addEventListener('pagehide', onPagehide);
@@ -1202,6 +1235,7 @@ const POPOUT_JS: &str = r#"(function () {
     a.video.removeEventListener('play', syncPaused);
     a.video.removeEventListener('pause', syncPaused);
     a.video.removeEventListener('resize', onAspect);
+    a.video.removeEventListener('volumechange', syncVolume);
     window.removeEventListener('pagehide', onPagehide);
     try {
       var r = a.restore;
@@ -1250,6 +1284,59 @@ const POPOUT_JS: &str = r#"(function () {
     if (!active) return;
     active.paused.style.opacity = active.video.paused ? '1' : '0';
   }
+  function volIcon(slashed) {
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    var paths = slashed
+      ? ['M11 4.7 6.6 8.2H3v7.6h3.6L11 19.3z', 'm21 9-6 6', 'm15 9 6 6']
+      : ['M11 4.7 6.6 8.2H3v7.6h3.6L11 19.3z', 'M15.5 8.5a5 5 0 0 1 0 7', 'M18.6 5.4a9 9 0 0 1 0 13.2'];
+    for (var i = 0; i < paths.length; i++) {
+      var p = document.createElementNS(NS, 'path');
+      p.setAttribute('d', paths[i]);
+      svg.appendChild(p);
+    }
+    return svg;
+  }
+  // Mirrors the element's live volume/mute (the page player drives the same
+  // element, so its slider and this one stay in lockstep both ways).
+  function syncVolume() {
+    if (!active) return;
+    var v = active.video;
+    var silent = v.muted || v.volume === 0;
+    active.volOn.style.display = silent ? 'none' : 'block';
+    active.volOff.style.display = silent ? 'block' : 'none';
+    active.volBtn.title = v.muted ? 'Unmute' : 'Mute';
+    active.volBtn.setAttribute('aria-label', v.muted ? 'Unmute' : 'Mute');
+    if (!active.volDragging) active.volSlider.value = String(v.volume);
+  }
+  function onVolButton(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!active) return;
+    active.video.muted = !active.video.muted;
+  }
+  function onVolSlider() {
+    if (!active) return;
+    var v = active.video;
+    var value = parseFloat(active.volSlider.value);
+    if (!isFinite(value)) return;
+    v.volume = Math.min(1, Math.max(0, value));
+    if (v.volume > 0 && v.muted) v.muted = false;
+  }
+  function onWheel(e) {
+    e.preventDefault();
+    if (!active || !active.vol.contains(e.target)) return;
+    var v = active.video;
+    var next = Math.min(1, Math.max(0, v.volume + (e.deltaY < 0 ? 0.05 : -0.05)));
+    v.volume = next;
+    if (next > 0 && v.muted) v.muted = false;
+  }
   function onClose(e) {
     e.preventDefault();
     e.stopPropagation();
@@ -1261,7 +1348,7 @@ const POPOUT_JS: &str = r#"(function () {
   }
   function onDown(e) {
     if (!active || e.button !== 0) return;
-    if (active.x.contains(e.target)) return;
+    if (active.x.contains(e.target) || active.vol.contains(e.target)) return;
     var corner = e.target && e.target.getAttribute ? e.target.getAttribute('data-corner') : null;
     active.down = { sx: e.screenX, sy: e.screenY, corner: corner, moved: false, ax: 0, ay: 0, raf: 0 };
     try { active.overlay.setPointerCapture(e.pointerId); } catch (err) {}
