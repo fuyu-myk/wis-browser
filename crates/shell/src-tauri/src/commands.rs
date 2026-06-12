@@ -1411,6 +1411,12 @@ pub async fn create_tab_webview(
     // Opt+click "Peek" trigger (safe on all tabs; forwards only the link).
     crate::peek::install(&child);
 
+    // Cosmetic filtering (element hiding). Permissive workspaces opt out of
+    // blocking entirely, so they skip the channel too.
+    if privacy_mode != wis_core::PrivacyMode::Permissive {
+        crate::cosmetic::install(&child);
+    }
+
     // Plain-click navigation safety interstitial for risky links.
     crate::navguard::install(&child);
 

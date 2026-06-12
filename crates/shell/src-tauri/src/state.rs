@@ -292,9 +292,15 @@ impl AppState {
     /// caller is responsible for re-attaching the new specs to active tabs.
     /// Returns the number of bytes in the new filter text for diagnostics.
     pub async fn rebuild_filter_engine(&self, filter_text: String) -> Result<usize, WisShellError> {
-        let blocker =
-            TrackerBlocker::from_filter_texts_with_cache(&[&filter_text], &self.filter_cache_dir)
-                .map_err(|err| WisShellError::Other(format!("rebuild blocker: {err}")))?;
+        // EasyList feeds the in-process engine only (cosmetic filtering +
+        // proxy-level ad blocking).
+        let easylist = wis_network::filter_lists::load_cached_easylist(&self.filter_cache_dir);
+        let mut texts: Vec<&str> = vec![&filter_text];
+        if let Some(t) = easylist.as_deref() {
+            texts.push(t);
+        }
+        let blocker = TrackerBlocker::from_filter_texts_with_cache(&texts, &self.filter_cache_dir)
+            .map_err(|err| WisShellError::Other(format!("rebuild blocker: {err}")))?;
         let rules = build_rule_specs_from(&filter_text);
 
         let size = filter_text.len();

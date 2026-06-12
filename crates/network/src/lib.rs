@@ -22,7 +22,7 @@ pub mod resolver;
 pub mod tor;
 pub mod upgrader;
 
-pub use blocker::{RequestType, TrackerBlocker};
+pub use blocker::{CosmeticPage, RequestType, TrackerBlocker};
 pub use content_filter::content_blocking_json;
 pub use context::{NetworkContext, RefererPolicy};
 pub use error::{NetworkError, NetworkResult};

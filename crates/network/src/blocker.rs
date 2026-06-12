@@ -79,6 +79,31 @@ pub struct TrackerBlocker {
     engine: Engine,
 }
 
+/// Per-page cosmetic filtering payload (see [`TrackerBlocker::cosmetic_for_page`]).
+pub struct CosmeticPage {
+    /// `display:none` CSS for the host-specific hide selectors.
+    pub hide_css: String,
+    /// Selectors exempted on this host, consumed by the generic query.
+    pub exceptions: std::collections::HashSet<String>,
+    /// True when the page disables generic hiding (`#@#`/`$generichide`).
+    pub generichide: bool,
+}
+
+/// Batch selectors into `display:none` rules (chunked so one bad selector
+/// cannot invalidate the whole sheet).
+fn selectors_to_css(selectors: &[String]) -> String {
+    let mut css = String::new();
+    for chunk in selectors.chunks(200) {
+        if chunk.is_empty() {
+            continue;
+        }
+        css.push_str(&chunk.join(",\n"));
+        css.push_str("{display:none!important;}\n");
+    }
+
+    css
+}
+
 impl TrackerBlocker {
     /// Build a blocker preloaded with the bundled default tracker list.
     pub fn with_default_list() -> NetworkResult<Self> {
@@ -178,6 +203,33 @@ impl TrackerBlocker {
         Self { engine }
     }
 
+    /// Host-specific cosmetic resources for a page: CSS hiding elements the
+    /// filter lists declare against this exact host, plus the exception set
+    /// and `generichide` flag consumed by [`Self::cosmetic_generic_css`].
+    pub fn cosmetic_for_page(&self, url: &str) -> CosmeticPage {
+        let res = self.engine.url_cosmetic_resources(url);
+        let selectors: Vec<String> = res.hide_selectors.into_iter().collect();
+
+        CosmeticPage {
+            hide_css: selectors_to_css(&selectors),
+            exceptions: res.exceptions,
+            generichide: res.generichide,
+        }
+    }
+
+    /// Generic element-hiding CSS for the classes/ids actually present on a page.
+    pub fn cosmetic_generic_css(
+        &self,
+        classes: &[String],
+        ids: &[String],
+        exceptions: &std::collections::HashSet<String>,
+    ) -> String {
+        let selectors = self
+            .engine
+            .hidden_class_id_selectors(classes.iter(), ids.iter(), exceptions);
+        selectors_to_css(&selectors)
+    }
+
     /// Check a request. `source_url` is the URL of the document making the
     /// request (used to determine first-party vs third-party).
     pub fn check_request(
@@ -219,6 +271,19 @@ mod tests {
             .check_request(&url, &source, RequestType::Script)
             .expect("check");
         assert!(matches!(verdict, BlockerVerdict::Block { .. }));
+    }
+
+    #[test]
+    fn cosmetic_resources_surface_specific_and_generic_hides() {
+        let list = "##.ad-banner\nexample.test###sponsored\n";
+        let blocker = TrackerBlocker::from_filter_texts(&[list]).expect("build");
+
+        let page = blocker.cosmetic_for_page("https://example.test/page");
+        assert!(page.hide_css.contains("#sponsored"), "{}", page.hide_css);
+
+        let generic =
+            blocker.cosmetic_generic_css(&["ad-banner".to_string()], &[], &page.exceptions);
+        assert!(generic.contains(".ad-banner"), "{generic}");
     }
 
     #[test]

@@ -5,6 +5,7 @@ mod clipboard;
 mod commands;
 mod content_filter;
 mod cookies;
+mod cosmetic;
 mod downloads;
 mod error_compat;
 mod external;
@@ -79,8 +80,15 @@ pub fn run() {
             let (filter_text, _source) = filter_lists::load_cached_or_default(&filter_cache_dir);
             // Cache-aware build: a warm launch deserializes the compiled
             // engine instead of re-parsing the whole filter list.
+            // EasyList (cosmetic + ad rules) joins the engine when a fresh
+            // cache exists; it never feeds the WKContentRuleList compiler.
+            let easylist_text = filter_lists::load_cached_easylist(&filter_cache_dir);
+            let mut engine_texts: Vec<&str> = vec![&filter_text];
+            if let Some(t) = easylist_text.as_deref() {
+                engine_texts.push(t);
+            }
             let tracker_blocker = match TrackerBlocker::from_filter_texts_with_cache(
-                &[&filter_text],
+                &engine_texts,
                 &filter_cache_dir,
             ) {
                 Ok(b) => Arc::new(b),
@@ -123,19 +131,32 @@ pub fn run() {
             // Background EasyPrivacy refresh. Runs once per launch when the
             // setting is on and the cache is stale; failures only log so
             // offline launches still proceed with the bundled fallback.
-            if auto_update && filter_lists::fetch::cache_is_stale(&filter_cache_dir) {
+            if auto_update
+                && (filter_lists::fetch::cache_is_stale(&filter_cache_dir)
+                    || filter_lists::fetch::easylist_cache_is_stale(&filter_cache_dir))
+            {
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    match filter_lists::fetch::refresh_easyprivacy(&filter_cache_dir).await {
-                        Ok(text) => {
-                            let state = handle.state::<AppState>();
-                            if let Err(err) = state.rebuild_filter_engine(text).await {
-                                log::warn!("filter_lists: rebuild after refresh failed: {err}");
-                            }
+                    if filter_lists::fetch::cache_is_stale(&filter_cache_dir) {
+                        if let Err(err) =
+                            filter_lists::fetch::refresh_easyprivacy(&filter_cache_dir).await
+                        {
+                            log::warn!("filter_lists: easyprivacy refresh failed: {err}");
                         }
-                        Err(err) => {
-                            log::warn!("filter_lists: refresh failed: {err}");
+                    }
+                    if filter_lists::fetch::easylist_cache_is_stale(&filter_cache_dir) {
+                        if let Err(err) =
+                            filter_lists::fetch::refresh_easylist(&filter_cache_dir).await
+                        {
+                            log::warn!("filter_lists: easylist refresh failed: {err}");
                         }
+                    }
+                    // One rebuild picks up whatever landed: EasyPrivacy via
+                    // the loader's freshness check, EasyList from its cache.
+                    let (text, _) = filter_lists::load_cached_or_default(&filter_cache_dir);
+                    let state = handle.state::<AppState>();
+                    if let Err(err) = state.rebuild_filter_engine(text).await {
+                        log::warn!("filter_lists: rebuild after refresh failed: {err}");
                     }
                 });
             }
@@ -157,6 +178,9 @@ pub fn run() {
 
             // App handle for the native Opt+click "Peek" handler.
             peek::set_app_handle(app.handle().clone());
+
+            // App handle for the cosmetic-filtering handler.
+            cosmetic::set_app_handle(app.handle().clone());
 
             // App handle for the native click navigation-guard handler.
             navguard::set_app_handle(app.handle().clone());

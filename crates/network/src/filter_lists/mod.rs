@@ -20,6 +20,27 @@ pub enum FilterSource {
     Cached,
 }
 
+/// Read the cached EasyList if present and fresh. There is no bundled
+/// fallback: EasyList only ever feeds the in-process engine (cosmetic
+/// filtering + proxy-level ad blocking), so until the first fetch lands the
+/// engine simply runs without it.
+pub fn load_cached_easylist(cache_dir: &Path) -> Option<String> {
+    if fetch::easylist_cache_is_stale(cache_dir) {
+        return None;
+    }
+
+    match std::fs::read_to_string(fetch::easylist_path(cache_dir)) {
+        Ok(body) => {
+            tracing::info!("filter_lists: loaded cached easylist ({} bytes)", body.len());
+            Some(body)
+        }
+        Err(err) => {
+            tracing::warn!("filter_lists: easylist cache read failed ({err})");
+            None
+        }
+    }
+}
+
 /// Read the cached EasyPrivacy list if present and fresh; otherwise return
 /// the bundled fallback. Stale or unreadable caches downgrade silently to the
 /// fallback.
