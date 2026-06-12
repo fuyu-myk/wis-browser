@@ -5,6 +5,7 @@ import { commands } from '@/bindings/commands'
 import type { BrowserState, KeyAction, PaneBranch, PaneNode, SplitDir, Tab, TabId } from '@/bindings/types'
 import { isChromeUrl, SETTINGS_URL } from '@/lib/url'
 import { useOverlay } from '@/hooks/useOverlay'
+import { useTabAudio } from '@/hooks/useTabAudio'
 import { useTabWebviews, type Bounds, type WebviewLayout } from '@/hooks/useTabWebviews'
 import { useVideoPopout } from '@/hooks/useVideoPopout'
 
@@ -147,6 +148,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
   const { controller: popout, poppedTabId } = useVideoPopout({
     enabled: state.settings.video_popout_enabled,
   })
+  const tabAudio = useTabAudio()
 
   const { syncLayout } = useTabWebviews({
     createTabs,
@@ -157,6 +159,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     sleepMinutes: state.settings.tab_sleep_minutes,
     forceSleepTabIds: collapsedFolderTabIds,
     onDiscardedChange,
+    audibleTabIds: tabAudio.audible,
     popout,
   })
 

@@ -211,6 +211,7 @@ fn poll_once(app: &AppHandle) {
                 }
             };
             if changed {
+                log::debug!("audio: tab {uuid} audible={playing}");
                 emit_snapshot(&app);
             }
         });

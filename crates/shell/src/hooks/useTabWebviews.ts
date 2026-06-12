@@ -60,6 +60,11 @@ interface UseTabWebviewsArgs {
   /** Reports the current set of discarded ("asleep") tab ids when it changes. */
   onDiscardedChange?: (discarded: Set<TabId>) => void
   /**
+   * Tabs audibly playing right now: never discarded by any sleep path.
+   * They sleep normally once the sound stops.
+   */
+  audibleTabIds?: ReadonlySet<TabId>
+  /**
    * Video-popout orchestration: a hidden tab playing video floats as the
    * native mini player instead of just hiding, and folds back inline when
    * it rejoins the layout. A popped-out tab is natively visible, so it is
@@ -122,6 +127,7 @@ export function useTabWebviews({
   sleepMinutes,
   forceSleepTabIds,
   onDiscardedChange,
+  audibleTabIds,
   popout,
 }: UseTabWebviewsArgs): UseTabWebviewsReturn {
   const webviewsRef = useRef<Map<TabId, Webview>>(new Map())
@@ -156,6 +162,8 @@ export function useTabWebviews({
   forceSleepRef.current = forceSleepTabIds ?? new Set()
   const onDiscardedRef = useRef(onDiscardedChange)
   onDiscardedRef.current = onDiscardedChange
+  const audibleRef = useRef<ReadonlySet<TabId>>(audibleTabIds ?? new Set())
+  audibleRef.current = audibleTabIds ?? new Set()
   const popoutRef = useRef(popout)
   popoutRef.current = popout
   // True while the current layout is a momentary hide-all.
@@ -195,25 +203,46 @@ export function useTabWebviews({
 
   // Discard a background webview, first capturing its serialized session so
   // the next wake restores history/scroll/forms instead of cold-loading.
-  const sleepWebview = useCallback((id: TabId, wv: Webview) => {
-    void commands
-      .tabInteractionState(id)
-      .then((state) => {
-        if (!state) return
-        const cache = sleepStatesRef.current
-        cache.delete(id)
-        cache.set(id, state)
-        while (cache.size > MAX_SLEEP_STATES) {
-          const oldest = cache.keys().next().value
-          if (oldest === undefined) break
-          cache.delete(oldest)
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        void wv.close().catch(() => undefined)
-      })
-  }, [])
+  // Set once `ensureWebview` exists; lets the sleep teardown revive a tab
+  // that rejoined the layout while its old webview was still closing.
+  const ensureWebviewRef = useRef<((id: TabId) => void) | null>(null)
+
+  const sleepWebview = useCallback(
+    (id: TabId, wv: Webview) => {
+      // Hold the slot with pending until the native close completes.
+      webviewsRef.current.set(id, PENDING as unknown as Webview)
+      void commands
+        .tabInteractionState(id)
+        .then((state) => {
+          if (!state) return
+          const cache = sleepStatesRef.current
+          cache.delete(id)
+          cache.set(id, state)
+          while (cache.size > MAX_SLEEP_STATES) {
+            const oldest = cache.keys().next().value
+            if (oldest === undefined) break
+            cache.delete(oldest)
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          void wv
+            .close()
+            .catch((err: unknown) => {
+              // eslint-disable-next-line no-console
+              console.error(`sleep close ${id}`, err)
+            })
+            .finally(() => {
+              if ((webviewsRef.current.get(id) as unknown) === PENDING) {
+                webviewsRef.current.delete(id)
+              }
+              recomputeDiscarded()
+              if (layoutRef.current.has(id)) ensureWebviewRef.current?.(id)
+            })
+        })
+    },
+    [recomputeDiscarded],
+  )
 
   // Reconcile a single webview's visibility/position against the desired layout.
   const reconcileOne = useCallback((id: TabId, wv: Webview) => {
@@ -293,6 +322,7 @@ export function useTabWebviews({
     },
     [reconcileOne, recomputeDiscarded],
   )
+  ensureWebviewRef.current = ensureWebview
 
   // Close any leftover webviews from a previous run on first mount.
   useEffect(() => {
@@ -353,6 +383,7 @@ export function useTabWebviews({
         if (layoutRef.current.has(id)) continue // visible
         if (id === activeTabIdRef.current) continue
         if (popoutRef.current?.isPopout(id)) continue // floating mini player
+        if (audibleRef.current.has(id)) continue // audibly playing
         const tab = allTabsRef.current.find((t) => t.id === id)
         if (tab?.pinned) continue
         // Collapsed-folder tabs skip the idle delay.
@@ -365,7 +396,6 @@ export function useTabWebviews({
           if (now - since < thresholdMs) continue
         }
         sleepWebview(id, wv)
-        map.delete(id)
         visibilityRef.current.delete(id)
         hiddenSinceRef.current.delete(id)
         changed = true
@@ -377,10 +407,16 @@ export function useTabWebviews({
 
   // Discard collapsed-folder tabs the moment they're collapsed, rather than
   // waiting for the next sweep. The key collapses the set to a stable string so
-  // this only fires when membership actually changes.
+  // this only fires when membership actually changes. Audibility changes also
+  // re-run it: a playing tab is exempt while it sounds, and must be reaped as
+  // soon as it goes silent (pause, mute, media end), not a sweep-tick later.
   const forceSleepKey = useMemo(
     () => Array.from(forceSleepTabIds ?? []).sort().join(','),
     [forceSleepTabIds],
+  )
+  const audibleKey = useMemo(
+    () => Array.from(audibleTabIds ?? []).sort().join(','),
+    [audibleTabIds],
   )
   useEffect(() => {
     if (!sleepEnabledRef.current) return
@@ -390,16 +426,16 @@ export function useTabWebviews({
       if (id === activeTabIdRef.current) continue
       if (layoutRef.current.has(id)) continue
       if (popoutRef.current?.isPopout(id)) continue
+      if (audibleRef.current.has(id)) continue // audibly playing
       const wv = map.get(id)
       if (wv == null || (wv as unknown) === PENDING) continue
       sleepWebview(id, wv)
-      map.delete(id)
       visibilityRef.current.delete(id)
       hiddenSinceRef.current.delete(id)
       changed = true
     }
     if (changed) recomputeDiscarded()
-  }, [forceSleepKey, recomputeDiscarded, sleepWebview])
+  }, [forceSleepKey, audibleKey, recomputeDiscarded, sleepWebview])
 
   // After a popout restore lands, the webview is hidden in the main window.
   useEffect(() => {
