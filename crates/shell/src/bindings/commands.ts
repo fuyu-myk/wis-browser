@@ -728,7 +728,7 @@ export const commands = {
    * the running tracker engine. Returns the size of the new list in bytes.
    * Live tabs are re-attached with the new rules in the same call.
    */
-  async refreshFilterLists(): Promise<number> {
+  async refreshFilterLists(): Promise<string> {
     return invoke('refresh_filter_lists')
   },
 

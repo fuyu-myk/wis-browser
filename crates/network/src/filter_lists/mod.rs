@@ -31,7 +31,10 @@ pub fn load_cached_easylist(cache_dir: &Path) -> Option<String> {
 
     match std::fs::read_to_string(fetch::easylist_path(cache_dir)) {
         Ok(body) => {
-            tracing::info!("filter_lists: loaded cached easylist ({} bytes)", body.len());
+            tracing::info!(
+                "filter_lists: loaded cached easylist ({} bytes)",
+                body.len()
+            );
             Some(body)
         }
         Err(err) => {
@@ -39,6 +42,29 @@ pub fn load_cached_easylist(cache_dir: &Path) -> Option<String> {
             None
         }
     }
+}
+
+/// Read the cached texts of the given subscription URLs. Stale or missing
+/// caches are skipped (the background refresh will fill them in).
+pub fn load_cached_subscriptions(cache_dir: &Path, urls: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    for url in urls {
+        if fetch::subscription_is_stale(cache_dir, url) {
+            continue;
+        }
+        match std::fs::read_to_string(fetch::subscription_path(cache_dir, url)) {
+            Ok(body) => out.push(body),
+            Err(err) => tracing::warn!("filter_lists: subscription cache read failed ({err})"),
+        }
+    }
+
+    out
+}
+
+/// Read the cached scriptlet resource library regardless of freshness (a
+/// stale library is still far better than none; the refresh replaces it).
+pub fn load_cached_resources(cache_dir: &Path) -> Option<String> {
+    std::fs::read_to_string(fetch::resources_path(cache_dir)).ok()
 }
 
 /// Read the cached EasyPrivacy list if present and fresh; otherwise return

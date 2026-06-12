@@ -42,6 +42,7 @@ import { BackgroundEditor } from '@/components/BackgroundEditor'
 import { ThemesSection } from '@/components/ThemesSection'
 import { KeybindingInput } from '@/components/KeybindingInput'
 import { TaskManagerSection } from '@/components/TaskManagerSection'
+import { FilterListsSection } from '@/components/FilterListsSection'
 
 interface NavSection {
   id: string
@@ -151,8 +152,8 @@ export function SettingsPage() {
   const [refreshStatus, setRefreshStatus] = useState<string | null>(null)
   const refreshLists = useMutation({
     mutationFn: () => commands.refreshFilterLists(),
-    onSuccess: (size) => {
-      setRefreshStatus(`Updated. ${formatBytes(size)} of rules now active.`)
+    onSuccess: (summary) => {
+      setRefreshStatus(summary)
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err)
@@ -648,7 +649,7 @@ export function SettingsPage() {
         <div className="row">
           <div className="l">
             <span>Auto-update filter lists</span>
-            <span>Fetch EasyPrivacy on launch, cache for 24 hours.</span>
+            <span>Fetch filter lists on launch, cache for 24 hours.</span>
           </div>
           <Switch
             checked={settings.filter_list_auto_update}
@@ -658,6 +659,10 @@ export function SettingsPage() {
             label="Auto-update filter lists"
           />
         </div>
+        <FilterListsSection
+          subscriptions={settings.filter_subscriptions}
+          onChange={(filter_subscriptions) => update.mutate({ filter_subscriptions })}
+        />
         <div className="row">
           <div className="l">
             <span>Refresh now</span>
@@ -674,7 +679,7 @@ export function SettingsPage() {
             }}
             disabled={refreshLists.isPending}
           >
-            {refreshLists.isPending ? 'Refreshing.' : 'Refresh'}
+            {refreshLists.isPending ? 'Refreshing...' : 'Refresh'}
           </button>
         </div>
         <div className="row">

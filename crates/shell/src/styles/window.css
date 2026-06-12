@@ -5629,6 +5629,25 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .kb-dlmenu { animation: kb-dlmenu-in var(--dur-med) var(--ease-standard); }
 .kb-dlmenu-row { animation: kb-dlrow-in var(--dur-med) var(--ease-standard) both; }
 
+/* Filter lists (Settings -> Privacy). */
+.kb-filterlists-status {
+  margin: 2px 0 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.kb-filterlists-detail {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.kb-filterlists-add {
+  gap: 8px;
+}
+.kb-filterlists-add .kb-text-input {
+  flex: 1;
+  min-width: 0;
+}
+
 /* Settings task manager: per-webview memory rows, styled like the
    site-data list. */
 .kb-taskman-list {

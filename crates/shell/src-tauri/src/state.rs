@@ -292,15 +292,33 @@ impl AppState {
     /// caller is responsible for re-attaching the new specs to active tabs.
     /// Returns the number of bytes in the new filter text for diagnostics.
     pub async fn rebuild_filter_engine(&self, filter_text: String) -> Result<usize, WisShellError> {
-        // EasyList feeds the in-process engine only (cosmetic filtering +
-        // proxy-level ad blocking).
+        // EasyList + user subscriptions feed the in-process engine only
+        // (cosmetic filtering, scriptlets, proxy-level ad blocking); the
+        // WKContentRuleList compiler keeps the smaller EasyPrivacy text
+        // since the bigger lists would exceed its rule cap.
         let easylist = wis_network::filter_lists::load_cached_easylist(&self.filter_cache_dir);
+        let sub_urls = {
+            let browser = self.browser.lock().await;
+            browser.settings.filter_subscriptions.clone()
+        };
+        let subs =
+            wis_network::filter_lists::load_cached_subscriptions(&self.filter_cache_dir, &sub_urls);
         let mut texts: Vec<&str> = vec![&filter_text];
         if let Some(t) = easylist.as_deref() {
             texts.push(t);
         }
-        let blocker = TrackerBlocker::from_filter_texts_with_cache(&texts, &self.filter_cache_dir)
-            .map_err(|err| WisShellError::Other(format!("rebuild blocker: {err}")))?;
+        for t in &subs {
+            texts.push(t);
+        }
+        let mut blocker =
+            TrackerBlocker::from_filter_texts_with_cache(&texts, &self.filter_cache_dir)
+                .map_err(|err| WisShellError::Other(format!("rebuild blocker: {err}")))?;
+        if let Some(json) = wis_network::filter_lists::load_cached_resources(&self.filter_cache_dir)
+        {
+            if let Err(err) = blocker.load_resources(&json) {
+                log::warn!("filter_lists: scriptlet resources load failed: {err}");
+            }
+        }
         let rules = build_rule_specs_from(&filter_text);
 
         let size = filter_text.len();

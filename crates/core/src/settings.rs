@@ -121,6 +121,13 @@ pub struct UserSettings {
     /// persisted settings deserialise unchanged.
     #[serde(default)]
     pub keybindings: HashMap<KeyAction, String>,
+    /// User filter-list subscription URLs (https only), fetched and cached
+    /// like the built-ins and fed to the in-process adblock engine only
+    /// (never the WKContentRuleList compiler). The defaults carry uBO's
+    /// filter sets, whose scriptlet rules are what make YouTube ad blocking
+    /// work.
+    #[serde(default = "default_filter_subscriptions")]
+    pub filter_subscriptions: Vec<String>,
     /// When true, every download asks where to save via a native save panel
     /// instead of landing in the default downloads directory.
     #[serde(default)]
@@ -188,6 +195,13 @@ fn default_widget_memory_cap_mb() -> u32 {
     500
 }
 
+fn default_filter_subscriptions() -> Vec<String> {
+    vec![
+        "https://ublockorigin.github.io/uAssets/filters/filters.txt".to_string(),
+        "https://ublockorigin.github.io/uAssets/filters/quick-fixes.txt".to_string(),
+    ]
+}
+
 impl Default for UserSettings {
     fn default() -> Self {
         Self {
@@ -218,6 +232,7 @@ impl Default for UserSettings {
             widget_sleep_minutes: 5,
             widget_memory_cap_enabled: true,
             widget_memory_cap_mb: 500,
+            filter_subscriptions: default_filter_subscriptions(),
             keybindings: HashMap::new(),
             download_ask_where: false,
             download_last_dir: None,
@@ -293,6 +308,9 @@ pub struct UserSettingsPatch {
     pub widget_memory_cap_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub widget_memory_cap_mb: Option<u32>,
+    /// Replaces the whole subscription list (the UI sends the full list).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter_subscriptions: Option<Vec<String>>,
     /// Merged onto the existing `keybindings` map. Sparse entries replace
     /// just those actions; absent actions keep their current binding.
     /// `Some(empty_map)` is a no-op (the patch is sparse, not a wipe).
@@ -365,6 +383,9 @@ impl UserSettings {
             widget_memory_cap_mb: patch
                 .widget_memory_cap_mb
                 .unwrap_or(self.widget_memory_cap_mb),
+            filter_subscriptions: patch
+                .filter_subscriptions
+                .unwrap_or_else(|| self.filter_subscriptions.clone()),
             download_ask_where: patch.download_ask_where.unwrap_or(self.download_ask_where),
             download_last_dir: patch
                 .download_last_dir

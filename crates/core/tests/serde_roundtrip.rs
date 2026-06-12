@@ -122,6 +122,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
         widget_sleep_minutes: Some(7),
         widget_memory_cap_enabled: Some(false),
         widget_memory_cap_mb: Some(800),
+        filter_subscriptions: Some(vec!["https://example.test/list.txt".to_string()]),
         keybindings: Some(HashMap::from([
             (KeyAction::NewTab, "Ctrl+T".into()),
             (KeyAction::CloseTab, "Ctrl+W".into()),

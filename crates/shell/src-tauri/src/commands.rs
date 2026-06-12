@@ -1194,7 +1194,7 @@ pub async fn create_tab_webview(
 
     let label_ident = label.clone();
 
-    let (ephemeral, user_agent, fraud_warning) = {
+    let (ephemeral, user_agent, fraud_warning, nav_privacy_mode) = {
         let browser = state.browser.lock().await;
         let ephemeral = browser
             .workspace(workspace_id)
@@ -1206,10 +1206,16 @@ pub async fn create_tab_webview(
             &browser.settings.user_agent_profile,
             wis_core::DEFAULT_MAC_OS_VERSION,
         );
+        let nav_privacy_mode = browser
+            .workspace(workspace_id)
+            .map(|w| w.privacy_mode)
+            .unwrap_or_default();
+
         (
             ephemeral,
             user_agent,
             browser.settings.fraud_warning_enabled,
+            nav_privacy_mode,
         )
     };
 
@@ -1224,6 +1230,16 @@ pub async fn create_tab_webview(
     let mut builder = WebviewBuilder::new(label, WebviewUrl::External(initial_url))
         .focused(false)
         .proxy_url(proxy_url);
+    // Per-page scriptlet swap (uBO `+js` rules) before each main-frame
+    // navigation commits; Permissive workspaces opt out of blocking.
+    if nav_privacy_mode != wis_core::PrivacyMode::Permissive {
+        let app_for_nav = app.clone();
+        let label_for_nav = label_ident.clone();
+        builder = builder.on_navigation(move |url| {
+            crate::cosmetic::swap_scriptlets(&app_for_nav, &label_for_nav, url.as_str());
+            true
+        });
+    }
     if let Some(ua) = &user_agent {
         builder = builder.user_agent(ua);
     }
@@ -1827,19 +1843,57 @@ pub async fn set_dock_icon(app: AppHandle, variant: String) -> WisResult<()> {
 // Filter list refresh
 // ---------------------------------------------------------------------------
 
-/// Refresh the EasyPrivacy filter list from upstream, replace the running
-/// tracker engine, and re-attach the new rules to every existing tab.
-/// Returns the number of bytes in the new filter text so the UI can confirm
-/// the swap happened.
+/// Force-refresh every filter source (EasyPrivacy, EasyList, the scriptlet
+/// resource library, user subscriptions) regardless of cache age, rebuild
+/// the engine, and re-attach the WebKit rules to every existing tab.
+/// Returns a short human-readable summary for the settings UI.
 #[tauri::command]
-pub async fn refresh_filter_lists(app: AppHandle, state: State<'_, AppState>) -> WisResult<u32> {
+pub async fn refresh_filter_lists(app: AppHandle, state: State<'_, AppState>) -> WisResult<String> {
     let cache_dir = state.filter_cache_dir.clone();
-    let text = wis_network::filter_lists::fetch::refresh_easyprivacy(&cache_dir)
-        .await
-        .map_err(|err| WisError::InvalidInput {
-            message: format!("refresh: {err}"),
-        })?;
-    let size = state
+    let sub_urls = {
+        let browser = state.browser.lock().await;
+        browser.settings.filter_subscriptions.clone()
+    };
+
+    let mut updated = 0usize;
+    let mut failed = 0usize;
+    let mut tally = |ok: bool, what: &str| {
+        if ok {
+            updated += 1;
+        } else {
+            log::warn!("filter_lists: {what} refresh failed");
+            failed += 1;
+        }
+    };
+    tally(
+        wis_network::filter_lists::fetch::refresh_easyprivacy(&cache_dir)
+            .await
+            .is_ok(),
+        "easyprivacy",
+    );
+    tally(
+        wis_network::filter_lists::fetch::refresh_easylist(&cache_dir)
+            .await
+            .is_ok(),
+        "easylist",
+    );
+    tally(
+        wis_network::filter_lists::fetch::refresh_resources(&cache_dir)
+            .await
+            .is_ok(),
+        "resources",
+    );
+    for url in &sub_urls {
+        tally(
+            wis_network::filter_lists::fetch::refresh_subscription(&cache_dir, url)
+                .await
+                .is_ok(),
+            url,
+        );
+    }
+
+    let (text, _) = wis_network::filter_lists::load_cached_or_default(&cache_dir);
+    state
         .rebuild_filter_engine(text)
         .await
         .map_err(wis_core::WisError::from)?;
@@ -1872,5 +1926,9 @@ pub async fn refresh_filter_lists(app: AppHandle, state: State<'_, AppState>) ->
         }
     }
 
-    Ok(size as u32)
+    Ok(if failed == 0 {
+        format!("Updated {updated} sources")
+    } else {
+        format!("Updated {updated} sources, {failed} failed")
+    })
 }

@@ -203,15 +203,51 @@ impl TrackerBlocker {
         Self { engine }
     }
 
+    /// Load a scriptlet resource library (uBO resources JSON) into the
+    /// engine, enabling `+js(...)` scriptlet rules to expand via
+    /// [`Self::scriptlets_for_page`]. Returns the number of resources.
+    pub fn load_resources(&mut self, json: &str) -> NetworkResult<usize> {
+        let resources: Vec<adblock::resources::Resource> = serde_json::from_str(json)
+            .map_err(|e| NetworkError::FilterList(format!("resources parse: {e}")))?;
+        let count = resources.len();
+        self.engine.use_resources(resources);
+
+        Ok(count)
+    }
+
+    /// Assembled scriptlet JS for a page (empty when no rules match or no
+    /// resource library is loaded). Must run at document start, before the
+    /// page's own scripts.
+    pub fn scriptlets_for_page(&self, url: &str) -> String {
+        self.engine.url_cosmetic_resources(url).injected_script
+    }
+
     /// Host-specific cosmetic resources for a page: CSS hiding elements the
     /// filter lists declare against this exact host, plus the exception set
     /// and `generichide` flag consumed by [`Self::cosmetic_generic_css`].
     pub fn cosmetic_for_page(&self, url: &str) -> CosmeticPage {
         let res = self.engine.url_cosmetic_resources(url);
         let selectors: Vec<String> = res.hide_selectors.into_iter().collect();
+        let mut hide_css = selectors_to_css(&selectors);
+        // Procedural rules whose selector is expressible in plain CSS (most
+        // importantly `:has(...)`) are appended as their own styled rules.
+        for json in &res.procedural_actions {
+            let Ok(filter) = serde_json::from_str::<
+                adblock::cosmetic_filter_cache::ProceduralOrActionFilter,
+            >(json) else {
+                continue;
+            };
+
+            if let Some((selector, style)) = filter.as_css() {
+                hide_css.push_str(&selector);
+                hide_css.push('{');
+                hide_css.push_str(&style);
+                hide_css.push_str(";}\n");
+            }
+        }
 
         CosmeticPage {
-            hide_css: selectors_to_css(&selectors),
+            hide_css,
             exceptions: res.exceptions,
             generichide: res.generichide,
         }
@@ -224,9 +260,9 @@ impl TrackerBlocker {
         ids: &[String],
         exceptions: &std::collections::HashSet<String>,
     ) -> String {
-        let selectors = self
-            .engine
-            .hidden_class_id_selectors(classes.iter(), ids.iter(), exceptions);
+        let selectors =
+            self.engine
+                .hidden_class_id_selectors(classes.iter(), ids.iter(), exceptions);
         selectors_to_css(&selectors)
     }
 
@@ -280,6 +316,15 @@ mod tests {
 
         let page = blocker.cosmetic_for_page("https://example.test/page");
         assert!(page.hide_css.contains("#sponsored"), "{}", page.hide_css);
+
+        let proc_list = "example.test##div:has(> .ad-inner)\n";
+        let proc_blocker = TrackerBlocker::from_filter_texts(&[proc_list]).expect("build");
+        let proc_page = proc_blocker.cosmetic_for_page("https://example.test/x");
+        assert!(
+            proc_page.hide_css.contains(":has(> .ad-inner)"),
+            "{}",
+            proc_page.hide_css
+        );
 
         let generic =
             blocker.cosmetic_generic_css(&["ad-banner".to_string()], &[], &page.exceptions);

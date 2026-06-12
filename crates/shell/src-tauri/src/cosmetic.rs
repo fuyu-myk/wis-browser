@@ -20,6 +20,44 @@ pub fn set_app_handle(app: AppHandle) {
     let _ = APP.set(app);
 }
 
+/// Marker prefix identifying the per-page scriptlet user script, so the
+/// navigation swap can drop the previous page's payload while re-adding
+/// every other user script (WebKit only offers removeAllUserScripts).
+const SCRIPTLET_MARKER: &str = "/*wis-scriptlets*/";
+
+/// Swap the document-start scriptlet payload for an upcoming navigation.
+/// Called from the tab webview's `on_navigation` hook, which runs inside
+/// WebKit's decide-policy on the main thread, so the new user script is in
+/// place before the next document is created. Scriptlet rules (uBO
+/// `+js(...)`) must run before the page's own scripts.
+pub fn swap_scriptlets(app: &tauri::AppHandle, label: &str, url: &str) {
+    use tauri::Manager;
+
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return;
+    }
+    let Some(webview) = app.webviews().get(label).cloned() else {
+        return;
+    };
+
+    let blocker = {
+        let state = app.state::<crate::state::AppState>();
+        let guard = state
+            .tracker_blocker
+            .read()
+            .expect("tracker_blocker poisoned");
+        guard.clone()
+    };
+    let payload = blocker.scriptlets_for_page(url);
+
+    // An empty payload still swaps, clearing the previous site's scriptlets.
+    #[cfg(target_os = "macos")]
+    imp::swap_scriptlet_script(&webview, &payload);
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = (webview, payload);
+}
+
 /// Injected page script: collects classes/ids and applies returned CSS.
 const COSMETIC_JS: &str = r#"(function () {
   if (window.__wisCosmeticInstalled) return;
@@ -100,7 +138,7 @@ mod imp {
     };
     use tauri::Manager;
 
-    use super::{APP, COSMETIC_JS};
+    use super::{APP, COSMETIC_JS, SCRIPTLET_MARKER};
 
     declare_class!(
         struct CosmeticHandler;
@@ -276,6 +314,77 @@ mod imp {
         } else {
             let _: () = msg_send![webview, evaluateJavaScript: js, completionHandler: nil_block];
         }
+    }
+
+    /// Replace the marked scriptlet user script: re-add every other script,
+    /// then append the new payload (document start, main frame only; the
+    /// payload was computed for the main document's URL).
+    pub fn swap_scriptlet_script<R: tauri::Runtime>(
+        webview: &tauri::webview::Webview<R>,
+        payload: &str,
+    ) {
+        let source = if payload.is_empty() {
+            String::new()
+        } else {
+            format!("{SCRIPTLET_MARKER}\ntry{{{payload}}}catch(e){{}}")
+        };
+        let _ = webview.with_webview(move |w| unsafe {
+            let wk: *mut AnyObject = w.inner() as *mut AnyObject;
+            if wk.is_null() {
+                return;
+            }
+
+            let config: *mut AnyObject = msg_send![wk, configuration];
+            if config.is_null() {
+                return;
+            }
+
+            let controller: *mut AnyObject = msg_send![config, userContentController];
+            if controller.is_null() {
+                return;
+            }
+
+            let existing: *mut AnyObject = msg_send![controller, userScripts];
+            let count: usize = if existing.is_null() {
+                0
+            } else {
+                msg_send![existing, count]
+            };
+            let marker = ns_string(SCRIPTLET_MARKER);
+            let mut keep: Vec<*mut AnyObject> = Vec::with_capacity(count);
+            for i in 0..count {
+                let script: *mut AnyObject = msg_send![existing, objectAtIndex: i];
+                let src: *mut AnyObject = msg_send![script, source];
+                let marked: bool = if src.is_null() {
+                    false
+                } else {
+                    msg_send![src, hasPrefix: marker]
+                };
+                if !marked {
+                    let _: *mut AnyObject = msg_send![script, retain];
+                    keep.push(script);
+                }
+            }
+            let _: () = msg_send![controller, removeAllUserScripts];
+            for script in keep {
+                let _: () = msg_send![controller, addUserScript: script];
+                let _: () = msg_send![script, release];
+            }
+
+            if !source.is_empty() {
+                let src = ns_string(&source);
+                let script: *mut AnyObject = msg_send![class!(WKUserScript), alloc];
+                let injection_time: isize = 0; // WKUserScriptInjectionTimeAtDocumentStart
+                let script: *mut AnyObject = msg_send![
+                    script,
+                    initWithSource: src,
+                    injectionTime: injection_time,
+                    forMainFrameOnly: true,
+                ];
+                let _: () = msg_send![controller, addUserScript: script];
+                let _: () = msg_send![script, release];
+            }
+        });
     }
 
     /// Install the cosmetic-filtering user script + message handler.
