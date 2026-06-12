@@ -490,6 +490,13 @@ export interface SiteDataEntry {
 
 export type DownloadStatus = 'in_progress' | 'completed' | 'failed' | 'cancelled'
 
+/** One webview's WebContent process footprint (task manager readout). */
+export interface WebviewMemory {
+  label: string
+  pid: number
+  bytes: number
+}
+
 /** One tracked download (this session's, or a persisted completed one). */
 export interface DownloadItem {
   id: DownloadId

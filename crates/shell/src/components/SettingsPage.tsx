@@ -41,6 +41,7 @@ import { OPEN_CLEAR_DATA_EVENT } from '@/hooks/useClearDataOverlay'
 import { BackgroundEditor } from '@/components/BackgroundEditor'
 import { ThemesSection } from '@/components/ThemesSection'
 import { KeybindingInput } from '@/components/KeybindingInput'
+import { TaskManagerSection } from '@/components/TaskManagerSection'
 
 interface NavSection {
   id: string
@@ -517,6 +518,7 @@ export function SettingsPage() {
           limitEnabled={settings.widget_panel_limit_enabled}
           limit={settings.widget_panel_limit}
         />
+        <TaskManagerSection />
       </section>
 
       <section id="downloads" className="sec">

@@ -5629,6 +5629,77 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .kb-dlmenu { animation: kb-dlmenu-in var(--dur-med) var(--ease-standard); }
 .kb-dlmenu-row { animation: kb-dlrow-in var(--dur-med) var(--ease-standard) both; }
 
+/* Settings task manager: per-webview memory rows, styled like the
+   site-data list. */
+.kb-taskman-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.kb-taskman-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--overlay);
+  font-size: 12.5px;
+}
+.kb-taskman-kind {
+  flex: 0 0 52px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+.kb-taskman-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+.kb-taskman-bytes {
+  flex: 0 0 64px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+.kb-taskman-x {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.kb-taskman-x:hover {
+  background: var(--overlay);
+  color: #c9636f;
+}
+.kb-taskman-x svg {
+  width: 12px;
+  height: 12px;
+}
+.kb-taskman-noaction { flex: 0 0 22px; }
+.kb-taskman-empty {
+  list-style: none;
+  padding: 8px 10px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
 /* Downloads button status badge: spinner while a download runs, then a
    green check (or amber exclamation on failure) pops in briefly. */
 .kb-rail-dl {

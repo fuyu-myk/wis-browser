@@ -38,6 +38,7 @@ import type {
   WidgetId,
   Workspace,
   WorkspaceId,
+  WebviewMemory,
 } from '@/bindings/types'
 
 export const commands = {
@@ -381,6 +382,11 @@ export const commands = {
   /** Copy plain text to the system clipboard (native pasteboard). */
   async copyText(text: string): Promise<void> {
     return invoke('copy_text', { text })
+  },
+
+  /** Per-webview WebContent process memory footprints (task manager). */
+  async listWebviewMemory(): Promise<WebviewMemory[]> {
+    return invoke('list_webview_memory')
   },
 
   // -- tab folders ----------------------------------------------------------

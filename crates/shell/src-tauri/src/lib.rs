@@ -11,6 +11,7 @@ mod external;
 mod favicons;
 mod find;
 mod interaction_state;
+mod memory;
 mod menu;
 mod navguard;
 mod overlay;
@@ -343,6 +344,7 @@ pub fn run() {
             commands::refresh_filter_lists,
             external::open_in_external_browser,
             clipboard::copy_text,
+            memory::list_webview_memory,
             downloads::list_downloads,
             downloads::remove_download,
             downloads::remove_downloads,
