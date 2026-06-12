@@ -405,6 +405,7 @@ pub fn run() {
             external::open_in_external_browser,
             clipboard::copy_text,
             memory::list_webview_memory,
+            commands::start_element_picker,
             downloads::list_downloads,
             downloads::remove_download,
             downloads::remove_downloads,

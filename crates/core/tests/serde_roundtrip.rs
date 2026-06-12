@@ -123,6 +123,10 @@ fn settings_patch_round_trips_when_all_fields_set() {
         widget_memory_cap_enabled: Some(false),
         widget_memory_cap_mb: Some(800),
         filter_subscriptions: Some(vec!["https://example.test/list.txt".to_string()]),
+        user_cosmetic_rules: Some(std::collections::HashMap::from([(
+            "example.test".to_string(),
+            vec![".ad".to_string()],
+        )])),
         keybindings: Some(HashMap::from([
             (KeyAction::NewTab, "Ctrl+T".into()),
             (KeyAction::CloseTab, "Ctrl+W".into()),

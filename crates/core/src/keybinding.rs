@@ -91,6 +91,8 @@ pub enum KeyAction {
     CopyUrl,
     /// Toggle the fixed/floating (auto-collapsing) sidebar mode.
     ToggleSidebar,
+    /// Start the element picker ("zapper") on the active tab.
+    ElementPicker,
 }
 
 impl KeyAction {
@@ -152,6 +154,7 @@ impl KeyAction {
             Self::DuplicateTab => "duplicate_tab",
             Self::CopyUrl => "copy_url",
             Self::ToggleSidebar => "toggle_sidebar",
+            Self::ElementPicker => "element_picker",
         }
     }
 
@@ -168,7 +171,7 @@ impl KeyAction {
     }
 }
 
-const ALL_ACTIONS: [KeyAction; 54] = [
+const ALL_ACTIONS: [KeyAction; 55] = [
     KeyAction::NewTab,
     KeyAction::NewWorkspace,
     KeyAction::CloseTab,
@@ -223,6 +226,7 @@ const ALL_ACTIONS: [KeyAction; 54] = [
     KeyAction::DuplicateTab,
     KeyAction::CopyUrl,
     KeyAction::ToggleSidebar,
+    KeyAction::ElementPicker,
 ];
 
 /// Default keyboard accelerators. `NewWindow` has no entry on purpose: the
@@ -279,6 +283,7 @@ pub fn default_keymap() -> HashMap<KeyAction, String> {
         (KeyAction::DuplicateTab, "Cmd+Shift+K"),
         (KeyAction::CopyUrl, "Cmd+Shift+C"),
         (KeyAction::ToggleSidebar, "Cmd+S"),
+        (KeyAction::ElementPicker, "Cmd+Shift+X"),
     ];
     pairs.iter().map(|(a, s)| (*a, (*s).to_string())).collect()
 }

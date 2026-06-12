@@ -118,6 +118,7 @@ export type KeyAction =
   | 'duplicate_tab'
   | 'copy_url'
   | 'toggle_sidebar'
+  | 'element_picker'
 
 export type AccentColor =
   | 'primary'
@@ -332,6 +333,8 @@ export interface UserSettings {
   widget_memory_cap_mb: number
   /** User filter-list subscription URLs (https), engine-only. */
   filter_subscriptions: string[]
+  /** Element-picker hide rules, keyed by host. */
+  user_cosmetic_rules: Record<string, string[]>
   /** User-supplied accelerator overrides, sparse. Keyed by `KeyAction`. */
   keybindings: Partial<Record<KeyAction, string>>
   /** Ask where to save each download via a native save panel. */
@@ -383,6 +386,7 @@ export interface UserSettingsPatch {
   widget_memory_cap_enabled?: boolean
   widget_memory_cap_mb?: number
   filter_subscriptions?: string[]
+  user_cosmetic_rules?: Record<string, string[]>
   /**
    * Sparse map of accelerator overrides. An entry replaces just that
    * action's binding; an empty string acts as "reset to default".

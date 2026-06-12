@@ -121,6 +121,11 @@ pub struct UserSettings {
     /// persisted settings deserialise unchanged.
     #[serde(default)]
     pub keybindings: HashMap<KeyAction, String>,
+    /// User element-hiding rules from the element picker ("zapper"), keyed
+    /// by exact host. Each value is a list of CSS selectors hidden on that
+    /// host. Applied via the cosmetic-filtering channel on page load.
+    #[serde(default)]
+    pub user_cosmetic_rules: std::collections::HashMap<String, Vec<String>>,
     /// User filter-list subscription URLs (https only), fetched and cached
     /// like the built-ins and fed to the in-process adblock engine only
     /// (never the WKContentRuleList compiler). The defaults carry uBO's
@@ -233,6 +238,7 @@ impl Default for UserSettings {
             widget_memory_cap_enabled: true,
             widget_memory_cap_mb: 500,
             filter_subscriptions: default_filter_subscriptions(),
+            user_cosmetic_rules: std::collections::HashMap::new(),
             keybindings: HashMap::new(),
             download_ask_where: false,
             download_last_dir: None,
@@ -311,6 +317,9 @@ pub struct UserSettingsPatch {
     /// Replaces the whole subscription list (the UI sends the full list).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter_subscriptions: Option<Vec<String>>,
+    /// Replaces the whole map (the zapper/UI sends the full map).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_cosmetic_rules: Option<std::collections::HashMap<String, Vec<String>>>,
     /// Merged onto the existing `keybindings` map. Sparse entries replace
     /// just those actions; absent actions keep their current binding.
     /// `Some(empty_map)` is a no-op (the patch is sparse, not a wipe).
@@ -386,6 +395,9 @@ impl UserSettings {
             filter_subscriptions: patch
                 .filter_subscriptions
                 .unwrap_or_else(|| self.filter_subscriptions.clone()),
+            user_cosmetic_rules: patch
+                .user_cosmetic_rules
+                .unwrap_or_else(|| self.user_cosmetic_rules.clone()),
             download_ask_where: patch.download_ask_where.unwrap_or(self.download_ask_where),
             download_last_dir: patch
                 .download_last_dir

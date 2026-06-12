@@ -1431,6 +1431,9 @@ pub async fn create_tab_webview(
     // blocking entirely, so they skip the channel too.
     if privacy_mode != wis_core::PrivacyMode::Permissive {
         crate::cosmetic::install(&child);
+        // Seed the document-start scriptlet for the first URL now, before the
+        // initial page's scripts run.
+        crate::cosmetic::swap_scriptlets(&app, &label_ident, parsed.as_str());
     }
 
     // Plain-click navigation safety interstitial for risky links.
@@ -1835,6 +1838,18 @@ pub async fn set_dock_icon(app: AppHandle, variant: String) -> WisResult<()> {
 
     #[cfg(not(target_os = "macos"))]
     let _ = (app, variant);
+
+    Ok(())
+}
+
+/// Start the element picker ("zapper") on a tab's webview: the user clicks
+/// an element to hide it, and the chosen selector is persisted per-host.
+#[tauri::command]
+pub async fn start_element_picker(app: AppHandle, id: wis_core::TabId) -> WisResult<()> {
+    let label = format!("tab-{}", id.as_uuid());
+    if let Some(webview) = app.webviews().get(&label) {
+        crate::cosmetic::start_picker(webview);
+    }
 
     Ok(())
 }

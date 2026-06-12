@@ -65,16 +65,27 @@ const COSMETIC_JS: &str = r#"(function () {
   var MAX_PER_SCAN = 1500;
   var seen = {};
   var sentInitial = false;
-  var style = null;
-  window.__wisCosmeticApply = function (css) {
+  var genStyle = null;
+  var hostStyle = null;
+  function ensure(node, id) {
+    if (!node || !node.isConnected) {
+      node = document.createElement('style');
+      node.id = id;
+      (document.head || document.documentElement).appendChild(node);
+    }
+    return node;
+  }
+  window.__wisCosmeticApply = function (payload) {
     try {
-      if (!css) return;
-      if (!style || !style.isConnected) {
-        style = document.createElement('style');
-        style.id = 'wis-cosmetic';
-        (document.head || document.documentElement).appendChild(style);
+      if (!payload) return;
+      if (payload.host != null) {
+        hostStyle = ensure(hostStyle, 'wis-cosmetic-host');
+        hostStyle.textContent = payload.host;
       }
-      style.appendChild(document.createTextNode(css + "\n"));
+      if (payload.generic) {
+        genStyle = ensure(genStyle, 'wis-cosmetic');
+        genStyle.appendChild(document.createTextNode(payload.generic + "\n"));
+      }
     } catch (e) {}
   };
   function collect() {
@@ -124,6 +135,28 @@ const COSMETIC_JS: &str = r#"(function () {
       attributeFilter: ['class', 'id']
     });
   } catch (e) {}
+  var lastHref = location.href;
+  var navTimer = null;
+  function onNav() {
+    if (location.href === lastHref) return;
+    lastHref = location.href;
+    if (navTimer) return;
+    navTimer = setTimeout(function () {
+      navTimer = null;
+      try {
+        window.webkit.messageHandlers.wisCosmetic.postMessage({
+          href: location.href, initial: true, classes: [], ids: []
+        });
+      } catch (e) {}
+    }, 350);
+  }
+  try {
+    ['pushState', 'replaceState'].forEach(function (m) {
+      var orig = history[m];
+      history[m] = function () { var r = orig.apply(this, arguments); onNav(); return r; };
+    });
+    window.addEventListener('popstate', onNav);
+  } catch (e) {}
 })();"#;
 
 #[cfg(target_os = "macos")]
@@ -138,7 +171,34 @@ mod imp {
     };
     use tauri::Manager;
 
-    use super::{APP, COSMETIC_JS, SCRIPTLET_MARKER};
+    use super::{APP, COSMETIC_JS, PICKER_JS, SCRIPTLET_MARKER};
+
+    declare_class!(
+        struct ZapHandler;
+
+        unsafe impl ClassType for ZapHandler {
+            type Super = NSObject;
+            type Mutability = mutability::InteriorMutable;
+            const NAME: &'static str = "WisZapHandler";
+        }
+
+        impl DeclaredClass for ZapHandler {
+            type Ivars = ();
+        }
+
+        unsafe impl ZapHandler {
+            #[method(userContentController:didReceiveScriptMessage:)]
+            fn did_receive(&self, _ucc: *mut AnyObject, message: *mut AnyObject) {
+                unsafe { handle_zap(message) }
+            }
+        }
+    );
+
+    impl ZapHandler {
+        fn new() -> Id<Self> {
+            unsafe { msg_send_id![Self::alloc(), init] }
+        }
+    }
 
     declare_class!(
         struct CosmeticHandler;
@@ -276,17 +336,33 @@ mod imp {
         };
 
         let page = blocker.cosmetic_for_page(&href);
-        let mut css = String::new();
+        let mut host_css = String::new();
         if initial {
-            css.push_str(&page.hide_css);
+            host_css.push_str(&page.hide_css);
+            if let Ok(parsed) = url::Url::parse(&href) {
+                if let Some(host) = parsed.host_str() {
+                    let state = app.state::<crate::state::AppState>();
+                    for selector in state.user_cosmetic_selectors(host) {
+                        host_css.push_str(&selector);
+                        host_css.push_str("{display:none!important;}\n");
+                    }
+                }
+            }
         }
-        if !page.generichide && (!classes.is_empty() || !ids.is_empty()) {
-            css.push_str(&blocker.cosmetic_generic_css(&classes, &ids, &page.exceptions));
-        }
-        if css.is_empty() {
+        let generic_css = if !page.generichide && (!classes.is_empty() || !ids.is_empty()) {
+            blocker.cosmetic_generic_css(&classes, &ids, &page.exceptions)
+        } else {
+            String::new()
+        };
+        // Nothing to apply: a non-initial scan with no matching generics.
+        if !initial && generic_css.is_empty() {
             return;
         }
-        let Ok(arg) = serde_json::to_string(&css) else {
+        let payload = serde_json::json!({
+            "host": if initial { Some(host_css) } else { None },
+            "generic": if generic_css.is_empty() { None } else { Some(generic_css) },
+        });
+        let Ok(arg) = serde_json::to_string(&payload) else {
             return;
         };
         let js = ns_string(&format!("window.__wisCosmeticApply({arg});"));
@@ -387,6 +463,50 @@ mod imp {
         });
     }
 
+    unsafe fn handle_zap(message: *mut AnyObject) {
+        if message.is_null() {
+            return;
+        }
+
+        let body: *mut AnyObject = msg_send![message, body];
+        if body.is_null() {
+            return;
+        }
+
+        let is_dict: bool = msg_send![body, isKindOfClass: class!(NSDictionary)];
+        if !is_dict {
+            return;
+        }
+
+        let Some(href) = dict_string(body, "href") else {
+            return;
+        };
+        let Some(selector) = dict_string(body, "selector") else {
+            return;
+        };
+        let Some(app) = APP.get() else {
+            return;
+        };
+
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            crate::cosmetic::persist_zap(&app, &href, &selector).await;
+        });
+    }
+
+    pub fn eval_picker<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+        let _ = webview.with_webview(|w| unsafe {
+            let wk: *mut AnyObject = w.inner() as *mut AnyObject;
+            if wk.is_null() {
+                return;
+            }
+
+            let src = ns_string(PICKER_JS);
+            let nil_block: *mut AnyObject = std::ptr::null_mut();
+            let _: () = msg_send![wk, evaluateJavaScript: src, completionHandler: nil_block];
+        });
+    }
+
     /// Install the cosmetic-filtering user script + message handler.
     pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
         let _ = webview.with_webview(|w| unsafe {
@@ -420,8 +540,121 @@ mod imp {
             let handler = CosmeticHandler::new();
             let name = ns_string("wisCosmetic");
             let _: () = msg_send![controller, addScriptMessageHandler: &*handler, name: name];
+
+            let zap = ZapHandler::new();
+            let zap_name = ns_string("wisZap");
+            let _: () = msg_send![controller, addScriptMessageHandler: &*zap, name: zap_name];
         });
     }
+}
+
+/// Injected on demand: the element picker overlay. Highlights the element
+/// under the cursor, and on click computes a stable-ish CSS selector, hides
+/// it locally, and posts `{href, selector}` to the `wisZap` handler. Esc
+/// (or right-click) cancels. Self-removing.
+const PICKER_JS: &str = r#"(function () {
+  if (window.__wisPickerActive) {
+    if (window.__wisPickerCancel) window.__wisPickerCancel();
+    return;
+  }
+  window.__wisPickerActive = true;
+  var box = document.createElement('div');
+  box.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;background:rgba(107,119,248,0.25);border:1px solid rgba(107,119,248,0.9);border-radius:3px;transition:all 40ms ease;';
+  document.documentElement.appendChild(box);
+  var current = null;
+  function uniqueFor(sel, target) {
+    try {
+      var m = document.querySelectorAll(sel);
+      return m.length === 1 && m[0] === target;
+    } catch (_) { return false; }
+  }
+  function segFor(node) {
+    var seg = node.tagName.toLowerCase();
+    var cls = (node.className && node.className.baseVal !== undefined)
+      ? node.className.baseVal : node.className;
+    if (typeof cls === 'string') {
+      var stable = cls.split(/\s+/).filter(function (c) {
+        return c && c.length < 40 && /^[A-Za-z_][-\w]*$/.test(c);
+      }).slice(0, 2);
+      if (stable.length) seg += '.' + stable.join('.');
+    }
+    if (node.parentElement) {
+      var sibs = Array.prototype.filter.call(node.parentElement.children, function (c) {
+        return c.tagName === node.tagName;
+      });
+      if (sibs.length > 1) seg += ':nth-of-type(' + (sibs.indexOf(node) + 1) + ')';
+    }
+    return seg;
+  }
+  function selectorFor(el) {
+    if (!el || el === document.body || el === document.documentElement) return null;
+    if (el.id && /^[A-Za-z_][-\w]*$/.test(el.id) && uniqueFor('#' + el.id, el)) {
+      return '#' + el.id;
+    }
+    var parts = [];
+    var node = el;
+    var depth = 0;
+    while (node && node.nodeType === 1 && node !== document.body && depth < 8) {
+      if (node.id && /^[A-Za-z_][-\w]*$/.test(node.id)) {
+        parts.unshift('#' + node.id);
+      } else {
+        parts.unshift(segFor(node));
+      }
+      var candidate = parts.join(' > ');
+      if (uniqueFor(candidate, el)) return candidate;
+      if (parts[0].charAt(0) === '#') break; // an id ancestor won't narrow further
+      node = node.parentElement;
+      depth++;
+    }
+    return null;
+  }
+  function move(e) {
+    var el = document.elementFromPoint(e.clientX, e.clientY);
+    if (!el || el === box) return;
+    current = el;
+    var r = el.getBoundingClientRect();
+    box.style.left = r.left + 'px';
+    box.style.top = r.top + 'px';
+    box.style.width = r.width + 'px';
+    box.style.height = r.height + 'px';
+  }
+  function teardown() {
+    window.__wisPickerActive = false;
+    window.__wisPickerCancel = null;
+    box.remove();
+    document.removeEventListener('mousemove', move, true);
+    document.removeEventListener('click', click, true);
+    document.removeEventListener('keydown', key, true);
+    document.removeEventListener('contextmenu', cancel, true);
+  }
+  window.__wisPickerCancel = teardown;
+  function click(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    var sel = selectorFor(current);
+    if (sel) {
+      try { current.style.setProperty('display', 'none', 'important'); } catch (_) {}
+      try {
+        window.webkit.messageHandlers.wisZap.postMessage({ href: location.href, selector: sel });
+      } catch (_) {}
+    }
+    teardown();
+  }
+  function key(e) { if (e.key === 'Escape') { e.preventDefault(); teardown(); } }
+  function cancel(e) { e.preventDefault(); teardown(); }
+  document.addEventListener('mousemove', move, true);
+  document.addEventListener('click', click, true);
+  document.addEventListener('keydown', key, true);
+  document.addEventListener('contextmenu', cancel, true);
+})();"#;
+
+/// Start the element picker in a tab webview by evaluating the picker JS.
+pub fn start_picker<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    #[cfg(target_os = "macos")]
+    imp::eval_picker(webview);
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = webview;
 }
 
 /// Install the cosmetic-filtering channel on a tab webview. No-op off macOS.
@@ -431,4 +664,38 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
 
     #[cfg(not(target_os = "macos"))]
     let _ = webview;
+}
+
+/// Persist a zapped selector for the page's host: append it to the settings
+/// map (deduped), refresh the sync read-cache, and write through storage.
+pub async fn persist_zap(app: &tauri::AppHandle, href: &str, selector: &str) {
+    use tauri::Manager;
+
+    let Some(host) = url::Url::parse(href)
+        .ok()
+        .and_then(|u| u.host_str().map(String::from))
+    else {
+        return;
+    };
+    let state = app.state::<crate::state::AppState>();
+    let snapshot = {
+        let mut browser = state.browser.lock().await;
+        let mut rules = browser.settings.user_cosmetic_rules.clone();
+        let entry = rules.entry(host).or_default();
+        if entry.iter().any(|s| s == selector) {
+            return; // already present; nothing to persist
+        }
+        entry.push(selector.to_string());
+        let next = browser.with_settings(wis_core::UserSettingsPatch {
+            user_cosmetic_rules: Some(rules),
+            ..Default::default()
+        });
+        *browser = next;
+        browser.clone()
+    };
+
+    state.refresh_user_cosmetic_cache(snapshot.settings.user_cosmetic_rules.clone());
+    state
+        .save_coalescer
+        .schedule(state.storage.clone(), snapshot);
 }

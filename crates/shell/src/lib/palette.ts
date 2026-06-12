@@ -141,6 +141,7 @@ export const DEFAULT_KEYMAP: Partial<Record<KeyAction, string>> = {
   duplicate_tab: 'Cmd+Shift+K',
   copy_url: 'Cmd+Shift+C',
   toggle_sidebar: 'Cmd+S',
+  element_picker: 'Cmd+Shift+X',
 }
 
 const ACTION_LABELS: Record<KeyAction, string> = {
@@ -198,6 +199,7 @@ const ACTION_LABELS: Record<KeyAction, string> = {
   duplicate_tab: 'Duplicate tab',
   copy_url: 'Copy current URL',
   toggle_sidebar: 'Toggle floating sidebar',
+  element_picker: 'Hide element (picker)',
 }
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS) as KeyAction[]

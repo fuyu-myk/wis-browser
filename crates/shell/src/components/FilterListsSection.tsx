@@ -19,9 +19,17 @@ const BUILTINS = [
 interface FilterListsSectionProps {
   subscriptions: string[]
   onChange: (next: string[]) => void
+  /** Zapped element-hiding rules keyed by host. */
+  cosmeticRules: Record<string, string[]>
+  onCosmeticChange: (next: Record<string, string[]>) => void
 }
 
-export function FilterListsSection({ subscriptions, onChange }: FilterListsSectionProps) {
+export function FilterListsSection({
+  subscriptions,
+  onChange,
+  cosmeticRules,
+  onCosmeticChange,
+}: FilterListsSectionProps) {
   const [draft, setDraft] = useState('')
   const [status, setStatus] = useState<string | null>(null)
 
@@ -44,6 +52,17 @@ export function FilterListsSection({ subscriptions, onChange }: FilterListsSecti
     onChange([...subscriptions, url])
     setDraft('')
     refresh()
+  }
+
+  const cosmeticHosts = Object.keys(cosmeticRules)
+    .filter((h) => (cosmeticRules[h] ?? []).length > 0)
+    .sort()
+  const removeRule = (host: string, selector: string) => {
+    const left = (cosmeticRules[host] ?? []).filter((s) => s !== selector)
+    const next = { ...cosmeticRules }
+    if (left.length === 0) delete next[host]
+    else next[host] = left
+    onCosmeticChange(next)
   }
 
   return (
@@ -85,6 +104,39 @@ export function FilterListsSection({ subscriptions, onChange }: FilterListsSecti
           </li>
         ))}
       </ul>
+      {cosmeticHosts.length > 0 && (
+        <>
+          <div className="row">
+            <div className="l">
+              <span>Hidden elements</span>
+              <span>
+                Elements you hid with the picker (Cmd+Shift+X), kept per site.
+              </span>
+            </div>
+          </div>
+          <ul className="kb-taskman-list">
+            {cosmeticHosts.flatMap((host) =>
+              (cosmeticRules[host] ?? []).map((selector) => (
+                <li className="kb-taskman-row" key={`${host}|${selector}`}>
+                  <span className="kb-taskman-kind">{host}</span>
+                  <span className="kb-taskman-name" title={selector}>
+                    {selector}
+                  </span>
+                  <button
+                    type="button"
+                    className="kb-taskman-x"
+                    aria-label={`Unhide ${selector} on ${host}`}
+                    title="Unhide (reload the page to restore)"
+                    onClick={() => removeRule(host, selector)}
+                  >
+                    <XIcon />
+                  </button>
+                </li>
+              )),
+            )}
+          </ul>
+        </>
+      )}
       <div className="row kb-filterlists-add">
         <input
           type="text"

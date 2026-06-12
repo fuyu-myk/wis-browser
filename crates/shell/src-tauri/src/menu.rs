@@ -172,6 +172,12 @@ fn build_menu(
             KeyAction::ToggleSidebar,
             "Toggle Floating Sidebar",
         )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::ElementPicker,
+            "Hide Element…",
+        )?)
         .separator()
         .item(&action_item(
             app,

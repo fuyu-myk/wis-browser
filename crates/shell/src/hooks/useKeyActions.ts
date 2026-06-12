@@ -360,6 +360,10 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       await commands.copyText(ctx.activeTab.url)
       return
     }
+    case 'element_picker': {
+      if (ctx.activeTab) await commands.startElementPicker(ctx.activeTab.id)
+      return
+    }
     case 'toggle_sidebar': {
       const settings = ctx.state?.settings
       if (!settings || settings.layout === 'top_tabs') return

@@ -52,6 +52,11 @@ pub struct AppState {
     pub tracker_blocker: RwLock<Arc<TrackerBlocker>>,
     pub resolver: Arc<dyn Resolver>,
     pub content_rules: RwLock<HashMap<PrivacyMode, Option<RuleSpec>>>,
+    /// Sync read-cache of [`UserSettings.user_cosmetic_rules`](wis_core::UserSettings::user_cosmetic_rules)
+    /// (host -> hidden selectors), so the synchronous cosmetic message handler can read them
+    /// without locking the async browser mutex. Refreshed on every settings
+    /// change and on each zapper add.
+    pub user_cosmetic_rules: RwLock<HashMap<String, Vec<String>>>,
     pub filter_cache_dir: PathBuf,
     pub proxies: Mutex<HashMap<WorkspaceId, ProxyServer>>,
     /// Password-vault master key, present only while the vault is unlocked.
@@ -96,6 +101,7 @@ impl AppState {
         initial_filter_text: &str,
     ) -> Self {
         let download_prefs = crate::downloads::DownloadPrefs::from_settings(&browser.settings);
+        let initial_user_cosmetic_rules = browser.settings.user_cosmetic_rules.clone();
         Self {
             browser: Mutex::new(browser),
             storage,
@@ -103,6 +109,7 @@ impl AppState {
             tracker_blocker: RwLock::new(tracker_blocker),
             resolver,
             content_rules: RwLock::new(build_rule_specs_from(initial_filter_text)),
+            user_cosmetic_rules: RwLock::new(initial_user_cosmetic_rules),
             filter_cache_dir,
             proxies: Mutex::new(HashMap::new()),
             vault_key: Mutex::new(None),
@@ -116,6 +123,26 @@ impl AppState {
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }
+    }
+
+    /// Replace the cosmetic-rule read-cache (called after a settings change
+    /// or a zapper add).
+    pub fn refresh_user_cosmetic_cache(&self, rules: HashMap<String, Vec<String>>) {
+        let mut guard = self
+            .user_cosmetic_rules
+            .write()
+            .expect("user_cosmetic_rules poisoned");
+        *guard = rules;
+    }
+
+    /// Hidden selectors a user has zapped on `host` (exact match).
+    pub fn user_cosmetic_selectors(&self, host: &str) -> Vec<String> {
+        self.user_cosmetic_rules
+            .read()
+            .expect("user_cosmetic_rules poisoned")
+            .get(host)
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// The content-filter rule spec for a privacy mode, or `None` when the

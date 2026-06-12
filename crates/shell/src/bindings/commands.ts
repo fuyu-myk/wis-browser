@@ -732,6 +732,11 @@ export const commands = {
     return invoke('refresh_filter_lists')
   },
 
+  /** Start the element picker ("zapper") on a tab's webview. */
+  async startElementPicker(id: TabId): Promise<void> {
+    return invoke('start_element_picker', { id })
+  },
+
   /**
    * Find a string in the tab's webview. `backwards = false` searches
    * forward (Cmd+G); `backwards = true` searches backward (Cmd+Shift+G).

@@ -662,6 +662,8 @@ export function SettingsPage() {
         <FilterListsSection
           subscriptions={settings.filter_subscriptions}
           onChange={(filter_subscriptions) => update.mutate({ filter_subscriptions })}
+          cosmeticRules={settings.user_cosmetic_rules}
+          onCosmeticChange={(user_cosmetic_rules) => update.mutate({ user_cosmetic_rules })}
         />
         <div className="row">
           <div className="l">
