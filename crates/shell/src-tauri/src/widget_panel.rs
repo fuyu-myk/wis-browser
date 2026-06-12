@@ -281,6 +281,7 @@ pub async fn show_widget_panel(
     wv.show().map_err(|err| WisError::InvalidInput {
         message: format!("widget panel show: {err}"),
     })?;
+    set_media_suspended(&wv, false);
 
     promote_panels_to_front(&app);
     crate::overlay::promote_overlays_to_front(&app);
@@ -356,9 +357,48 @@ pub async fn hide_widget_panel(app: AppHandle, id: String) -> WisResult<()> {
         wv.hide().map_err(|err| WisError::InvalidInput {
             message: format!("widget panel hide: {err}"),
         })?;
+
+        set_media_suspended(&wv, true);
     }
 
     Ok(())
+}
+
+/// Suspend or resume all media playback in a panel webview (macOS 11.3+
+/// public API; silently skipped when the selector is unavailable).
+fn set_media_suspended<R: tauri::Runtime>(wv: &tauri::webview::Webview<R>, suspended: bool) {
+    let _ = wv.with_webview(move |w| {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            use objc2::runtime::AnyObject;
+            use objc2::{msg_send, sel};
+
+            let wk = w.inner() as *mut AnyObject;
+            if wk.is_null() {
+                return;
+            }
+
+            let responds: bool = msg_send![
+                wk,
+                respondsToSelector: sel!(setAllMediaPlaybackSuspended:completionHandler:)
+            ];
+            if !responds {
+                return;
+            }
+
+            let nil_block: *mut AnyObject = std::ptr::null_mut();
+            let _: () = msg_send![
+                wk,
+                setAllMediaPlaybackSuspended: suspended,
+                completionHandler: nil_block
+            ];
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (w, suspended);
+        }
+    });
 }
 
 /// Reposition/resize widget `id`'s panel. No-op when it isn't live.
