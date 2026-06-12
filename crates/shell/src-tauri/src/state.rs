@@ -88,6 +88,10 @@ pub struct AppState {
     /// Sync mirror of the download settings (ask-where + remembered dir),
     /// readable from the same synchronous download callbacks.
     pub download_prefs: std::sync::Mutex<crate::downloads::DownloadPrefs>,
+    /// Video-popout bookkeeping (pending enter handshake + the live popout).
+    /// A sync mutex because the `wisPopout` script-message handler is
+    /// synchronous main-thread code that cannot await.
+    pub video_popout: std::sync::Mutex<crate::video_popout::VideoPopoutState>,
     /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
     /// Only present with the `tor` feature.
     #[cfg(feature = "tor")]
@@ -125,6 +129,7 @@ impl AppState {
             restored_cookies: Mutex::new(HashSet::new()),
             downloads: std::sync::Mutex::new(Vec::new()),
             download_prefs: std::sync::Mutex::new(download_prefs),
+            video_popout: std::sync::Mutex::new(Default::default()),
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }

@@ -5,6 +5,7 @@ import { Window, getCurrentWindow } from '@tauri-apps/api/window'
 import { commands } from '@/bindings/commands'
 import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { isChromeUrl } from '@/lib/url'
+import type { VideoPopoutController } from '@/hooks/useVideoPopout'
 
 const WEBVIEW_CORNER_RADIUS = 12
 
@@ -58,15 +59,24 @@ interface UseTabWebviewsArgs {
   forceSleepTabIds?: Set<TabId>
   /** Reports the current set of discarded ("asleep") tab ids when it changes. */
   onDiscardedChange?: (discarded: Set<TabId>) => void
+  /**
+   * Video-popout orchestration: a hidden tab playing video floats as the
+   * native mini player instead of just hiding, and folds back inline when
+   * it rejoins the layout. A popped-out tab is natively visible, so it is
+   * exempt from hiding and from every sleep path.
+   */
+  popout?: VideoPopoutController
 }
 
 interface UseTabWebviewsReturn {
   /**
    * Reconcile native webview visibility/position to `layout` and move native
    * focus to `focusedTabId`. Called directly from the host's measurement effects.
-   * Webviews for newly-visible tabs are created lazily here.
+   * Webviews for newly-visible tabs are created lazily here. `transient`
+   * marks a momentary hide-all (divider drag, pane animation) that must not
+   * trigger popout adoption.
    */
-  syncLayout: (layout: WebviewLayout, focusedTabId: TabId | null) => void
+  syncLayout: (layout: WebviewLayout, focusedTabId: TabId | null, transient?: boolean) => void
 }
 
 function labelFor(tabId: TabId): string {
@@ -112,6 +122,7 @@ export function useTabWebviews({
   sleepMinutes,
   forceSleepTabIds,
   onDiscardedChange,
+  popout,
 }: UseTabWebviewsArgs): UseTabWebviewsReturn {
   const webviewsRef = useRef<Map<TabId, Webview>>(new Map())
   const windowRef = useRef<Window | null>(null)
@@ -145,6 +156,10 @@ export function useTabWebviews({
   forceSleepRef.current = forceSleepTabIds ?? new Set()
   const onDiscardedRef = useRef(onDiscardedChange)
   onDiscardedRef.current = onDiscardedChange
+  const popoutRef = useRef(popout)
+  popoutRef.current = popout
+  // True while the current layout is a momentary hide-all.
+  const transientRef = useRef(false)
 
   if (windowRef.current === null) {
     windowRef.current = getCurrentWindow()
@@ -205,6 +220,10 @@ export function useTabWebviews({
     const rect = layoutRef.current.get(id)
     const vis = visibilityRef.current
     if (rect) {
+      if (popoutRef.current?.isPopout(id)) {
+        popoutRef.current.onVisible(id)
+        return
+      }
       hiddenSinceRef.current.delete(id)
       if (vis.get(id) !== true) {
         vis.set(id, true)
@@ -213,12 +232,17 @@ export function useTabWebviews({
         applyBounds(wv, rect)
       }
     } else {
+      // The popout owns this webview's visibility and bounds while it floats.
+      if (popoutRef.current?.isPopout(id)) return
       if (!hiddenSinceRef.current.has(id)) {
         hiddenSinceRef.current.set(id, Date.now())
       }
       if (vis.get(id) !== false) {
         vis.set(id, false)
         void wv.hide().catch(() => undefined)
+        if (!transientRef.current && id !== activeTabIdRef.current) {
+          popoutRef.current?.onHidden(id)
+        }
       }
     }
   }, [])
@@ -300,6 +324,8 @@ export function useTabWebviews({
 
     for (const [id, wv] of Array.from(map.entries())) {
       if (liveIds.has(id)) continue
+      // A popped-out tab folds back natively before its webview dies.
+      popoutRef.current?.noteClosed(id)
       if ((wv as unknown) !== PENDING) {
         void wv.close().catch((err: unknown) => {
           // eslint-disable-next-line no-console
@@ -326,6 +352,7 @@ export function useTabWebviews({
         if ((wv as unknown) === PENDING) continue
         if (layoutRef.current.has(id)) continue // visible
         if (id === activeTabIdRef.current) continue
+        if (popoutRef.current?.isPopout(id)) continue // floating mini player
         const tab = allTabsRef.current.find((t) => t.id === id)
         if (tab?.pinned) continue
         // Collapsed-folder tabs skip the idle delay.
@@ -362,6 +389,7 @@ export function useTabWebviews({
     for (const id of forceSleepRef.current) {
       if (id === activeTabIdRef.current) continue
       if (layoutRef.current.has(id)) continue
+      if (popoutRef.current?.isPopout(id)) continue
       const wv = map.get(id)
       if (wv == null || (wv as unknown) === PENDING) continue
       sleepWebview(id, wv)
@@ -373,10 +401,22 @@ export function useTabWebviews({
     if (changed) recomputeDiscarded()
   }, [forceSleepKey, recomputeDiscarded, sleepWebview])
 
+  // After a popout restore lands, the webview is hidden in the main window.
+  useEffect(() => {
+    popout?.setReconcile((id: TabId) => {
+      const wv = webviewsRef.current.get(id)
+      if (!wv || (wv as unknown) === PENDING) return
+      hiddenSinceRef.current.delete(id)
+      visibilityRef.current.set(id, false)
+      reconcileOne(id, wv)
+    })
+  }, [popout, reconcileOne])
+
   const syncLayout = useCallback(
-    (layout: WebviewLayout, focusedTabId: TabId | null) => {
+    (layout: WebviewLayout, focusedTabId: TabId | null, transient = false) => {
       layoutRef.current = layout
       focusedRef.current = focusedTabId
+      transientRef.current = transient
       // Lazily create webviews for tabs that just became visible.
       for (const id of layout.keys()) {
         if (!webviewsRef.current.has(id)) ensureWebview(id)

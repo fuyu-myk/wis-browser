@@ -104,6 +104,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
         persist_sessions: Some(false),
         fraud_warning_enabled: Some(false),
         media_extensions_enabled: Some(false),
+        video_popout_enabled: Some(false),
         user_agent_profile: Some(wis_core::UaProfile::Chrome),
         ua_site_overrides: Some(HashMap::from([(
             "example.com".to_string(),

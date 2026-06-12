@@ -256,6 +256,9 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       // `TabWebViewHost` orchestrates the overlay show/hide. Nothing to
       // do here.
       return
+    case 'pop_out_video':
+      // `TabWebViewHost` owns the video-popout controller and handles this.
+      return
     case 'open_command_palette':
       window.dispatchEvent(new CustomEvent(COMMAND_PALETTE_OPEN_EVENT))
       return

@@ -24,6 +24,7 @@ mod state;
 mod suggest;
 mod themes;
 mod vault;
+mod video_popout;
 mod wallpapers;
 mod webview_prefs;
 mod widget_panel;
@@ -220,6 +221,9 @@ pub fn run() {
 
             // App handle for the native click navigation-guard handler.
             navguard::set_app_handle(app.handle().clone());
+
+            // App handle for the video-popout message handler.
+            video_popout::set_app_handle(app.handle().clone());
 
             // Periodically snapshot session cookies for activated workspaces so
             // logins survive a restart even when no page reload occurs (e.g. a
@@ -428,6 +432,8 @@ pub fn run() {
             widget_panel::list_widget_panels,
             widget_panel::reload_widget_panel,
             widget_panel::navigate_widget_panel,
+            video_popout::open_video_popout,
+            video_popout::close_video_popout,
             navguard::nav_guard_proceed,
             bookmarks::list_bookmark_folders,
             bookmarks::list_bookmarks,
@@ -461,6 +467,20 @@ pub fn run() {
             ) {
                 let state = app_handle.state::<state::AppState>();
                 state.save_coalescer.flush(&state.storage);
+            }
+
+            // The floating video popout must not outlive the main window
+            // (its chrome orchestration dies with it); without this the
+            // orphaned popout would also keep the app alive.
+            if let tauri::RunEvent::WindowEvent {
+                label,
+                event: tauri::WindowEvent::Destroyed,
+                ..
+            } = &event
+            {
+                if label == "main" {
+                    video_popout::close_popout_window(app_handle);
+                }
             }
         });
 }

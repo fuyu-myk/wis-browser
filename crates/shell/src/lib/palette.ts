@@ -200,6 +200,7 @@ const ACTION_LABELS: Record<KeyAction, string> = {
   copy_url: 'Copy current URL',
   toggle_sidebar: 'Toggle floating sidebar',
   element_picker: 'Hide element (picker)',
+  pop_out_video: 'Pop out video',
 }
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS) as KeyAction[]

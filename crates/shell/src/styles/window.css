@@ -91,6 +91,7 @@
   box-sizing: border-box;
 }
 .pane-leaf > .pane-surface {
+  position: relative;
   flex: 1 1 0%;
   min-width: 0;
   min-height: 0;
@@ -116,6 +117,41 @@
     0 0 0 2px var(--primary-400),
     0 0 0 100vmax var(--pane-fill);
 }
+/* Black player placeholder for a manually popped-out tab. Chrome paints
+   under native webviews, so this only shows once the webview departs into
+   the popout window (no flash while the handshake is pending). */
+.kb-popout-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 12px;
+  padding: 0;
+  background: #000;
+  color: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+.kb-popout-placeholder:hover {
+  background: #0d0d11;
+}
+.kb-popout-placeholder svg {
+  opacity: 0.85;
+  margin-bottom: 4px;
+}
+.kb-popout-placeholder-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.kb-popout-placeholder-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
 .pane-divider {
   flex: 0 0 8px;
   align-self: stretch;

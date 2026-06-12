@@ -656,6 +656,34 @@ export const commands = {
     return invoke('navigate_widget_panel', { id, url })
   },
 
+  // -- video popout -----------------------------------------------------------
+
+  /**
+   * Pop tab webview `label`'s playing video out into the floating
+   * always-on-top mini player. The page confirms via the native enter
+   * handshake; without a suitable video the webview just stays hidden.
+   * `geometry` is the remembered position of the previous popout, if any;
+   * the size always starts from the predefined default.
+   */
+  async openVideoPopout(
+    label: string,
+    geometry: { x: number; y: number } | null,
+  ): Promise<void> {
+    return invoke('open_video_popout', {
+      label,
+      x: geometry?.x ?? null,
+      y: geometry?.y ?? null,
+    })
+  },
+
+  /**
+   * Restore tab webview `label` out of the popout (styling unwound, webview
+   * back in the main window, hidden). Safe to call in any popout phase.
+   */
+  async closeVideoPopout(label: string): Promise<void> {
+    return invoke('close_video_popout', { label })
+  },
+
   // -- custom themes ----------------------------------------------------------
 
   /** Activate a custom theme (null = built-in presets). */

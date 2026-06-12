@@ -1230,7 +1230,11 @@ pub async fn create_tab_webview(
 
     let mut builder = WebviewBuilder::new(label, WebviewUrl::External(initial_url))
         .focused(false)
-        .proxy_url(proxy_url);
+        .proxy_url(proxy_url)
+        .accept_first_mouse(true)
+        // Rides the webview configuration so even an instantly-loading first
+        // document (cache, localhost) gets it.
+        .initialization_script(crate::video_popout::page_script());
     // Per-page scriptlet swap (uBO `+js` rules) before each main-frame
     // navigation commits; Permissive workspaces opt out of blocking.
     if nav_privacy_mode != wis_core::PrivacyMode::Permissive {
@@ -1273,11 +1277,17 @@ pub async fn create_tab_webview(
 
     {
         let app = app.clone();
+        let label_for_load = label_ident.clone();
         builder = builder.on_page_load(move |_webview, payload: PageLoadPayload<'_>| {
             let event = payload.event();
             let loading = matches!(event, PageLoadEvent::Started);
             let url_string = payload.url().to_string();
             let page_url = payload.url().clone();
+
+            // A popped-out tab navigating loses its pinned video.
+            if matches!(event, PageLoadEvent::Started) {
+                crate::video_popout::handle_navigation(&app, &label_for_load);
+            }
 
             let app_for_state = app.clone();
             tauri::async_runtime::spawn(async move {
@@ -1430,6 +1440,9 @@ pub async fn create_tab_webview(
 
     // Opt+click "Peek" trigger (safe on all tabs; forwards only the link).
     crate::peek::install(&child);
+
+    // Video popout channel (playing-state tracking + floating mini player).
+    crate::video_popout::install(&child);
 
     // Cosmetic filtering (element hiding). Permissive workspaces opt out of
     // blocking entirely, so they skip the channel too.

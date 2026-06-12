@@ -178,6 +178,12 @@ fn build_menu(
             KeyAction::ElementPicker,
             "Hide Element…",
         )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::PopOutVideo,
+            "Pop Out Video",
+        )?)
         .separator()
         .item(&action_item(
             app,

@@ -93,6 +93,9 @@ pub enum KeyAction {
     ToggleSidebar,
     /// Start the element picker ("zapper") on the active tab.
     ElementPicker,
+    /// Float the active tab's video as the popout mini player (toggles back
+    /// when it is already popped). Unbound by default.
+    PopOutVideo,
 }
 
 impl KeyAction {
@@ -155,6 +158,7 @@ impl KeyAction {
             Self::CopyUrl => "copy_url",
             Self::ToggleSidebar => "toggle_sidebar",
             Self::ElementPicker => "element_picker",
+            Self::PopOutVideo => "pop_out_video",
         }
     }
 
@@ -171,7 +175,7 @@ impl KeyAction {
     }
 }
 
-const ALL_ACTIONS: [KeyAction; 55] = [
+const ALL_ACTIONS: [KeyAction; 56] = [
     KeyAction::NewTab,
     KeyAction::NewWorkspace,
     KeyAction::CloseTab,
@@ -227,6 +231,7 @@ const ALL_ACTIONS: [KeyAction; 55] = [
     KeyAction::CopyUrl,
     KeyAction::ToggleSidebar,
     KeyAction::ElementPicker,
+    KeyAction::PopOutVideo,
 ];
 
 /// Default keyboard accelerators. `NewWindow` has no entry on purpose: the
@@ -314,12 +319,15 @@ mod tests {
 
     #[test]
     fn default_keymap_includes_every_action_except_reserved() {
-        // `NewWindow` is reserved for multi-window support in future.
+        // `NewWindow` is reserved for multi-window support in future;
+        // `PopOutVideo` ships unbound so it can never collide with a page
+        // or user shortcut until the user assigns one.
         const UNBOUND: &[KeyAction] = &[
             KeyAction::NewWindow,
             KeyAction::FocusUrlBarAlt,
             KeyAction::FocusNextPane,
             KeyAction::SwitchToTab9,
+            KeyAction::PopOutVideo,
         ];
         let map = default_keymap();
         for action in KeyAction::all() {

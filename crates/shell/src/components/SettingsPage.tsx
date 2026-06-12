@@ -406,6 +406,21 @@ export function SettingsPage() {
             ariaLabel="Default search engine"
           />
         </div>
+        <div className="row">
+          <div className="l">
+            <span>Video popout</span>
+            <span>
+              Switching away from a tab playing video floats it as an
+              always-on-top mini player, free to leave the window. Click
+              pauses, double-click left/right seeks, corners resize.
+            </span>
+          </div>
+          <Switch
+            checked={settings.video_popout_enabled}
+            onChange={(video_popout_enabled) => update.mutate({ video_popout_enabled })}
+            label="Video popout"
+          />
+        </div>
       </section>
 
       <SidebarWidgetsSection

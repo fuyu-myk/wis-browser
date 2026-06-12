@@ -77,6 +77,11 @@ pub struct UserSettings {
     /// toggleable to shed the DRM/fingerprint surface.
     #[serde(default = "default_media_extensions_enabled")]
     pub media_extensions_enabled: bool,
+    /// When true, switching away from a tab that is playing a video floats
+    /// that video as a draggable, resizable mini player above the chrome
+    /// instead of hiding it, so playback survives tab/workspace switches.
+    #[serde(default = "default_video_popout_enabled")]
+    pub video_popout_enabled: bool,
     /// Default user agent presented to remote pages. Safari by default so the
     /// WebKit engine is identified correctly. Serde-default upgrades existing
     /// settings to the fix automatically.
@@ -190,6 +195,10 @@ fn default_fraud_warning_enabled() -> bool {
     true
 }
 
+fn default_video_popout_enabled() -> bool {
+    true
+}
+
 fn default_widget_panel_limit_enabled() -> bool {
     true
 }
@@ -243,6 +252,7 @@ impl Default for UserSettings {
             persist_sessions: true,
             fraud_warning_enabled: true,
             media_extensions_enabled: true,
+            video_popout_enabled: true,
             user_agent_profile: UaProfile::default(),
             ua_site_overrides: HashMap::new(),
             sidebar_widgets: Vec::new(),
@@ -310,6 +320,8 @@ pub struct UserSettingsPatch {
     pub fraud_warning_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media_extensions_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_popout_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_agent_profile: Option<UaProfile>,
     /// Replaces the whole override map when present (the frontend holds the
@@ -393,6 +405,9 @@ impl UserSettings {
             media_extensions_enabled: patch
                 .media_extensions_enabled
                 .unwrap_or(self.media_extensions_enabled),
+            video_popout_enabled: patch
+                .video_popout_enabled
+                .unwrap_or(self.video_popout_enabled),
             user_agent_profile: patch
                 .user_agent_profile
                 .unwrap_or_else(|| self.user_agent_profile.clone()),

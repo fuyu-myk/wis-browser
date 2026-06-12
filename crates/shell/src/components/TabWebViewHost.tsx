@@ -6,6 +6,7 @@ import type { BrowserState, KeyAction, PaneBranch, PaneNode, SplitDir, Tab, TabI
 import { isChromeUrl, SETTINGS_URL } from '@/lib/url'
 import { useOverlay } from '@/hooks/useOverlay'
 import { useTabWebviews, type Bounds, type WebviewLayout } from '@/hooks/useTabWebviews'
+import { useVideoPopout } from '@/hooks/useVideoPopout'
 
 import { FOCUS_LAUNCHPAD_SEARCH_EVENT } from '@/components/NewTabPage'
 import { PANE_GLIDE_MS, PaneView, type PaneSide } from '@/components/SplitPaneHost'
@@ -143,6 +144,10 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     return ids
   }, [activeWorkspace?.tab_folders, state.tabs])
 
+  const { controller: popout, poppedTabId } = useVideoPopout({
+    enabled: state.settings.video_popout_enabled,
+  })
+
   const { syncLayout } = useTabWebviews({
     createTabs,
     activeWorkspaceId: activeWorkspace?.id ?? null,
@@ -152,6 +157,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     sleepMinutes: state.settings.tab_sleep_minutes,
     forceSleepTabIds: collapsedFolderTabIds,
     onDiscardedChange,
+    popout,
   })
 
   const focusPane = useCallback(
@@ -220,6 +226,35 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     [activeWorkspace],
   )
 
+  // Manual video popout: pop the active tab's video out (or fold it back)
+  // on the Pop Out Video key action.
+  const focusableTabRef = useRef<TabId | null>(null)
+  focusableTabRef.current = activeTab && !isChromeUrl(activeTab.url) ? activeTab.id : null
+  useEffect(() => {
+    let cancelled = false
+    let unlisten: UnlistenFn | null = null
+    void listen<{ action: KeyAction }>(KEYACTION_EVENT, (e) => {
+      if (e.payload.action !== 'pop_out_video') return
+      const id = focusableTabRef.current
+      if (id) popout.requestPopOut(id)
+    }).then((fn) => {
+      if (cancelled) fn()
+      else unlisten = fn
+    })
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [popout])
+
+  // A manually popped-out tab keeps its pane, which renders the black
+  // player placeholder; clicking it folds the video back in.
+  const poppedTabIds = useMemo<ReadonlySet<TabId>>(
+    () => (poppedTabId ? new Set([poppedTabId]) : EMPTY_LEAVES),
+    [poppedTabId],
+  )
+  const restorePopout = useCallback((id: TabId) => popout.release(id), [popout])
+
   // Measure each webview pane-leaf and tile its native webview into place.
   const focusWebviewId =
     activeTab && !isChromeUrl(activeTab.url) ? activeTab.id : null
@@ -228,7 +263,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     if (!host) return
     const measure = () => {
       if (resizingRef.current || draggingRef.current || paneAnimRef.current) {
-        syncLayout(new Map<TabId, Bounds>(), null)
+        syncLayout(new Map<TabId, Bounds>(), null, true)
         return
       }
       const layout: WebviewLayout = new Map<TabId, Bounds>()
@@ -355,6 +390,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
       window.dispatchEvent(new CustomEvent('wis-close-workspace-popover'))
       const id = e.payload as TabId
       if (id === activeIdRef.current) return
+      if (popout.isPopout(id)) return
       void commands.setActiveTab(id).catch(() => undefined)
     }).then((fn) => {
       if (cancelled) fn()
@@ -364,7 +400,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
       cancelled = true
       unlisten?.()
     }
-  }, [])
+  }, [popout])
 
   return (
     <div ref={hostRef} className="kb-content-host">
@@ -381,6 +417,8 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
           onPaneDrop={handlePaneDrop}
           newLeafIds={newLeafIds}
           closingLeafIds={exitAnim?.closing ?? EMPTY_LEAVES}
+          poppedTabIds={poppedTabIds}
+          onRestorePopout={restorePopout}
         />
       ) : null}
     </div>

@@ -463,11 +463,13 @@ mod imp {
                     keep.push(script);
                 }
             }
+            let kept = keep.len();
             let _: () = msg_send![controller, removeAllUserScripts];
             for script in keep {
                 let _: () = msg_send![controller, addUserScript: script];
                 let _: () = msg_send![script, release];
             }
+            log::debug!("script swap: had {count}, kept {kept}");
 
             let add = |source: &str, injection_time: isize| {
                 if source.is_empty() {

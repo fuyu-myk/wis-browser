@@ -38,6 +38,11 @@ interface PaneViewProps {
   newLeafIds: ReadonlySet<TabId>
   /** Leaves being removed: their slot glides shut before the tree commits. */
   closingLeafIds: ReadonlySet<TabId>
+  /** Tabs floating in the video popout: their pane keeps its slot and shows
+   *  the black player placeholder under the (departed) webview. */
+  poppedTabIds: ReadonlySet<TabId>
+  /** Fold the popout back into its pane (placeholder click). */
+  onRestorePopout: (tabId: TabId) => void
 }
 
 /**
@@ -70,6 +75,8 @@ function PaneLeaf({
   dragActive,
   movedTabId,
   onPaneDrop,
+  poppedTabIds,
+  onRestorePopout,
 }: PaneViewProps & { tabId: TabId }) {
   const tab = tabsById.get(tabId)
   const chrome = tab ? isChromeUrl(tab.url) : false
@@ -95,6 +102,31 @@ function PaneLeaf({
         {...(!chrome ? { 'data-pane-webview': 'true' } : {})}
       >
         {chrome && tab ? <ChromePane tab={tab} /> : null}
+        {/* Painted under the native webview, so it only shows once the
+            webview departs into the popout window. */}
+        {!chrome && poppedTabIds.has(tabId) ? (
+          <button
+            type="button"
+            className="kb-popout-placeholder"
+            onClick={() => onRestorePopout(tabId)}
+            title="Bring the video back"
+          >
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 18 18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              aria-hidden="true"
+            >
+              <rect x="1.5" y="3" width="15" height="12" rx="2" />
+              <rect x="8.5" y="9" width="6" height="4.5" rx="1" fill="currentColor" stroke="none" />
+            </svg>
+            <span className="kb-popout-placeholder-label">Playing in popout</span>
+            <span className="kb-popout-placeholder-hint">Click to bring the video back</span>
+          </button>
+        ) : null}
       </div>
 
       {/* While a tab is dragged, webviews are hidden and this overlay catches
@@ -145,6 +177,8 @@ function PaneSplit({
   onPaneDrop,
   newLeafIds,
   closingLeafIds,
+  poppedTabIds,
+  onRestorePopout,
 }: PaneSplitProps) {
   const { dir, ratio, first, second } = node
   const row = dir === 'horizontal'
@@ -239,6 +273,8 @@ function PaneSplit({
     onPaneDrop,
     newLeafIds,
     closingLeafIds,
+    poppedTabIds,
+    onRestorePopout,
   }
 
   return (
