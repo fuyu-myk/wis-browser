@@ -313,9 +313,29 @@ interface ActionsSourceArgs {
   onDispatch: (action: KeyAction) => void | Promise<void>
 }
 
+/**
+ * Positional switch-to-tab actions (Cmd+1..8/9) are excluded from the palette:
+ * nine near-identical "Switch to tab N" rows flood the Actions section on any
+ * "tab"/"switch" query, and the Tabs section already switches to any tab by
+ * name. The shortcuts stay discoverable in Settings -> Shortcuts.
+ */
+const PALETTE_HIDDEN_ACTIONS: ReadonlySet<KeyAction> = new Set<KeyAction>([
+  'switch_to_tab1',
+  'switch_to_tab2',
+  'switch_to_tab3',
+  'switch_to_tab4',
+  'switch_to_tab5',
+  'switch_to_tab6',
+  'switch_to_tab7',
+  'switch_to_tab8',
+  'switch_to_tab9',
+])
+
+const PALETTE_ACTIONS = ALL_ACTIONS.filter((a) => !PALETTE_HIDDEN_ACTIONS.has(a))
+
 export function makeActionsSource({ keymap, onDispatch }: ActionsSourceArgs): PaletteSource {
   return (query) => {
-    const items = ALL_ACTIONS.map((action) => {
+    const items = PALETTE_ACTIONS.map((action) => {
       const label = actionLabel(action)
       const match = fuzzyMatch(label, query)
       const item: PaletteItem = {

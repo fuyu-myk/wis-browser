@@ -55,6 +55,7 @@ export function useKeyActions(): void {
 
   const activeWorkspace = state?.workspaces.find((w) => w.id === state.active_workspace_id) ?? null
   const tabs = activeWorkspace ? tabsFor(state!, activeWorkspace) : []
+  const numberedTabs = activeWorkspace ? numberedTabsFor(state!, activeWorkspace) : []
   const activeTab = tabs.find((t) => t.id === activeWorkspace?.active_tab_id) ?? null
 
   const newWorkspaceInFlight = useRef(false)
@@ -80,6 +81,8 @@ export function useKeyActions(): void {
   activeWorkspaceRef.current = activeWorkspace
   const tabsRef = useRef(tabs)
   tabsRef.current = tabs
+  const numberedTabsRef = useRef(numberedTabs)
+  numberedTabsRef.current = numberedTabs
   const activeTabRef = useRef(activeTab)
   activeTabRef.current = activeTab
   const qcRef = useRef(qc)
@@ -92,6 +95,7 @@ export function useKeyActions(): void {
       state: stateRef.current,
       activeWorkspace: activeWorkspaceRef.current,
       tabs: tabsRef.current,
+      numberedTabs: numberedTabsRef.current,
       activeTab: activeTabRef.current,
       previousTabId: previousTabRef.current,
       invalidate: () =>
@@ -135,6 +139,8 @@ interface DispatchContext {
   state: BrowserState | undefined
   activeWorkspace: Workspace | null
   tabs: Tab[]
+  /** Visible-order, pinned-excluded tab list for Cmd+1..9 numbering. */
+  numberedTabs: Tab[]
   activeTab: Tab | null
   previousTabId: TabId | null
   invalidate: () => void
@@ -234,7 +240,7 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
     case 'switch_to_tab8':
     case 'switch_to_tab9': {
       const index = Number(action.replace('switch_to_tab', '')) - 1
-      const tab = ctx.tabs[index]
+      const tab = ctx.numberedTabs[index]
       if (!tab) return
       await commands.setActiveTab(tab.id)
       ctx.invalidate()
@@ -484,6 +490,25 @@ function tabsFor(state: BrowserState, workspace: Workspace): Tab[] {
   return workspace.tab_order
     .map((id) => state.tabs.find((t) => t.id === id))
     .filter((t): t is Tab => t !== undefined)
+}
+
+/**
+ * Tabs in the order Cmd+1..9 number them: the on-screen reading order, so
+ * reordering and filing into folders both renumber. Members of expanded
+ * folders (folders by position) come first, then loose tabs; pinned tabs and
+ * collapsed-folder members are excluded since neither is a numbered visible
+ * slot. Plain tab cycling stays on the full `tabsFor` set instead.
+ */
+function numberedTabsFor(state: BrowserState, workspace: Workspace): Tab[] {
+  const ordered = tabsFor(state, workspace)
+  const pinned = new Set(workspace.pinned_tab_ids)
+  const candidates = ordered.filter((t) => !pinned.has(t.id))
+  const folders = [...workspace.tab_folders]
+    .filter((f) => !f.collapsed)
+    .sort((a, b) => a.position - b.position)
+  const foldered = folders.flatMap((f) => candidates.filter((t) => t.folder_id === f.id))
+  const loose = candidates.filter((t) => t.folder_id == null)
+  return [...foldered, ...loose]
 }
 
 function nextAccent(used: AccentColor[]): AccentColor {
