@@ -73,7 +73,10 @@ fn emit_snapshot(app: &AppHandle) {
         let guard = state.muted_tabs.lock().expect("muted_tabs poisoned");
         guard.iter().cloned().collect()
     };
-    let _ = app.emit(AUDIO_EVENT, serde_json::json!({ "audible": audible, "muted": muted }));
+    let _ = app.emit(
+        AUDIO_EVENT,
+        serde_json::json!({ "audible": audible, "muted": muted }),
+    );
 }
 
 /// Mute or unmute a tab (page-level). Applies to the live webview when one
@@ -95,7 +98,11 @@ pub async fn set_tab_muted(
         }
     }
 
-    if let Some(webview) = app.webviews().get(&format!("{TAB_LABEL_PREFIX}{uuid}")).cloned() {
+    if let Some(webview) = app
+        .webviews()
+        .get(&format!("{TAB_LABEL_PREFIX}{uuid}"))
+        .cloned()
+    {
         apply_page_muted(&webview, muted);
     }
     emit_snapshot(&app);
