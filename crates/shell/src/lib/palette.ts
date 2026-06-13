@@ -140,6 +140,7 @@ export const DEFAULT_KEYMAP: Partial<Record<KeyAction, string>> = {
   pin_tab: 'Cmd+Shift+P',
   duplicate_tab: 'Cmd+Shift+K',
   copy_url: 'Cmd+Shift+C',
+  print: 'Cmd+P',
   toggle_sidebar: 'Cmd+S',
   element_picker: 'Cmd+Shift+X',
 }
@@ -198,6 +199,7 @@ const ACTION_LABELS: Record<KeyAction, string> = {
   pin_tab: 'Pin or unpin tab',
   duplicate_tab: 'Duplicate tab',
   copy_url: 'Copy current URL',
+  print: 'Print page',
   toggle_sidebar: 'Toggle floating sidebar',
   element_picker: 'Hide element (picker)',
   pop_out_video: 'Pop out video',

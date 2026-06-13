@@ -21,6 +21,7 @@ mod pane_focus;
 mod panels;
 mod peek;
 mod permissions;
+mod print;
 mod save_coalescer;
 mod state;
 mod suggest;
@@ -427,6 +428,7 @@ pub fn run() {
             interaction_state::tab_interaction_state,
             find::tab_find_string,
             find::tab_find_clear,
+            print::print_active_tab,
             peek::open_peek,
             peek::set_peek_bounds,
             peek::close_peek,

@@ -117,6 +117,7 @@ export type KeyAction =
   | 'pin_tab'
   | 'duplicate_tab'
   | 'copy_url'
+  | 'print'
   | 'toggle_sidebar'
   | 'element_picker'
   | 'pop_out_video'

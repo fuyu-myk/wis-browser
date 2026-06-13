@@ -21,7 +21,7 @@ import { closeTabAnimated } from '@/lib/tabClose'
 import { DOWNLOADS_OPEN_EVENT } from '@/lib/downloads'
 import { BOOKMARK_PAGE_EVENT, BOOKMARKS_OPEN_EVENT } from '@/lib/bookmarkMenu'
 import type { AccentColor, BrowserState, KeyAction, PaneNode, Tab, TabId, Workspace, WorkspaceId } from '@/bindings/types'
-import { HISTORY_URL, NEW_TAB_URL, SETTINGS_URL } from '@/lib/url'
+import { HISTORY_URL, NEW_TAB_URL, SETTINGS_URL, isChromeUrl } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { usePendingRename } from '@/hooks/usePendingRename'
 import { useQueryClient } from '@tanstack/react-query'
@@ -367,6 +367,11 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
     case 'copy_url': {
       if (!ctx.activeTab) return
       await commands.copyText(ctx.activeTab.url)
+      return
+    }
+    case 'print': {
+      if (!ctx.activeTab || isChromeUrl(ctx.activeTab.url)) return
+      await commands.printActiveTab(ctx.activeTab.id)
       return
     }
     case 'element_picker': {

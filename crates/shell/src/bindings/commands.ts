@@ -572,6 +572,13 @@ export const commands = {
   },
 
   /**
+   * Open the macOS print panel for the tab (Cmd+P).
+   */
+  async printActiveTab(id: TabId): Promise<void> {
+    return invoke('print_active_tab', { id })
+  },
+
+  /**
    * Open an http(s) URL in the OS default browser (a full, separate browser).
    * An exit hatch for pages the embedded engine can't fully handle, e.g.
    * Widevine-protected video.

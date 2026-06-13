@@ -89,6 +89,8 @@ pub enum KeyAction {
     DuplicateTab,
     /// Copy the active tab's URL to the clipboard.
     CopyUrl,
+    /// Print the active tab.
+    Print,
     /// Toggle the fixed/floating (auto-collapsing) sidebar mode.
     ToggleSidebar,
     /// Start the element picker ("zapper") on the active tab.
@@ -156,6 +158,7 @@ impl KeyAction {
             Self::PinTab => "pin_tab",
             Self::DuplicateTab => "duplicate_tab",
             Self::CopyUrl => "copy_url",
+            Self::Print => "print",
             Self::ToggleSidebar => "toggle_sidebar",
             Self::ElementPicker => "element_picker",
             Self::PopOutVideo => "pop_out_video",
@@ -175,7 +178,7 @@ impl KeyAction {
     }
 }
 
-const ALL_ACTIONS: [KeyAction; 56] = [
+const ALL_ACTIONS: [KeyAction; 57] = [
     KeyAction::NewTab,
     KeyAction::NewWorkspace,
     KeyAction::CloseTab,
@@ -229,6 +232,7 @@ const ALL_ACTIONS: [KeyAction; 56] = [
     KeyAction::PinTab,
     KeyAction::DuplicateTab,
     KeyAction::CopyUrl,
+    KeyAction::Print,
     KeyAction::ToggleSidebar,
     KeyAction::ElementPicker,
     KeyAction::PopOutVideo,
@@ -287,6 +291,7 @@ pub fn default_keymap() -> HashMap<KeyAction, String> {
         (KeyAction::PinTab, "Cmd+Shift+P"),
         (KeyAction::DuplicateTab, "Cmd+Shift+K"),
         (KeyAction::CopyUrl, "Cmd+Shift+C"),
+        (KeyAction::Print, "Cmd+P"),
         (KeyAction::ToggleSidebar, "Cmd+S"),
         (KeyAction::ElementPicker, "Cmd+Shift+X"),
     ];
@@ -341,6 +346,11 @@ mod tests {
                 assert!(map.contains_key(action), "{} is unbound", action.id());
             }
         }
+    }
+
+    #[test]
+    fn print_defaults_to_cmd_p() {
+        assert_eq!(default_keymap().get(&KeyAction::Print).unwrap(), "Cmd+P");
     }
 
     #[test]

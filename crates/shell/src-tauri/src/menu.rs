@@ -109,6 +109,8 @@ fn build_menu(
         .separator()
         .item(&action_item(app, keymap, KeyAction::CloseTab, "Close Tab")?)
         .separator()
+        .item(&action_item(app, keymap, KeyAction::Print, "Print…")?)
+        .separator()
         .item(&action_item(
             app,
             keymap,
