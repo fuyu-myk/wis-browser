@@ -6,11 +6,12 @@
  * tells the chrome to hide the overlay (and show any queued request).
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import { cx } from '@/lib/cx'
+import { Switch } from '@/components/controls'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
@@ -46,12 +47,15 @@ export function PermissionSurface() {
 
   const [req, setReq] = useState<PermissionRequest | null>(null)
   const [open, setOpen] = useState(false)
+  // Persist the decision across restarts; off makes it last only this session.
+  const [remember, setRemember] = useState(true)
 
   useEffect(() => {
     let unlisten: UnlistenFn | null = null
     let cancelled = false
     void listen<PermissionRequest>(SHOW_EVENT, (e) => {
       setReq(e.payload)
+      setRemember(true)
       requestAnimationFrame(() => setOpen(true))
     }).then((fn) => {
       if (cancelled) fn()
@@ -65,24 +69,23 @@ export function PermissionSurface() {
     }
   }, [])
 
-  const resolve = useCallback(
-    (granted: boolean) => {
-      setReq((current) => {
-        if (current) {
-          void commands.resolveMediaPermission(current.request_id, granted).catch(() => undefined)
-        }
-        return current
-      })
-      setOpen(false)
-      window.setTimeout(() => {
-        setReq(null)
-        void emit(CLOSE_EVENT)
-      }, EXIT_MS)
-    },
-    [],
-  )
-
   if (!req) return null
+
+  const decide = (granted: boolean) => {
+    void commands.resolveMediaPermission(req.request_id, granted).catch(() => undefined)
+    if (remember) {
+      const current = state?.settings.media_permissions ?? {}
+      const key = `${req.kind}|${req.origin}`
+      void commands
+        .updateSettings({ media_permissions: { ...current, [key]: granted } })
+        .catch(() => undefined)
+    }
+    setOpen(false)
+    window.setTimeout(() => {
+      setReq(null)
+      void emit(CLOSE_EVENT)
+    }, EXIT_MS)
+  }
 
   return (
     <div
@@ -99,14 +102,18 @@ export function PermissionSurface() {
           <span className="kb-perm-sub">wants to use your {deviceLabel(req.kind)}</span>
         </div>
       </div>
+      <div className="kb-perm-remember">
+        <Switch checked={remember} onChange={setRemember} label="Remember this decision" />
+        <span>Remember this decision</span>
+      </div>
       <div className="kb-perm-actions">
-        <button type="button" className="kb-perm-btn" onClick={() => resolve(false)}>
+        <button type="button" className="kb-perm-btn" onClick={() => decide(false)}>
           Block
         </button>
         <button
           type="button"
           className="kb-perm-btn is-primary"
-          onClick={() => resolve(true)}
+          onClick={() => decide(true)}
           autoFocus
         >
           Allow

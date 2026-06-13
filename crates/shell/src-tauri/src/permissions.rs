@@ -103,6 +103,16 @@ fn handle(label: &str, page_id: &str, origin: &str, kind: &str) -> Option<bool> 
     let app = APP.get()?;
     let state = app.state::<AppState>();
     let key = format!("{kind}|{origin}");
+
+    // Session ("just once") decisions take precedence over the persisted set.
+    if let Some(&decided) = state
+        .media_permissions_session
+        .read()
+        .expect("media_permissions_session poisoned")
+        .get(&key)
+    {
+        return Some(decided);
+    }
     if let Some(&decided) = state
         .media_permissions
         .read()
@@ -160,10 +170,11 @@ pub async fn resolve_media_permission(
         return Ok(());
     };
 
+    // Note: the persisted "remember" is written separately via update_settings.
     state
-        .media_permissions
+        .media_permissions_session
         .write()
-        .expect("media_permissions poisoned")
+        .expect("media_permissions_session poisoned")
         .insert(format!("{}|{}", pending.kind, pending.origin), granted);
 
     if let Some(wv) = app.webviews().get(&pending.webview_label).cloned() {

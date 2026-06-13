@@ -20,7 +20,7 @@ const CLOSE_EVENT = 'wis-permission-close'
 const READY_EVENT = 'wis-permission-ready'
 
 const CARD_W = 320
-const CARD_H = 132
+const CARD_H = 162
 const MARGIN = 14
 
 interface PermissionRequest {

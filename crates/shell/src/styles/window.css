@@ -630,6 +630,13 @@ body.is-overlay-surface:not(.glass-on) {
   font-size: 12px;
   color: var(--text-secondary);
 }
+.kb-perm-remember {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
 .kb-perm-actions {
   display: flex;
   gap: 8px;

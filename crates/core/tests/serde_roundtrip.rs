@@ -111,6 +111,10 @@ fn settings_patch_round_trips_when_all_fields_set() {
             "example.com".to_string(),
             wis_core::UaProfile::Safari,
         )])),
+        media_permissions: Some(HashMap::from([(
+            "camera|https://example.com".to_string(),
+            true,
+        )])),
         sidebar_widgets: Some(vec![wis_core::Widget {
             id: wis_core::WidgetId::new(),
             kind: wis_core::WidgetKind::Claude,

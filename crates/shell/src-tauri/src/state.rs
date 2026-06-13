@@ -101,11 +101,14 @@ pub struct AppState {
     /// Widget ids whose panel the user muted (session-scoped; re-applied
     /// when a reclaimed panel is reopened).
     pub muted_widgets: std::sync::Mutex<HashSet<String>>,
-    /// Session-scoped per-origin camera/microphone consent, keyed by
-    /// `"<kind>|<origin>"`. Read synchronously by the `wisMediaPermission`
-    /// message handler (main thread), so a remembered request is decided
-    /// without awaiting the state lock.
+    /// Persisted per-origin camera/microphone consent, keyed `"<kind>|<origin>"`.
+    /// A sync mirror of `UserSettings.media_permissions` (seeded at startup,
+    /// refreshed on change) read by the `wisMediaPermission` handler (main
+    /// thread) without awaiting the state lock.
     pub media_permissions: std::sync::RwLock<HashMap<String, bool>>,
+    /// Session-only ("just once") camera/microphone decisions, checked ahead of
+    /// the persisted set and dropped on restart.
+    pub media_permissions_session: std::sync::RwLock<HashMap<String, bool>>,
     /// Camera/microphone requests awaiting the user's decision in the prompt
     /// overlay, keyed by a monotonic request id (`media_seq`).
     pub pending_media: std::sync::Mutex<HashMap<u64, crate::permissions::PendingMedia>>,
@@ -128,6 +131,7 @@ impl AppState {
         let download_prefs = crate::downloads::DownloadPrefs::from_settings(&browser.settings);
         let initial_user_cosmetic_rules = browser.settings.user_cosmetic_rules.clone();
         let initial_userscripts = browser.settings.userscripts.clone();
+        let initial_media_permissions = browser.settings.media_permissions.clone();
         Self {
             browser: Mutex::new(browser),
             storage,
@@ -151,12 +155,23 @@ impl AppState {
             audible_tabs: std::sync::Mutex::new(HashSet::new()),
             muted_tabs: std::sync::Mutex::new(HashSet::new()),
             muted_widgets: std::sync::Mutex::new(HashSet::new()),
-            media_permissions: std::sync::RwLock::new(HashMap::new()),
+            media_permissions: std::sync::RwLock::new(initial_media_permissions),
+            media_permissions_session: std::sync::RwLock::new(HashMap::new()),
             pending_media: std::sync::Mutex::new(HashMap::new()),
             media_seq: std::sync::atomic::AtomicU64::new(0),
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }
+    }
+
+    /// Replace the persisted camera/microphone consent read-cache (after a
+    /// settings change: a remembered prompt decision or a settings-page edit).
+    pub fn refresh_media_permissions_cache(&self, perms: HashMap<String, bool>) {
+        let mut guard = self
+            .media_permissions
+            .write()
+            .expect("media_permissions poisoned");
+        *guard = perms;
     }
 
     /// Replace the cosmetic-rule read-cache (called after a settings change

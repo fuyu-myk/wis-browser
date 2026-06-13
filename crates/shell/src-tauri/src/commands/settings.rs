@@ -15,6 +15,7 @@ pub async fn update_settings(
     let keybindings_touched = patch.keybindings.is_some();
     let userscripts_touched = patch.userscripts.is_some();
     let cosmetic_touched = patch.user_cosmetic_rules.is_some();
+    let media_permissions_touched = patch.media_permissions.is_some();
     let theme_touched = patch.theme.is_some();
     let persistence_disabled = patch.persist_sessions == Some(false);
     let fraud_warning_changed = patch.fraud_warning_enabled;
@@ -39,6 +40,9 @@ pub async fn update_settings(
     }
     if cosmetic_touched {
         state.refresh_user_cosmetic_cache(settings.user_cosmetic_rules.clone());
+    }
+    if media_permissions_touched {
+        state.refresh_media_permissions_cache(settings.media_permissions.clone());
     }
 
     if theme_touched {

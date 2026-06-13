@@ -327,6 +327,8 @@ export interface UserSettings {
   user_agent_profile: UaProfile
   /** Per-host user agent overrides, keyed by `www.`-stripped host. */
   ua_site_overrides: Record<string, UaProfile>
+  /** Remembered camera/mic consent, keyed `"<kind>|<origin>"` (true = allow). */
+  media_permissions: Record<string, boolean>
   /** Global quick-launch sidebar widgets, in display order. */
   sidebar_widgets: Widget[]
   /** Cap loaded widget panels (LRU reclaim); off means limitless. */
@@ -392,6 +394,8 @@ export interface UserSettingsPatch {
   user_agent_profile?: UaProfile
   /** Replaces the whole override map when present. */
   ua_site_overrides?: Record<string, UaProfile>
+  /** Replaces the whole remembered-permissions map when present. */
+  media_permissions?: Record<string, boolean>
   /** Replaces the whole widget list when present. */
   sidebar_widgets?: Widget[]
   widget_panel_limit_enabled?: boolean
