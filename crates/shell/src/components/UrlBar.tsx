@@ -17,7 +17,7 @@ import { commands } from '@/bindings/commands'
 import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { SearchIcon } from '@/lib/icons'
-import { isChromeUrl, isSearchQuery, normaliseUrl, SEARCH_ENGINES } from '@/lib/url'
+import { isChromeUrl, isSearchQuery, normaliseUrl, NEW_TAB_URL, SEARCH_ENGINES } from '@/lib/url'
 import { bookmarkFoldersKey, bookmarksKey } from '@/lib/bookmarkKeys'
 import { useBookmarkSync } from '@/hooks/useBookmarkSync'
 import { BMPICKER_OPEN_EVENT, BOOKMARK_PAGE_EVENT, lastFolderKey, PIN_CAP } from '@/lib/bookmarkMenu'
@@ -28,6 +28,7 @@ import {
   type CaptureInfo,
 } from '@/lib/vaultMenu'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
+import { WisMark } from '@/components/WisMark'
 import { FOCUS_URLBAR_EVENT } from '@/hooks/useKeyActions'
 import { useOverlay } from '@/hooks/useOverlay'
 import { useUrlbarSuggest } from '@/hooks/useUrlbarSuggest'
@@ -325,7 +326,12 @@ function useUrlBarForm(
     suggest.onInput(e.target.value)
   }
 
-  return { value, onChange, onSubmit, suggest }
+  // Uncommitted edits never outlive the editing session.
+  const revert = useCallback(() => {
+    setValue(displayUrl(activeTab?.url ?? ''))
+  }, [activeTab?.url])
+
+  return { value, onChange, onSubmit, suggest, revert }
 }
 
 /**
@@ -405,7 +411,14 @@ function useSelectAllOnChromeClick(inputRef: RefObject<HTMLInputElement>) {
  */
 function SecurityIndicator({ activeTab }: { activeTab: Tab | null }) {
   const url = activeTab?.url ?? ''
-  if (!url || isChromeUrl(url)) return <SearchIcon className="ico" />
+  if (!url || url === NEW_TAB_URL) return <SearchIcon className="ico" />
+  if (isChromeUrl(url)) {
+    return (
+      <span className="ico kb-chrome-page" title="Wis page" aria-label="Wis page">
+        <WisMark variant="solid-closed" size={14} />
+      </span>
+    )
+  }
 
   let secure = false
   try {
@@ -651,9 +664,18 @@ export function FloatingUrlBar({
   const form = useUrlBarForm(activeTab, fallbackWorkspaceId, inputRef)
   const handleMouseDown = useSelectAllOnChromeClick(inputRef)
   useFocusOnEvent(inputRef)
+  // First Esc closes the dropdown (handled by the suggest hook); a second
+  // discards the edit and blurs.
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (form.suggest.onKeyDown(e)) return
-    if (e.key === 'Escape') e.currentTarget.blur()
+    if (e.key === 'Escape') {
+      form.revert()
+      e.currentTarget.blur()
+    }
+  }
+  const handleBlur = () => {
+    form.suggest.onBlur()
+    form.revert()
   }
   return (
     <form
@@ -670,7 +692,7 @@ export function FloatingUrlBar({
         value={form.value}
         onChange={form.onChange}
         onFocus={form.suggest.onFocus}
-        onBlur={form.suggest.onBlur}
+        onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         placeholder="Enter search or web address"
         spellCheck={false}

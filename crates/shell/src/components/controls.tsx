@@ -4,6 +4,7 @@
  */
 
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -60,12 +61,25 @@ export function Segmented<T extends string>({
 
   // The sliding thumb tracks the checked option's box; measured because
   // option widths are content-driven.
-  useLayoutEffect(() => {
+  const measure = useCallback(() => {
     const btn = rootRef.current?.querySelector<HTMLButtonElement>(
       'button[aria-checked="true"]',
     )
-    if (btn) setThumb({ left: btn.offsetLeft, width: btn.offsetWidth })
-  }, [value, options])
+    if (!btn) return
+    const next = { left: btn.offsetLeft, width: btn.offsetWidth }
+    setThumb((prev) =>
+      prev && prev.left === next.left && prev.width === next.width ? prev : next,
+    )
+  }, [])
+  useLayoutEffect(measure, [value, options, measure])
+  // Button widths shift without a value change (font load, zoom).
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    const ro = new ResizeObserver(measure)
+    ro.observe(root)
+    return () => ro.disconnect()
+  }, [measure])
 
   return (
     <div role="radiogroup" aria-label={ariaLabel} className="kb-segmented" ref={rootRef}>

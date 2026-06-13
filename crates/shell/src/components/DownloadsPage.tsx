@@ -111,54 +111,57 @@ export function DownloadsPage() {
     <div className="kb-history-page kb-dl-page">
       <div className="inner">
         <header className="kb-history-head">
-          <h1>Downloads</h1>
-          <div className="kb-history-search">
-            <SearchIcon />
-            <input
-              type="text"
-              placeholder="Search downloads"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              autoFocus
-              spellCheck={false}
-            />
+          <div className="kb-history-head-row">
+            <h1>Downloads</h1>
+            {selectMode ? (
+              <div className="kb-history-actions">
+                <span className="kb-history-count">{selected.size} selected</span>
+                <button
+                  type="button"
+                  className="kb-history-btn"
+                  onClick={toggleAll}
+                  disabled={deletable.length === 0}
+                >
+                  {allSelected ? 'Deselect all' : 'Select all'}
+                </button>
+                <button
+                  type="button"
+                  className="kb-history-btn is-danger"
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={selected.size === 0}
+                >
+                  Delete
+                </button>
+                <button type="button" className="kb-history-btn" onClick={exitSelect}>
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="kb-history-actions">
+                <button
+                  type="button"
+                  className="kb-history-btn"
+                  onClick={() => setSelectMode(true)}
+                  disabled={deletable.length === 0}
+                >
+                  Select
+                </button>
+              </div>
+            )}
           </div>
-
-          {selectMode ? (
-            <div className="kb-history-actions">
-              <span className="kb-history-count">{selected.size} selected</span>
-              <button
-                type="button"
-                className="kb-history-btn"
-                onClick={toggleAll}
-                disabled={deletable.length === 0}
-              >
-                {allSelected ? 'Deselect all' : 'Select all'}
-              </button>
-              <button
-                type="button"
-                className="kb-history-btn is-danger"
-                onClick={() => setConfirmDelete(true)}
-                disabled={selected.size === 0}
-              >
-                Delete
-              </button>
-              <button type="button" className="kb-history-btn" onClick={exitSelect}>
-                Cancel
-              </button>
+          <div className="kb-history-head-row">
+            <div className="kb-history-search">
+              <SearchIcon />
+              <input
+                type="text"
+                placeholder="Search downloads"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                autoFocus
+                spellCheck={false}
+              />
             </div>
-          ) : (
-            <div className="kb-history-actions">
-              <button
-                type="button"
-                className="kb-history-btn"
-                onClick={() => setSelectMode(true)}
-                disabled={deletable.length === 0}
-              >
-                Select
-              </button>
-            </div>
-          )}
+          </div>
         </header>
 
         {entries.length === 0 ? (

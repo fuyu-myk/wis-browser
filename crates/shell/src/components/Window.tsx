@@ -4,7 +4,6 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { commands } from '@/bindings/commands'
 import type { BrowserState, Tab, TabId, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { HistoryIcon, SettingsIcon } from '@/lib/icons'
 import { HISTORY_URL, SETTINGS_URL } from '@/lib/url'
 import { useBookmarksOverlay } from '@/hooks/useBookmarksOverlay'
 import { useClearDataOverlay } from '@/hooks/useClearDataOverlay'
@@ -16,16 +15,13 @@ import { useKeyActions } from '@/hooks/useKeyActions'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 import { useWorkspaceBackground } from '@/hooks/useWorkspaceBackground'
 
-import { BookmarksButton } from '@/components/BookmarksButton'
 import { Content } from '@/components/Content'
 import { DiscardedTabsContext } from '@/components/DiscardedTabsContext'
-import { DownloadsButton } from '@/components/DownloadsButton'
 import { NavRow } from '@/components/NavRow'
 import { Sidebar } from '@/components/Sidebar'
 import { TopBar } from '@/components/TopBar'
 import { TopTabsRail } from '@/components/TopTabsRail'
 import { FloatingUrlBar } from '@/components/UrlBar'
-import { VpnToggle } from '@/components/VpnToggle'
 import { prefetchWidgetFavicons } from '@/components/WidgetFavicon'
 
 interface WindowProps {
@@ -55,9 +51,6 @@ export function Window({ state, settings }: WindowProps) {
   const showWindowTopUrl = isSidebar
   const railSide = settings.top_tabs_rail_side
   const railClass = !isSidebar ? `has-rail rail-${railSide}` : ''
-
-  const fixedSettingsAnchor: 'left' | 'right' =
-    settings.layout === 'sidebar_right' ? 'right' : 'left'
 
   const activeWorkspace = state.workspaces.find((w) => w.id === state.active_workspace_id)
   const activeTab: Tab | null =
@@ -117,35 +110,14 @@ export function Window({ state, settings }: WindowProps) {
           />
         </>
       ) : (
-        <>
-          <Sidebar
-            state={state}
-            settings={settings}
-            expanded={sidebarExpanded}
-            setExpanded={setSidebarExpanded}
-          />
-          <DownloadsButton variant="fixed" anchor={fixedSettingsAnchor} />
-          {!isPrivate && (
-            <BookmarksButton variant="fixed" anchor={fixedSettingsAnchor} />
-          )}
-          <VpnToggle workspace={activeWorkspace ?? null} variant="fixed" anchor={fixedSettingsAnchor} />
-          <button
-            type="button"
-            className={cx('kb-history-fixed', `is-${fixedSettingsAnchor}`)}
-            aria-label="History"
-            onClick={openHistory}
-          >
-            <HistoryIcon />
-          </button>
-          <button
-            type="button"
-            className={cx('kb-settings-fixed', `is-${fixedSettingsAnchor}`)}
-            aria-label="Settings"
-            onClick={openSettings}
-          >
-            <SettingsIcon />
-          </button>
-        </>
+        <Sidebar
+          state={state}
+          settings={settings}
+          expanded={sidebarExpanded}
+          setExpanded={setSidebarExpanded}
+          onOpenHistory={openHistory}
+          onOpenSettings={openSettings}
+        />
       )}
       <Content state={state} onDiscardedChange={onDiscardedChange} />
       <WindowResizeEdges />

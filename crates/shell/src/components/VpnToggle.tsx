@@ -8,13 +8,6 @@ import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 
 interface VpnToggleProps {
   workspace: Workspace | null
-  /**
-   * `fixed` = the floating chip above the sidebar settings cog;
-   * `rail` = an inline circle button in the top-tabs rail (above its cog).
-   */
-  variant: 'fixed' | 'rail'
-  /** Which window edge the fixed chip hugs (only for `fixed`). */
-  anchor?: 'left' | 'right'
 }
 
 type Phase = 'idle' | 'connecting' | 'connected' | 'error'
@@ -28,7 +21,7 @@ type Phase = 'idle' | 'connecting' | 'connected' | 'error'
  * probe; while it's being set up it shows a spinner, and a failed connection is
  * shown distinctly rather than lit.
  */
-export function VpnToggle({ workspace, variant, anchor = 'left' }: VpnToggleProps) {
+export function VpnToggle({ workspace }: VpnToggleProps) {
   const qc = useQueryClient()
 
   const current = workspace?.upstream_proxy ?? null
@@ -83,10 +76,7 @@ export function VpnToggle({ workspace, variant, anchor = 'left' }: VpnToggleProp
         : 'VPN off — click to connect'
 
   const stateClasses = { 'is-on': connected, 'is-connecting': connecting, 'is-error': errored }
-  const className =
-    variant === 'rail'
-      ? cx('kb-circle-btn', 'kb-rail-vpn', stateClasses)
-      : cx('kb-vpn-fixed', `is-${anchor}`, stateClasses)
+  const className = cx('kb-circle-btn', 'kb-rail-vpn', stateClasses)
 
   return (
     <button

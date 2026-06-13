@@ -96,8 +96,29 @@ const GAP_PX = 4
 const ISLAND_CIRCLE_W = 30
 const ISLAND_NAME_W = 96
 const ISLAND_NAME_W_COMPACT = 74
+const ISLAND_NAME_MAX = 168
+const ISLAND_NAME_MAX_COMPACT = 150
 const ISLAND_PILL_PAD = 3
 const PIN_CIRCLE_W = 30
+
+/* Chip label measurement (cached): the name chip fits its text up to a cap
+   instead of truncating at the fixed minimum while the strip sits empty. */
+let chipMeasureCtx: CanvasRenderingContext2D | null = null
+const chipTextWidths = new Map<string, number>()
+function chipTextWidth(name: string): number {
+  const cached = chipTextWidths.get(name)
+  if (cached !== undefined) return cached
+  if (chipMeasureCtx === null) {
+    chipMeasureCtx = document.createElement('canvas').getContext('2d')
+    if (chipMeasureCtx) {
+      chipMeasureCtx.font =
+        "600 12px Geist, 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif"
+    }
+  }
+  const width = chipMeasureCtx ? Math.ceil(chipMeasureCtx.measureText(name).width) : 0
+  chipTextWidths.set(name, width)
+  return width
+}
 /* Speaker button on audible/muted tabs (never shrinks), plus the in-tab
    flex gap it introduces: reserved per audio tab so the minimum sizes
    still fit favicon + speaker. */
@@ -371,13 +392,9 @@ export function HorizontalTabs({
   const looseIds = new Set(looseTabs.map((t) => t.id))
   const sizableTabs: Tab[] = [...looseTabs]
   let collapsedCount = 0
-  let expandedCount = 0
   for (const g of folderGroups) {
     if (g.folder.collapsed || g.folder.id === closingIslandId) collapsedCount += 1
-    else {
-      expandedCount += 1
-      sizableTabs.push(...g.members)
-    }
+    else sizableTabs.push(...g.members)
   }
 
   // Accordion bookkeeping: which expanded islands were opened least recently.
@@ -742,6 +759,15 @@ export function HorizontalTabs({
   const minActive = compact ? COMPACT_MINIMUM_CURRENT_TAB_SIZE : MINIMUM_CURRENT_TAB_SIZE
   const minInactive = compact ? COMPACT_MINIMUM_TAB_SIZE : MINIMUM_TAB_SIZE
   const nameW = compact ? ISLAND_NAME_W_COMPACT : ISLAND_NAME_W
+  // Chip box: 5px left pad + 15px chevron + 3px gap + optional icon (11px
+  // glyph + 4px label gap) + text + 9px right pad, clamped between the fixed
+  // minimum and the cap.
+  const chipWidthFor = (folder: TabFolder) => {
+    const fixed = 5 + 15 + 3 + 9 + (folder.icon ? 11 + 4 : 0)
+    const fit = fixed + chipTextWidth(folder.name)
+    const max = compact ? ISLAND_NAME_MAX_COMPACT : ISLAND_NAME_MAX
+    return Math.min(Math.max(nameW, fit), max)
+  }
 
   if (folderGroups.length === 0 && looseTabs.length === 0 && pinnedTabs.length === 0) {
     return (
@@ -763,10 +789,17 @@ export function HorizontalTabs({
   const topLevelCount = pinnedTabs.length + folderGroups.length + looseTabs.length
   const totalGaps =
     Math.max(0, topLevelCount - 1) * GAP_PX + expandedMembers * GAP_PX
+  const expandedChipsWidth = folderGroups.reduce(
+    (sum, g) =>
+      g.folder.collapsed || g.folder.id === closingIslandId
+        ? sum
+        : sum + chipWidthFor(g.folder) + ISLAND_PILL_PAD * 2,
+    0,
+  )
   const fixedWidth =
     pinnedTabs.length * PIN_CIRCLE_W +
     collapsedCount * ISLAND_CIRCLE_W +
-    expandedCount * (nameW + ISLAND_PILL_PAD * 2)
+    expandedChipsWidth
   const available = Math.max(0, stripWidth - fixedWidth - totalGaps - audioCount * audioExtra)
   const sizing = computeSizing(n, available, minActive, minInactive)
 
@@ -1014,7 +1047,7 @@ export function HorizontalTabs({
     const islandW =
       closing || (opening && !openingArmed)
         ? ISLAND_CIRCLE_W
-        : nameW +
+        : chipWidthFor(folder) +
         memberSum +
         sizedMembers.length * GAP_PX +
         ISLAND_PILL_PAD * 2 +
@@ -1036,7 +1069,7 @@ export function HorizontalTabs({
             selected: isSelected,
             'ring-contrast': isThemeAccent,
           })}
-          style={{ flex: `0 0 ${nameW}px` }}
+          style={{ flex: `0 0 ${chipWidthFor(folder)}px` }}
           role="button"
           tabIndex={0}
           aria-pressed={isSelected}

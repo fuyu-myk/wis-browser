@@ -136,82 +136,85 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
     <div className="kb-history-page">
       <div className="inner">
         <header className="kb-history-head">
-          <h1>History</h1>
-          <div className="kb-history-scope" role="tablist" aria-label="History scope">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={scope === 'workspace'}
-              className={cx({ 'is-on': scope === 'workspace' })}
-              onClick={() => setScope('workspace')}
-            >
-              This workspace
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={scope === 'all'}
-              className={cx({ 'is-on': scope === 'all' })}
-              onClick={() => setScope('all')}
-            >
-              All workspaces
-            </button>
+          <div className="kb-history-head-row">
+            <h1>History</h1>
+            {selectMode ? (
+              <div className="kb-history-actions">
+                <span className="kb-history-count">{selected.size} selected</span>
+                <button
+                  type="button"
+                  className="kb-history-btn"
+                  onClick={toggleAll}
+                  disabled={entries.length === 0}
+                >
+                  {allSelected ? 'Deselect all' : 'Select all'}
+                </button>
+                <button
+                  type="button"
+                  className="kb-history-btn is-danger"
+                  onClick={deleteSelected}
+                  disabled={selected.size === 0}
+                >
+                  Delete
+                </button>
+                <button type="button" className="kb-history-btn" onClick={exitSelect}>
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="kb-history-actions">
+                <button
+                  type="button"
+                  className="kb-history-btn"
+                  onClick={() => setSelectMode(true)}
+                  disabled={entries.length === 0}
+                >
+                  Select
+                </button>
+                <button
+                  type="button"
+                  className="kb-history-btn is-danger"
+                  onClick={() => setConfirmClear(true)}
+                  disabled={entries.length === 0 || clearScope.isPending}
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
           </div>
-          <div className="kb-history-search">
-            <SearchIcon />
-            <input
-              type="text"
-              placeholder="Search history"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              autoFocus
-              spellCheck={false}
-            />
-          </div>
-
-          {selectMode ? (
-            <div className="kb-history-actions">
-              <span className="kb-history-count">{selected.size} selected</span>
+          <div className="kb-history-head-row">
+            <div className="kb-history-scope" role="tablist" aria-label="History scope">
               <button
                 type="button"
-                className="kb-history-btn"
-                onClick={toggleAll}
-                disabled={entries.length === 0}
+                role="tab"
+                aria-selected={scope === 'workspace'}
+                className={cx({ 'is-on': scope === 'workspace' })}
+                onClick={() => setScope('workspace')}
               >
-                {allSelected ? 'Deselect all' : 'Select all'}
+                This workspace
               </button>
               <button
                 type="button"
-                className="kb-history-btn is-danger"
-                onClick={deleteSelected}
-                disabled={selected.size === 0}
+                role="tab"
+                aria-selected={scope === 'all'}
+                className={cx({ 'is-on': scope === 'all' })}
+                onClick={() => setScope('all')}
               >
-                Delete
-              </button>
-              <button type="button" className="kb-history-btn" onClick={exitSelect}>
-                Cancel
+                All workspaces
               </button>
             </div>
-          ) : (
-            <div className="kb-history-actions">
-              <button
-                type="button"
-                className="kb-history-btn"
-                onClick={() => setSelectMode(true)}
-                disabled={entries.length === 0}
-              >
-                Select
-              </button>
-              <button
-                type="button"
-                className="kb-history-btn is-danger"
-                onClick={() => setConfirmClear(true)}
-                disabled={entries.length === 0 || clearScope.isPending}
-              >
-                Clear all
-              </button>
+            <div className="kb-history-search">
+              <SearchIcon />
+              <input
+                type="text"
+                placeholder="Search history"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                autoFocus
+                spellCheck={false}
+              />
             </div>
-          )}
+          </div>
         </header>
 
         {isLoading ? null : entries.length === 0 ? (

@@ -52,9 +52,9 @@ export function TopTabsRail({ state, side, onOpenSettings, onOpenHistory }: TopT
       <div className="kb-rail-spacer" />
       <WidgetDock widgets={state.settings.sidebar_widgets} variant="rail" />
       <div className="kb-rail-controls">
-        <DownloadsButton variant="rail" />
-        {!activeWorkspace?.ephemeral && <BookmarksButton variant="rail" />}
-        <VpnToggle workspace={activeWorkspace} variant="rail" />
+        <DownloadsButton />
+        {!activeWorkspace?.ephemeral && <BookmarksButton />}
+        <VpnToggle workspace={activeWorkspace} />
         <button
           type="button"
           className="kb-circle-btn kb-rail-settings"

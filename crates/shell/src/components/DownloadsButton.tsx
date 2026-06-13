@@ -6,23 +6,13 @@ import { DownloadIcon } from '@/lib/icons'
 import { DOWNLOADS_OPEN_EVENT } from '@/lib/downloads'
 import { useDownloads } from '@/hooks/useDownloads'
 
-interface DownloadsButtonProps {
-  /** `fixed` = floating bubble in the sidebar's bottom stack;
-   *  `rail` = inline circle button in the top-tabs rail controls. */
-  variant: 'fixed' | 'rail'
-  /** Edge the fixed bubble hugs (only for `fixed`). */
-  anchor?: 'left' | 'right'
-}
-
 /** Opens the downloads popup (palette-style overlay) via a DOM event. A badge
  * reports download state: a spinner while one runs, then a transient green
- * check on completion or amber exclamation on failure. */
-export function DownloadsButton({ variant, anchor = 'left' }: DownloadsButtonProps) {
+ * check on completion or amber exclamation on failure. Rendered as a circle
+ * button in the sidebar footer and the top-tabs rail controls. */
+export function DownloadsButton() {
   const { downloads, active, ready } = useDownloads()
-  const className =
-    variant === 'rail'
-      ? cx('kb-circle-btn', 'kb-rail-dl')
-      : cx('kb-dl-fixed', `is-${anchor}`)
+  const className = cx('kb-circle-btn', 'kb-rail-dl')
 
   // Status transitions flash a verdict: a download that was pending (or so
   // fast it appears already finished between refetches) shows its outcome

@@ -28,7 +28,12 @@
   --success-bg:     #ecfdf4;
   --warning:        #b45309;
   --warning-bg:     #fffbeb;
-  --destructive:    #c0392b;
+  /* The one danger red. --destructive aliases it; --danger-strong is the
+     pressed/hover step; --warning-strong the bright amber for interstitials. */
+  --danger:         #e5484d;
+  --danger-strong:  #d93a3f;
+  --warning-strong: #e0a800;
+  --destructive:    var(--danger);
   --destructive-bg: #fef2f2;
   --info:           var(--primary-400);
   --info-bg:        var(--primary-50);
@@ -149,6 +154,7 @@
   --text-tertiary:  #9B9890;
   --text-on-accent: #FFFFFF;
   --overlay:        rgba(26,25,22,0.04);
+  --popover:        var(--chrome-bg);
   --chrome-bg:      #ECEAE3;
   --chrome-tint:    rgba(247,246,243,0.75);
   --content-bg:     #FFFFFF;
@@ -174,6 +180,7 @@
   --text-tertiary:  #6E6D7E;
   --text-on-accent: #FFFFFF;
   --overlay:        rgba(238,237,240,0.06);
+  --popover:        #1F1F26;
   --chrome-bg:      #26262E;
   --chrome-tint:    rgba(48,48,58,0.92);
   --content-bg:     #24242C;

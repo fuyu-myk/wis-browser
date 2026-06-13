@@ -40,6 +40,7 @@ export function themeVars(m: ModeTokens): Record<string, string> {
     '--surface': m.surface,
     '--surface-raised': m.surface_raised,
     '--chrome-bg': m.chrome_bg,
+    '--popover': m.chrome_bg,
     '--content-bg': m.content_bg,
     '--text-primary': m.text_primary,
     '--text-secondary': m.text_secondary,

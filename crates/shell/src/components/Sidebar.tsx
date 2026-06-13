@@ -2,10 +2,14 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react'
 
 import type { BrowserState, Tab, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
+import { HistoryIcon, SettingsIcon } from '@/lib/icons'
 
+import { BookmarksButton } from '@/components/BookmarksButton'
 import { Brand } from '@/components/Brand'
+import { DownloadsButton } from '@/components/DownloadsButton'
 import { PinnedTabs } from '@/components/PinnedTabs'
 import { TabList } from '@/components/TabList'
+import { VpnToggle } from '@/components/VpnToggle'
 import { WidgetDock } from '@/components/WidgetDock'
 import { WorkspacePill } from '@/components/WorkspacePill'
 
@@ -15,6 +19,8 @@ interface SidebarProps {
   /** Lifted to <Window> so the URL bar can also request expansion. */
   expanded: boolean
   setExpanded: (v: boolean) => void
+  onOpenHistory: () => void
+  onOpenSettings: () => void
 }
 
 // Expands on edge hover, empty-area click, or URL bar activation when
@@ -24,6 +30,8 @@ export function Sidebar({
   settings,
   expanded,
   setExpanded,
+  onOpenHistory,
+  onOpenSettings,
 }: SidebarProps) {
   const activeWorkspace = state.workspaces.find((w) => w.id === state.active_workspace_id)
   const tabs: Tab[] = activeWorkspace
@@ -155,6 +163,29 @@ export function Sidebar({
         workspaceOrder={state.workspaces.map((w) => w.id)}
       />
       <WidgetDock widgets={settings.sidebar_widgets} variant="sidebar" />
+      <div className="kb-side-footer">
+        <DownloadsButton />
+        {!activeWorkspace?.ephemeral && <BookmarksButton />}
+        <VpnToggle workspace={activeWorkspace ?? null} />
+        <button
+          type="button"
+          className="kb-circle-btn"
+          aria-label="History"
+          title="History"
+          onClick={onOpenHistory}
+        >
+          <HistoryIcon />
+        </button>
+        <button
+          type="button"
+          className="kb-circle-btn"
+          aria-label="Settings"
+          title="Settings"
+          onClick={onOpenSettings}
+        >
+          <SettingsIcon />
+        </button>
+      </div>
     </aside>
   )
 }
