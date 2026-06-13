@@ -21,6 +21,7 @@ mod pane_focus;
 mod panels;
 mod peek;
 mod permissions;
+mod popup_chrome;
 mod print;
 mod save_coalescer;
 mod state;

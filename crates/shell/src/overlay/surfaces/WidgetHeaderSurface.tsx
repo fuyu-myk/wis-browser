@@ -21,19 +21,31 @@ import {
   type WPanelStatePayload,
 } from '@/lib/widgetResize'
 
+/** Display host of a URL: authority without scheme, `www.`, or path. */
+function hostOf(url: string): string {
+  if (!url) return ''
+  try {
+    return new URL(url).host.replace(/^www\./, '')
+  } catch {
+    return ''
+  }
+}
+
 export function WidgetHeaderSurface() {
   useBrowserStateEvents()
   const { data: state } = useBrowserState()
   useThemeApply(state?.settings)
 
-  // Mirrors the visible widget's mute state, pushed by the main chrome on
-  // every show and after each toggle.
+  // Mirrors the visible widget's state (mute + current URL), pushed by the
+  // main chrome on every show, navigation, and mute toggle.
   const [muted, setMuted] = useState(false)
+  const [url, setUrl] = useState('')
   useEffect(() => {
     let cancelled = false
     let unlisten: UnlistenFn | null = null
     void listen<WPanelStatePayload>(WPANEL_STATE_EVENT, (e) => {
       setMuted(e.payload.muted)
+      setUrl(e.payload.url)
     }).then((fn) => {
       if (cancelled) fn()
       else unlisten = fn
@@ -46,6 +58,9 @@ export function WidgetHeaderSurface() {
 
   return (
     <div className="kb-wheader-surface">
+      <span className="kb-wheader-host" title={url}>
+        {hostOf(url)}
+      </span>
       <button
         type="button"
         className="kb-wheader-mute"

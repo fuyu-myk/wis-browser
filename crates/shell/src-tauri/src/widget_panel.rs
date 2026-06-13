@@ -14,7 +14,8 @@
 //! frontend-side, as are the guardrails (hard-destroy on workspace switch,
 //! destroy outright in private workspaces, idle destroy).
 
-use tauri::webview::WebviewBuilder;
+use serde::Serialize;
+use tauri::webview::{PageLoadEvent, PageLoadPayload, WebviewBuilder};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
 use url::Url;
 use wis_core::{WisError, WisResult};
@@ -27,6 +28,16 @@ const WIDGET_PANEL_PREFIX: &str = "widget-panel-";
 /// Broadcast whenever a panel webview is created or destroyed (not on
 /// hide/show), so the settings page can refresh its live-panel readout.
 const WIDGET_PANELS_CHANGED_EVENT: &str = "widget-panels-changed";
+
+/// Panel webview -> chrome: the panel's committed URL on each main-frame
+/// navigation, so the header bar can show the widget's current host.
+const WPANEL_NAV_EVENT: &str = "wis-wpanel-nav";
+
+#[derive(Clone, Serialize)]
+struct WPanelNavPayload {
+    id: String,
+    url: String,
+}
 
 fn notify_panels_changed(app: &AppHandle) {
     if let Err(err) = app.emit(WIDGET_PANELS_CHANGED_EVENT, ()) {
@@ -174,7 +185,30 @@ pub async fn open_widget_panel(
     }
     // File downloads from widget sites go through the same sanitised-download pipeline as tabs.
     builder = crate::downloads::attach_download_handler(builder, ephemeral);
-    builder = builder.on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Allow);
+    builder = builder.on_new_window({
+        let app = app.clone();
+        move |url, _features| {
+            crate::popup_chrome::ensure_running(&app, url.as_str());
+            tauri::webview::NewWindowResponse::Allow
+        }
+    });
+
+    // Report the panel's URL on each navigation so the header shows its host.
+    builder = builder.on_page_load({
+        let app = app.clone();
+        let id = id.clone();
+        move |_webview, payload: PageLoadPayload<'_>| {
+            if matches!(payload.event(), PageLoadEvent::Started) {
+                let _ = app.emit(
+                    WPANEL_NAV_EVENT,
+                    WPanelNavPayload {
+                        id: id.clone(),
+                        url: payload.url().to_string(),
+                    },
+                );
+            }
+        }
+    });
 
     let child = window
         .add_child(

@@ -196,8 +196,15 @@ pub async fn create_tab_webview(
     }
 
     // Allow `window.open` / `target=_blank` popups (e.g. "Continue with Google"
-    // and other OAuth flows).
-    builder = builder.on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Allow);
+    // and other OAuth flows), and give each a read-only address bar so the user
+    // can see where it leads.
+    builder = builder.on_new_window({
+        let app = app.clone();
+        move |url, _features| {
+            crate::popup_chrome::ensure_running(&app, url.as_str());
+            tauri::webview::NewWindowResponse::Allow
+        }
+    });
 
     // Downloads land in ~/Downloads with sanitised names; private-workspace
     // downloads are flagged so they never reach persistent history.

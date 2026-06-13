@@ -8,11 +8,13 @@ import { useOverlay } from '@/hooks/useOverlay'
 import { DEFAULT_PANEL_LIMIT, effectiveWidgetUrl } from '@/lib/widgets'
 import {
   WPANEL_MUTE_EVENT,
+  WPANEL_NAV_EVENT,
   WPANEL_RELOAD_EVENT,
   WPANEL_STATE_EVENT,
   WRESIZE_END_EVENT,
   WRESIZE_MOVE_EVENT,
   WRESIZE_START_EVENT,
+  type WPanelNavPayload,
 } from '@/lib/widgetResize'
 
 /** Native event fired when a click lands inside any tab webview. */
@@ -117,15 +119,25 @@ export function useWidgetPanel(): {
   const visibleRef = useRef<WidgetId | null>(null)
   visibleRef.current = activeWidgetId
 
-  // Push the visible widget's mute state to the header surface so its
-  // toggle renders correctly on every show.
+  // Latest committed URL per panel (from the native page-load report), so the
+  // header can show the visible widget's current host immediately on show.
+  const panelUrlsRef = useRef<Map<WidgetId, string>>(new Map())
+
+  // Push the visible widget's state (mute + current URL) to the header surface
+  // so its toggle and host render correctly on every show.
+  const pushHeaderState = useCallback((id: WidgetId) => {
+    void commands
+      .widgetPanelMuted(id)
+      .then((muted) =>
+        emit(WPANEL_STATE_EVENT, { muted, url: panelUrlsRef.current.get(id) ?? '' }),
+      )
+      .catch(() => undefined)
+  }, [])
+
   useEffect(() => {
     if (activeWidgetId === null) return
-    void commands
-      .widgetPanelMuted(activeWidgetId)
-      .then((muted) => emit(WPANEL_STATE_EVENT, { muted }))
-      .catch(() => undefined)
-  }, [activeWidgetId])
+    pushHeaderState(activeWidgetId)
+  }, [activeWidgetId, pushHeaderState])
   /** Live panel webviews by widget id -> last-used timestamp (for LRU). */
   const liveRef = useRef<Map<WidgetId, number>>(new Map())
   /** Idle-destroy timers for hidden panels. */
@@ -513,6 +525,14 @@ export function useWidgetPanel(): {
         if (visible !== null) void commands.reloadWidgetPanel(visible).catch(() => undefined)
       }),
     )
+    // A panel navigated: cache its URL and refresh the header if it is visible.
+    track(
+      listen<WPanelNavPayload>(WPANEL_NAV_EVENT, (e) => {
+        const id = e.payload.id as WidgetId
+        panelUrlsRef.current.set(id, e.payload.url)
+        if (id === visibleRef.current) pushHeaderState(id)
+      }),
+    )
     // Mute toggle from the header surface: engine-level page mute, so
     // messaging pings stay silent too. The new state echoes back to the
     // surface so its icon flips.
@@ -524,7 +544,10 @@ export function useWidgetPanel(): {
           .widgetPanelMuted(visible)
           .then(async (muted) => {
             await commands.setWidgetPanelMuted(visible, !muted)
-            await emit(WPANEL_STATE_EVENT, { muted: !muted })
+            await emit(WPANEL_STATE_EVENT, {
+              muted: !muted,
+              url: panelUrlsRef.current.get(visible) ?? '',
+            })
           })
           .catch(() => undefined)
       }),
@@ -533,7 +556,7 @@ export function useWidgetPanel(): {
       cancelled = true
       for (const un of unlisteners) un()
     }
-  }, [showGrip, showHeader, showChrome])
+  }, [showGrip, showHeader, showChrome, pushHeaderState])
 
   // Dismiss on chrome interaction outside the widget dock.
   useEffect(() => {
