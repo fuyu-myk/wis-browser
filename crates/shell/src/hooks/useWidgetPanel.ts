@@ -19,6 +19,9 @@ import {
 
 /** Native event fired when a click lands inside any tab webview. */
 const PANE_FOCUS_EVENT = 'wis-pane-focus'
+/** Native event fired when a widget panel webview is created or destroyed
+ *  (including external closes like Settings "Close all"). */
+const WIDGET_PANELS_CHANGED_EVENT = 'widget-panels-changed'
 
 const MIN_PANEL_WIDTH = 300
 const MAX_PANEL_WIDTH = 680
@@ -196,11 +199,26 @@ export function useWidgetPanel(): {
   }, [])
 
   // Pre-create the chrome companion overlays so the first panel open doesn't
-  // render before them.
+  // render before them. The header also gets a warm-up: a hidden webview never
+  // composites its layer, so its very first slide would run while still blank
+  // (it appears instead of animating). A brief 1px-wide show forces that first
+  // paint; hide it again unless a widget opened in the meantime.
   useEffect(() => {
     void commands.ensureOverlay('widgetresize').catch(() => undefined)
-    void commands.ensureOverlay('widgetheader').catch(() => undefined)
-  }, [])
+    let cancelled = false
+    void (async () => {
+      try {
+        await showHeader({ x: 0, y: 0, width: 1, height: HEADER_HEIGHT })
+        await new Promise((resolve) => window.setTimeout(resolve, 150))
+        if (!cancelled && visibleRef.current === null) await hideHeaderOverlay()
+      } catch {
+        /* main window not ready yet; the lazy show path still works */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [showHeader, hideHeaderOverlay])
 
   const clearTimer = useCallback((id: WidgetId) => {
     const t = timersRef.current.get(id)
@@ -370,6 +388,44 @@ export function useWidgetPanel(): {
     [destroyOne],
   )
 
+  // Panels can be destroyed outside this hook (Settings "Close all" / individual
+  // close).
+  useEffect(() => {
+    let cancelled = false
+    let unlisten: UnlistenFn | null = null
+    const reconcile = async () => {
+      let live: WidgetId[]
+      try {
+        live = await commands.listWidgetPanels()
+      } catch {
+        return
+      }
+      const liveSet = new Set(live)
+      for (const id of [...liveRef.current.keys()]) {
+        if (!liveSet.has(id)) {
+          clearTimer(id)
+          liveRef.current.delete(id)
+        }
+      }
+      const visible = visibleRef.current
+      if (visible !== null && !liveSet.has(visible)) {
+        cancelPanelAnim()
+        visibleRef.current = null
+        setActiveWidgetId(null)
+        setPanelRect(null)
+        hideGrip()
+      }
+    }
+    void listen<void>(WIDGET_PANELS_CHANGED_EVENT, () => void reconcile()).then((fn) => {
+      if (cancelled) fn()
+      else unlisten = fn
+    })
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [clearTimer, hideGrip, cancelPanelAnim])
+
   const toggleWidget = useCallback(
     (widget: Widget) => {
       if (visibleRef.current === widget.id) {
@@ -433,6 +489,7 @@ export function useWidgetPanel(): {
           if (shown) {
             if (grow) animatePanelIn(widget.id, panel)
           } else {
+            if (!off) animatePanelIn(null, panel)
             await commands.openWidgetPanel(
               widget.id, url, panel.x, panel.y, panel.width, panel.height, dark,
             )
