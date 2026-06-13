@@ -302,6 +302,9 @@ pub async fn create_tab_webview(
     // Video popout channel (playing-state tracking + floating mini player).
     crate::video_popout::install(&child);
 
+    // Per-site camera/microphone consent gate (prompts before getUserMedia).
+    crate::permissions::install(&child);
+
     // Cosmetic filtering (element hiding). Permissive workspaces opt out of
     // blocking entirely, so they skip the channel too.
     if privacy_mode != wis_core::PrivacyMode::Permissive {

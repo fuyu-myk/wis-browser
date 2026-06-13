@@ -15,6 +15,7 @@ import { NavGuardSurface } from '@/overlay/surfaces/NavGuardSurface'
 import { PaletteSurface } from '@/overlay/surfaces/PaletteSurface'
 import { PaneSplitMenuSurface } from '@/overlay/surfaces/PaneSplitMenuSurface'
 import { PeekSurface } from '@/overlay/surfaces/PeekSurface'
+import { PermissionSurface } from '@/overlay/surfaces/PermissionSurface'
 import { UrlbarSuggestSurface } from '@/overlay/surfaces/UrlbarSuggestSurface'
 import { VaultMenuSurface } from '@/overlay/surfaces/VaultMenuSurface'
 import { WidgetHeaderSurface } from '@/overlay/surfaces/WidgetHeaderSurface'
@@ -34,6 +35,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'vaultmenu') return <VaultMenuSurface />
   if (surface === 'peek') return <PeekSurface />
   if (surface === 'navguard') return <NavGuardSurface />
+  if (surface === 'permission') return <PermissionSurface />
   if (surface === 'bookmarks') return <BookmarksMenuSurface />
   if (surface === 'downloads') return <DownloadsMenuSurface />
   if (surface === 'bmpicker') return <BookmarkPickerSurface />

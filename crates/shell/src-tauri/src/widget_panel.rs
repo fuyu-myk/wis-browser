@@ -250,6 +250,9 @@ pub async fn open_widget_panel(
     crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
     crate::webview_prefs::apply_media_extensions(&child, media_extensions);
 
+    // Per-site camera/microphone consent gate.
+    crate::permissions::install(&child);
+
     // A muted widget stays muted across panel reclaim/reopen.
     {
         let muted = state

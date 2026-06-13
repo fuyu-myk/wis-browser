@@ -5,6 +5,7 @@ import { commands } from '@/bindings/commands'
 import type { BrowserState, KeyAction, PaneBranch, PaneNode, SplitDir, Tab, TabId } from '@/bindings/types'
 import { isChromeUrl, SETTINGS_URL } from '@/lib/url'
 import { useOverlay } from '@/hooks/useOverlay'
+import { usePermissionOverlay } from '@/hooks/usePermissionOverlay'
 import { useTabAudio } from '@/hooks/useTabAudio'
 import { useTabWebviews, type Bounds, type WebviewLayout } from '@/hooks/useTabWebviews'
 import { useVideoPopout } from '@/hooks/useVideoPopout'
@@ -26,6 +27,7 @@ interface TabWebViewHostProps {
 
 export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
+  usePermissionOverlay(hostRef)
   const findOverlay = useOverlay('find')
   const findOpenRef = useRef(false)
 

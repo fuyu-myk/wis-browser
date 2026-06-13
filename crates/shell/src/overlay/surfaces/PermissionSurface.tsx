@@ -1,0 +1,155 @@
+/**
+ * Camera/microphone consent prompt hosted by the `overlay-permission` webview.
+ * The chrome (`usePermissionOverlay`) anchors this webview to the top-right of
+ * the page and forwards the request via `wis-permission-show`; the user's
+ * choice resolves it through `resolve_media_permission` and `wis-permission-close`
+ * tells the chrome to hide the overlay (and show any queued request).
+ */
+
+import { useCallback, useEffect, useState } from 'react'
+import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
+
+import { commands } from '@/bindings/commands'
+import { cx } from '@/lib/cx'
+import { useBrowserState } from '@/hooks/useBrowserState'
+import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
+import { useThemeApply } from '@/hooks/useThemeApply'
+
+const SHOW_EVENT = 'wis-permission-show'
+const CLOSE_EVENT = 'wis-permission-close'
+const READY_EVENT = 'wis-permission-ready'
+const EXIT_MS = 160
+
+interface PermissionRequest {
+  request_id: number
+  origin: string
+  kind: string
+}
+
+/** Authority (host[:port]) of `scheme://host[:port]/...`. */
+function hostOf(origin: string): string {
+  const rest = origin.includes('://') ? origin.split('://')[1] : origin
+  return rest.split('/')[0] || origin
+}
+
+function deviceLabel(kind: string): string {
+  if (kind === 'microphone') return 'microphone'
+  if (kind === 'camera+microphone') return 'camera and microphone'
+  return 'camera'
+}
+
+export function PermissionSurface() {
+  const { data: state } = useBrowserState()
+  useBrowserStateEvents()
+  useThemeApply(state?.settings)
+  const glassOn = state?.settings.glass_enabled ?? true
+
+  const [req, setReq] = useState<PermissionRequest | null>(null)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null
+    let cancelled = false
+    void listen<PermissionRequest>(SHOW_EVENT, (e) => {
+      setReq(e.payload)
+      requestAnimationFrame(() => setOpen(true))
+    }).then((fn) => {
+      if (cancelled) fn()
+      else unlisten = fn
+    })
+    // Replay the current request in case the chrome showed it before mount.
+    void emit(READY_EVENT)
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [])
+
+  const resolve = useCallback(
+    (granted: boolean) => {
+      setReq((current) => {
+        if (current) {
+          void commands.resolveMediaPermission(current.request_id, granted).catch(() => undefined)
+        }
+        return current
+      })
+      setOpen(false)
+      window.setTimeout(() => {
+        setReq(null)
+        void emit(CLOSE_EVENT)
+      }, EXIT_MS)
+    },
+    [],
+  )
+
+  if (!req) return null
+
+  return (
+    <div
+      className={cx('kb-perm-card', { 'glass-on': glassOn, 'is-open': open })}
+      role="alertdialog"
+      aria-label="Permission request"
+    >
+      <div className="kb-perm-head">
+        <span className="kb-perm-glyph" aria-hidden>
+          {req.kind === 'microphone' ? <MicIcon /> : <CameraIcon />}
+        </span>
+        <div className="kb-perm-text">
+          <span className="kb-perm-host">{hostOf(req.origin)}</span>
+          <span className="kb-perm-sub">wants to use your {deviceLabel(req.kind)}</span>
+        </div>
+      </div>
+      <div className="kb-perm-actions">
+        <button type="button" className="kb-perm-btn" onClick={() => resolve(false)}>
+          Block
+        </button>
+        <button
+          type="button"
+          className="kb-perm-btn is-primary"
+          onClick={() => resolve(true)}
+          autoFocus
+        >
+          Allow
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function CameraIcon() {
+  return (
+    <svg
+      width={18}
+      height={18}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m23 7-7 5 7 5V7Z" />
+      <rect x="1" y="5" width="15" height="14" rx="2" />
+    </svg>
+  )
+}
+
+function MicIcon() {
+  return (
+    <svg
+      width={18}
+      height={18}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+      <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8" />
+    </svg>
+  )
+}

@@ -20,6 +20,7 @@ mod overlay;
 mod pane_focus;
 mod panels;
 mod peek;
+mod permissions;
 mod save_coalescer;
 mod state;
 mod suggest;
@@ -225,6 +226,9 @@ pub fn run() {
 
             // App handle for the video-popout message handler.
             video_popout::set_app_handle(app.handle().clone());
+
+            // App handle for the camera/microphone consent message handler.
+            permissions::set_app_handle(app.handle().clone());
 
             // Per-tab audibility poll (tab audio icons + click-to-mute).
             audio::start_poll(app.handle().clone());
@@ -443,6 +447,7 @@ pub fn run() {
             widget_panel::set_widget_panel_muted,
             widget_panel::widget_panel_muted,
             navguard::nav_guard_proceed,
+            permissions::resolve_media_permission,
             bookmarks::list_bookmark_folders,
             bookmarks::list_bookmarks,
             bookmarks::create_bookmark_folder,

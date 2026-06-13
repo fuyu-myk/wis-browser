@@ -101,6 +101,15 @@ pub struct AppState {
     /// Widget ids whose panel the user muted (session-scoped; re-applied
     /// when a reclaimed panel is reopened).
     pub muted_widgets: std::sync::Mutex<HashSet<String>>,
+    /// Session-scoped per-origin camera/microphone consent, keyed by
+    /// `"<kind>|<origin>"`. Read synchronously by the `wisMediaPermission`
+    /// message handler (main thread), so a remembered request is decided
+    /// without awaiting the state lock.
+    pub media_permissions: std::sync::RwLock<HashMap<String, bool>>,
+    /// Camera/microphone requests awaiting the user's decision in the prompt
+    /// overlay, keyed by a monotonic request id (`media_seq`).
+    pub pending_media: std::sync::Mutex<HashMap<u64, crate::permissions::PendingMedia>>,
+    pub media_seq: std::sync::atomic::AtomicU64,
     /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
     /// Only present with the `tor` feature.
     #[cfg(feature = "tor")]
@@ -142,6 +151,9 @@ impl AppState {
             audible_tabs: std::sync::Mutex::new(HashSet::new()),
             muted_tabs: std::sync::Mutex::new(HashSet::new()),
             muted_widgets: std::sync::Mutex::new(HashSet::new()),
+            media_permissions: std::sync::RwLock::new(HashMap::new()),
+            pending_media: std::sync::Mutex::new(HashMap::new()),
+            media_seq: std::sync::atomic::AtomicU64::new(0),
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }

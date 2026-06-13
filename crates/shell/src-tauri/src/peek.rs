@@ -132,6 +132,9 @@ pub async fn open_peek(
     crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
     crate::webview_prefs::apply_media_extensions(&child, media_extensions);
 
+    // Per-site camera/microphone consent gate.
+    crate::permissions::install(&child);
+
     // Round the preview's corners so it sits cleanly inside the card.
     #[cfg(target_os = "macos")]
     {

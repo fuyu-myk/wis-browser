@@ -6,5 +6,14 @@
        Required for Face ID; also used as a courtesy on Touch ID Macs. -->
   <key>NSFaceIDUsageDescription</key>
   <string>Wis uses Touch ID to unlock your saved passwords.</string>
+
+  <!-- Required so the embedded WebKit view can use the camera/microphone for
+       sites you allow (video calls, voice). Without these the OS terminates
+       the app on first capture. Per-site consent is enforced in-app before the
+       device is ever opened. -->
+  <key>NSCameraUsageDescription</key>
+  <string>Allow sites you approve to use your camera, for example for video calls.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Allow sites you approve to use your microphone, for example for voice and video calls.</string>
 </dict>
 </plist>
