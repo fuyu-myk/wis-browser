@@ -13,6 +13,7 @@ import { Segmented, Switch } from '@/components/controls'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { FilterListsSection } from '@/components/FilterListsSection'
 import { UserscriptsSection } from '@/components/UserscriptsSection'
+import { SitePermissionsSection } from '@/components/SitePermissionsSection'
 import { OPEN_CLEAR_DATA_EVENT } from '@/hooks/useClearDataOverlay'
 
 const PRIVACY_OPTIONS = [
@@ -159,6 +160,10 @@ export function PrivacySection({ settings, activeWorkspace, onUpdate }: PrivacyS
         <UserscriptsSection
           scripts={settings.userscripts}
           onChange={(userscripts) => onUpdate({ userscripts })}
+        />
+        <SitePermissionsSection
+          permissions={settings.media_permissions}
+          onChange={(media_permissions) => onUpdate({ media_permissions })}
         />
         <div className="row">
           <div className="l">

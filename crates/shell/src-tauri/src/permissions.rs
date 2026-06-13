@@ -160,6 +160,7 @@ pub async fn resolve_media_permission(
     state: tauri::State<'_, AppState>,
     request_id: u64,
     granted: bool,
+    remember: bool,
 ) -> Result<(), wis_core::WisError> {
     let Some(pending) = state
         .pending_media
@@ -170,12 +171,21 @@ pub async fn resolve_media_permission(
         return Ok(());
     };
 
-    // Note: the persisted "remember" is written separately via update_settings.
-    state
-        .media_permissions_session
-        .write()
-        .expect("media_permissions_session poisoned")
-        .insert(format!("{}|{}", pending.kind, pending.origin), granted);
+    let key = format!("{}|{}", pending.kind, pending.origin);
+    if remember {
+        // Persisted decision: seed the persisted cache now.
+        state
+            .media_permissions
+            .write()
+            .expect("media_permissions poisoned")
+            .insert(key, granted);
+    } else {
+        state
+            .media_permissions_session
+            .write()
+            .expect("media_permissions_session poisoned")
+            .insert(key, granted);
+    }
 
     if let Some(wv) = app.webviews().get(&pending.webview_label).cloned() {
         let js = format!(

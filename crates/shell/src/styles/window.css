@@ -669,6 +669,58 @@ body.is-overlay-surface:not(.glass-on) {
   border-color: color-mix(in srgb, var(--primary-600) 88%, black);
 }
 
+/* Settings -> Privacy: remembered site-permission rows. */
+.kb-perm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--overlay);
+  font-size: 12.5px;
+}
+.kb-perm-row-origin {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+.kb-perm-row-device {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.kb-perm-state {
+  flex: 0 0 auto;
+  height: 24px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--primary-600) 35%, transparent);
+  background: color-mix(in srgb, var(--primary-600) 14%, transparent);
+  color: var(--primary-600);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+.kb-perm-state:hover {
+  background: color-mix(in srgb, var(--primary-600) 22%, transparent);
+}
+.kb-perm-state.is-blocked {
+  border-color: rgba(220, 70, 70, 0.42);
+  background: rgba(220, 70, 70, 0.14);
+  color: #cf4848;
+}
+.kb-perm-state.is-blocked:hover {
+  background: rgba(220, 70, 70, 0.22);
+}
+[data-mode='dark'] .kb-perm-state.is-blocked {
+  color: #ff8a8a;
+}
+
 /* ---------------------------------------------------------------------
  * Command palette (Cmd+L)
  * Hosted by the `overlay-palette` webview; the backdrop fills the

@@ -897,8 +897,12 @@ export const commands = {
   async navGuardProceed(tabId: TabId, url: string, host: string): Promise<void> {
     return invoke('nav_guard_proceed', { tabId, url, host })
   },
-  async resolveMediaPermission(requestId: number, granted: boolean): Promise<void> {
-    return invoke('resolve_media_permission', { requestId, granted })
+  async resolveMediaPermission(
+    requestId: number,
+    granted: boolean,
+    remember: boolean,
+  ): Promise<void> {
+    return invoke('resolve_media_permission', { requestId, granted, remember })
   },
 
   // -- bookmarks (per-workspace, foldered) ----------------------------------

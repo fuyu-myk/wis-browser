@@ -72,7 +72,7 @@ export function PermissionSurface() {
   if (!req) return null
 
   const decide = (granted: boolean) => {
-    void commands.resolveMediaPermission(req.request_id, granted).catch(() => undefined)
+    void commands.resolveMediaPermission(req.request_id, granted, remember).catch(() => undefined)
     if (remember) {
       const current = state?.settings.media_permissions ?? {}
       const key = `${req.kind}|${req.origin}`
