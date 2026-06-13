@@ -4,14 +4,27 @@ import { useEffect,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
-const ISLAND_EXIT_MS = 200
-
 import { commands } from '@/bindings/commands'
 import { closeTabAnimated, onTabClosing, TAB_EXIT_MS } from '@/lib/tabClose'
+import {
+  COMPACT_MEMBER_TAB_MAX,
+  COMPACT_MINIMUM_CURRENT_TAB_SIZE,
+  COMPACT_MINIMUM_TAB_SIZE,
+  GAP_PX,
+  ISLAND_CIRCLE_W,
+  ISLAND_EXIT_MS,
+  ISLAND_PILL_PAD,
+  MEMBER_TAB_MAX,
+  MINIMUM_CURRENT_TAB_SIZE,
+  MINIMUM_TAB_SIZE,
+  PIN_CIRCLE_W,
+  chipWidthFor,
+  computeStripSizing,
+  type FolderGroup,
+} from '@/lib/tabStripLayout'
 import type {
   AccentColor,
   BrowserState,
@@ -24,26 +37,12 @@ import type {
 } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { renderIconRef } from '@/lib/iconGlyphs'
-import { LockIcon, XIcon } from '@/lib/icons'
+import { XIcon } from '@/lib/icons'
 import { tabDisplayName } from '@/lib/url'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
-import {
-  partOffset,
-  patchFolderOrder,
-  patchTabFolder,
-  patchTabOrder,
-  runPendingGlide,
-  type PendingGlide,
-} from '@/lib/tabMotion'
+import { partOffset, runPendingGlide } from '@/lib/tabMotion'
 import { useWorkspaceSlide } from '@/hooks/useWorkspaceSlide'
-import {
-  useTabSplit,
-  tabDropTarget,
-  insertedAmong,
-  reorderedAmong,
-  type TabReorder,
-  type DropTarget,
-} from '@/hooks/useTabSplit'
+import { useTabStripDrag } from '@/hooks/useTabStripDrag'
 
 import { useFolderTarget } from '@/hooks/useFolderTarget'
 import { useIslandMenu } from '@/hooks/useIslandMenu'
@@ -51,6 +50,7 @@ import { useTabAudio } from '@/hooks/useTabAudio'
 import { TabAudioButton } from '@/components/TabAudioButton'
 import { TabFavicon } from '@/components/TabFavicon'
 import { useDiscardedTabs } from '@/components/DiscardedTabsContext'
+import { CollapseChevron, UrlContent } from '@/components/HorizontalTabsParts'
 
 interface HorizontalTabsProps {
   workspaceId: WorkspaceId
@@ -79,116 +79,12 @@ interface HorizontalTabsProps {
   maxExpandedFolders?: number
 }
 
-/* Phase boundary: active tab can't shrink below this (in px). */
-const MINIMUM_CURRENT_TAB_SIZE = 260
-const COMPACT_MINIMUM_CURRENT_TAB_SIZE = 180
-/* Final floor: inactive tabs can't shrink below this (favicon visible). */
-const MINIMUM_TAB_SIZE = 44
-const COMPACT_MINIMUM_TAB_SIZE = 40
-/* Cap on expanded-island members: filing a tab compacts it into the pill
-   instead of keeping its loose share (loose tabs absorb the slack via
-   flex-grow). The active member caps at the active floor instead, so its
-   title stays readable. */
-const MEMBER_TAB_MAX = 150
-const COMPACT_MEMBER_TAB_MAX = 120
-const GAP_PX = 4
-/* Fixed widths reserved by islands before sizing the flexible tabs. */
-const ISLAND_CIRCLE_W = 30
-const ISLAND_NAME_W = 96
-const ISLAND_NAME_W_COMPACT = 74
-const ISLAND_NAME_MAX = 168
-const ISLAND_NAME_MAX_COMPACT = 150
-const ISLAND_PILL_PAD = 3
-const PIN_CIRCLE_W = 30
-
-/* Chip label measurement (cached): the name chip fits its text up to a cap
-   instead of truncating at the fixed minimum while the strip sits empty. */
-let chipMeasureCtx: CanvasRenderingContext2D | null = null
-const chipTextWidths = new Map<string, number>()
-function chipTextWidth(name: string): number {
-  const cached = chipTextWidths.get(name)
-  if (cached !== undefined) return cached
-  if (chipMeasureCtx === null) {
-    chipMeasureCtx = document.createElement('canvas').getContext('2d')
-    if (chipMeasureCtx) {
-      chipMeasureCtx.font =
-        "600 12px Geist, 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif"
-    }
-  }
-  const width = chipMeasureCtx ? Math.ceil(chipMeasureCtx.measureText(name).width) : 0
-  chipTextWidths.set(name, width)
-  return width
-}
-/* Speaker button on audible/muted tabs (never shrinks), plus the in-tab
-   flex gap it introduces: reserved per audio tab so the minimum sizes
-   still fit favicon + speaker. */
-const AUDIO_BTN_W = 16
-const TAB_CONTENT_GAP = 8
-const COMPACT_TAB_CONTENT_GAP = 6
-
-/** A non-reorder drop target: "assign to island", not "insert here". */
-const ISLAND_DROP: DropTarget = { index: -1, anchorIndex: -1, side: 'before' }
-
-/** Move `id` to `insertion` within `order`; null when nothing changes. */
-function moveInList<T>(order: T[], id: T, insertion: number): T[] | null {
-  const from = order.indexOf(id)
-  if (from < 0) return null
-  const without = order.filter((x) => x !== id)
-  const at = insertion > from ? insertion - 1 : insertion
-  without.splice(at, 0, id)
-  if (without.length === order.length && without.every((x, i) => x === order[i])) return null
-  return without
-}
-
-interface SizingResult {
-  activeSize: number
-  inactiveSize: number
-  /** True when total content exceeds the strip and scrolling is needed. */
-  scrolling: boolean
-}
-
-interface FolderGroup {
-  folder: TabFolder
-  members: Tab[]
-}
-
 /**
  * Horizontal tab strip. Loose tabs flex to share the row; live-tab folders
  * render as "islands": a small colored circle when collapsed, or a glass pill
  * (colored name + its tabs) when expanded. Islands take a fixed slice of the
  * row; the rest is shared by the loose and expanded-island tabs.
  */
-/**
- * Distribute `budget` (already net of all gaps and the islands' fixed parts)
- * across `n` flexible tabs. The active tab keeps `minActive` when space runs
- * short; below the inactive floor the strip scrolls.
- */
-function computeSizing(
-  n: number,
-  budget: number,
-  minActive: number,
-  minInactive: number,
-): SizingResult {
-  if (n <= 0 || budget <= 0) {
-    return { activeSize: minActive, inactiveSize: minInactive, scrolling: n > 0 }
-  }
-
-  const equalSize = budget / n
-  if (equalSize >= minActive) {
-    return { activeSize: equalSize, inactiveSize: equalSize, scrolling: false }
-  }
-
-  if (n === 1) {
-    return { activeSize: minActive, inactiveSize: minInactive, scrolling: budget < minActive }
-  }
-  const calcInactiveSize = (budget - minActive) / (n - 1)
-  if (calcInactiveSize >= minInactive) {
-    return { activeSize: minActive, inactiveSize: calcInactiveSize, scrolling: false }
-  }
-
-  return { activeSize: minActive, inactiveSize: minInactive, scrolling: true }
-}
-
 export function HorizontalTabs({
   workspaceId,
   tabs,
@@ -212,20 +108,6 @@ export function HorizontalTabs({
   })
   const close = useMutation({
     mutationFn: (id: TabId) => commands.closeTab(id),
-    onSuccess: invalidate,
-  })
-  const reorder = useMutation({
-    mutationFn: (order: TabId[]) => commands.reorderTabs(workspaceId, order),
-    // Optimistic: drops re-render in the new order on the same frame, so the
-    // glide-into-place animation has its final slot to land in.
-    onMutate: (order) => patchTabOrder(qc, workspaceId, order),
-    onSuccess: invalidate,
-  })
-  const assign = useMutation({
-    mutationFn: (a: { tabId: TabId; folderId: TabFolderId | null }) =>
-      commands.assignTabToFolder(a.tabId, a.folderId),
-    // Optimistic: filing renders on the drop frame so the glide can land.
-    onMutate: (a) => patchTabFolder(qc, a.tabId, a.folderId),
     onSuccess: invalidate,
   })
   const setCollapsed = useMutation({
@@ -254,20 +136,11 @@ export function HorizontalTabs({
     },
     onSuccess: invalidate,
   })
-  const reorderFolders = useMutation({
-    mutationFn: (order: TabFolderId[]) => commands.reorderTabFolders(workspaceId, order),
-    onMutate: (order) => patchFolderOrder(qc, workspaceId, order),
-    onSuccess: invalidate,
-  })
   const { setTarget, syncToTab } = useFolderTarget(workspaceId, selectedFolderId)
   const renameFolder = useMutation({
     mutationFn: (a: { folderId: TabFolderId; name: string }) =>
       commands.renameTabFolder(workspaceId, a.folderId, a.name),
     onSuccess: invalidate,
-  })
-  const { startTabDrag, draggedRef, openSplitMenu } = useTabSplit({
-    workspaceId,
-    activeTabId,
   })
   const { openIslandMenu } = useIslandMenu()
 
@@ -279,30 +152,10 @@ export function HorizontalTabs({
   const activeRef = useRef<HTMLDivElement>(null)
   const [stripWidth, setStripWidth] = useState(0)
   const [stripResizing, setStripResizing] = useState(false)
-  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
-  const folderDropRef = useRef<TabFolderId | null | undefined>(undefined)
-  const [folderDropHint, setFolderDropHint] = useState<string | null>(null)
-  // Which list a positional tab reorder targets: 'loose' or a folder id.
-  const dragScopeRef = useRef<string | null>(null)
-  const pinDraggedRef = useRef(false)
-  const [pinDropIndex, setPinDropIndex] = useState<number | null>(null)
-  const folderReorderRef = useRef(false)
-  const [folderReorderDrop, setFolderReorderDrop] = useState<number | null>(null)
   const [renamingId, setRenamingId] = useState<TabFolderId | null>(null)
   const [closingIslandId, setClosingIslandId] = useState<TabFolderId | null>(null)
   const [openingIslandId, setOpeningIslandId] = useState<TabFolderId | null>(null)
   const [openingArmed, setOpeningArmed] = useState(false)
-  // Live parting state per drag kind.
-  const [dragPart, setDragPart] = useState<{ id: TabId; size: number } | null>(null)
-  const [pinDragId, setPinDragId] = useState<TabId | null>(null)
-  const [islandDragPart, setIslandDragPart] = useState<{
-    id: TabFolderId
-    size: number
-  } | null>(null)
-  const pendingGlideRef = useRef<PendingGlide | null>(null)
-  useLayoutEffect(() => {
-    runPendingGlide(stripRef.current, pendingGlideRef)
-  })
   const [closingIds, setClosingIds] = useState<ReadonlySet<TabId>>(new Set())
   useLayoutEffect(() => {
     if (openingIslandId === null || openingArmed) return
@@ -397,6 +250,39 @@ export function HorizontalTabs({
     else sizableTabs.push(...g.members)
   }
 
+  const {
+    startTabDrag,
+    draggedRef,
+    openSplitMenu,
+    makeReorder,
+    startPinDrag,
+    pinDraggedRef,
+    pinDragId,
+    pinDropIndex,
+    startFolderReorderDrag,
+    folderReorderRef,
+    folderReorderDrop,
+    islandDragPart,
+    dropTarget,
+    dragPart,
+    dragScopeRef,
+    folderDropHint,
+    pendingGlideRef,
+  } = useTabStripDrag({
+    workspaceId,
+    activeTabId,
+    stripRef,
+    tabs,
+    looseTabs,
+    looseIds,
+    pinnedTabs,
+    pinnedSet,
+    folderGroups,
+  })
+  useLayoutEffect(() => {
+    runPendingGlide(stripRef.current, pendingGlideRef)
+  })
+
   // Accordion bookkeeping: which expanded islands were opened least recently.
   // Session-scoped per workspace, seeded in position order (oldest first).
   const expandRecencyRef = useRef<{ ws: WorkspaceId; order: TabFolderId[] } | null>(null)
@@ -446,288 +332,6 @@ export function HorizontalTabs({
     setCollapsed.mutate({ folderId, collapsed: false })
   }
 
-  const makeReorder = (tab: Tab): TabReorder => ({
-    targetAtPoint: (x, y) => {
-      const fid = islandAt(x, y)
-      if (fid !== undefined) {
-        // Expanded island.
-        const group = folderGroups.find((g) => g.folder.id === fid)
-        if (group !== undefined && !group.folder.collapsed) {
-          const islandEl = stripRef.current?.querySelector<HTMLElement>(
-            `[data-island-id="${fid}"]`,
-          )
-          const t = islandEl ? tabDropTarget(islandEl, 'x', x, y, '[data-mtab-id]') : null
-          if (t) {
-            folderDropRef.current = undefined
-            setFolderDropHint(null)
-            dragScopeRef.current = fid
-            return t
-          }
-        }
-        dragScopeRef.current = null
-        if (fid === tab.folder_id) {
-          folderDropRef.current = undefined
-          setFolderDropHint(null)
-          return ISLAND_DROP
-        }
-        folderDropRef.current = fid
-        setFolderDropHint(fid)
-        return ISLAND_DROP
-      }
-      if (tab.folder_id != null && withinStrip(x, y)) {
-        // Member over the open strip.
-        const t = stripRef.current ? tabDropTarget(stripRef.current, 'x', x, y) : null
-        if (t) {
-          folderDropRef.current = undefined
-          setFolderDropHint(null)
-          dragScopeRef.current = 'loose'
-          return t
-        }
-        folderDropRef.current = null
-        setFolderDropHint('loose')
-        dragScopeRef.current = null
-        return ISLAND_DROP
-      }
-      folderDropRef.current = undefined
-      setFolderDropHint(null)
-      if (tab.folder_id == null && stripRef.current) {
-        dragScopeRef.current = 'loose'
-        return tabDropTarget(stripRef.current, 'x', x, y)
-      }
-      dragScopeRef.current = null
-      return null
-    },
-    onTarget: setDropTarget,
-    onDragChange: (dragging) => {
-      if (!dragging) {
-        setDragPart(null)
-        return
-      }
-      const el = stripRef.current?.querySelector<HTMLElement>(
-        `[data-tab-id="${tab.id}"], [data-mtab-id="${tab.id}"]`,
-      )
-      setDragPart({ id: tab.id, size: (el?.getBoundingClientRect().width ?? 120) + GAP_PX })
-    },
-    onDrop: (idx, ghostRect) => {
-      const drop = folderDropRef.current
-      const scope = dragScopeRef.current
-      folderDropRef.current = undefined
-      setFolderDropHint(null)
-      dragScopeRef.current = null
-      const glide = (selector: string) => {
-        if (ghostRect) pendingGlideRef.current = { selector, rect: ghostRect }
-      }
-      if (drop !== undefined) {
-        if (drop !== (tab.folder_id ?? null)) {
-          assign.mutate({ tabId: tab.id, folderId: drop })
-        }
-        return
-      }
-      const fullOrder = tabs.map((t) => t.id)
-      if (scope === 'loose') {
-        if (tab.folder_id == null) {
-          const next = reorderedAmong(fullOrder, looseIds, tab.id, idx)
-          if (next) {
-            glide(`[data-tab-id="${tab.id}"]`)
-            reorder.mutate(next)
-          }
-        } else {
-          // Positional unfile into the loose strip.
-          const next = insertedAmong(fullOrder, looseIds, tab.id, idx)
-          glide(`[data-tab-id="${tab.id}"]`)
-          assign.mutate({ tabId: tab.id, folderId: null })
-          if (next) reorder.mutate(next)
-        }
-        return
-      }
-      if (scope) {
-        const folderId = scope as TabFolderId
-        const memberIds = new Set(
-          (folderGroups.find((g) => g.folder.id === folderId)?.members ?? []).map((m) => m.id),
-        )
-        if (tab.folder_id === folderId) {
-          const next = reorderedAmong(fullOrder, memberIds, tab.id, idx)
-          if (next) {
-            glide(`[data-mtab-id="${tab.id}"]`)
-            reorder.mutate(next)
-          }
-        } else {
-          // File into the open island at the targeted slot.
-          const next = insertedAmong(fullOrder, memberIds, tab.id, idx)
-          glide(`[data-mtab-id="${tab.id}"]`)
-          assign.mutate({ tabId: tab.id, folderId })
-          if (next) reorder.mutate(next)
-        }
-      }
-    },
-  })
-
-  const islandAt = (x: number, y: number): TabFolderId | undefined => {
-    const root = stripRef.current
-    if (!root) return undefined
-    for (const el of root.querySelectorAll<HTMLElement>('[data-island-id]')) {
-      const r = el.getBoundingClientRect()
-      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-        return el.dataset.islandId as TabFolderId
-      }
-    }
-    return undefined
-  }
-
-  const withinStrip = (x: number, y: number): boolean => {
-    const r = stripRef.current?.getBoundingClientRect()
-    return !!r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
-  }
-
-  // Reorder the pinned circles within the full tab order.
-  const startPinDrag = (e: ReactPointerEvent, tabId: TabId) => {
-    if (e.button !== 0) return
-    const startX = e.clientX
-    const startY = e.clientY
-    const sourceEl = e.currentTarget as HTMLElement
-    const rect = sourceEl.getBoundingClientRect()
-    const grabX = startX - rect.left
-    const grabY = startY - rect.top
-    const fullOrder = tabs.map((t) => t.id)
-    pinDraggedRef.current = false
-    let begun = false
-    let ghost: HTMLElement | null = null
-    let lastIndex: number | null = null
-
-    const insertionAt = (x: number, y: number): number => {
-      const root = stripRef.current
-      if (!root) return pinnedTabs.length
-      const cells = Array.from(root.querySelectorAll<HTMLElement>('[data-pin-id]'))
-      for (let i = 0; i < cells.length; i++) {
-        const r = cells[i].getBoundingClientRect()
-        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-          return x < r.left + r.width / 2 ? i : i + 1
-        }
-      }
-      return cells.length
-    }
-
-    const move = (ev: PointerEvent) => {
-      if (!begun) {
-        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) <= 6) return
-        begun = true
-        pinDraggedRef.current = true
-        document.body.classList.add('is-tab-dragging')
-        window.getSelection()?.removeAllRanges()
-        ghost = sourceEl.cloneNode(true) as HTMLElement
-        ghost.classList.add('kb-drag-ghost')
-        ghost.style.width = `${rect.width}px`
-        ghost.style.height = `${rect.height}px`
-        document.body.appendChild(ghost)
-        setPinDragId(tabId)
-      }
-      if (ghost) {
-        ghost.style.left = `${ev.clientX - grabX}px`
-        ghost.style.top = `${ev.clientY - grabY}px`
-      }
-      lastIndex = insertionAt(ev.clientX, ev.clientY)
-      setPinDropIndex(lastIndex)
-    }
-    const up = () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      const ghostRect = ghost?.getBoundingClientRect()
-      ghost?.remove()
-      if (begun) document.body.classList.remove('is-tab-dragging')
-      setPinDropIndex(null)
-      setPinDragId(null)
-      if (begun && lastIndex != null) {
-        const next = reorderedAmong(fullOrder, pinnedSet, tabId, lastIndex)
-        if (next) {
-          if (ghostRect) {
-            pendingGlideRef.current = { selector: `[data-pin-id="${tabId}"]`, rect: ghostRect }
-          }
-          reorder.mutate(next)
-        }
-      }
-    }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-  }
-
-  // Reorder folders (islands) by dragging their circle/name chip.
-  const startFolderReorderDrag = (e: ReactPointerEvent, folderId: TabFolderId) => {
-    if (e.button !== 0) return
-    const startX = e.clientX
-    const startY = e.clientY
-    const sourceEl = e.currentTarget as HTMLElement
-    const rect = sourceEl.getBoundingClientRect()
-    const grabX = startX - rect.left
-    const grabY = startY - rect.top
-    const order = folderGroups.map((g) => g.folder.id)
-    folderReorderRef.current = false
-    let begun = false
-    let ghost: HTMLElement | null = null
-    let lastIndex: number | null = null
-
-    const insertionAt = (x: number): number => {
-      const root = stripRef.current
-      if (!root) return order.length
-      const els = Array.from(root.querySelectorAll<HTMLElement>('[data-island-id]'))
-      for (let i = 0; i < els.length; i++) {
-        const r = els[i].getBoundingClientRect()
-        if (x < r.left + r.width / 2) return i
-      }
-      return els.length
-    }
-
-    const move = (ev: PointerEvent) => {
-      if (!begun) {
-        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) <= 6) return
-        begun = true
-        folderReorderRef.current = true
-        document.body.classList.add('is-tab-dragging')
-        window.getSelection()?.removeAllRanges()
-        ghost = sourceEl.cloneNode(true) as HTMLElement
-        ghost.classList.add('kb-drag-ghost')
-        ghost.style.width = `${rect.width}px`
-        ghost.style.height = `${rect.height}px`
-        document.body.appendChild(ghost)
-        const island = stripRef.current?.querySelector<HTMLElement>(
-          `[data-island-id="${folderId}"]`,
-        )
-        setIslandDragPart({
-          id: folderId,
-          size: (island?.getBoundingClientRect().width ?? rect.width) + GAP_PX,
-        })
-      }
-      if (ghost) {
-        ghost.style.left = `${ev.clientX - grabX}px`
-        ghost.style.top = `${ev.clientY - grabY}px`
-      }
-      lastIndex = insertionAt(ev.clientX)
-      setFolderReorderDrop(lastIndex)
-    }
-    const up = () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      const ghostRect = ghost?.getBoundingClientRect()
-      ghost?.remove()
-      if (begun) document.body.classList.remove('is-tab-dragging')
-      setFolderReorderDrop(null)
-      setIslandDragPart(null)
-      if (begun && lastIndex != null) {
-        const next = moveInList(order, folderId, lastIndex)
-        if (next) {
-          if (ghostRect) {
-            pendingGlideRef.current = {
-              selector: `[data-island-id="${folderId}"]`,
-              rect: ghostRect,
-            }
-          }
-          reorderFolders.mutate(next)
-        }
-      }
-    }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-  }
-
   useLayoutEffect(() => {
     const strip = stripRef.current
     if (!strip) return
@@ -758,16 +362,6 @@ export function HorizontalTabs({
 
   const minActive = compact ? COMPACT_MINIMUM_CURRENT_TAB_SIZE : MINIMUM_CURRENT_TAB_SIZE
   const minInactive = compact ? COMPACT_MINIMUM_TAB_SIZE : MINIMUM_TAB_SIZE
-  const nameW = compact ? ISLAND_NAME_W_COMPACT : ISLAND_NAME_W
-  // Chip box: 5px left pad + 15px chevron + 3px gap + optional icon (11px
-  // glyph + 4px label gap) + text + 9px right pad, clamped between the fixed
-  // minimum and the cap.
-  const chipWidthFor = (folder: TabFolder) => {
-    const fixed = 5 + 15 + 3 + 9 + (folder.icon ? 11 + 4 : 0)
-    const fit = fixed + chipTextWidth(folder.name)
-    const max = compact ? ISLAND_NAME_MAX_COMPACT : ISLAND_NAME_MAX
-    return Math.min(Math.max(nameW, fit), max)
-  }
 
   if (folderGroups.length === 0 && looseTabs.length === 0 && pinnedTabs.length === 0) {
     return (
@@ -777,35 +371,21 @@ export function HorizontalTabs({
     )
   }
 
-  const n = sizableTabs.length
-  const activeVisible = sizableTabs.some((t) => t.id === activeTabId)
   const hasAudioIcon = (t: Tab) => tabAudio.audible.has(t.id) || tabAudio.muted.has(t.id)
-  const audioExtra = AUDIO_BTN_W + (compact ? COMPACT_TAB_CONTENT_GAP : TAB_CONTENT_GAP)
-  const audioCount = sizableTabs.reduce((c, t) => c + (hasAudioIcon(t) ? 1 : 0), 0)
-  // Reserve the pinned circles, islands' fixed parts (circles, name chips +
-  // pill padding), every gap, and the audio tabs' speaker buttons, so the
-  // flexible tabs fill exactly what's left.
-  const expandedMembers = n - looseTabs.length
-  const topLevelCount = pinnedTabs.length + folderGroups.length + looseTabs.length
-  const totalGaps =
-    Math.max(0, topLevelCount - 1) * GAP_PX + expandedMembers * GAP_PX
-  const expandedChipsWidth = folderGroups.reduce(
-    (sum, g) =>
-      g.folder.collapsed || g.folder.id === closingIslandId
-        ? sum
-        : sum + chipWidthFor(g.folder) + ISLAND_PILL_PAD * 2,
-    0,
-  )
-  const fixedWidth =
-    pinnedTabs.length * PIN_CIRCLE_W +
-    collapsedCount * ISLAND_CIRCLE_W +
-    expandedChipsWidth
-  const available = Math.max(0, stripWidth - fixedWidth - totalGaps - audioCount * audioExtra)
-  const sizing = computeSizing(n, available, minActive, minInactive)
-
-  const isMany = sizing.activeSize !== sizing.inactiveSize
-  const inactiveCloseThreshold = compact ? 90 : 130
-  const inactiveCompact = isMany && sizing.inactiveSize < inactiveCloseThreshold
+  const { sizing, isMany, inactiveCompact, audioExtra, activeVisible } = computeStripSizing({
+    sizableTabs,
+    looseTabs,
+    pinnedCount: pinnedTabs.length,
+    folderGroups,
+    collapsedCount,
+    closingIslandId,
+    stripWidth,
+    compact,
+    activeTabId,
+    minActive,
+    minInactive,
+    isAudio: hasAudioIcon,
+  })
 
   const sizeFor = (tab: Tab) => {
     const base =
@@ -1047,7 +627,7 @@ export function HorizontalTabs({
     const islandW =
       closing || (opening && !openingArmed)
         ? ISLAND_CIRCLE_W
-        : chipWidthFor(folder) +
+        : chipWidthFor(folder, compact) +
         memberSum +
         sizedMembers.length * GAP_PX +
         ISLAND_PILL_PAD * 2 +
@@ -1069,7 +649,7 @@ export function HorizontalTabs({
             selected: isSelected,
             'ring-contrast': isThemeAccent,
           })}
-          style={{ flex: `0 0 ${chipWidthFor(folder)}px` }}
+          style={{ flex: `0 0 ${chipWidthFor(folder, compact)}px` }}
           role="button"
           tabIndex={0}
           aria-pressed={isSelected}
@@ -1171,52 +751,5 @@ export function HorizontalTabs({
         {ordered}
       </div>
     </div>
-  )
-}
-
-/** Small leftward chevron on the expanded island chip: collapses to a circle. */
-function CollapseChevron() {
-  return (
-    <svg
-      width="11"
-      height="11"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="m15 18-6-6 6-6" />
-    </svg>
-  )
-}
-
-function UrlContent({ tab }: { tab: Tab }) {
-  const parts = (() => {
-    try {
-      const u = new URL(tab.url)
-      if (u.protocol === 'about:' || u.host === '') {
-        return null
-      }
-      return { domain: u.host, path: u.pathname === '/' ? '' : u.pathname }
-    } catch {
-      return null
-    }
-  })()
-
-  return (
-    <>
-      <LockIcon className="ico" />
-      {parts ? (
-        <>
-          <span className="domain">{parts.domain}</span>
-          <span className="path">{parts.path}</span>
-        </>
-      ) : (
-        <span className="path">Search or enter URL</span>
-      )}
-    </>
   )
 }
