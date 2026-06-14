@@ -33,9 +33,9 @@ const WIDGET_PANELS_CHANGED_EVENT: &str = "widget-panels-changed";
 /// navigation, so the header bar can show the widget's current host.
 const WPANEL_NAV_EVENT: &str = "wis-wpanel-nav";
 
-/// Delay before a freshly-created panel loads its real page, so the heavy first
-/// paint lands after the entrance slide. Matches the chrome's `PANEL_ANIM_MS`
-/// (useWidgetPanel.ts).
+/// Delay before a freshly-created (about:blank) panel loads its real page, so
+/// the heavy first paint lands after the entrance slide. Matches the chrome's
+/// `PANEL_ANIM_MS` (useWidgetPanel.ts).
 const WIDGET_ENTRANCE_MS: u64 = 220;
 
 #[derive(Clone, Serialize)]
@@ -112,6 +112,151 @@ fn panel_label(window_label: &str, id: &str) -> WisResult<String> {
     }
 
     Ok(format!("{}{id}", panel_prefix(window_label)))
+}
+
+/// Apply the panel's rounded grey backing to its WKWebView.
+#[cfg(target_os = "macos")]
+fn apply_panel_surface<R: tauri::Runtime>(
+    webview: &tauri::webview::Webview<R>,
+    dark: bool,
+    done: Option<std::sync::mpsc::Sender<()>>,
+) {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+
+    let _ = webview.with_webview(move |w| unsafe {
+        let signal = || {
+            if let Some(tx) = &done {
+                let _ = tx.send(());
+            }
+        };
+        let view: *mut AnyObject = w.inner() as *mut AnyObject;
+        if view.is_null() {
+            signal();
+            return;
+        }
+
+        let _: () = msg_send![view, setWantsLayer: true];
+        let layer: *mut AnyObject = msg_send![view, layer];
+        if layer.is_null() {
+            signal();
+            return;
+        }
+
+        let _: () = msg_send![layer, setCornerRadius: 12.0_f64];
+        let mask: usize = (1 << 2) | (1 << 3);
+        let _: () = msg_send![layer, setMaskedCorners: mask];
+        let _: () = msg_send![layer, setMasksToBounds: true];
+
+        // Mirrors --surface-raised in tokens.css.
+        let key_c = std::ffi::CString::new("drawsBackground").expect("no NUL");
+        let key: *mut AnyObject = msg_send![class!(NSString), stringWithUTF8String: key_c.as_ptr()];
+        let no_value: *mut AnyObject = msg_send![class!(NSNumber), numberWithBool: false];
+        let _: () = msg_send![view, setValue: no_value, forKey: key];
+
+        let (r, g, b) = if dark {
+            (0.255_f64, 0.255_f64, 0.298_f64) // #41414C
+        } else {
+            (0.980_f64, 0.980_f64, 0.976_f64) // #FAFAF9
+        };
+        let surface: *mut AnyObject = msg_send![
+            class!(NSColor),
+            colorWithSRGBRed: r, green: g, blue: b, alpha: 1.0_f64
+        ];
+        if !surface.is_null() {
+            #[repr(transparent)]
+            #[derive(Clone, Copy)]
+            struct CGColorRef(*const std::ffi::c_void);
+
+            unsafe impl objc2::encode::Encode for CGColorRef {
+                const ENCODING: objc2::encode::Encoding = objc2::encode::Encoding::Pointer(
+                    &objc2::encode::Encoding::Struct("CGColor", &[]),
+                );
+            }
+            let cg: CGColorRef = msg_send![surface, CGColor];
+            if !cg.0.is_null() {
+                let _: () = msg_send![layer, setBackgroundColor: cg];
+
+                #[repr(C)]
+                #[derive(Clone, Copy)]
+                struct CGPoint {
+                    x: f64,
+                    y: f64,
+                }
+
+                #[repr(C)]
+                #[derive(Clone, Copy)]
+                struct CGSize {
+                    width: f64,
+                    height: f64,
+                }
+
+                #[repr(C)]
+                #[derive(Clone, Copy)]
+                struct CGRect {
+                    origin: CGPoint,
+                    size: CGSize,
+                }
+
+                unsafe impl objc2::encode::Encode for CGPoint {
+                    const ENCODING: objc2::encode::Encoding = objc2::encode::Encoding::Struct(
+                        "CGPoint",
+                        &[
+                            <f64 as objc2::encode::Encode>::ENCODING,
+                            <f64 as objc2::encode::Encode>::ENCODING,
+                        ],
+                    );
+                }
+
+                unsafe impl objc2::encode::Encode for CGSize {
+                    const ENCODING: objc2::encode::Encoding = objc2::encode::Encoding::Struct(
+                        "CGSize",
+                        &[
+                            <f64 as objc2::encode::Encode>::ENCODING,
+                            <f64 as objc2::encode::Encode>::ENCODING,
+                        ],
+                    );
+                }
+
+                unsafe impl objc2::encode::Encode for CGRect {
+                    const ENCODING: objc2::encode::Encoding = objc2::encode::Encoding::Struct(
+                        "CGRect",
+                        &[
+                            <CGPoint as objc2::encode::Encode>::ENCODING,
+                            <CGSize as objc2::encode::Encode>::ENCODING,
+                        ],
+                    );
+                }
+
+                let big = CGRect {
+                    origin: CGPoint { x: 0.0, y: 0.0 },
+                    size: CGSize {
+                        width: 100_000.0,
+                        height: 100_000.0,
+                    },
+                };
+                let bg_layer: *mut AnyObject = msg_send![class!(CALayer), layer];
+                if !bg_layer.is_null() {
+                    let _: () = msg_send![bg_layer, setBackgroundColor: cg];
+                    let _: () = msg_send![bg_layer, setFrame: big];
+                    let _: () = msg_send![layer, insertSublayer: bg_layer, atIndex: 0_u32];
+                }
+            }
+            let _: () = msg_send![view, setUnderPageBackgroundColor: surface];
+        }
+        signal();
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+fn apply_panel_surface<R: tauri::Runtime>(
+    _webview: &tauri::webview::Webview<R>,
+    _dark: bool,
+    done: Option<std::sync::mpsc::Sender<()>>,
+) {
+    if let Some(tx) = done {
+        let _ = tx.send(());
+    }
 }
 
 /// Open widget `id`'s panel at `url` with the given rect. If that panel is
@@ -237,70 +382,11 @@ pub async fn open_widget_panel(
             message: format!("widget panel add_child failed: {err}"),
         })?;
 
-    // Style before first paint.
+    // Apply the grey backing while the panel stays hidden.
     let _ = child.hide();
-    // Round only the bottom corners: the top edge sits flush under the
-    // accent header bar (overlay-widgetheader), which carries the top
-    // rounding, so the two read as one card.
-    #[cfg(target_os = "macos")]
-    {
-        use objc2::runtime::AnyObject;
-        use objc2::{class, msg_send};
-
-        let (tx, rx) = std::sync::mpsc::channel::<()>();
-        let _ = child.with_webview(move |w| unsafe {
-            let view: *mut AnyObject = w.inner() as *mut AnyObject;
-            if view.is_null() {
-                let _ = tx.send(());
-                return;
-            }
-            let _: () = msg_send![view, setWantsLayer: true];
-            let layer: *mut AnyObject = msg_send![view, layer];
-            if layer.is_null() {
-                let _ = tx.send(());
-                return;
-            }
-            let _: () = msg_send![layer, setCornerRadius: 12.0_f64];
-            let mask: usize = (1 << 2) | (1 << 3);
-            let _: () = msg_send![layer, setMaskedCorners: mask];
-            let _: () = msg_send![layer, setMasksToBounds: true];
-
-            // The engine draws no background, but the layer carries the theme
-            // surface colour (mirrors --surface-raised in tokens.css).
-            let key_c = std::ffi::CString::new("drawsBackground").expect("no NUL");
-            let key: *mut AnyObject =
-                msg_send![class!(NSString), stringWithUTF8String: key_c.as_ptr()];
-            let no_value: *mut AnyObject = msg_send![class!(NSNumber), numberWithBool: false];
-            let _: () = msg_send![view, setValue: no_value, forKey: key];
-            let (r, g, b) = if dark {
-                (0.255_f64, 0.255_f64, 0.298_f64) // #41414C
-            } else {
-                (0.980_f64, 0.980_f64, 0.976_f64) // #FAFAF9
-            };
-            let surface: *mut AnyObject = msg_send![
-                class!(NSColor),
-                colorWithSRGBRed: r, green: g, blue: b, alpha: 1.0_f64
-            ];
-            if !surface.is_null() {
-                #[repr(transparent)]
-                #[derive(Clone, Copy)]
-                struct CGColorRef(*const std::ffi::c_void);
-                unsafe impl objc2::encode::Encode for CGColorRef {
-                    const ENCODING: objc2::encode::Encoding = objc2::encode::Encoding::Pointer(
-                        &objc2::encode::Encoding::Struct("CGColor", &[]),
-                    );
-                }
-                let cg: CGColorRef = msg_send![surface, CGColor];
-                if !cg.0.is_null() {
-                    let _: () = msg_send![layer, setBackgroundColor: cg];
-                }
-                let _: () = msg_send![view, setUnderPageBackgroundColor: surface];
-            }
-            let _ = tx.send(());
-        });
-        let _ = rx.recv_timeout(std::time::Duration::from_millis(500));
-    }
-    let _ = child.show();
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    apply_panel_surface(&child, dark, Some(tx));
+    let _ = rx.recv_timeout(std::time::Duration::from_millis(500));
 
     // Apple-proxied Safe Browsing warning.
     crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
@@ -321,7 +407,8 @@ pub async fn open_widget_panel(
         }
     }
 
-    // Keep overlays (incl. the resize strip) above the freshly added panel.
+    // Restore the stack: tabs < panels < overlays.
+    promote_panels_to_front(&app);
     crate::overlay::promote_overlays_to_front(&app);
     notify_panels_changed(&app);
 
@@ -332,7 +419,8 @@ pub async fn open_widget_panel(
         }
     }
 
-    // Load the real page after the entrance slide (see the about:blank note above).
+    // Load the real page after the entrance slide (the panel was created at
+    // about:blank).
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(WIDGET_ENTRANCE_MS)).await;
         if let Err(err) = child.navigate(parsed) {

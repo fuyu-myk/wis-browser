@@ -474,33 +474,34 @@ export function useWidgetPanel(): {
         const dir = sideRef.current === 'left' ? -1 : 1
         // Opening a closed widget and switching to another both enter the same way.
         const startX = off ? panel.x : panel.x + dir * panelSlideDistance(panel.width)
-        if (wasLive) {
-          const shown = await commands.showWidgetPanel(
-            widget.id, startX, panel.y, panel.width, panel.height,
+        // Create the panel webview hidden at the offset if it isn't live yet (a
+        // live one is already present, hidden in the pool).
+        if (!wasLive) {
+          await commands.openWidgetPanel(
+            widget.id, url, startX, panel.y, panel.width, panel.height, dark,
           )
           if (stale()) {
             hideOne(widget.id)
             hideGrip()
             return
           }
-          // Evicted between bookkeeping and Rust: recreate it at the same offset.
-          if (!shown) {
-            await commands.openWidgetPanel(
-              widget.id, url, startX, panel.y, panel.width, panel.height, dark,
-            )
-          }
-        } else {
-          await commands.openWidgetPanel(
-            widget.id, url, startX, panel.y, panel.width, panel.height, dark,
-          )
         }
+        setPanelRect(panel)
+        const [, shown] = await Promise.all([
+          showChrome(geo),
+          commands.showWidgetPanel(widget.id, startX, panel.y, panel.width, panel.height),
+        ])
         if (stale()) {
           hideOne(widget.id)
           hideGrip()
           return
         }
-        setPanelRect(panel)
-        await showChrome(geo)
+        if (!shown) {
+          await commands.openWidgetPanel(
+            widget.id, url, startX, panel.y, panel.width, panel.height, dark,
+          )
+          await commands.showWidgetPanel(widget.id, startX, panel.y, panel.width, panel.height)
+        }
         if (!off) animatePanelIn(widget.id, panel)
         if (stale()) {
           hideOne(widget.id)
