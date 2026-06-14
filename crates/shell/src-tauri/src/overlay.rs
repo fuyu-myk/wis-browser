@@ -253,6 +253,29 @@ pub async fn size_overlay(
     Ok(())
 }
 
+/// Move an already-shown overlay without resizing or re-showing it. Used for
+/// per-frame entrance animation. A missing overlay is a silent no-op (the animation
+/// must not error per frame).
+#[tauri::command]
+pub async fn set_overlay_position(
+    window: tauri::Window,
+    name: String,
+    x: f64,
+    y: f64,
+) -> WisResult<()> {
+    let label = overlay_label(window.label(), &name);
+    let Some(wv) = window.app_handle().webviews().get(&label).cloned() else {
+        return Ok(());
+    };
+
+    wv.set_position(tauri::LogicalPosition::new(x, y))
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("set_position for {label}: {err}"),
+        })?;
+
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn hide_overlay(window: tauri::Window, name: String) -> WisResult<()> {
     let label = overlay_label(window.label(), &name);

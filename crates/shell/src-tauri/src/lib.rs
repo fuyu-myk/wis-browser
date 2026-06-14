@@ -470,6 +470,7 @@ pub fn run() {
             overlay::focus_self,
             overlay::ensure_overlay,
             overlay::set_overlay_bounds,
+            overlay::set_overlay_position,
             overlay::size_overlay,
             overlay::hide_overlay,
             favicons::get_favicon_data_url,

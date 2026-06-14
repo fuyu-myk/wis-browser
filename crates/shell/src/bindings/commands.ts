@@ -859,6 +859,12 @@ export const commands = {
     return invoke('set_overlay_bounds', { name, x, y, width, height })
   },
 
+  /** Move an already-shown overlay without resizing/re-showing it, for smooth
+   *  per-frame entrance animation. */
+  async setOverlayPosition(name: string, x: number, y: number): Promise<void> {
+    return invoke('set_overlay_position', { name, x, y })
+  },
+
   /** Position/resize the overlay while keeping it hidden, so a later show
    *  does not resize the webview mid-animation. */
   async sizeOverlay(

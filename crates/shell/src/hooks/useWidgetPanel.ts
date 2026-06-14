@@ -271,9 +271,7 @@ export function useWidgetPanel(): {
         const e = 1 - Math.pow(1 - t, 3)
         const x = Math.round(panel.x + dir * dist * (1 - e))
         void commands
-          .setOverlayBounds(
-            'widgetheader', x, panel.y - HEADER_HEIGHT, panel.width, HEADER_HEIGHT,
-          )
+          .setOverlayPosition('widgetheader', x, panel.y - HEADER_HEIGHT)
           .catch(() => undefined)
         if (id !== null) {
           void commands
@@ -448,7 +446,8 @@ export function useWidgetPanel(): {
       }
       visibleRef.current = widget.id
       setActiveWidgetId(widget.id)
-      setPanelRect(geo.panel)
+      // Drop the outgoing widget's backdrop now (switch only).
+      if (previous !== null) setPanelRect(null)
 
       const wasLive = liveRef.current.has(widget.id)
       if (!wasLive && limitRef.current.enabled) {
@@ -465,40 +464,44 @@ export function useWidgetPanel(): {
         // so revealing the target under a still-visible newer panel would
         // leave it covered.
         const stale = () => visibleRef.current !== widget.id
-        if (previous !== null) hideOne(previous)
-        await showChrome(geo)
-        if (stale()) {
+        if (previous !== null) {
+          hideOne(previous)
+          // Make the outgoing widget's header (and resize grip) vanish with its
+          // panel.
           hideGrip()
-          return
         }
         const off = document.body.classList.contains('motion-off')
-        const grow = !off && wasLive
-        // Create paths: slide the header strip in step with the backdrop.
-        if (!off && !grow) animatePanelIn(null, panel)
         const dir = sideRef.current === 'left' ? -1 : 1
-        const sx = grow ? panel.x + dir * panelSlideDistance(panel.width) : panel.x
+        // Opening a closed widget and switching to another both enter the same way.
+        const startX = off ? panel.x : panel.x + dir * panelSlideDistance(panel.width)
         if (wasLive) {
           const shown = await commands.showWidgetPanel(
-            widget.id, sx, panel.y, panel.width, panel.height,
+            widget.id, startX, panel.y, panel.width, panel.height,
           )
           if (stale()) {
             hideOne(widget.id)
             hideGrip()
             return
           }
-          if (shown) {
-            if (grow) animatePanelIn(widget.id, panel)
-          } else {
-            if (!off) animatePanelIn(null, panel)
+          // Evicted between bookkeeping and Rust: recreate it at the same offset.
+          if (!shown) {
             await commands.openWidgetPanel(
-              widget.id, url, panel.x, panel.y, panel.width, panel.height, dark,
+              widget.id, url, startX, panel.y, panel.width, panel.height, dark,
             )
           }
         } else {
           await commands.openWidgetPanel(
-            widget.id, url, panel.x, panel.y, panel.width, panel.height, dark,
+            widget.id, url, startX, panel.y, panel.width, panel.height, dark,
           )
         }
+        if (stale()) {
+          hideOne(widget.id)
+          hideGrip()
+          return
+        }
+        setPanelRect(panel)
+        await showChrome(geo)
+        if (!off) animatePanelIn(widget.id, panel)
         if (stale()) {
           hideOne(widget.id)
           hideGrip()

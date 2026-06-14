@@ -3738,9 +3738,9 @@ body.has-custom-img .kb-launch-mark {
   background: var(--surface-raised);
   border-radius: 0 0 12px 12px;
   pointer-events: none;
-  /* Slides in from the dock edge in step with the panel entrance. */
+  /* Slides in from the dock edge in lockstep with the native panel + header. */
   --wpanel-slide: -48px;
-  animation: kb-wpanel-slide 220ms var(--ease-standard);
+  animation: kb-wpanel-slide 220ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 .kb-wpanel-backdrop.is-right { --wpanel-slide: 48px; }
 @keyframes kb-wpanel-slide {

@@ -33,6 +33,11 @@ const WIDGET_PANELS_CHANGED_EVENT: &str = "widget-panels-changed";
 /// navigation, so the header bar can show the widget's current host.
 const WPANEL_NAV_EVENT: &str = "wis-wpanel-nav";
 
+/// Delay before a freshly-created panel loads its real page, so the heavy first
+/// paint lands after the entrance slide. Matches the chrome's `PANEL_ANIM_MS`
+/// (useWidgetPanel.ts).
+const WIDGET_ENTRANCE_MS: u64 = 220;
+
 #[derive(Clone, Serialize)]
 struct WPanelNavPayload {
     id: String,
@@ -176,7 +181,10 @@ pub async fn open_widget_panel(
         .parse::<Url>()
         .expect("loopback proxy URL is valid");
 
-    let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed))
+    // Start at about:blank so the panel slides in idle; the real page is loaded
+    // after the entrance.
+    let blank = Url::parse("about:blank").expect("about:blank is a valid URL");
+    let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(blank))
         .focused(true)
         .proxy_url(proxy_url);
     if let Some(ua) = &user_agent {
@@ -204,7 +212,10 @@ pub async fn open_widget_panel(
         let app = app.clone();
         let id = id.clone();
         move |_webview, payload: PageLoadPayload<'_>| {
-            if matches!(payload.event(), PageLoadEvent::Started) {
+            // Skip the about:blank placeholder.
+            if matches!(payload.event(), PageLoadEvent::Started)
+                && payload.url().as_str() != "about:blank"
+            {
                 let _ = app.emit(
                     WPANEL_NAV_EVENT,
                     WPanelNavPayload {
@@ -236,14 +247,17 @@ pub async fn open_widget_panel(
         use objc2::runtime::AnyObject;
         use objc2::{class, msg_send};
 
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
         let _ = child.with_webview(move |w| unsafe {
             let view: *mut AnyObject = w.inner() as *mut AnyObject;
             if view.is_null() {
+                let _ = tx.send(());
                 return;
             }
             let _: () = msg_send![view, setWantsLayer: true];
             let layer: *mut AnyObject = msg_send![view, layer];
             if layer.is_null() {
+                let _ = tx.send(());
                 return;
             }
             let _: () = msg_send![layer, setCornerRadius: 12.0_f64];
@@ -282,7 +296,9 @@ pub async fn open_widget_panel(
                 }
                 let _: () = msg_send![view, setUnderPageBackgroundColor: surface];
             }
+            let _ = tx.send(());
         });
+        let _ = rx.recv_timeout(std::time::Duration::from_millis(500));
     }
     let _ = child.show();
 
@@ -315,6 +331,14 @@ pub async fn open_widget_panel(
             log::warn!("widget panel: content filter attach skipped: {err}");
         }
     }
+
+    // Load the real page after the entrance slide (see the about:blank note above).
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(WIDGET_ENTRANCE_MS)).await;
+        if let Err(err) = child.navigate(parsed) {
+            log::warn!("widget panel deferred navigate: {err}");
+        }
+    });
 
     Ok(())
 }
