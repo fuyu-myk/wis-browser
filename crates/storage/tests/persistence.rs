@@ -36,6 +36,28 @@ fn fresh_store() -> SqliteStorage {
 }
 
 #[test]
+fn windowed_workspaces_round_trip_and_survive_state_save() {
+    let store = fresh_store();
+    let state = BrowserState::new_with_defaults();
+    let ws = state.workspaces[0].id;
+
+    // Empty until something is saved.
+    assert!(store.load_windowed_workspaces().expect("load").is_empty());
+
+    store.save_windowed_workspaces(&[ws]).expect("save windowed");
+    assert_eq!(store.load_windowed_workspaces().expect("load"), vec![ws]);
+
+    // A full state save (which clears/rewrites the document tables) must not
+    // wipe the separately-owned windowed-layout meta key.
+    store.save_state(&state).expect("save state");
+    assert_eq!(store.load_windowed_workspaces().expect("load"), vec![ws]);
+
+    // Re-saving replaces the prior list.
+    store.save_windowed_workspaces(&[]).expect("clear windowed");
+    assert!(store.load_windowed_workspaces().expect("load").is_empty());
+}
+
+#[test]
 fn workspace_background_survives_round_trip() {
     let store = fresh_store();
     let s0 = BrowserState::new_with_defaults();

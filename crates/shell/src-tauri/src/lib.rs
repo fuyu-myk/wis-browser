@@ -455,6 +455,7 @@ pub fn run() {
             widget_panel::widget_panel_muted,
             windows::new_window,
             windows::free_workspaces,
+            windows::restore_session_windows,
             navguard::nav_guard_proceed,
             permissions::resolve_media_permission,
             bookmarks::list_bookmark_folders,

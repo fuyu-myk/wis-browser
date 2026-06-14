@@ -2,12 +2,14 @@ import { Window } from '@/components/Window'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { PendingRenameProvider } from '@/hooks/usePendingRename'
+import { useSessionRestore } from '@/hooks/useSessionRestore'
 import { useThemeApply } from '@/hooks/useThemeApply'
 
 export default function App() {
   const { data: state, isLoading, error } = useBrowserState()
   useBrowserStateEvents()
   useThemeApply(state?.settings)
+  useSessionRestore()
 
   if (isLoading || !state) {
     return null

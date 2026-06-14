@@ -15,6 +15,7 @@ use crate::error::{StorageError, StorageResult};
 use crate::sqlite::convert::{enum_from_text, enum_to_text};
 
 const META_ACTIVE_WORKSPACE: &str = "active_workspace_id";
+const META_WINDOWED_WORKSPACES: &str = "windowed_workspaces";
 const SETTINGS_KEY: &str = "user_settings";
 
 // ===========================================================================
@@ -59,11 +60,45 @@ pub fn save(tx: &Transaction<'_>, state: &BrowserState) -> StorageResult<()> {
 }
 
 fn clear_all(tx: &Transaction<'_>) -> StorageResult<()> {
-    for table in ["essentials", "tabs", "workspaces", "settings", "meta"] {
+    for table in ["essentials", "tabs", "workspaces", "settings"] {
         tx.execute(&format!("DELETE FROM {table}"), [])?;
     }
 
     Ok(())
+}
+
+/// Persist the workspaces that had their own window at exit (see the [`Storage`](crate::Storage)
+/// trait). Serialised as a JSON array under the `windowed_workspaces` meta key.
+pub fn save_windowed_workspaces(conn: &Connection, ids: &[WorkspaceId]) -> StorageResult<()> {
+    let json = serde_json::to_string(ids)?;
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES (?1, ?2)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        params![META_WINDOWED_WORKSPACES, json],
+    )?;
+
+    Ok(())
+}
+
+/// Read the workspaces to reopen in their own windows on launch. A missing or
+/// unparsable entry yields an empty list (restore just the main window).
+pub fn load_windowed_workspaces(conn: &Connection) -> StorageResult<Vec<WorkspaceId>> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM meta WHERE key = ?1",
+            params![META_WINDOWED_WORKSPACES],
+            |row| row.get(0),
+        )
+        .map(Some)
+        .or_else(|err| match err {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+
+    Ok(value
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default())
 }
 
 fn insert_workspace(

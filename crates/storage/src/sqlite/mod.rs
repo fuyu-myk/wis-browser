@@ -99,6 +99,16 @@ impl Storage for SqliteStorage {
         Ok(())
     }
 
+    fn save_windowed_workspaces(&self, ids: &[wis_core::WorkspaceId]) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        repo::save_windowed_workspaces(&conn, ids)
+    }
+
+    fn load_windowed_workspaces(&self) -> StorageResult<Vec<wis_core::WorkspaceId>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        repo::load_windowed_workspaces(&conn)
+    }
+
     fn record_visit(
         &self,
         workspace_id: wis_core::WorkspaceId,

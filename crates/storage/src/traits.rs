@@ -25,6 +25,21 @@ pub trait Storage: Send + Sync {
     /// contents.
     fn save_state(&self, state: &BrowserState) -> StorageResult<()>;
 
+    /// Persist the set of workspaces that each had their own OS window when the
+    /// app last exited, so the multi-window layout can be reopened on launch.
+    /// Stored separately from [`Storage::save_state`] (it is the runtime window
+    /// state, not part of [`BrowserState`]). Default no-op for non-persisting
+    /// storages.
+    fn save_windowed_workspaces(&self, _ids: &[WorkspaceId]) -> StorageResult<()> {
+        Ok(())
+    }
+
+    /// Read the workspaces to reopen in their own windows on launch (see
+    /// [`Storage::save_windowed_workspaces`]). Empty when nothing was saved.
+    fn load_windowed_workspaces(&self) -> StorageResult<Vec<WorkspaceId>> {
+        Ok(Vec::new())
+    }
+
     // -- browsing history (append-style; see [`crate::history`]) ------------
 
     /// Record a visit to `url` with `title` in `workspace_id`. Deduplicated by

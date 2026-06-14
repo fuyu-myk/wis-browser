@@ -153,6 +153,50 @@ pub async fn new_window(
     spawn_window(&app, &state, workspace_id).await
 }
 
+/// Reopen the multi-window layout saved at the previous exit: a separate window
+/// for each persisted workspace that had one, minus whatever a window already
+/// shows (the main window's own, primarily). Runs **once per process** (guarded
+/// by `session_restored`) so a chrome reload never re-spawns; the main window
+/// calls it on boot. Ephemeral/private and deleted workspaces resolve to nothing
+/// and are skipped.
+#[tauri::command]
+pub async fn restore_session_windows(app: AppHandle, state: State<'_, AppState>) -> WisResult<()> {
+    use std::sync::atomic::Ordering;
+
+    if state
+        .session_restored
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Ok(());
+    }
+
+    let saved = state
+        .storage
+        .load_windowed_workspaces()
+        .unwrap_or_default();
+
+    for id in saved {
+        if state.window_for_workspace(id).is_some() {
+            continue;
+        }
+
+        let exists = {
+            let browser = state.browser.lock().await;
+            browser.workspace(id).map(|w| !w.ephemeral).unwrap_or(false)
+        };
+        if !exists {
+            continue;
+        }
+
+        if let Err(err) = spawn_window(&app, &state, id).await {
+            log::warn!("session restore: window for {id} failed: {err}");
+        }
+    }
+
+    Ok(())
+}
+
 /// Persistent workspaces that no window is currently showing, for the New Window
 /// picker (one workspace per window, so an occupied workspace is excluded; the
 /// calling window's own workspace is occupied too). Ephemeral/private workspaces

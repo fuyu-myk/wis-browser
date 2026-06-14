@@ -121,6 +121,9 @@ pub struct AppState {
     /// overlay, keyed by a monotonic request id (`media_seq`).
     pub pending_media: std::sync::Mutex<HashMap<u64, crate::permissions::PendingMedia>>,
     pub media_seq: std::sync::atomic::AtomicU64,
+    /// Set once the main window has reopened the saved multi-window layout, so
+    /// `restore_session_windows` spawns the secondary windows exactly once per run.
+    pub session_restored: std::sync::atomic::AtomicBool,
     /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
     /// Only present with the `tor` feature.
     #[cfg(feature = "tor")]
@@ -173,6 +176,7 @@ impl AppState {
             media_permissions_session: std::sync::RwLock::new(HashMap::new()),
             pending_media: std::sync::Mutex::new(HashMap::new()),
             media_seq: std::sync::atomic::AtomicU64::new(0),
+            session_restored: std::sync::atomic::AtomicBool::new(false),
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }
@@ -191,18 +195,37 @@ impl AppState {
 
     /// Bind the window labelled `label` to `id` (the workspace it now shows).
     pub fn set_window_workspace(&self, label: &str, id: WorkspaceId) {
-        self.window_workspaces
-            .lock()
-            .expect("window_workspaces poisoned")
-            .insert(label.to_string(), id);
+        let snapshot = {
+            let mut map = self
+                .window_workspaces
+                .lock()
+                .expect("window_workspaces poisoned");
+            map.insert(label.to_string(), id);
+            map.values().copied().collect::<Vec<_>>()
+        };
+        self.persist_windowed_workspaces(&snapshot);
     }
 
     /// Forget a window's workspace binding (window closed, or a failed open).
     pub fn clear_window_workspace(&self, label: &str) {
-        self.window_workspaces
-            .lock()
-            .expect("window_workspaces poisoned")
-            .remove(label);
+        let snapshot = {
+            let mut map = self
+                .window_workspaces
+                .lock()
+                .expect("window_workspaces poisoned");
+            map.remove(label);
+            map.values().copied().collect::<Vec<_>>()
+        };
+        self.persist_windowed_workspaces(&snapshot);
+    }
+
+    /// Persist the current windowed-workspace set so the multi-window layout
+    /// survives any exit. Called on every window bind/unbind, so the stored set
+    /// is always current. Best-effort; failures only log.
+    fn persist_windowed_workspaces(&self, ids: &[WorkspaceId]) {
+        if let Err(err) = self.storage.save_windowed_workspaces(ids) {
+            log::warn!("persist windowed workspaces: {err}");
+        }
     }
 
     /// Workspace ids currently shown by some window, so the New Window picker can

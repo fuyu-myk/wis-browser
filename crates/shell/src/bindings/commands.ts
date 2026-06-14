@@ -788,6 +788,12 @@ export const commands = {
     return invoke('free_workspaces')
   },
 
+  /** Reopen the multi-window layout saved at the previous exit. Runs once per
+   *  process; the main window calls it on boot. */
+  async restoreSessionWindows(): Promise<void> {
+    return invoke('restore_session_windows')
+  },
+
   /**
    * Set the macOS Dock (application) icon. `'closed'` shows the private-mode
    * owl; `'open'` clears the override so the system restores the bundled icon.
