@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
-import { commands } from '@/bindings/commands'
 import type { BrowserState, Tab, TabId, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { HISTORY_URL, SETTINGS_URL } from '@/lib/url'
@@ -9,6 +8,7 @@ import { useBookmarksOverlay } from '@/hooks/useBookmarksOverlay'
 import { useClearDataOverlay } from '@/hooks/useClearDataOverlay'
 import { useDownloadsOverlay } from '@/hooks/useDownloadsOverlay'
 import { useCommandPaletteOverlay } from '@/hooks/useCommandPaletteOverlay'
+import { useDockIcon } from '@/hooks/useDockIcon'
 import { useWindowPickerOverlay } from '@/hooks/useWindowPickerOverlay'
 import { useNavGuardOverlay } from '@/hooks/useNavGuardOverlay'
 import { usePeekOverlay } from '@/hooks/usePeekOverlay'
@@ -67,9 +67,7 @@ export function Window({ state, settings }: WindowProps) {
   const openHistory = () => navigateOrCreate(HISTORY_URL)
 
   const isPrivate = activeWorkspace?.ephemeral ?? false
-  useEffect(() => {
-    void commands.setDockIcon(isPrivate ? 'closed' : 'open').catch(() => undefined)
-  }, [isPrivate])
+  useDockIcon(isPrivate)
 
   // Warm the favicon cache for sidebar widgets on startup (and when the set
   // changes).
