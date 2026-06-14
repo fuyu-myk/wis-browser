@@ -37,11 +37,22 @@ interface KeyActionPayload {
 interface FindResultPayload {
   tab_id: string
   query: string
-  backwards: boolean
   found: boolean
+  /** Total matches, or -1 when the count is unavailable. */
+  total: number
+  /** 1-based index of the current match, or -1 when not determined. */
+  index: number
 }
 
 type Status = 'idle' | 'searching' | 'match' | 'no_match'
+
+/** The text shown beside the input: "3 of 17", "17 matches", or the miss. */
+function matchLabel(r: FindResultPayload): string {
+  if (!r.found || r.total === 0) return 'No matches found'
+  if (r.total < 0) return '' // count unavailable (public-API fallback)
+  if (r.index > 0) return `${r.index} of ${r.total}`
+  return `${r.total} ${r.total === 1 ? 'match' : 'matches'}`
+}
 
 export function FindSurface() {
   const { data: state } = useBrowserState()
@@ -56,7 +67,10 @@ export function FindSurface() {
   activeTabIdRef.current = activeTab?.id ?? null
 
   const [query, setQuery] = useState('')
+  const queryRef = useRef('')
+  queryRef.current = query
   const [status, setStatus] = useState<Status>('idle')
+  const [matchText, setMatchText] = useState('')
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   const find = useCallback(
@@ -64,6 +78,7 @@ export function FindSurface() {
       const id = activeTabIdRef.current
       if (!id || q.length === 0) {
         setStatus('idle')
+        setMatchText('')
         return
       }
       setStatus('searching')
@@ -78,6 +93,7 @@ export function FindSurface() {
   const requestClose = useCallback(() => {
     setQuery('')
     setStatus('idle')
+    setMatchText('')
     if (activeTabIdRef.current) {
       void commands.tabFindClear(activeTabIdRef.current as Tab['id']).catch(() => undefined)
     }
@@ -141,7 +157,10 @@ export function FindSurface() {
     let cancelled = false
     void listen<FindResultPayload>(FIND_RESULT_EVENT, (e) => {
       if (e.payload.tab_id !== activeTabIdRef.current) return
+      // Ignore results for a query the user has already moved past.
+      if (e.payload.query !== queryRef.current) return
       setStatus(e.payload.found ? 'match' : 'no_match')
+      setMatchText(matchLabel(e.payload))
     }).then((fn) => {
       if (cancelled) fn()
       else unlisten = fn
@@ -173,7 +192,6 @@ export function FindSurface() {
           value={query}
           placeholder="Find in page"
           spellCheck={false}
-          autoFocus
           onChange={(e) => {
             const next = e.target.value
             setQuery(next)
@@ -195,7 +213,7 @@ export function FindSurface() {
           })}
           aria-live="polite"
         >
-          {status === 'no_match' && 'No matches found'}
+          {matchText}
         </span>
       </div>
       <button

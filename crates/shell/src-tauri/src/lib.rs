@@ -232,6 +232,9 @@ pub fn run() {
             // App handle for the camera/microphone consent message handler.
             permissions::set_app_handle(app.handle().clone());
 
+            // App handle for the find-in-page match-count delegate.
+            find::set_app_handle(app.handle().clone());
+
             // Per-tab audibility poll (tab audio icons + click-to-mute).
             audio::start_poll(app.handle().clone());
 
