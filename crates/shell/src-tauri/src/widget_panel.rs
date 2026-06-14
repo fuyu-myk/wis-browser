@@ -50,22 +50,26 @@ fn notify_panels_changed(app: &AppHandle) {
     }
 }
 
-/// Re-promote every live widget panel to the top of the window's subview
-/// stack. Tab webviews are created lazily (sleep-wake, splits, layout
+/// Re-promote `window_label`'s live widget panels to the top of that window's
+/// subview stack. Tab webviews are created lazily (sleep-wake, splits, layout
 /// changes) and each `add_child` lands on top of everything, so panel
 /// stacking must be restored whenever a tab webview is created and whenever
 /// a panel is shown (a hidden panel keeps its stale position). Callers
 /// re-promote overlays afterwards, preserving tabs < panels < overlays.
-pub fn promote_panels_to_front(app: &AppHandle) {
+///
+/// **Scoped to one window**: subview order is per `NSWindow`, and reaching into
+/// another window's (possibly still-loading) panel views off that window's flow.
+pub fn promote_panels_to_front(app: &AppHandle, window_label: &str) {
     #[cfg(target_os = "macos")]
     {
         use objc2::msg_send;
         use objc2::runtime::AnyObject;
 
+        let prefix = panel_prefix(window_label);
         let panels: Vec<_> = app
             .webviews()
             .iter()
-            .filter(|(label, _)| label.starts_with(WIDGET_PANEL_PREFIX))
+            .filter(|(label, _)| label.starts_with(&prefix))
             .map(|(_, wv)| wv.clone())
             .collect();
 
@@ -86,7 +90,7 @@ pub fn promote_panels_to_front(app: &AppHandle) {
 
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = app;
+        let _ = (app, window_label);
     }
 }
 
@@ -408,8 +412,8 @@ pub async fn open_widget_panel(
     }
 
     // Restore the stack: tabs < panels < overlays.
-    promote_panels_to_front(&app);
-    crate::overlay::promote_overlays_to_front(&app);
+    promote_panels_to_front(&app, window.label());
+    crate::overlay::promote_overlays_to_front(&app, window.label());
     notify_panels_changed(&app);
 
     // Same engine-level tracker blocking as tab webviews; best-effort.
@@ -453,8 +457,8 @@ pub async fn show_widget_panel(
     })?;
     set_media_suspended(&wv, false);
 
-    promote_panels_to_front(app);
-    crate::overlay::promote_overlays_to_front(app);
+    promote_panels_to_front(app, window.label());
+    crate::overlay::promote_overlays_to_front(app, window.label());
     set_widget_panel_bounds(window, id, x, y, width, height).await?;
 
     Ok(true)

@@ -233,8 +233,8 @@ pub async fn create_tab_webview(
 
     // Restore stacking above the freshly added tab webview:
     // tabs < widget panels < overlays.
-    crate::widget_panel::promote_panels_to_front(&app);
-    crate::overlay::promote_overlays_to_front(&app);
+    crate::widget_panel::promote_panels_to_front(&app, &window_label);
+    crate::overlay::promote_overlays_to_front(&app, &window_label);
 
     // Stamp the native WKWebView so the pane-focus mouse monitor can identify
     // which tab a click landed in (see `pane_focus`).

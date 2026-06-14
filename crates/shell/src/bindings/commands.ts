@@ -774,6 +774,21 @@ export const commands = {
   },
 
   /**
+   * Open a new OS window showing an existing (free) workspace. One workspace
+   * per window; the chrome bundle resolves its own workspace from the window
+   * label. Returns the new window's label.
+   */
+  async newWindow(workspaceId: WorkspaceId): Promise<string> {
+    return invoke('new_window', { workspaceId })
+  },
+
+  /** Persistent workspaces not currently shown by any window, for the New
+   *  Window picker (one workspace per window). */
+  async freeWorkspaces(): Promise<Workspace[]> {
+    return invoke('free_workspaces')
+  },
+
+  /**
    * Set the macOS Dock (application) icon. `'closed'` shows the private-mode
    * owl; `'open'` clears the override so the system restores the bundled icon.
    */

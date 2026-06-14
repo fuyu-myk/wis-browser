@@ -8244,6 +8244,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "uuid",
  "wis-core",
  "wis-network",
  "wis-secrets",

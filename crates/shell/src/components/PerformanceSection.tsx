@@ -226,6 +226,8 @@ function LiveWidgetPanelsRow({ widgets, limitEnabled, limit }: LiveWidgetPanelsR
   const panels = useQuery({
     queryKey: WIDGET_PANELS_KEY,
     queryFn: () => commands.listWidgetPanels(),
+    staleTime: 0,
+    refetchOnMount: 'always',
   })
 
   useEffect(() => {

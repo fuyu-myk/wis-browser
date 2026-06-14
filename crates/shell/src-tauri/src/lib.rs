@@ -32,6 +32,7 @@ mod video_popout;
 mod wallpapers;
 mod webview_prefs;
 mod widget_panel;
+mod windows;
 
 use std::sync::Arc;
 
@@ -452,6 +453,8 @@ pub fn run() {
             audio::tab_audio_state,
             widget_panel::set_widget_panel_muted,
             widget_panel::widget_panel_muted,
+            windows::new_window,
+            windows::free_workspaces,
             navguard::nav_guard_proceed,
             permissions::resolve_media_permission,
             bookmarks::list_bookmark_folders,

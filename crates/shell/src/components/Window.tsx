@@ -9,6 +9,7 @@ import { useBookmarksOverlay } from '@/hooks/useBookmarksOverlay'
 import { useClearDataOverlay } from '@/hooks/useClearDataOverlay'
 import { useDownloadsOverlay } from '@/hooks/useDownloadsOverlay'
 import { useCommandPaletteOverlay } from '@/hooks/useCommandPaletteOverlay'
+import { useWindowPickerOverlay } from '@/hooks/useWindowPickerOverlay'
 import { useNavGuardOverlay } from '@/hooks/useNavGuardOverlay'
 import { usePeekOverlay } from '@/hooks/usePeekOverlay'
 import { useKeyActions } from '@/hooks/useKeyActions'
@@ -38,6 +39,7 @@ export function Window({ state, settings }: WindowProps) {
   )
   useKeyActions()
   useCommandPaletteOverlay()
+  useWindowPickerOverlay()
   useClearDataOverlay()
   usePeekOverlay()
   useNavGuardOverlay()

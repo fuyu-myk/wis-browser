@@ -329,11 +329,13 @@ export function useTabWebviews({
     let cancelled = false
     void Webview.getAll().then(async (all) => {
       if (cancelled) return
+      const myWindow = windowRef.current?.label
       const liveLabels = new Set(
         Array.from(webviewsRef.current.keys()).map((id) => labelFor(id)),
       )
       for (const wv of all) {
         if (!wv.label.startsWith(LABEL_PREFIX)) continue
+        if (wv.window.label !== myWindow) continue
         if (liveLabels.has(wv.label)) continue
         await wv.close().catch(() => undefined)
       }

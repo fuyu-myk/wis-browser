@@ -17,10 +17,12 @@ import { useEffect, useRef } from 'react'
 import { listen } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
+import { isWindowFocused } from '@/lib/windowFocus'
+import { nextAccent } from '@/lib/accents'
 import { closeTabAnimated } from '@/lib/tabClose'
 import { DOWNLOADS_OPEN_EVENT } from '@/lib/downloads'
 import { BOOKMARK_PAGE_EVENT, BOOKMARKS_OPEN_EVENT } from '@/lib/bookmarkMenu'
-import type { AccentColor, BrowserState, KeyAction, PaneNode, Tab, TabId, Workspace, WorkspaceId } from '@/bindings/types'
+import type { BrowserState, KeyAction, PaneNode, Tab, TabId, Workspace, WorkspaceId } from '@/bindings/types'
 import { HISTORY_URL, NEW_TAB_URL, SETTINGS_URL, isChromeUrl } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { usePendingRename } from '@/hooks/usePendingRename'
@@ -32,17 +34,8 @@ const KEYACTION_EVENT = 'wis-keyaction'
  *  lives in chrome HTML. */
 export const FOCUS_URLBAR_EVENT = 'wis-focus-urlbar'
 export const COMMAND_PALETTE_OPEN_EVENT = 'wis-command-palette-open'
-
-const ACCENT_ROTATION: AccentColor[] = [
-  'primary',
-  'mint',
-  'rose',
-  'sun',
-  'lila',
-  'azur',
-  'gray',
-  'ink',
-]
+/** DOM event that opens the New Window free-workspace picker overlay. */
+export const WINDOW_PICKER_OPEN_EVENT = 'wis-window-picker-open'
 
 interface KeyActionEvent {
   action: KeyAction
@@ -131,6 +124,7 @@ function ensureKeyActionListener(): void {
   if (keyactionGlobals.__wisKeyactionListening) return
   keyactionGlobals.__wisKeyactionListening = true
   void listen<KeyActionEvent>(KEYACTION_EVENT, (e) => {
+    if (!isWindowFocused()) return
     keyactionGlobals.__wisKeyactionDispatch?.(e.payload.action)
   })
 }
@@ -269,7 +263,8 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       window.dispatchEvent(new CustomEvent(COMMAND_PALETTE_OPEN_EVENT))
       return
     case 'new_private_window': {
-      // TODO: separate OS window
+      // A new private window is always a fresh ephemeral workspace in its own
+      // OS window.
       if (!ctx.state) return
       if (ctx.newWorkspaceInFlight.current) return
       ctx.newWorkspaceInFlight.current = true
@@ -277,16 +272,16 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
         const accent = nextAccent(ctx.state.workspaces.map((w) => w.accent))
         const ws = await commands.createPrivateWorkspace('Private', accent)
         await commands.createTab(ws.id, NEW_TAB_URL)
-        await commands.setActiveWorkspace(ws.id)
-        ctx.invalidate()
+        await commands.newWindow(ws.id)
       } finally {
         ctx.newWorkspaceInFlight.current = false
       }
       return
     }
     case 'new_window':
-      // eslint-disable-next-line no-console
-      console.warn('Wis: new OS window coming soon')
+      // Open the free-workspace picker; selecting one (or "new empty
+      // workspace") spawns a new OS window bound to it.
+      window.dispatchEvent(new CustomEvent(WINDOW_PICKER_OPEN_EVENT))
       return
     case 'split_pane_horizontal':
     case 'split_pane_vertical': {
@@ -514,11 +509,4 @@ function numberedTabsFor(state: BrowserState, workspace: Workspace): Tab[] {
   const foldered = folders.flatMap((f) => candidates.filter((t) => t.folder_id === f.id))
   const loose = candidates.filter((t) => t.folder_id == null)
   return [...foldered, ...loose]
-}
-
-function nextAccent(used: AccentColor[]): AccentColor {
-  for (const accent of ACCENT_ROTATION) {
-    if (!used.includes(accent)) return accent
-  }
-  return ACCENT_ROTATION[used.length % ACCENT_ROTATION.length]
 }

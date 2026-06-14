@@ -4,6 +4,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { commands } from '@/bindings/commands'
 import type { BrowserState, KeyAction, PaneBranch, PaneNode, SplitDir, Tab, TabId } from '@/bindings/types'
 import { isChromeUrl, SETTINGS_URL } from '@/lib/url'
+import { isWindowFocused } from '@/lib/windowFocus'
 import { useOverlay } from '@/hooks/useOverlay'
 import { usePermissionOverlay } from '@/hooks/usePermissionOverlay'
 import { useTabAudio } from '@/hooks/useTabAudio'
@@ -260,6 +261,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     let cancelled = false
     let unlisten: UnlistenFn | null = null
     void listen<{ action: KeyAction }>(KEYACTION_EVENT, (e) => {
+      if (!isWindowFocused()) return
       if (e.payload.action !== 'pop_out_video') return
       const id = focusableTabRef.current
       if (id) popout.requestPopOut(id)
@@ -365,6 +367,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     }
 
     void listen<{ action: KeyAction }>(KEYACTION_EVENT, (e) => {
+      if (!isWindowFocused()) return
       if (e.payload.action !== 'find_in_page') return
       if (isLaunchpadRef.current) {
         window.dispatchEvent(new CustomEvent(FOCUS_LAUNCHPAD_SEARCH_EVENT))

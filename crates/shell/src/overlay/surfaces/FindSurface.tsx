@@ -20,6 +20,7 @@ const SINK_MS = 220
 import { commands } from '@/bindings/commands'
 import type { KeyAction, Tab } from '@/bindings/types'
 import { cx } from '@/lib/cx'
+import { isWindowFocused } from '@/lib/windowFocus'
 import { SearchIcon, XIcon } from '@/lib/icons'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
@@ -144,6 +145,7 @@ export function FindSurface() {
     let unlisten: UnlistenFn | null = null
     let cancelled = false
     void listen<KeyActionPayload>(KEYACTION_EVENT, (e) => {
+      if (!isWindowFocused()) return
       if (e.payload.action === 'find_next') void find(query, false)
       else if (e.payload.action === 'find_previous') void find(query, true)
     }).then((fn) => {

@@ -905,6 +905,48 @@ body.is-overlay-surface:not(.glass-on) {
   text-overflow: ellipsis;
 }
 
+/* New Window free-workspace picker (reuses the palette panel + rows). */
+.kb-winpicker { width: 420px; }
+/* The panel holds keyboard focus (tabIndex) for arrow/Enter nav; the row
+   highlight is the affordance. */
+.kb-winpicker:focus,
+.kb-winpicker:focus-visible { outline: none; }
+/* Theme-accent border. */
+.kb-palette.kb-winpicker,
+.kb-palette.kb-winpicker.glass-on,
+[data-mode="dark"] .kb-palette.kb-winpicker,
+[data-mode="dark"] .kb-palette.kb-winpicker.glass-on {
+  border-color: var(--primary-500);
+}
+.kb-winpicker-title {
+  padding: 12px 18px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+[data-mode="dark"] .kb-winpicker-title { border-bottom-color: rgba(255, 255, 255, 0.08); }
+.kb-winpicker-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.kb-winpicker-dot-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px dashed var(--text-tertiary);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.kb-winpicker-new { color: var(--text-secondary); }
+
 /* Matched-character highlighting from the subsequence fuzzy scorer. */
 .kb-palette-mark {
   background: transparent;

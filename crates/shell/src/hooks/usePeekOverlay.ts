@@ -11,6 +11,7 @@ import { useEffect, useRef } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { useOverlay } from '@/hooks/useOverlay'
+import { isWindowFocused } from '@/lib/windowFocus'
 
 const PEEK_OPEN_EVENT = 'wis-peek-open'
 const PEEK_SHOW_EVENT = 'wis-peek-show'
@@ -65,6 +66,7 @@ export function usePeekOverlay(): void {
     }
 
     void listen<PeekPayload>(PEEK_OPEN_EVENT, (e) => {
+      if (!isWindowFocused()) return
       void showFor(e.payload)
     }).then((fn) => {
       if (cancelled) fn()

@@ -20,6 +20,7 @@ import { UrlbarSuggestSurface } from '@/overlay/surfaces/UrlbarSuggestSurface'
 import { VaultMenuSurface } from '@/overlay/surfaces/VaultMenuSurface'
 import { WidgetHeaderSurface } from '@/overlay/surfaces/WidgetHeaderSurface'
 import { WidgetResizeSurface } from '@/overlay/surfaces/WidgetResizeSurface'
+import { WindowPickerSurface } from '@/overlay/surfaces/WindowPickerSurface'
 
 interface OverlayRootProps {
   surface: string
@@ -41,6 +42,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'bmpicker') return <BookmarkPickerSurface />
   if (surface === 'widgetresize') return <WidgetResizeSurface />
   if (surface === 'widgetheader') return <WidgetHeaderSurface />
+  if (surface === 'windowpicker') return <WindowPickerSurface />
   // eslint-disable-next-line no-console
   console.warn(`Unknown overlay surface: ${surface}`)
   return null

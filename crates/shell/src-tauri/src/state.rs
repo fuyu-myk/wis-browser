@@ -197,6 +197,25 @@ impl AppState {
             .insert(label.to_string(), id);
     }
 
+    /// Forget a window's workspace binding (window closed, or a failed open).
+    pub fn clear_window_workspace(&self, label: &str) {
+        self.window_workspaces
+            .lock()
+            .expect("window_workspaces poisoned")
+            .remove(label);
+    }
+
+    /// Workspace ids currently shown by some window, so the New Window picker can
+    /// offer only the **free** ones (one workspace per window).
+    pub fn occupied_workspaces(&self) -> std::collections::HashSet<WorkspaceId> {
+        self.window_workspaces
+            .lock()
+            .expect("window_workspaces poisoned")
+            .values()
+            .copied()
+            .collect()
+    }
+
     /// Replace the persisted camera/microphone consent read-cache (after a
     /// settings change: a remembered prompt decision or a settings-page edit).
     pub fn refresh_media_permissions_cache(&self, perms: HashMap<String, bool>) {

@@ -35,18 +35,19 @@ fn overlay_label(window_label: &str, name: &str) -> String {
     format!("{OVERLAY_PREFIX}{window_label}-{name}")
 }
 
-/// Re-promote every existing overlay webview to the top of its window's
-/// subview stack.
-pub fn promote_overlays_to_front(app: &AppHandle) {
+/// Re-promote `window_label`'s overlay webviews to the top of that window's
+/// subview stack. Scoped to one window.
+pub fn promote_overlays_to_front(app: &AppHandle, window_label: &str) {
     #[cfg(target_os = "macos")]
     {
         use objc2::msg_send;
         use objc2::runtime::AnyObject;
 
+        let prefix = format!("{OVERLAY_PREFIX}{window_label}-");
         let overlays: Vec<_> = app
             .webviews()
             .iter()
-            .filter(|(label, _)| label.starts_with(OVERLAY_PREFIX))
+            .filter(|(label, _)| label.starts_with(&prefix))
             .map(|(_, wv)| wv.clone())
             .collect();
 
@@ -66,7 +67,7 @@ pub fn promote_overlays_to_front(app: &AppHandle) {
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = app;
+        let _ = (app, window_label);
     }
 }
 
