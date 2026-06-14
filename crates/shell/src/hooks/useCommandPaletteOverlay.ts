@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
+import { commands } from '@/bindings/commands'
 import { useOverlay } from '@/hooks/useOverlay'
 import { COMMAND_PALETTE_OPEN_EVENT } from '@/hooks/useKeyActions'
 
@@ -51,6 +52,10 @@ export function useCommandPaletteOverlay(): void {
     if (openRef.current) void close()
     else void open()
   }, [open, close])
+
+  useEffect(() => {
+    void commands.ensureOverlay('palette').catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     const handler = () => toggle()

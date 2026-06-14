@@ -435,7 +435,7 @@ body.is-overlay-surface:not(.glass-on) {
 /* ─── Find-in-page overlay (bottom-centred glass pill) ─────────── */
 .kb-findbar-wrap {
   position: absolute;
-  bottom: 14px;
+  top: 28px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 50;
@@ -6686,16 +6686,17 @@ body.motion-off .kb-window *::after {
 .kb-palette-backdrop.is-closing { opacity: 0; transition: opacity 220ms var(--ease-exit); }
 .kb-palette-backdrop { border-radius: 12px; overflow: hidden; }
 .kb-findbar-wrap {
-  transform: translateX(-50%) translateY(160%);
-  opacity: 0;
+  transform: translateX(-50%) translateY(10px) scale(0.97);
   pointer-events: none;
-  transition: transform var(--dur-med) var(--ease-standard),
-    opacity var(--dur-med) var(--ease-standard);
+  transition: transform var(--dur-med) var(--ease-standard);
 }
 .kb-findbar-wrap.is-open {
-  transform: translateX(-50%) translateY(0);
-  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
   pointer-events: auto;
+}
+.kb-findbar-wrap.is-closing {
+  transform: translateX(-50%) translateY(64px) scale(0.97);
+  pointer-events: none;
 }
 
 /* Dropdown/popover standard enter for the cards that lacked one. */

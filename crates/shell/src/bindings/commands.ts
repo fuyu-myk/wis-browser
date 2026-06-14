@@ -850,6 +850,18 @@ export const commands = {
     return invoke('set_overlay_bounds', { name, x, y, width, height })
   },
 
+  /** Position/resize the overlay while keeping it hidden, so a later show
+   *  does not resize the webview mid-animation. */
+  async sizeOverlay(
+    name: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): Promise<void> {
+    return invoke('size_overlay', { name, x, y, width, height })
+  },
+
   /** Hide the overlay (kept around for the next show). */
   async hideOverlay(name: string): Promise<void> {
     return invoke('hide_overlay', { name })

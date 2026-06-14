@@ -187,6 +187,38 @@ pub async fn set_overlay_bounds(
     Ok(())
 }
 
+/// Position + size an overlay **without showing it**. Lets the chrome
+/// pre-size a hidden overlay to its eventual bounds so the first real show
+/// does not resize the webview (a resize concurrent with an entrance
+/// animation makes the content render at a transient layout for a frame).
+#[tauri::command]
+pub async fn size_overlay(
+    app: AppHandle,
+    name: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> WisResult<()> {
+    let label = overlay_label(&name);
+    let Some(wv) = app.webviews().get(&label).cloned() else {
+        return Err(WisError::InvalidInput {
+            message: format!("overlay {label} not found; call ensure_overlay first"),
+        });
+    };
+
+    wv.set_position(tauri::LogicalPosition::new(x, y))
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("set_position for {label}: {err}"),
+        })?;
+    wv.set_size(tauri::LogicalSize::new(width.max(1.0), height.max(1.0)))
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("set_size for {label}: {err}"),
+        })?;
+
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn hide_overlay(app: AppHandle, name: String) -> WisResult<()> {
     let label = overlay_label(&name);

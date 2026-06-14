@@ -31,6 +31,27 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
   const findOverlay = useOverlay('find')
   const findOpenRef = useRef(false)
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        await commands.ensureOverlay('find')
+        const el = hostRef.current
+        const r = el?.getBoundingClientRect()
+        if (r && r.width > 0) {
+          await commands.sizeOverlay(
+            'find',
+            r.x,
+            r.y + r.height - FIND_STRIP_HEIGHT_PX,
+            r.width,
+            FIND_STRIP_HEIGHT_PX,
+          )
+        }
+      } catch {
+        /* main window not ready; the lazy show path still works */
+      }
+    })()
+  }, [])
+
   const activeWorkspace = state.workspaces.find(
     (w) => w.id === state.active_workspace_id,
   )

@@ -87,8 +87,10 @@ export function FindSurface() {
     [],
   )
 
-  // Open/visible state drives a CSS transition.
+  // Open/closing state drives the CSS transition: open lifts the bar in,
+  // closing slides it down and out before the overlay is hidden.
   const [open, setOpen] = useState(false)
+  const [closing, setClosing] = useState(false)
 
   const requestClose = useCallback(() => {
     setQuery('')
@@ -97,11 +99,13 @@ export function FindSurface() {
     if (activeTabIdRef.current) {
       void commands.tabFindClear(activeTabIdRef.current as Tab['id']).catch(() => undefined)
     }
-    // Sink to the bottom edge, then tell the chrome so it stops tracking the
-    // overlay as visible (and skips bounds resync on window resize). Tauri
-    // events propagate to every webview, including this one's listeners.
-    setOpen(false)
+    // Slide the bar out, then tell the chrome so it stops tracking the overlay
+    // as visible (and skips bounds resync on window resize). Tauri events
+    // propagate to every webview, including this one's listeners.
+    setClosing(true)
     window.setTimeout(() => {
+      setOpen(false)
+      setClosing(false)
       void emit(FIND_CLOSE_REQUEST_EVENT)
       void commands.hideOverlay('find').catch(() => undefined)
     }, SINK_MS)
@@ -113,6 +117,7 @@ export function FindSurface() {
     let cancelled = false
     void listen<void>(FIND_FOCUS_EVENT, () => {
       setOpen(true)
+      setClosing(false)
       void commands.focusWebview('overlay-find').catch(() => undefined)
       const focusInput = () => {
         const el = inputRef.current
@@ -175,7 +180,11 @@ export function FindSurface() {
 
   return (
     <div
-      className={cx('kb-findbar-wrap', { 'glass-on': glassOn, 'is-open': open })}
+      className={cx('kb-findbar-wrap', {
+        'glass-on': glassOn,
+        'is-open': open && !closing,
+        'is-closing': closing,
+      })}
       role="search"
     >
       <div

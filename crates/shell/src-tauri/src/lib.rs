@@ -469,6 +469,7 @@ pub fn run() {
             overlay::focus_webview,
             overlay::ensure_overlay,
             overlay::set_overlay_bounds,
+            overlay::size_overlay,
             overlay::hide_overlay,
             favicons::get_favicon_data_url,
             favicons::favicon_origin_hash,
