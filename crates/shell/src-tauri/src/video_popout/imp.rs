@@ -250,14 +250,13 @@ fn on_entered(app: &AppHandle, label: &str, aspect: f64) {
     let Some(webview) = app.webviews().get(label).cloned() else {
         return;
     };
-    let Some(main) = app.get_window("main") else {
+    let origin = webview.window();
+    let origin_window = origin.label().to_string();
+    let Some(origin_frame) = frame_of_window(&origin) else {
         return;
     };
-    let Some(main_frame) = frame_of_window(&main) else {
-        return;
-    };
-    let work = work_area_near(&main).unwrap_or(main_frame);
-    let frame = initial_frame(aspect, main_frame, work, pending.remembered_pos);
+    let work = work_area_near(&origin).unwrap_or(origin_frame);
+    let frame = initial_frame(aspect, origin_frame, work, pending.remembered_pos);
 
     // A stale window can exist when a popout is re-opened before the
     // previous teardown's async close lands.
@@ -307,6 +306,7 @@ fn on_entered(app: &AppHandle, label: &str, aspect: f64) {
         guard.active = Some(ActivePopout {
             label: label.to_string(),
             aspect,
+            origin_window,
         });
     }
 
@@ -422,14 +422,15 @@ fn on_aspect_changed(app: &AppHandle, label: &str, aspect: f64) {
 /// chrome-side bookkeeping can never wedge.
 pub fn close_and_notify(app: &AppHandle, label: &str, eval_exit: bool) {
     let state = app.state::<AppState>();
-    let was_active = {
+    let (was_active, origin_window) = {
         let mut guard = state.video_popout.lock().expect("video_popout poisoned");
         match guard.active.as_ref() {
             Some(a) if a.label == label => {
+                let origin = a.origin_window.clone();
                 guard.active = None;
-                true
+                (true, Some(origin))
             }
-            _ => false,
+            _ => (false, None),
         }
     };
 
@@ -447,8 +448,14 @@ pub fn close_and_notify(app: &AppHandle, label: &str, eval_exit: bool) {
             }
             set_fills_window(&webview, false);
             let _ = webview.hide();
-            if let Some(main) = app.get_window("main") {
-                if let Err(err) = webview.reparent(&main) {
+            // Reparent back into the tab's origin window; fall back to main if
+            // that window has since closed.
+            let home = origin_window
+                .as_deref()
+                .and_then(|label| app.get_window(label))
+                .or_else(|| app.get_window("main"));
+            if let Some(home) = home {
+                if let Err(err) = webview.reparent(&home) {
                     log::warn!("video popout: reparent back failed: {err}");
                 }
             }

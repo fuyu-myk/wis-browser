@@ -85,9 +85,16 @@ pub fn promote_panels_to_front(app: &AppHandle) {
     }
 }
 
+/// Per-window label prefix: `widget-panel-<window>-`. Scoping by window keeps
+/// each OS window's panels distinct (one workspace per window).
+fn panel_prefix(window_label: &str) -> String {
+    format!("{WIDGET_PANEL_PREFIX}{window_label}-")
+}
+
 /// Validate the frontend-supplied widget id before it becomes part of a
-/// webview label (UUIDs in practice; reject anything else).
-fn panel_label(id: &str) -> WisResult<String> {
+/// webview label (UUIDs in practice; reject anything else), then build the
+/// per-window panel label.
+fn panel_label(window_label: &str, id: &str) -> WisResult<String> {
     let valid = !id.is_empty()
         && id.len() <= 64
         && id
@@ -99,7 +106,7 @@ fn panel_label(id: &str) -> WisResult<String> {
         });
     }
 
-    Ok(format!("{WIDGET_PANEL_PREFIX}{id}"))
+    Ok(format!("{}{id}", panel_prefix(window_label)))
 }
 
 /// Open widget `id`'s panel at `url` with the given rect. If that panel is
@@ -108,6 +115,7 @@ fn panel_label(id: &str) -> WisResult<String> {
 #[allow(clippy::too_many_arguments)]
 pub async fn open_widget_panel(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     id: String,
     url: String,
@@ -117,7 +125,7 @@ pub async fn open_widget_panel(
     height: f64,
     dark: bool,
 ) -> WisResult<()> {
-    let label = panel_label(&id)?;
+    let label = panel_label(window.label(), &id)?;
     let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err(WisError::InvalidInput {
@@ -127,14 +135,18 @@ pub async fn open_widget_panel(
 
     // Already live: just reveal it (state kept; no reload).
     if app.webviews().contains_key(&label) {
-        let shown = show_widget_panel(app, id, x, y, width, height).await?;
+        let shown = show_widget_panel(window.clone(), id, x, y, width, height).await?;
         debug_assert!(shown);
         return Ok(());
     }
 
     let (workspace_id, ephemeral, privacy_mode, user_agent, fraud_warning, media_extensions) = {
         let browser = state.browser.lock().await;
-        let ws_id = browser.active_workspace_id;
+        // One workspace per window: the panel belongs to the calling window's
+        // workspace (its data store, proxy, privacy mode).
+        let ws_id = state
+            .window_workspace(window.label())
+            .unwrap_or(browser.active_workspace_id);
         let (ephemeral, privacy_mode) = browser
             .workspace(ws_id)
             .map(|w| (w.ephemeral, w.privacy_mode))
@@ -163,12 +175,6 @@ pub async fn open_widget_panel(
     let proxy_url = format!("http://127.0.0.1:{proxy_port}")
         .parse::<Url>()
         .expect("loopback proxy URL is valid");
-
-    let window = app
-        .get_window("main")
-        .ok_or_else(|| WisError::InvalidInput {
-            message: "main window missing".into(),
-        })?;
 
     let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed))
         .focused(true)
@@ -318,14 +324,15 @@ pub async fn open_widget_panel(
 /// should open it).
 #[tauri::command]
 pub async fn show_widget_panel(
-    app: AppHandle,
+    window: tauri::Window,
     id: String,
     x: f64,
     y: f64,
     width: f64,
     height: f64,
 ) -> WisResult<bool> {
-    let label = panel_label(&id)?;
+    let label = panel_label(window.label(), &id)?;
+    let app = window.app_handle();
     let Some(wv) = app.webviews().get(&label).cloned() else {
         return Ok(false);
     };
@@ -334,9 +341,9 @@ pub async fn show_widget_panel(
     })?;
     set_media_suspended(&wv, false);
 
-    promote_panels_to_front(&app);
-    crate::overlay::promote_overlays_to_front(&app);
-    set_widget_panel_bounds(app, id, x, y, width, height).await?;
+    promote_panels_to_front(app);
+    crate::overlay::promote_overlays_to_front(app);
+    set_widget_panel_bounds(window, id, x, y, width, height).await?;
 
     Ok(true)
 }
@@ -344,15 +351,19 @@ pub async fn show_widget_panel(
 /// Navigate widget `id`'s live panel to a new URL (e.g. re-applying a
 /// theme-dependent query parameter). No-op when the panel isn't live.
 #[tauri::command]
-pub async fn navigate_widget_panel(app: AppHandle, id: String, url: String) -> WisResult<()> {
-    let label = panel_label(&id)?;
+pub async fn navigate_widget_panel(
+    window: tauri::Window,
+    id: String,
+    url: String,
+) -> WisResult<()> {
+    let label = panel_label(window.label(), &id)?;
     let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err(WisError::InvalidInput {
             message: format!("widget panel refuses non-web URL: {}", parsed.scheme()),
         });
     }
-    let Some(wv) = app.webviews().get(&label).cloned() else {
+    let Some(wv) = window.app_handle().webviews().get(&label).cloned() else {
         return Ok(());
     };
     wv.navigate(parsed).map_err(|err| WisError::InvalidInput {
@@ -367,9 +378,9 @@ pub async fn navigate_widget_panel(app: AppHandle, id: String, url: String) -> W
 /// never execute an injected `location.reload()`. No-op when the panel isn't
 /// live.
 #[tauri::command]
-pub async fn reload_widget_panel(app: AppHandle, id: String) -> WisResult<()> {
-    let label = panel_label(&id)?;
-    let Some(wv) = app.webviews().get(&label).cloned() else {
+pub async fn reload_widget_panel(window: tauri::Window, id: String) -> WisResult<()> {
+    let label = panel_label(window.label(), &id)?;
+    let Some(wv) = window.app_handle().webviews().get(&label).cloned() else {
         return Ok(());
     };
 
@@ -402,9 +413,9 @@ pub async fn reload_widget_panel(app: AppHandle, id: String) -> WisResult<()> {
 /// Hide widget `id`'s panel, keeping the page alive for an instant re-show.
 /// No-op when it isn't live.
 #[tauri::command]
-pub async fn hide_widget_panel(app: AppHandle, id: String) -> WisResult<()> {
-    let label = panel_label(&id)?;
-    if let Some(wv) = app.webviews().get(&label).cloned() {
+pub async fn hide_widget_panel(window: tauri::Window, id: String) -> WisResult<()> {
+    let label = panel_label(window.label(), &id)?;
+    if let Some(wv) = window.app_handle().webviews().get(&label).cloned() {
         wv.hide().map_err(|err| WisError::InvalidInput {
             message: format!("widget panel hide: {err}"),
         })?;
@@ -455,15 +466,15 @@ fn set_media_suspended<R: tauri::Runtime>(wv: &tauri::webview::Webview<R>, suspe
 /// Reposition/resize widget `id`'s panel. No-op when it isn't live.
 #[tauri::command]
 pub async fn set_widget_panel_bounds(
-    app: AppHandle,
+    window: tauri::Window,
     id: String,
     x: f64,
     y: f64,
     width: f64,
     height: f64,
 ) -> WisResult<()> {
-    let label = panel_label(&id)?;
-    let Some(wv) = app.webviews().get(&label).cloned() else {
+    let label = panel_label(window.label(), &id)?;
+    let Some(wv) = window.app_handle().webviews().get(&label).cloned() else {
         return Ok(());
     };
 
@@ -481,25 +492,29 @@ pub async fn set_widget_panel_bounds(
 
 /// Destroy widget `id`'s panel webview. No-op when it isn't live.
 #[tauri::command]
-pub async fn close_widget_panel(app: AppHandle, id: String) -> WisResult<()> {
-    let label = panel_label(&id)?;
+pub async fn close_widget_panel(window: tauri::Window, id: String) -> WisResult<()> {
+    let label = panel_label(window.label(), &id)?;
+    let app = window.app_handle();
     if let Some(wv) = app.webviews().get(&label).cloned() {
         wv.close().map_err(|err| WisError::InvalidInput {
             message: format!("widget panel close: {err}"),
         })?;
-        notify_panels_changed(&app);
+        notify_panels_changed(app);
     }
 
     Ok(())
 }
 
-/// Destroy every live widget panel (workspace switch, dock unmount).
+/// Destroy every live widget panel in the calling window (workspace switch,
+/// dock unmount). Scoped to the window so it never reaps another window's panels.
 #[tauri::command]
-pub async fn close_all_widget_panels(app: AppHandle) -> WisResult<()> {
+pub async fn close_all_widget_panels(window: tauri::Window) -> WisResult<()> {
+    let prefix = panel_prefix(window.label());
+    let app = window.app_handle();
     let panels: Vec<_> = app
         .webviews()
         .iter()
-        .filter(|(label, _)| label.starts_with(WIDGET_PANEL_PREFIX))
+        .filter(|(label, _)| label.starts_with(&prefix))
         .map(|(_, wv)| wv.clone())
         .collect();
     let any = !panels.is_empty();
@@ -509,7 +524,7 @@ pub async fn close_all_widget_panels(app: AppHandle) -> WisResult<()> {
         }
     }
     if any {
-        notify_panels_changed(&app);
+        notify_panels_changed(app);
     }
 
     Ok(())
@@ -519,12 +534,12 @@ pub async fn close_all_widget_panels(app: AppHandle) -> WisResult<()> {
 /// silent too). Session-scoped: re-applied when a reclaimed panel reopens.
 #[tauri::command]
 pub async fn set_widget_panel_muted(
-    app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     id: String,
     muted: bool,
 ) -> WisResult<()> {
-    let label = panel_label(&id)?;
+    let label = panel_label(window.label(), &id)?;
     {
         let mut set = state.muted_widgets.lock().expect("muted_widgets poisoned");
         if muted {
@@ -533,7 +548,7 @@ pub async fn set_widget_panel_muted(
             set.remove(&id);
         }
     }
-    if let Some(wv) = app.webviews().get(&label).cloned() {
+    if let Some(wv) = window.app_handle().webviews().get(&label).cloned() {
         crate::audio::apply_page_muted(&wv, muted);
     }
 
@@ -553,10 +568,12 @@ pub async fn widget_panel_muted(state: State<'_, AppState>, id: String) -> WisRe
 /// Widget ids of the currently live panel webviews (visible or hidden), for
 /// the settings Performance readout.
 #[tauri::command]
-pub async fn list_widget_panels(app: AppHandle) -> WisResult<Vec<String>> {
-    Ok(app
+pub async fn list_widget_panels(window: tauri::Window) -> WisResult<Vec<String>> {
+    let prefix = panel_prefix(window.label());
+    Ok(window
+        .app_handle()
         .webviews()
         .keys()
-        .filter_map(|label| label.strip_prefix(WIDGET_PANEL_PREFIX).map(str::to_string))
+        .filter_map(|label| label.strip_prefix(&prefix).map(str::to_string))
         .collect())
 }

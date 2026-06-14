@@ -28,8 +28,11 @@ use wis_core::{WisError, WisResult};
 
 const OVERLAY_PREFIX: &str = "overlay-";
 
-fn overlay_label(name: &str) -> String {
-    format!("{OVERLAY_PREFIX}{name}")
+/// Overlay webview label: `overlay-<window>-<name>`. The window prefix makes
+/// overlays **per-window** (each OS window gets its own find bar, palette, ...);
+/// the surface is read from the URL query (`index.html?surface=<name>`).
+fn overlay_label(window_label: &str, name: &str) -> String {
+    format!("{OVERLAY_PREFIX}{window_label}-{name}")
 }
 
 /// Re-promote every existing overlay webview to the top of its window's
@@ -65,6 +68,42 @@ pub fn promote_overlays_to_front(app: &AppHandle) {
     {
         let _ = app;
     }
+}
+
+/// Make the **calling** webview its window's first responder. Window-agnostic:
+/// a chrome or overlay webview focuses itself without naming a label, so it
+/// works on any OS window.
+#[tauri::command]
+pub async fn focus_self(webview: tauri::Webview) -> WisResult<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::msg_send;
+        use objc2::runtime::{AnyObject, Bool};
+
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        webview
+            .with_webview(move |w| unsafe {
+                let view: *mut AnyObject = w.inner() as *mut AnyObject;
+                if !view.is_null() {
+                    let window: *mut AnyObject = msg_send![view, window];
+                    if !window.is_null() {
+                        let _: Bool = msg_send![window, makeFirstResponder: view];
+                    }
+                }
+                let _ = tx.send(());
+            })
+            .map_err(|err| WisError::InvalidInput {
+                message: format!("with_webview failed: {err}"),
+            })?;
+        let _ = rx.recv_timeout(std::time::Duration::from_millis(500));
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = webview;
+    }
+
+    Ok(())
 }
 
 /// Promote the named webview to its window's first responder.
@@ -122,17 +161,12 @@ pub async fn focus_webview(app: AppHandle, label: String) -> WisResult<()> {
 /// Lazily create the overlay child webview for `name` if absent.
 /// Idempotent: calling again on an existing overlay is a no-op.
 #[tauri::command]
-pub async fn ensure_overlay(app: AppHandle, name: String) -> WisResult<()> {
-    let label = overlay_label(&name);
+pub async fn ensure_overlay(window: tauri::Window, name: String) -> WisResult<()> {
+    let app = window.app_handle();
+    let label = overlay_label(window.label(), &name);
     if app.webviews().contains_key(&label) {
         return Ok(());
     }
-
-    let window = app
-        .get_window("main")
-        .ok_or_else(|| WisError::InvalidInput {
-            message: "main window missing".into(),
-        })?;
 
     let url = WebviewUrl::App(format!("index.html?surface={name}").into());
     let builder = WebviewBuilder::new(&label, url)
@@ -160,15 +194,15 @@ pub async fn ensure_overlay(app: AppHandle, name: String) -> WisResult<()> {
 
 #[tauri::command]
 pub async fn set_overlay_bounds(
-    app: AppHandle,
+    window: tauri::Window,
     name: String,
     x: f64,
     y: f64,
     width: f64,
     height: f64,
 ) -> WisResult<()> {
-    let label = overlay_label(&name);
-    let Some(wv) = app.webviews().get(&label).cloned() else {
+    let label = overlay_label(window.label(), &name);
+    let Some(wv) = window.app_handle().webviews().get(&label).cloned() else {
         return Err(WisError::InvalidInput {
             message: format!("overlay {label} not found; call ensure_overlay first"),
         });
@@ -193,15 +227,15 @@ pub async fn set_overlay_bounds(
 /// animation makes the content render at a transient layout for a frame).
 #[tauri::command]
 pub async fn size_overlay(
-    app: AppHandle,
+    window: tauri::Window,
     name: String,
     x: f64,
     y: f64,
     width: f64,
     height: f64,
 ) -> WisResult<()> {
-    let label = overlay_label(&name);
-    let Some(wv) = app.webviews().get(&label).cloned() else {
+    let label = overlay_label(window.label(), &name);
+    let Some(wv) = window.app_handle().webviews().get(&label).cloned() else {
         return Err(WisError::InvalidInput {
             message: format!("overlay {label} not found; call ensure_overlay first"),
         });
@@ -220,9 +254,9 @@ pub async fn size_overlay(
 }
 
 #[tauri::command]
-pub async fn hide_overlay(app: AppHandle, name: String) -> WisResult<()> {
-    let label = overlay_label(&name);
-    let Some(wv) = app.webviews().get(&label).cloned() else {
+pub async fn hide_overlay(window: tauri::Window, name: String) -> WisResult<()> {
+    let label = overlay_label(window.label(), &name);
+    let Some(wv) = window.app_handle().webviews().get(&label).cloned() else {
         return Ok(());
     };
     wv.hide().map_err(|err| WisError::InvalidInput {

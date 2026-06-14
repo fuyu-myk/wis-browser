@@ -114,5 +114,7 @@ pub fn apply_media_extensions_to_all_remote(app: &tauri::AppHandle, enabled: boo
 
 /// True for the webview labels that render untrusted remote content.
 fn is_remote(label: &str) -> bool {
-    label.starts_with("tab-") || label.starts_with("widget-panel-") || label == "peek-page"
+    label.starts_with("tab-")
+        || label.starts_with("widget-panel-")
+        || label.starts_with("peek-page")
 }

@@ -292,7 +292,7 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
       } else if (row.kind === 'site') {
         await commands.deleteHistory([row.id]).catch(() => undefined)
       }
-      await commands.focusWebview('main').catch(() => undefined)
+      await commands.focusSelf().catch(() => undefined)
       inputRef.current?.focus()
       await refresh(queryRef.current, false)
     },

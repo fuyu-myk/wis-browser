@@ -467,6 +467,7 @@ pub fn run() {
             bookmarks::reorder_bookmarks,
             bookmarks::delete_bookmark,
             overlay::focus_webview,
+            overlay::focus_self,
             overlay::ensure_overlay,
             overlay::set_overlay_bounds,
             overlay::size_overlay,
@@ -602,8 +603,14 @@ fn hydrate_state(storage: &SqliteStorage) -> BrowserState {
     healed
 }
 
-/// Function to remove visual bug with liquid glass effect where the webview's
-/// background would briefly flash solid during navigation.
+/// Disable the window shadow so the liquid-glass chrome does not briefly flash a
+/// solid backing during navigation. Per-window, so any new OS window can reuse it.
+#[cfg(target_os = "macos")]
+pub(crate) fn disable_chrome_window_shadow<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
+    window.set_shadow(false).ok();
+}
+
+/// Apply the chrome transparency tweak to the startup `main` window at setup.
 #[cfg(target_os = "macos")]
 fn apply_transparent_chrome_webview(app: &tauri::App) {
     use tauri::Manager;
@@ -612,5 +619,5 @@ fn apply_transparent_chrome_webview(app: &tauri::App) {
         log::warn!("chrome transparency: no 'main' window at setup time");
         return;
     };
-    window.set_shadow(false).ok();
+    disable_chrome_window_shadow(&window);
 }

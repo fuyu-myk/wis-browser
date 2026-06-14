@@ -172,7 +172,7 @@ export function PaletteSurface() {
     let cancelled = false
     void listen<void>(PALETTE_FOCUS_EVENT, () => {
       setOpenNonce((n) => n + 1)
-      void commands.focusWebview('overlay-palette').catch(() => undefined)
+      void commands.focusSelf().catch(() => undefined)
       const focusInput = () => {
         const el = inputRef.current
         if (!el) return

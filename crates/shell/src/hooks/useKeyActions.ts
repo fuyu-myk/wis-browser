@@ -215,7 +215,7 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
     case 'focus_url_bar':
     case 'focus_url_bar_alt': {
       // The URL bar lives in the chrome, so a DOM CustomEvent reaches it.
-      await commands.focusWebview('main')
+      await commands.focusSelf()
       window.dispatchEvent(new CustomEvent(FOCUS_URLBAR_EVENT, { detail: { select: true } }))
       return
     }

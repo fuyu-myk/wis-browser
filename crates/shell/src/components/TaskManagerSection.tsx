@@ -9,7 +9,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
-import type { BrowserState, TabId, WebviewMemory, WidgetId } from '@/bindings/types'
+import type { BrowserState, TabId, WebviewMemory } from '@/bindings/types'
 import { closeTabAnimated } from '@/lib/tabClose'
 import { XIcon } from '@/lib/icons'
 import { tabDisplayName } from '@/lib/url'
@@ -32,19 +32,19 @@ function rowInfo(
 ): RowInfo {
   const { label } = row
   if (label === 'main') return { name: 'Wis chrome', kind: 'Chrome' }
-  if (label === 'peek-page') return { name: 'Peek preview', kind: 'Peek' }
+  if (label.startsWith('peek-page')) return { name: 'Peek preview', kind: 'Peek' }
   if (label.startsWith('overlay-')) {
     return { name: `Overlay (${label.slice('overlay-'.length)})`, kind: 'Chrome' }
   }
   if (label.startsWith(WIDGET_PREFIX)) {
-    const id = label.slice(WIDGET_PREFIX.length) as WidgetId
-    const widget = state?.settings.sidebar_widgets.find((w) => w.id === id)
+    // Labels are per-window (`widget-panel-<window>-<id>`); match the widget by
+    // its id as the label suffix.
+    const widget = state?.settings.sidebar_widgets.find((w) => label.endsWith(`-${w.id}`))
+    const id = widget?.id
     return {
-      name: widget?.label ?? `Widget ${id}`,
+      name: widget?.label ?? 'Widget',
       kind: 'Widget',
-      close: () => {
-        void commands.closeWidgetPanel(id).catch(() => undefined)
-      },
+      close: id ? () => void commands.closeWidgetPanel(id).catch(() => undefined) : undefined,
     }
   }
   if (label.startsWith(TAB_PREFIX)) {

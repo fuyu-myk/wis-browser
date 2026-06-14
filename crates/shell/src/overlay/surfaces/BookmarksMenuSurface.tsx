@@ -452,7 +452,7 @@ export function BookmarksMenuSurface() {
 
   // Take focus when first shown (the chrome shows/hides the persistent overlay).
   useEffect(() => {
-    void commands.focusWebview('overlay-bookmarks').catch(() => undefined)
+    void commands.focusSelf().catch(() => undefined)
   }, [])
 
   // Esc closes.

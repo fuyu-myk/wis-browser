@@ -670,11 +670,13 @@ export function useWidgetPanel(): {
       const rows = await commands.listWebviewMemory().catch(() => null)
       if (!rows || cancelled) return
       const prefix = 'widget-panel-'
-      const bytesById = new Map(
-        rows
-          .filter((r) => r.label.startsWith(prefix))
-          .map((r) => [r.label.slice(prefix.length), r.bytes] as const),
-      )
+      const liveIds = Array.from(liveRef.current.keys()).map(String)
+      const bytesById = new Map<string, number>()
+      for (const r of rows) {
+        if (!r.label.startsWith(prefix)) continue
+        const id = liveIds.find((wid) => r.label.endsWith(wid))
+        if (id) bytesById.set(id, r.bytes)
+      }
       let total = 0
       for (const [id] of hidden) total += bytesById.get(String(id)) ?? 0
       const capBytes = memCapMbRef.current * 1024 * 1024

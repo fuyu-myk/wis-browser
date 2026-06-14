@@ -67,7 +67,7 @@ export function PaneSplitMenuSurface() {
     void listen<OpenPayload>(OPEN_EVENT, (e) => {
       setTarget(e.payload)
       setOpenNonce((n) => n + 1)
-      void commands.focusWebview('overlay-tabmenu').catch(() => undefined)
+      void commands.focusSelf().catch(() => undefined)
     }).then((fn) => {
       if (cancelled) fn()
       else unlisten = fn

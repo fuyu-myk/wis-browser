@@ -48,7 +48,7 @@ export function IslandMenuSurface() {
       setTarget(e.payload)
       setDraft(e.payload.name)
       setConfirming(false)
-      void commands.focusWebview('overlay-islandmenu').catch(() => undefined)
+      void commands.focusSelf().catch(() => undefined)
       requestAnimationFrame(() => inputRef.current?.select())
     }).then((fn) => {
       if (cancelled) fn()

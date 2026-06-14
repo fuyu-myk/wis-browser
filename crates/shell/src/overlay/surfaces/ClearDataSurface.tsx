@@ -50,7 +50,7 @@ export function ClearDataSurface() {
       setWithHistory(true)
       setWithSiteData(true)
       setBusy(false)
-      void commands.focusWebview('overlay-cleardata').catch(() => undefined)
+      void commands.focusSelf().catch(() => undefined)
     }).then((fn) => {
       if (cancelled) fn()
       else unlisten = fn

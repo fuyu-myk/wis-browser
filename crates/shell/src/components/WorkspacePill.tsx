@@ -149,7 +149,7 @@ export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
 
   useEffect(() => {
     if (!open) return
-    void commands.focusWebview('main').catch(() => undefined)
+    void commands.focusSelf().catch(() => undefined)
   }, [open])
 
   return (

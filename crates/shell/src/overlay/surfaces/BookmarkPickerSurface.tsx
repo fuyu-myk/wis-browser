@@ -54,7 +54,7 @@ export function BookmarkPickerSurface() {
         .listBookmarkFolders(payload.workspaceId)
         .then((f) => setFolders(f))
         .catch(() => setFolders([]))
-      void commands.focusWebview('overlay-bmpicker').catch(() => undefined)
+      void commands.focusSelf().catch(() => undefined)
     }).then((fn) => {
       if (cancelled) fn()
       else {

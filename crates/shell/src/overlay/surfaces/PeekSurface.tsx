@@ -171,7 +171,7 @@ export function PeekSurface() {
   // Esc dismisses (the confirm dialog first, then the peek itself).
   useEffect(() => {
     if (!open) return
-    void commands.focusWebview('overlay-peek').catch(() => undefined)
+    void commands.focusSelf().catch(() => undefined)
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       if (confirmOpenRef.current) {

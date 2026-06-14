@@ -118,7 +118,7 @@ export function FindSurface() {
     void listen<void>(FIND_FOCUS_EVENT, () => {
       setOpen(true)
       setClosing(false)
-      void commands.focusWebview('overlay-find').catch(() => undefined)
+      void commands.focusSelf().catch(() => undefined)
       const focusInput = () => {
         const el = inputRef.current
         if (!el) return

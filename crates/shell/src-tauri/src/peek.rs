@@ -24,8 +24,14 @@ use wis_core::{LinkAssessment, WisError, WisResult};
 
 use crate::state::AppState;
 
-/// Label of the isolated preview webview.
+/// Base label of the isolated preview webview.
 const PEEK_LABEL: &str = "peek-page";
+
+/// Per-window preview label: `peek-page-<window>`. Scoping by window keeps each
+/// OS window's preview independent (one workspace per window).
+fn peek_label(window_label: &str) -> String {
+    format!("{PEEK_LABEL}-{window_label}")
+}
 
 /// Event emitted to the chrome when a link is Opt+clicked.
 const PEEK_OPEN_EVENT: &str = "wis-peek-open";
@@ -53,7 +59,7 @@ struct PeekOpenEvent {
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn open_peek(
-    app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     url: String,
     anchor_text: Option<String>,
@@ -74,13 +80,21 @@ pub async fn open_peek(
         return Ok(assessment);
     }
 
-    // Replace any existing preview.
-    if let Some(existing) = app.webviews().get(PEEK_LABEL).cloned() {
+    let app = window.app_handle();
+    let label = peek_label(window.label());
+
+    // Replace any existing preview in this window.
+    if let Some(existing) = app.webviews().get(&label).cloned() {
         let _ = existing.close();
     }
 
     let (active_ws, user_agent, fraud_warning, media_extensions) = {
         let browser = state.browser.lock().await;
+        // Preview through the calling window's workspace (one per window), so a
+        // peek inherits that window's proxy / blocking / UA.
+        let active_ws = state
+            .window_workspace(window.label())
+            .unwrap_or(browser.active_workspace_id);
         let user_agent = wis_core::ua_for_host(
             parsed.host_str().unwrap_or_default(),
             &browser.settings.ua_site_overrides,
@@ -88,7 +102,7 @@ pub async fn open_peek(
             wis_core::DEFAULT_MAC_OS_VERSION,
         );
         (
-            browser.active_workspace_id,
+            active_ws,
             user_agent,
             browser.settings.fraud_warning_enabled,
             browser.settings.media_extensions_enabled,
@@ -102,13 +116,7 @@ pub async fn open_peek(
         .parse::<Url>()
         .expect("loopback proxy URL is valid");
 
-    let window = app
-        .get_window("main")
-        .ok_or_else(|| WisError::InvalidInput {
-            message: "main window missing".into(),
-        })?;
-
-    let mut builder = WebviewBuilder::new(PEEK_LABEL, WebviewUrl::External(parsed))
+    let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed))
         .focused(true)
         .incognito(true)
         .proxy_url(proxy_url);
@@ -162,13 +170,14 @@ pub async fn open_peek(
 /// Reposition/resize the preview webview. No-op if there's no live preview.
 #[tauri::command]
 pub async fn set_peek_bounds(
-    app: AppHandle,
+    window: tauri::Window,
     x: f64,
     y: f64,
     width: f64,
     height: f64,
 ) -> WisResult<()> {
-    let Some(wv) = app.webviews().get(PEEK_LABEL).cloned() else {
+    let label = peek_label(window.label());
+    let Some(wv) = window.app_handle().webviews().get(&label).cloned() else {
         return Ok(());
     };
 
@@ -186,8 +195,9 @@ pub async fn set_peek_bounds(
 
 /// Destroy the preview webview.
 #[tauri::command]
-pub async fn close_peek(app: AppHandle) -> WisResult<()> {
-    if let Some(wv) = app.webviews().get(PEEK_LABEL).cloned() {
+pub async fn close_peek(window: tauri::Window) -> WisResult<()> {
+    let label = peek_label(window.label());
+    if let Some(wv) = window.app_handle().webviews().get(&label).cloned() {
         wv.close().map_err(|err| WisError::InvalidInput {
             message: format!("peek close: {err}"),
         })?;
@@ -201,8 +211,9 @@ pub async fn close_peek(app: AppHandle) -> WisResult<()> {
 /// restore the live page. The transform runs entirely inside the isolated
 /// webview, so no untrusted markup reaches the chrome.
 #[tauri::command]
-pub async fn peek_set_reader(app: AppHandle, enabled: bool) -> WisResult<()> {
-    let Some(wv) = app.webviews().get(PEEK_LABEL).cloned() else {
+pub async fn peek_set_reader(window: tauri::Window, enabled: bool) -> WisResult<()> {
+    let label = peek_label(window.label());
+    let Some(wv) = window.app_handle().webviews().get(&label).cloned() else {
         return Ok(());
     };
 

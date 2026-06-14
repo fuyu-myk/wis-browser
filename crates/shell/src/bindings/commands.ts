@@ -831,6 +831,15 @@ export const commands = {
   },
 
   /**
+   * Make the calling webview its window's first responder. Window-agnostic
+   * (no label), so a chrome or overlay surface focuses itself on whichever OS
+   * window it lives on.
+   */
+  async focusSelf(): Promise<void> {
+    return invoke('focus_self')
+  },
+
+  /**
    * Lazily create the named overlay webview (loads
    * `index.html?surface=<name>`). Idempotent. The overlay starts hidden
    * and must be revealed by `setOverlayBounds`.

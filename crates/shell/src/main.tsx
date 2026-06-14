@@ -1,7 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { getCurrentWebview } from '@tauri-apps/api/webview'
 
 import App from '@/App'
 import { OverlayRoot } from '@/overlay/OverlayRoot'
@@ -24,12 +23,11 @@ const queryClient = new QueryClient({
   },
 })
 
-// The webview label is the source of truth for which surface to render:
-// "main" → the full chrome (App); "overlay-<name>" → the surface for that
-// overlay.
-const label = getCurrentWebview().label
-const OVERLAY_PREFIX = 'overlay-'
-const surface = label.startsWith(OVERLAY_PREFIX) ? label.slice(OVERLAY_PREFIX.length) : null
+// Which surface to render is carried in the URL query (`index.html?surface=<name>`,
+// set by `ensure_overlay`), freeing overlay labels to be per-window (`overlay-<window>-<name>`)
+// so each OS window has its own overlays. The chrome webview loads index.html with
+// no query and renders the full App.
+const surface = new URLSearchParams(window.location.search).get('surface')
 
 const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement)
 

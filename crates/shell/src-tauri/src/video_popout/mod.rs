@@ -90,6 +90,9 @@ pub struct PendingOpen {
 pub struct ActivePopout {
     pub label: String,
     pub aspect: f64,
+    /// Label of the window the tab lives in, so folding the popout back in
+    /// reparents to the right window.
+    pub origin_window: String,
 }
 
 fn validate_label(label: &str) -> WisResult<()> {
