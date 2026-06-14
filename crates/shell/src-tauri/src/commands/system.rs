@@ -47,37 +47,43 @@ pub async fn set_window_icon(
 pub async fn set_dock_icon(app: AppHandle, variant: String) -> WisResult<()> {
     #[cfg(target_os = "macos")]
     {
-        use objc2::runtime::AnyObject;
-        use objc2::{class, msg_send};
-        use std::ffi::CString;
-
-        let image: *mut AnyObject = if variant == "closed" {
+        let icon_path: Option<String> = if variant == "closed" {
             let path = app
                 .path()
                 .resolve("icons/runtime/mark-closed-512.png", BaseDirectory::Resource)
                 .map_err(|err| WisError::InvalidInput {
                     message: format!("resolve dock icon: {err}"),
                 })?;
-            let path_str = path.to_string_lossy().to_string();
-            let c = CString::new(path_str).map_err(|err| WisError::InvalidInput {
-                message: format!("dock icon path: {err}"),
-            })?;
-
-            unsafe {
-                let ns_path: *mut AnyObject =
-                    msg_send![class!(NSString), stringWithUTF8String: c.as_ptr()];
-                let alloc: *mut AnyObject = msg_send![class!(NSImage), alloc];
-                msg_send![alloc, initWithContentsOfFile: ns_path]
-            }
+            Some(path.to_string_lossy().to_string())
         } else {
-            // Null restores the default (bundled) application icon.
-            std::ptr::null_mut()
+            None
         };
 
-        unsafe {
-            let ns_app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
-            let _: () = msg_send![ns_app, setApplicationIconImage: image];
-        }
+        // The NSImage load and the Dock update (`setApplicationIconImage:` drives
+        // `-[NSDockTile display]` -> CoreGraphics image rendering) must run on the
+        // main thread.
+        app.run_on_main_thread(move || {
+            use objc2::runtime::AnyObject;
+            use objc2::{class, msg_send};
+            use std::ffi::CString;
+
+            unsafe {
+                let image: *mut AnyObject = match icon_path.and_then(|p| CString::new(p).ok()) {
+                    Some(c) => {
+                        let ns_path: *mut AnyObject =
+                            msg_send![class!(NSString), stringWithUTF8String: c.as_ptr()];
+                        let alloc: *mut AnyObject = msg_send![class!(NSImage), alloc];
+                        msg_send![alloc, initWithContentsOfFile: ns_path]
+                    }
+                    None => std::ptr::null_mut(),
+                };
+                let ns_app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+                let _: () = msg_send![ns_app, setApplicationIconImage: image];
+            }
+        })
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("dock icon dispatch failed: {err}"),
+        })?;
     }
 
     #[cfg(not(target_os = "macos"))]
