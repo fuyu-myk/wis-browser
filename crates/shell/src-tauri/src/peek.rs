@@ -263,6 +263,13 @@ const PEEK_JS: &str = r#"(function () {
   }, true);
 })();"#;
 
+/// The Opt+click trigger, exposed so tab webviews can bake it in as a
+/// **builder-level initialization script** (run at document start, before the
+/// first document exists).
+pub fn page_script() -> &'static str {
+    PEEK_JS
+}
+
 /// In-page reader transform (runs inside the isolated preview only).
 const READER_JS: &str = r#"(function () {
   try {
@@ -306,7 +313,7 @@ mod imp {
     };
     use tauri::Emitter;
 
-    use super::{PeekOpenEvent, APP, PEEK_JS, PEEK_OPEN_EVENT};
+    use super::{PeekOpenEvent, APP, PEEK_OPEN_EVENT};
 
     declare_class!(
         struct PeekHandler;
@@ -410,7 +417,10 @@ mod imp {
         }
     }
 
-    /// Install the Opt+click peek user script + message handler on a tab webview.
+    /// Install the `wisPeek` message handler on a tab webview. The trigger
+    /// script itself rides the builder (see [`super::page_script`]); message
+    /// handlers, unlike user scripts, apply retroactively to an already-loaded
+    /// page.
     pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
         let _ = webview.with_webview(|w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
@@ -427,18 +437,6 @@ mod imp {
             if controller.is_null() {
                 return;
             }
-
-            let src = ns_string(PEEK_JS);
-            let script: *mut AnyObject = msg_send![class!(WKUserScript), alloc];
-            let injection_time: isize = 1; // WKUserScriptInjectionTimeAtDocumentEnd
-            let script: *mut AnyObject = msg_send![
-                script,
-                initWithSource: src,
-                injectionTime: injection_time,
-                forMainFrameOnly: false,
-            ];
-            let _: () = msg_send![controller, addUserScript: script];
-            let _: () = msg_send![script, release];
 
             let handler = PeekHandler::new();
             let name = ns_string("wisPeek");

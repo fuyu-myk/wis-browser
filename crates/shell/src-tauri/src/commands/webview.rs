@@ -76,9 +76,10 @@ pub async fn create_tab_webview(
         .focused(false)
         .proxy_url(proxy_url)
         .accept_first_mouse(true)
-        // Rides the webview configuration so even an instantly-loading first
-        // document (cache, localhost) gets it.
-        .initialization_script(crate::video_popout::page_script());
+        // Ride the webview configuration so even an instantly-loading first
+        // document (cache, localhost, the restored startup page) gets them.
+        .initialization_script(crate::video_popout::page_script())
+        .initialization_script(crate::peek::page_script());
 
     // Per-page scriptlet swap (uBO `+js` rules) before each main-frame
     // navigation commits; Permissive workspaces opt out of blocking.
