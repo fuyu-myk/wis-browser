@@ -216,6 +216,18 @@ impl AppState {
             .collect()
     }
 
+    /// Label of the window currently showing `id`, if any. The one-workspace-
+    /// per-window invariant means at most one matches; used to focus the owner
+    /// instead of duplicating a workspace into a second window.
+    pub fn window_for_workspace(&self, id: WorkspaceId) -> Option<String> {
+        self.window_workspaces
+            .lock()
+            .expect("window_workspaces poisoned")
+            .iter()
+            .find(|(_, &ws)| ws == id)
+            .map(|(label, _)| label.clone())
+    }
+
     /// Replace the persisted camera/microphone consent read-cache (after a
     /// settings change: a remembered prompt decision or a settings-page edit).
     pub fn refresh_media_permissions_cache(&self, perms: HashMap<String, bool>) {
@@ -556,6 +568,25 @@ mod tests {
         state.set_window_workspace("win-2", primary);
         assert_eq!(state.window_workspace("win-2"), Some(primary));
         assert_eq!(state.window_workspace("main"), Some(primary));
+    }
+
+    #[tokio::test]
+    async fn window_for_workspace_resolves_the_owning_window() {
+        let state = app_state_for_test();
+        let primary = state.browser.lock().await.active_workspace_id;
+
+        // The seeded main window owns the primary workspace.
+        assert_eq!(state.window_for_workspace(primary).as_deref(), Some("main"));
+        assert!(state.occupied_workspaces().contains(&primary));
+
+        // Clearing the binding leaves the workspace free (no owner, not occupied).
+        state.clear_window_workspace("main");
+        assert_eq!(state.window_for_workspace(primary), None);
+        assert!(!state.occupied_workspaces().contains(&primary));
+
+        // Rebinding to another window moves ownership; the reverse lookup follows.
+        state.set_window_workspace("win-7", primary);
+        assert_eq!(state.window_for_workspace(primary).as_deref(), Some("win-7"));
     }
 
     #[tokio::test]

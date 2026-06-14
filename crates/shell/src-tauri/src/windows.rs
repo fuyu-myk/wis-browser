@@ -119,14 +119,37 @@ pub async fn spawn_window(
     Ok(label)
 }
 
+/// Bring an existing window to the front (deminiaturize, then focus). Used when
+/// an action would otherwise duplicate a workspace a window already shows.
+///
+/// Resolved via [`get_window`](Manager::get_window): these windows host child
+/// webviews (tabs/overlays/panels added with `add_child`), so they are
+/// multi-webview windows that [`get_webview_window`](Manager::get_webview_window)
+/// does not return.
+pub fn focus_window(app: &AppHandle, label: &str) {
+    if let Some(win) = app.get_window(label) {
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+    } else {
+        log::warn!("focus_window: no window labelled {label}");
+    }
+}
+
 /// Open a new OS window showing an existing (free) workspace. Returns the new
-/// window's label.
+/// window's label. One workspace per window: if another window already shows
+/// `workspace_id` (e.g. the picker raced a sibling that just claimed it), focus
+/// that window and return its label rather than duplicating the workspace.
 #[tauri::command]
 pub async fn new_window(
     app: AppHandle,
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
 ) -> WisResult<String> {
+    if let Some(owner) = state.window_for_workspace(workspace_id) {
+        focus_window(&app, &owner);
+        return Ok(owner);
+    }
+
     spawn_window(&app, &state, workspace_id).await
 }
 

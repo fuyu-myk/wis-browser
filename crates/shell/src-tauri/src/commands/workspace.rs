@@ -113,6 +113,15 @@ pub async fn set_active_workspace(
     state: State<'_, AppState>,
     id: WorkspaceId,
 ) -> WisResult<()> {
+    // One workspace per window: if another window already shows this workspace,
+    // focus that window.
+    if let Some(owner) = state.window_for_workspace(id) {
+        if owner != window.label() {
+            crate::windows::focus_window(&app, &owner);
+            return Ok(());
+        }
+    }
+
     mutate_unit(&app, &state, |s| s.with_active_workspace(id)).await?;
     state.set_window_workspace(window.label(), id);
     Ok(())
