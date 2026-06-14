@@ -44,6 +44,14 @@ pub struct ClosedTab {
 
 pub struct AppState {
     pub browser: Mutex<BrowserState>,
+    /// Which workspace each OS window currently shows (window label ->
+    /// workspace). The active workspace is **per-window**, not global: a window
+    /// is a view over one workspace. `BrowserState.active_workspace_id` stays
+    /// the persisted primary (what the `main` window restores to). Seeded with
+    /// `main` at startup; [`get_browser_state`](super::commands::get_browser_state)
+    /// returns the calling window's entry and [`set_active_workspace`](super::commands::set_active_workspace)
+    /// keeps it in sync.
+    pub window_workspaces: std::sync::Mutex<HashMap<String, WorkspaceId>>,
     pub storage: Arc<dyn Storage>,
     /// Debounced, ordered writer for [`BrowserState`] snapshots (see
     /// [`crate::save_coalescer`]). Destructive transitions bypass the
@@ -132,8 +140,14 @@ impl AppState {
         let initial_user_cosmetic_rules = browser.settings.user_cosmetic_rules.clone();
         let initial_userscripts = browser.settings.userscripts.clone();
         let initial_media_permissions = browser.settings.media_permissions.clone();
+        // The main window starts on the persisted active workspace.
+        let initial_active_workspace = browser.active_workspace_id;
         Self {
             browser: Mutex::new(browser),
+            window_workspaces: std::sync::Mutex::new(HashMap::from([(
+                "main".to_string(),
+                initial_active_workspace,
+            )])),
             storage,
             save_coalescer: Arc::new(crate::save_coalescer::SaveCoalescer::new()),
             tracker_blocker: RwLock::new(tracker_blocker),
@@ -162,6 +176,25 @@ impl AppState {
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }
+    }
+
+    /// The workspace shown by the window labelled `label`, if bound. `None`
+    /// means the window has no workspace yet (e.g. a fresh window awaiting the
+    /// picker); callers fall back to the persisted primary.
+    pub fn window_workspace(&self, label: &str) -> Option<WorkspaceId> {
+        self.window_workspaces
+            .lock()
+            .expect("window_workspaces poisoned")
+            .get(label)
+            .copied()
+    }
+
+    /// Bind the window labelled `label` to `id` (the workspace it now shows).
+    pub fn set_window_workspace(&self, label: &str, id: WorkspaceId) {
+        self.window_workspaces
+            .lock()
+            .expect("window_workspaces poisoned")
+            .insert(label.to_string(), id);
     }
 
     /// Replace the persisted camera/microphone consent read-cache (after a
@@ -488,6 +521,22 @@ mod tests {
         let state = app_state_for_test();
         let policy = state.request_policy_for_active_workspace().await;
         assert_eq!(policy.privacy_mode(), PrivacyMode::Balanced);
+    }
+
+    #[tokio::test]
+    async fn active_workspace_is_tracked_per_window() {
+        let state = app_state_for_test();
+        let primary = state.browser.lock().await.active_workspace_id;
+
+        // The main window is seeded with the persisted primary at startup.
+        assert_eq!(state.window_workspace("main"), Some(primary));
+        // A window with no binding yet has no entry (callers fall back to it).
+        assert_eq!(state.window_workspace("win-2"), None);
+
+        // Binding a window records its workspace without disturbing others.
+        state.set_window_workspace("win-2", primary);
+        assert_eq!(state.window_workspace("win-2"), Some(primary));
+        assert_eq!(state.window_workspace("main"), Some(primary));
     }
 
     #[tokio::test]

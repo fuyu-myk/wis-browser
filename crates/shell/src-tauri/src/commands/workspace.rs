@@ -101,13 +101,21 @@ pub async fn recolor_workspace(
     .await
 }
 
+/// Persist the primary (and validate `id`, erroring before the map is
+/// touched). With one window this is the main window; with secondary windows
+/// they will update the per-window map only and leave the persisted
+/// primary alone. The emit from `mutate_unit` makes every window refetch its
+/// own active workspace.
 #[tauri::command]
 pub async fn set_active_workspace(
+    window: tauri::Window,
     app: AppHandle,
     state: State<'_, AppState>,
     id: WorkspaceId,
 ) -> WisResult<()> {
-    mutate_unit(&app, &state, |s| s.with_active_workspace(id)).await
+    mutate_unit(&app, &state, |s| s.with_active_workspace(id)).await?;
+    state.set_window_workspace(window.label(), id);
+    Ok(())
 }
 
 /// Change the privacy mode for a specific workspace. The workspace proxy is

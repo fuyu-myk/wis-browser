@@ -323,9 +323,26 @@ pub(crate) async fn note_in_page_navigation(
 // History
 // ---------------------------------------------------------------------------
 
+/// The active workspace is per-window: present the calling window's, not the
+/// global primary. `snapshot` is a fresh local clone, so this is a view override
+/// rather than a shared mutation.
+///
+/// Self-heals: an unbound window, or one whose workspace was deleted out from
+/// under it, keeps the persisted primary (which `with_workspace_removed` already
+/// reassigned to a live one).
 #[tauri::command]
-pub async fn get_browser_state(state: State<'_, AppState>) -> Result<BrowserState, WisError> {
-    Ok(read_state(&state).await)
+pub async fn get_browser_state(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+) -> Result<BrowserState, WisError> {
+    let mut snapshot = read_state(&state).await;
+    if let Some(ws) = state.window_workspace(window.label()) {
+        if snapshot.workspaces.iter().any(|w| w.id == ws) {
+            snapshot.active_workspace_id = ws;
+        }
+    }
+
+    Ok(snapshot)
 }
 
 #[tauri::command]
