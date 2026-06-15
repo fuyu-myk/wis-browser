@@ -430,6 +430,16 @@ body.is-overlay-surface:not(.glass-on) {
   font-weight: 700;
   flex-shrink: 0;
 }
+/* Leading icon sized to the 10px dot column so labels line up across rows. */
+.kb-tabctx-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
 .kb-tabctx-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ─── Find-in-page overlay (bottom-centred glass pill) ─────────── */

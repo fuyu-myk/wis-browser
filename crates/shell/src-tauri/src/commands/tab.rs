@@ -218,6 +218,66 @@ pub async fn restore_closed_tab(app: AppHandle, state: State<'_, AppState>) -> W
     }
 }
 
+/// Detach a tab into a brand-new workspace shown in its own OS window. One workspace
+/// per window, so the tab leaves its current workspace; its live session (history/scroll/forms)
+/// is carried across via the captured interaction state and restored when the new
+/// window builds the tab's webview. A tab from a private (ephemeral) workspace detaches
+/// into a new *private* window, so its content is never persisted. `name`/`accent`
+/// seed the new workspace (the chrome picks the next free accent).
+#[tauri::command]
+pub async fn move_tab_to_new_window(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    tab_id: TabId,
+    name: String,
+    accent: AccentColor,
+) -> WisResult<()> {
+    let captured = app
+        .webviews()
+        .get(&format!("tab-{}", tab_id.as_uuid()))
+        .and_then(crate::interaction_state::read);
+
+    let (url, source_ephemeral) = {
+        let browser = state.browser.lock().await;
+        let tab = browser.tab(tab_id)?;
+        let ephemeral = browser
+            .workspace(tab.workspace_id)
+            .map(|w| w.ephemeral)
+            .unwrap_or(false);
+
+        (tab.url.clone(), ephemeral)
+    };
+
+    // New workspace + the detached tab, with the source tab removed, atomically.
+    let (new_ws_id, new_tab_id) = mutate(&app, &state, |s| {
+        let (s, ws) = if source_ephemeral {
+            s.with_new_private_workspace(name, accent)
+        } else {
+            s.with_new_workspace(name, accent)
+        };
+        let (s, tab) = s.with_new_loose_tab(ws.id, url.as_str())?;
+        let s = s.with_tab_closed(tab_id)?;
+
+        Ok((s, (ws.id, tab.id)))
+    })
+    .await?;
+
+    crate::audio::forget_tab(&app, tab_id);
+
+    // Hand the captured session to the webview the new window is about to create
+    // (consumed by `create_tab_webview`).
+    if let Some(blob) = captured {
+        state
+            .pending_restore_states
+            .lock()
+            .await
+            .insert(new_tab_id, blob);
+    }
+
+    crate::windows::spawn_window(&app, &state, new_ws_id).await?;
+    Ok(())
+}
+
 /// Reload a tab bypassing the HTTP cache (WKWebView `reloadFromOrigin`).
 #[tauri::command]
 pub async fn tab_hard_reload(app: AppHandle, id: TabId) -> WisResult<()> {

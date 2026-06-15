@@ -231,6 +231,9 @@ function WorkspacePopover({
   onEditingFinished,
 }: WorkspacePopoverProps) {
   const qc = useQueryClient()
+  useEffect(() => {
+    void qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
+  }, [qc])
   const [editingId, setEditingId] = useState<WorkspaceId | null>(initialEditingId ?? null)
   const [recoloringId, setRecoloringId] = useState<WorkspaceId | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<WorkspaceId | null>(null)

@@ -362,6 +362,12 @@ export const commands = {
     return invoke('restore_closed_tab')
   },
 
+  /** Detach a tab into a new workspace shown in its own window. `name`/`accent`
+   *  seed the new workspace; a private tab detaches into a new private window. */
+  async moveTabToNewWindow(tabId: TabId, name: string, accent: AccentColor): Promise<void> {
+    return invoke('move_tab_to_new_window', { tabId, name, accent })
+  },
+
   /** Reload a tab bypassing the HTTP cache. */
   async tabHardReload(id: TabId): Promise<void> {
     return invoke('tab_hard_reload', { id })

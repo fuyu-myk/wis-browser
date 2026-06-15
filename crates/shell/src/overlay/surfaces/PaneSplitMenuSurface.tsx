@@ -9,14 +9,16 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { AccentColor, SplitDir, TabFolderId, TabId } from '@/bindings/types'
+import { nextAccent } from '@/lib/accents'
 import { cx } from '@/lib/cx'
 import { PinIcon, PinOffIcon } from '@/lib/icons'
 import { NEW_TAB_URL } from '@/lib/url'
-import { useBrowserState } from '@/hooks/useBrowserState'
+import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
 
@@ -48,6 +50,7 @@ export function PaneSplitMenuSurface() {
   const { data: state } = useBrowserState()
   useBrowserStateEvents()
   useThemeApply(state?.settings)
+  const qc = useQueryClient()
 
   const activeWorkspace = state?.workspaces.find((w) => w.id === state.active_workspace_id)
   const activeTabIdRef = useRef<TabId | null>(null)
@@ -67,6 +70,7 @@ export function PaneSplitMenuSurface() {
     void listen<OpenPayload>(OPEN_EVENT, (e) => {
       setTarget(e.payload)
       setOpenNonce((n) => n + 1)
+      void qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
       void commands.focusSelf().catch(() => undefined)
     }).then((fn) => {
       if (cancelled) fn()
@@ -127,6 +131,14 @@ export function PaneSplitMenuSurface() {
     void commands.pinTab(target.movedTabId, !movedPinned).catch(() => undefined)
     close()
   }
+  const moveToNewWindow = () => {
+    // Detach into a fresh workspace + window; seed it with the next free accent
+    // and the tab's title (the backend handles private tabs / session carry-over).
+    const accent = nextAccent((state?.workspaces ?? []).map((w) => w.accent))
+    const name = movedTab?.title?.trim() || 'New Space'
+    void commands.moveTabToNewWindow(target.movedTabId, name, accent).catch(() => undefined)
+    close()
+  }
   const moveTo = (folderId: TabFolderId | null) => {
     void commands.assignTabToFolder(target.movedTabId, folderId).catch(() => undefined)
     close()
@@ -176,6 +188,28 @@ export function PaneSplitMenuSurface() {
           {movedPinned ? <PinOffIcon width={16} height={16} /> : <PinIcon width={16} height={16} />}
         </button>
       </div>
+
+      <div className="kb-tabctx-sep" aria-hidden />
+
+      <button type="button" className="kb-tabctx-item" onClick={moveToNewWindow}>
+        <span className="kb-tabctx-ico" aria-hidden>
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" />
+            <path d="M14 4h6v6" />
+            <path d="M20 4 12 12" />
+          </svg>
+        </span>
+        <span className="kb-tabctx-label">Move to New Window</span>
+      </button>
 
       <div className="kb-tabctx-sep" aria-hidden />
 
