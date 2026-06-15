@@ -2,10 +2,53 @@
 //! in-memory database (`:memory:`) so they're hermetic and fast.
 
 use wis_core::{
-    AccentColor, BrowserState, EssentialPin, LayoutMode, PrivacyMode, ThemeMode, UpstreamProxy,
-    UserSettingsPatch,
+    AccentColor, BrowserState, EssentialPin, LayoutMode, PrivacyMode, TabId, ThemeMode,
+    UpstreamProxy, UserSettingsPatch,
 };
 use wis_storage::{SqliteStorage, Storage};
+
+#[test]
+fn tab_sessions_round_trip_survive_state_save_and_purge() {
+    let store = fresh_store();
+    let a = TabId::new();
+    let b = TabId::new();
+
+    assert!(store.load_tab_sessions().expect("load").is_empty());
+
+    store.save_tab_session(a, "blob-a").expect("save a");
+    store.save_tab_session(b, "blob-b").expect("save b");
+
+    let loaded = store.load_tab_sessions().expect("load");
+    assert_eq!(loaded.get(&a).map(String::as_str), Some("blob-a"));
+    assert_eq!(loaded.get(&b).map(String::as_str), Some("blob-b"));
+
+    // Upsert replaces the prior blob for the same tab.
+    store.save_tab_session(a, "blob-a2").expect("re-save a");
+    assert_eq!(
+        store.load_tab_sessions().expect("load").get(&a).map(String::as_str),
+        Some("blob-a2")
+    );
+
+    // A full state save lives in its own tables; tab sessions must survive it.
+    store
+        .save_state(&BrowserState::new_with_defaults())
+        .expect("save state");
+    assert_eq!(store.load_tab_sessions().expect("load").len(), 2);
+
+    // Purge keeps only the still-present tabs.
+    store.purge_tab_sessions_except(&[a]).expect("purge");
+    let after = store.load_tab_sessions().expect("load");
+    assert_eq!(after.len(), 1);
+    assert!(after.contains_key(&a));
+    assert!(!after.contains_key(&b));
+
+    // Explicit delete and empty-keep wipe.
+    store.delete_tab_session(a).expect("delete a");
+    assert!(store.load_tab_sessions().expect("load").is_empty());
+    store.save_tab_session(b, "blob-b").expect("save b again");
+    store.purge_tab_sessions_except(&[]).expect("purge all");
+    assert!(store.load_tab_sessions().expect("load").is_empty());
+}
 
 #[test]
 fn upstream_proxy_survives_round_trip() {

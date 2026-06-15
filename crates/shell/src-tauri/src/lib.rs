@@ -28,6 +28,7 @@ mod save_coalescer;
 mod state;
 mod suggest;
 mod swipe_nav;
+mod tab_session;
 mod themes;
 mod vault;
 mod video_popout;
@@ -124,6 +125,8 @@ pub fn run() {
             let auto_update = browser_state.settings.filter_list_auto_update;
             let initial_keybindings = browser_state.settings.keybindings.clone();
             let primary_workspace = browser_state.active_workspace_id;
+            let restored_tab_ids: Vec<wis_core::TabId> =
+                browser_state.tabs.iter().map(|t| t.id).collect();
 
             app.manage(AppState::new(
                 browser_state,
@@ -140,6 +143,33 @@ pub fn run() {
                 let state = app.state::<AppState>();
                 if let Ok(Some(json)) = state.storage.get_meta(state::WINDOW_GEOMETRY_META) {
                     state.load_window_geometry(state::parse_window_geometry(&json));
+                }
+            }
+
+            // Seed persisted per-tab sessions (WKWebView `interactionState`) so
+            // each tab restores its full back/forward history + scroll on its
+            // first webview creation.
+            {
+                let state = app.state::<AppState>();
+                if let Err(err) = state.storage.purge_tab_sessions_except(&restored_tab_ids) {
+                    log::warn!("purge orphaned tab sessions: {err}");
+                }
+
+                match state.storage.load_tab_sessions() {
+                    Ok(sessions) if !sessions.is_empty() => {
+                        let restored: std::collections::HashSet<wis_core::TabId> =
+                            restored_tab_ids.iter().copied().collect();
+                        tauri::async_runtime::block_on(async {
+                            let mut guard = state.pending_restore_states.lock().await;
+                            for (id, blob) in sessions {
+                                if restored.contains(&id) {
+                                    guard.insert(id, blob);
+                                }
+                            }
+                        });
+                    }
+                    Ok(_) => {}
+                    Err(err) => log::warn!("load persisted tab sessions: {err}"),
                 }
             }
 
@@ -469,6 +499,7 @@ pub fn run() {
             downloads::open_download,
             downloads::reveal_download,
             interaction_state::tab_interaction_state,
+            tab_session::persist_tab_session,
             find::tab_find_string,
             find::tab_find_clear,
             print::print_active_tab,

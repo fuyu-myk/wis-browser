@@ -1,12 +1,14 @@
 //! The [`Storage`] trait: the contract the rest of the app codes against.
 
+use std::collections::HashMap;
+
 use crate::bookmarks::{Bookmark, BookmarkFolder};
 use crate::credentials::CredentialRecord;
 use crate::downloads::DownloadRecord;
 use crate::error::StorageResult;
 use crate::history::{HistoryEntry, HistoryQuery};
 use crate::searches::SearchEntry;
-use wis_core::{BrowserState, DownloadId, WorkspaceId};
+use wis_core::{BrowserState, DownloadId, TabId, WorkspaceId};
 
 /// A pluggable persistent store for the browser's state.
 ///
@@ -219,4 +221,31 @@ pub trait Storage: Send + Sync {
     /// Delete every session-cookie snapshot first persisted more than
     /// `max_age_days` ago (`0` deletes all). Hygiene + blast-radius bound.
     fn purge_stale_session_cookies(&self, max_age_days: i64) -> StorageResult<()>;
+
+    // -- per-tab session restore (interactionState; see migration M0018) ----
+
+    /// Persist a tab's serialized WKWebView `interactionState` (base64), so its
+    /// back/forward history + scroll restore across a full restart. Replaces any
+    /// prior blob for the tab. Callers must skip ephemeral (private) tabs.
+    /// Default no-op for non-persisting storages.
+    fn save_tab_session(&self, _tab_id: TabId, _data: &str) -> StorageResult<()> {
+        Ok(())
+    }
+
+    /// Load every persisted tab session, keyed by tab id. Empty when none.
+    fn load_tab_sessions(&self) -> StorageResult<HashMap<TabId, String>> {
+        Ok(HashMap::new())
+    }
+
+    /// Delete a tab's persisted session (e.g. when the tab is closed).
+    fn delete_tab_session(&self, _tab_id: TabId) -> StorageResult<()> {
+        Ok(())
+    }
+
+    /// Drop persisted sessions for tabs no longer present (orphan hygiene at
+    /// startup). `keep` is the set of still-existing tab ids; an empty `keep`
+    /// clears the table.
+    fn purge_tab_sessions_except(&self, _keep: &[TabId]) -> StorageResult<()> {
+        Ok(())
+    }
 }

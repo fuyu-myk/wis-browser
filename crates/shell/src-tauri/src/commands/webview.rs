@@ -212,6 +212,13 @@ pub async fn create_tab_webview(
                         crate::cookies::persist_session_cookies(&app_for_cookies, workspace_id)
                             .await;
                     });
+
+                    // Capture this tab's serialized session (back/forward
+                    // history + scroll) to disk, debounced, so it restores
+                    // across a full restart. Private tabs never persist.
+                    app.state::<AppState>()
+                        .tab_session_saver
+                        .schedule(app.clone(), tab_id);
                 }
             }
         });
@@ -318,6 +325,18 @@ pub async fn create_tab_webview(
     // forms). The restore performs its own navigation from about:blank.
     if let Some(state_b64) = &restore_state {
         crate::interaction_state::apply(&child, state_b64);
+
+        let fallback_webview = child.clone();
+        let fallback_url = parsed.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            let stranded = matches!(fallback_webview.url(), Ok(u) if u.as_str() == "about:blank");
+            if stranded {
+                if let Err(err) = fallback_webview.navigate(fallback_url) {
+                    log::warn!("tab session restore fallback navigation failed: {err}");
+                }
+            }
+        });
     }
 
     // "Save password?" capture.

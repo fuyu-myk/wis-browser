@@ -1,7 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
+import type { TabId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { useBrowserState, useUpdateSettings } from '@/hooks/useBrowserState'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { DownloadIcon, GlobeIcon, MonitorIcon, PanelTopIcon, SunIcon } from '@/lib/icons'
 import {
   DatabaseIcon,
@@ -43,12 +45,20 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'shortcuts', label: 'Shortcuts', icon: <KeyboardIcon /> },
 ]
 
-export function SettingsPage() {
+export function SettingsPage({ tabId }: { tabId: TabId }) {
   const { data: state } = useBrowserState()
   const update = useUpdateSettings()
   const activeWorkspace = state?.workspaces.find((w) => w.id === state.active_workspace_id)
 
   const mainRef = useRef<HTMLDivElement | null>(null)
+  const attachScroll = useScrollMemory(tabId)
+  const setMain = useCallback(
+    (el: HTMLDivElement | null) => {
+      mainRef.current = el
+      attachScroll(el)
+    },
+    [attachScroll],
+  )
   const [activeSection, setActiveSection] = useState<string>(NAV_SECTIONS[0].id)
   // Non-null while a click-initiated smooth scroll is in flight.
   const scrollLockRef = useRef<number | null>(null)
@@ -159,7 +169,7 @@ export function SettingsPage() {
           </button>
         ))}
       </aside>
-      <div className="kb-settings-main" ref={mainRef}>
+      <div className="kb-settings-main" ref={setMain}>
         <AppearanceSection
           settings={settings}
           activeWorkspace={activeWorkspace}

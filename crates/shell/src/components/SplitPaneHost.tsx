@@ -308,8 +308,8 @@ import { DownloadsPage } from '@/components/DownloadsPage'
 import { DOWNLOADS_URL, HISTORY_URL, SETTINGS_URL } from '@/lib/url'
 
 function ChromePane({ tab }: { tab: Tab }) {
-  if (tab.url === SETTINGS_URL) return <SettingsPage />
+  if (tab.url === SETTINGS_URL) return <SettingsPage tabId={tab.id} />
   if (tab.url === HISTORY_URL) return <HistoryPage activeTab={tab} />
-  if (tab.url === DOWNLOADS_URL) return <DownloadsPage />
+  if (tab.url === DOWNLOADS_URL) return <DownloadsPage tabId={tab.id} />
   return <NewTabPage activeTab={tab} />
 }

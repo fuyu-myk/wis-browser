@@ -8,6 +8,7 @@ import { cx } from '@/lib/cx'
 import { SearchIcon, XIcon } from '@/lib/icons'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 const HISTORY_KEY = ['history'] as const
@@ -35,6 +36,7 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
   const [confirmClear, setConfirmClear] = useState(false)
 
   const navigate = useNavigateOrCreateTab(activeWorkspaceId, activeTab)
+  const attachScroll = useScrollMemory(activeTab?.id ?? 'history')
 
   const queryWorkspaceId: WorkspaceId | null =
     scope === 'workspace' ? activeWorkspaceId : null
@@ -222,7 +224,7 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
             {debouncedSearch ? 'No matching history.' : 'No history yet.'}
           </p>
         ) : (
-          <div className="kb-history-groups">
+          <div className="kb-history-groups" ref={attachScroll}>
             {groups.map((group) => (
               <section key={group.key} className="kb-history-group">
                 <h2 className="kb-history-day">{group.label}</h2>

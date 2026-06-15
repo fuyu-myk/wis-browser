@@ -233,6 +233,20 @@ const M0017_BACKGROUND_DRAFTS: &str = r#"
 ALTER TABLE workspaces ADD COLUMN background_drafts TEXT;
 "#;
 
+// Per-tab serialized WKWebView `interactionState` (back/forward history, scroll
+// position, form state), so a tab restores its full session across a full
+// restart, not just sleep/wake. One row per tab; independent of `BrowserState`
+// (it is its own table, so it survives `save_state`'s `clear_all`). Ephemeral
+// (private) tabs never write here; orphaned rows (closed tabs) are purged at
+// startup.
+const M0018_TAB_SESSIONS: &str = r#"
+CREATE TABLE tab_sessions (
+    tab_id      TEXT NOT NULL PRIMARY KEY,
+    data        TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+"#;
+
 fn all() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(M0001_INITIAL),
@@ -252,6 +266,7 @@ fn all() -> Migrations<'static> {
         M::up(M0015_WORKSPACE_BACKGROUND),
         M::up(M0016_WORKSPACE_CUSTOM_ACCENT),
         M::up(M0017_BACKGROUND_DRAFTS),
+        M::up(M0018_TAB_SESSIONS),
     ])
 }
 

@@ -223,6 +223,9 @@ export function useTabWebviews({
             if (oldest === undefined) break
             cache.delete(oldest)
           }
+          // Persist to disk so a slept-then-quit tab restores its scrolled
+          // position + history on next launch.
+          void commands.persistTabSession(id, state).catch(() => undefined)
         })
         .catch(() => undefined)
         .finally(() => {

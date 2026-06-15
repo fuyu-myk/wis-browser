@@ -85,6 +85,10 @@ pub struct AppState {
     /// [`crate::save_coalescer`]). Destructive transitions bypass the
     /// debounce via [`write_now`](crate::save_coalescer::SaveCoalescer::write_now).
     pub save_coalescer: Arc<crate::save_coalescer::SaveCoalescer>,
+    /// Per-tab debounced writer for serialized WKWebView `interactionState`, so
+    /// a tab's back/forward history + scroll survive a full restart (see
+    /// [`crate::tab_session`]).
+    pub tab_session_saver: crate::tab_session::TabSessionSaver,
     pub tracker_blocker: RwLock<Arc<TrackerBlocker>>,
     pub resolver: Arc<dyn Resolver>,
     pub content_rules: RwLock<HashMap<PrivacyMode, Option<RuleSpec>>>,
@@ -192,6 +196,7 @@ impl AppState {
             )])),
             storage,
             save_coalescer: Arc::new(crate::save_coalescer::SaveCoalescer::new()),
+            tab_session_saver: crate::tab_session::TabSessionSaver::new(),
             tracker_blocker: RwLock::new(tracker_blocker),
             resolver,
             content_rules: RwLock::new(build_rule_specs_from(initial_filter_text)),

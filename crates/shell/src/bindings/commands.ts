@@ -510,6 +510,16 @@ export const commands = {
     return invoke('tab_interaction_state', { id })
   },
 
+  /**
+   * Persist a tab's serialized session (WKWebView `interactionState`, base64)
+   * to disk, so its back/forward history + scroll survive a full restart.
+   * Called just before a background webview is discarded (sleep). Private tabs
+   * are skipped backend-side.
+   */
+  async persistTabSession(tabId: TabId, stateB64: string): Promise<void> {
+    return invoke('persist_tab_session', { tabId, stateB64 })
+  },
+
   // -- downloads --------------------------------------------------------------
 
   /** Downloads newest first: this session's items, then persisted history. */

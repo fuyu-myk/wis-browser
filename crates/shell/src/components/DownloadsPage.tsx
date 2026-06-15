@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
-import type { DownloadId, DownloadItem } from '@/bindings/types'
+import type { DownloadId, DownloadItem, TabId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { FileIcon, SearchIcon, XIcon } from '@/lib/icons'
 import {
@@ -20,11 +20,13 @@ import {
   DOWNLOADS_KEY,
 } from '@/lib/downloads'
 import { useDownloads } from '@/hooks/useDownloads'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
-export function DownloadsPage() {
+export function DownloadsPage({ tabId }: { tabId: TabId }) {
   const { downloads } = useDownloads()
   const qc = useQueryClient()
+  const attachScroll = useScrollMemory(tabId)
 
   const [search, setSearch] = useState('')
   const [selectMode, setSelectMode] = useState(false)
@@ -169,7 +171,7 @@ export function DownloadsPage() {
             {search.trim() ? 'No matching downloads.' : 'No downloads yet.'}
           </p>
         ) : (
-          <div className="kb-history-groups">
+          <div className="kb-history-groups" ref={attachScroll}>
             {groups.map((group) => (
               <section key={group.key} className="kb-history-group">
                 <h2 className="kb-history-day">{group.label}</h2>

@@ -386,6 +386,65 @@ impl Storage for SqliteStorage {
 
         Ok(())
     }
+
+    fn save_tab_session(&self, tab_id: wis_core::TabId, data: &str) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let id = tab_id.as_uuid().to_string();
+        let now = chrono::Utc::now();
+        conn.execute(
+            "INSERT INTO tab_sessions (tab_id, data, updated_at) VALUES (?1, ?2, ?3) \
+             ON CONFLICT(tab_id) DO UPDATE SET data = ?2, updated_at = ?3",
+            rusqlite::params![id, data, now],
+        )?;
+
+        Ok(())
+    }
+
+    fn load_tab_sessions(
+        &self,
+    ) -> StorageResult<std::collections::HashMap<wis_core::TabId, String>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare("SELECT tab_id, data FROM tab_sessions")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        let mut out = std::collections::HashMap::new();
+        for row in rows {
+            let (id_str, data) = row?;
+            // Drop any row whose id no longer parses.
+            if let Ok(uuid) = uuid::Uuid::parse_str(&id_str) {
+                out.insert(wis_core::TabId::from(uuid), data);
+            }
+        }
+
+        Ok(out)
+    }
+
+    fn delete_tab_session(&self, tab_id: wis_core::TabId) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        conn.execute(
+            "DELETE FROM tab_sessions WHERE tab_id = ?1",
+            rusqlite::params![tab_id.as_uuid().to_string()],
+        )?;
+
+        Ok(())
+    }
+
+    fn purge_tab_sessions_except(&self, keep: &[wis_core::TabId]) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        if keep.is_empty() {
+            conn.execute("DELETE FROM tab_sessions", [])?;
+            return Ok(());
+        }
+
+        let placeholders = vec!["?"; keep.len()].join(",");
+        let sql = format!("DELETE FROM tab_sessions WHERE tab_id NOT IN ({placeholders})");
+        let ids: Vec<String> = keep.iter().map(|id| id.as_uuid().to_string()).collect();
+        conn.execute(&sql, rusqlite::params_from_iter(ids.iter()))?;
+
+        Ok(())
+    }
 }
 
 /// Verify the loaded state passes [`BrowserState::invariant_violations`].
