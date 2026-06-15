@@ -296,7 +296,10 @@ impl AppState {
     /// Best-effort; failures only log.
     pub fn persist_window_geometry(&self) {
         let snapshot: HashMap<String, WindowGeometry> = {
-            let map = self.window_geometry.lock().expect("window_geometry poisoned");
+            let map = self
+                .window_geometry
+                .lock()
+                .expect("window_geometry poisoned");
             map.iter()
                 .map(|(k, v)| (k.as_uuid().to_string(), *v))
                 .collect()
@@ -692,7 +695,10 @@ mod tests {
 
         // Rebinding to another window moves ownership; the reverse lookup follows.
         state.set_window_workspace("win-7", primary);
-        assert_eq!(state.window_for_workspace(primary).as_deref(), Some("win-7"));
+        assert_eq!(
+            state.window_for_workspace(primary).as_deref(),
+            Some("win-7")
+        );
     }
 
     #[tokio::test]

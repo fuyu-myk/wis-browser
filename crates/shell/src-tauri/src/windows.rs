@@ -226,10 +226,7 @@ pub async fn restore_session_windows(app: AppHandle, state: State<'_, AppState>)
         return Ok(());
     }
 
-    let saved = state
-        .storage
-        .load_windowed_workspaces()
-        .unwrap_or_default();
+    let saved = state.storage.load_windowed_workspaces().unwrap_or_default();
 
     for id in saved {
         if state.window_for_workspace(id).is_some() {

@@ -47,7 +47,9 @@ fn meta_kv_round_trips_and_survives_state_save() {
     );
 
     // A full state save must not wipe app-managed meta keys.
-    store.save_state(&BrowserState::new_with_defaults()).expect("save");
+    store
+        .save_state(&BrowserState::new_with_defaults())
+        .expect("save");
     assert_eq!(
         store.get_meta("window_geometry").expect("get").as_deref(),
         Some("{\"a\":1}")
@@ -69,7 +71,9 @@ fn windowed_workspaces_round_trip_and_survive_state_save() {
     // Empty until something is saved.
     assert!(store.load_windowed_workspaces().expect("load").is_empty());
 
-    store.save_windowed_workspaces(&[ws]).expect("save windowed");
+    store
+        .save_windowed_workspaces(&[ws])
+        .expect("save windowed");
     assert_eq!(store.load_windowed_workspaces().expect("load"), vec![ws]);
 
     // A full state save (which clears/rewrites the document tables) must not

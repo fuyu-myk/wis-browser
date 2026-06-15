@@ -111,8 +111,7 @@ pub fn handle_asset_request(
     // Chrome surfaces only: the main window, secondary windows (`win-*`), and
     // any window's overlay webviews.
     let label = ctx.webview_label();
-    let is_chrome =
-        label == "main" || label.starts_with("win-") || label.starts_with("overlay-");
+    let is_chrome = label == "main" || label.starts_with("win-") || label.starts_with("overlay-");
     if !is_chrome {
         responder.respond(status(403, "forbidden"));
         return;
