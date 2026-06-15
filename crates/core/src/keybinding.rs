@@ -65,7 +65,7 @@ pub enum KeyAction {
     UnsplitPanes,
     /// Reopen the most-recently-closed tab (repeat to go further back).
     RestoreClosedTab,
-    /// Activate the next / previous workspace. No-op at the ends (no wrap).
+    /// Activate the next / previous workspace (wraps at the ends).
     NextWorkspace,
     PreviousWorkspace,
     /// Activate the next / previous tab in the current workspace (wraps).
@@ -238,12 +238,12 @@ const ALL_ACTIONS: [KeyAction; 57] = [
     KeyAction::PopOutVideo,
 ];
 
-/// Default keyboard accelerators. `NewWindow` has no entry on purpose: the
-/// menu item appears with no shortcut until multi-window support arrives.
+/// Default keyboard accelerators.
 pub fn default_keymap() -> HashMap<KeyAction, String> {
     let pairs: &[(KeyAction, &str)] = &[
         (KeyAction::NewTab, "Cmd+T"),
-        (KeyAction::NewWorkspace, "Cmd+N"),
+        (KeyAction::NewWindow, "Cmd+N"),
+        (KeyAction::NewWorkspace, "Alt+Cmd+N"),
         (KeyAction::CloseTab, "Cmd+W"),
         (KeyAction::FocusUrlBar, "Cmd+E"),
         (KeyAction::Reload, "Cmd+R"),
@@ -294,6 +294,7 @@ pub fn default_keymap() -> HashMap<KeyAction, String> {
         (KeyAction::Print, "Cmd+P"),
         (KeyAction::ToggleSidebar, "Cmd+S"),
         (KeyAction::ElementPicker, "Cmd+Shift+X"),
+        (KeyAction::PopOutVideo, "Cmd+Shift+O"),
     ];
     pairs.iter().map(|(a, s)| (*a, (*s).to_string())).collect()
 }
@@ -324,15 +325,12 @@ mod tests {
 
     #[test]
     fn default_keymap_includes_every_action_except_reserved() {
-        // `NewWindow` is reserved for multi-window support in future;
-        // `PopOutVideo` ships unbound so it can never collide with a page
-        // or user shortcut until the user assigns one.
+        // These ship unbound on purpose: `FocusUrlBarAlt`/`SwitchToTab9` are
+        // spare slots and `FocusNextPane` is covered by the directional pane binds.
         const UNBOUND: &[KeyAction] = &[
-            KeyAction::NewWindow,
             KeyAction::FocusUrlBarAlt,
             KeyAction::FocusNextPane,
             KeyAction::SwitchToTab9,
-            KeyAction::PopOutVideo,
         ];
         let map = default_keymap();
         for action in KeyAction::all() {

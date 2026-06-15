@@ -390,10 +390,11 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       const st = ctx.state
       if (!st) return
       const list = st.workspaces
+      const len = list.length
+      if (len === 0) return
       const idx = list.findIndex((w) => w.id === st.active_workspace_id)
       if (idx < 0) return
-      const target = action === 'next_workspace' ? idx + 1 : idx - 1
-      if (target < 0 || target >= list.length) return // clamp: no-op at the ends
+      const target = action === 'next_workspace' ? (idx + 1) % len : (idx - 1 + len) % len
       await commands.setActiveWorkspace(list[target].id)
       ctx.invalidate()
       return

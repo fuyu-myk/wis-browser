@@ -558,6 +558,12 @@ export function TabList({
           syncToTab(tab)
         }}
         onContextMenu={(e) => openSplitMenu(e, tab.id)}
+        onAuxClick={(e) => {
+          if (e.button === 1) {
+            e.preventDefault()
+            closeTabAnimated(tab.id)
+          }
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
