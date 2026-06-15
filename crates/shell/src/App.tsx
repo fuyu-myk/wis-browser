@@ -4,12 +4,14 @@ import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { PendingRenameProvider } from '@/hooks/usePendingRename'
 import { useSessionRestore } from '@/hooks/useSessionRestore'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { useUpdateCheck } from '@/hooks/useUpdateCheck'
 
 export default function App() {
   const { data: state, isLoading, error } = useBrowserState()
   useBrowserStateEvents()
   useThemeApply(state?.settings)
   useSessionRestore()
+  useUpdateCheck()
 
   if (isLoading || !state) {
     return null

@@ -51,9 +51,18 @@
       }
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU2QzE0NjdGMUY5QzlFOTAKUldTUW5wd2ZmMGJCNWdrLzNEK2NTeGdZYlJsTzBBT3l6cHhzTlg3a0FGWmtsamJheWFuWEpXMjYK",
+      "endpoints": [
+        "https://github.com/fuyu-myk/wis-browser/releases/latest/download/latest.json"
+      ]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -58,7 +58,8 @@ pub fn run() {
         .finish();
     let _ = tracing::subscriber::set_global_default(subscriber);
 
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default()
         .register_asynchronous_uri_scheme_protocol("wis-asset", wallpapers::handle_asset_request)
         .plugin(
             tauri_plugin_log::Builder::default()
@@ -68,7 +69,19 @@ pub fn run() {
                     log::LevelFilter::Warn
                 })
                 .build(),
-        )
+        );
+
+    // Auto-update is desktop-only: the updater verifies signed bundles against
+    // the public key in tauri.conf.json, and `process` provides the relaunch
+    // after an update lands.
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
+    }
+
+    builder
         .setup(|app| {
             let data_dir = app
                 .path()

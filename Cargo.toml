@@ -43,6 +43,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tauri = { version = "2.11.2", features = ["macos-private-api", "unstable", "macos-proxy", "image-png"] }
 tauri-build = "2.6.2"
 tauri-plugin-log = "2"
+# In-app updater: verifies signed update bundles against the embedded public
+# key; `process` provides relaunch after an update is installed.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 # Database
 rusqlite = { version = "0.37", features = ["bundled", "chrono", "url"] }

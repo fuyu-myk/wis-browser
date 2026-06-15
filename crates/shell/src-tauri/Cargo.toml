@@ -19,6 +19,8 @@ serde_json = { workspace = true }
 log = { workspace = true }
 tauri = { workspace = true }
 tauri-plugin-log = { workspace = true }
+tauri-plugin-updater = { workspace = true }
+tauri-plugin-process = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 thiserror = { workspace = true }
