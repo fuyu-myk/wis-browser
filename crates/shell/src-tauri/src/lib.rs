@@ -391,6 +391,7 @@ pub fn run() {
             commands::close_tab,
             commands::restore_closed_tab,
             commands::move_tab_to_new_window,
+            commands::move_tab_to_workspace,
             commands::tab_hard_reload,
             commands::tab_zoom,
             commands::reorder_tabs,

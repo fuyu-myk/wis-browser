@@ -1,11 +1,13 @@
 /**
- * Tab context menu, hosted by the `overlay-tabmenu` webview so it composites
- * above the tab webviews. Opened at the cursor via `setOverlayBounds('tabmenu',
- * ...)` + the `wis-tabmenu-open` event (which carries the cursor position and
- * the window height so the menu can re-fit after measuring its content).
+ * Tab context (right-click) menu, hosted by the `overlay-tabmenu` webview so it
+ * composites above the tab webviews. Opened at the cursor via
+ * `setOverlayBounds('tabmenu', ...)` + the `wis-tabmenu-open` event (which
+ * carries the cursor position and the window height so the menu can re-fit after
+ * measuring its content).
  *
- * Rows: a directional split pill + pin toggle, then "move to folder" actions
- * (each folder, remove-from-folder, and new-folder).
+ * Rows: a directional split pill + pin toggle; "Move to New Window"; a "Move to
+ * workspace" section (other persistent workspaces); then "move to folder"
+ * actions (each folder, remove-from-folder, and new-folder).
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -13,7 +15,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
-import type { AccentColor, SplitDir, TabFolderId, TabId } from '@/bindings/types'
+import type { AccentColor, SplitDir, TabFolderId, TabId, WorkspaceId } from '@/bindings/types'
 import { nextAccent } from '@/lib/accents'
 import { cx } from '@/lib/cx'
 import { PinIcon, PinOffIcon } from '@/lib/icons'
@@ -46,7 +48,7 @@ const DIRECTIONS: ReadonlyArray<{ dir: Dir; split: SplitDir; first: boolean; lab
   { dir: 'right', split: 'horizontal', first: false, label: 'Split right' },
 ]
 
-export function PaneSplitMenuSurface() {
+export function TabContextMenuSurface() {
   const { data: state } = useBrowserState()
   useBrowserStateEvents()
   useThemeApply(state?.settings)
@@ -87,6 +89,13 @@ export function PaneSplitMenuSurface() {
   const folders = [...(activeWorkspace?.tab_folders ?? [])].sort((a, b) => a.position - b.position)
   const inFolder = movedTab?.folder_id != null
 
+  // "Move to workspace" targets: other persistent workspaces. Hidden for a tab
+  // in a private workspace.
+  const otherWorkspaces =
+    activeWorkspace && !activeWorkspace.ephemeral
+      ? (state?.workspaces ?? []).filter((w) => w.id !== activeWorkspace.id && !w.ephemeral)
+      : []
+
   // Fit the overlay to the measured menu, re-clamping vertically.
   useLayoutEffect(() => {
     if (!target) return
@@ -95,7 +104,7 @@ export function PaneSplitMenuSurface() {
     const h = el.offsetHeight
     const y = Math.max(MARGIN, Math.min(target.y, target.winH - h - MARGIN))
     void commands.setOverlayBounds('tabmenu', target.x, y, MENU_W, h).catch(() => undefined)
-  }, [target, folders.length, inFolder])
+  }, [target, folders.length, inFolder, otherWorkspaces.length])
 
   const close = () => {
     setTarget(null)
@@ -141,6 +150,10 @@ export function PaneSplitMenuSurface() {
   }
   const moveTo = (folderId: TabFolderId | null) => {
     void commands.assignTabToFolder(target.movedTabId, folderId).catch(() => undefined)
+    close()
+  }
+  const moveToWorkspace = (wsId: WorkspaceId) => {
+    void commands.moveTabToWorkspace(target.movedTabId, wsId).catch(() => undefined)
     close()
   }
   const createAndMove = async () => {
@@ -210,6 +223,30 @@ export function PaneSplitMenuSurface() {
         </span>
         <span className="kb-tabctx-label">Move to New Window</span>
       </button>
+
+      {otherWorkspaces.length > 0 && (
+        <>
+          <div className="kb-tabctx-sep" aria-hidden />
+          <div className="kb-tabctx-section">Move to workspace</div>
+          <div className="kb-tabctx-folders">
+            {otherWorkspaces.map((w) => (
+              <button
+                key={w.id}
+                type="button"
+                className="kb-tabctx-item"
+                onClick={() => moveToWorkspace(w.id)}
+              >
+                <span
+                  className={cx('kb-tabctx-dot', `accent-${w.accent}`)}
+                  style={w.custom_accent ? { background: w.custom_accent } : undefined}
+                  aria-hidden
+                />
+                <span className="kb-tabctx-label">{w.name}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="kb-tabctx-sep" aria-hidden />
 

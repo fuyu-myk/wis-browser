@@ -278,6 +278,64 @@ pub async fn move_tab_to_new_window(
     Ok(())
 }
 
+/// Move a tab into an existing workspace.
+/// Like the new-window detach, the tab is recreated in the target (a fresh id,
+/// so there is never a cross-window `tab-*` label clash) and its live session is
+/// carried across via the captured interaction state. Refuses to move a private
+/// tab into a persistent workspace (that would persist private content); the
+/// menu only offers persistent targets.
+#[tauri::command]
+pub async fn move_tab_to_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    tab_id: TabId,
+    workspace_id: WorkspaceId,
+) -> WisResult<()> {
+    let captured = app
+        .webviews()
+        .get(&format!("tab-{}", tab_id.as_uuid()))
+        .and_then(crate::interaction_state::read);
+
+    let url = {
+        let browser = state.browser.lock().await;
+        let tab = browser.tab(tab_id)?;
+        if tab.workspace_id == workspace_id {
+            return Ok(());
+        }
+
+        let source_ephemeral = browser
+            .workspace(tab.workspace_id)
+            .map(|w| w.ephemeral)
+            .unwrap_or(false);
+        if source_ephemeral && !browser.workspace(workspace_id)?.ephemeral {
+            return Err(wis_core::WisError::InvalidInput {
+                message: "refusing to move a private tab into a persistent workspace".into(),
+            });
+        }
+
+        tab.url.to_string()
+    };
+
+    let new_tab_id = mutate(&app, &state, |s| {
+        let (s, tab) = s.with_new_loose_tab(workspace_id, &url)?;
+        let s = s.with_tab_closed(tab_id)?;
+        Ok((s, tab.id))
+    })
+    .await?;
+
+    crate::audio::forget_tab(&app, tab_id);
+
+    if let Some(blob) = captured {
+        state
+            .pending_restore_states
+            .lock()
+            .await
+            .insert(new_tab_id, blob);
+    }
+
+    Ok(())
+}
+
 /// Reload a tab bypassing the HTTP cache (WKWebView `reloadFromOrigin`).
 #[tauri::command]
 pub async fn tab_hard_reload(app: AppHandle, id: TabId) -> WisResult<()> {

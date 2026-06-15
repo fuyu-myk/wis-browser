@@ -368,6 +368,12 @@ export const commands = {
     return invoke('move_tab_to_new_window', { tabId, name, accent })
   },
 
+  /** Move a tab into an existing workspace. Refuses to move a private tab into a
+   *  persistent workspace; the session (history/scroll) is carried across. */
+  async moveTabToWorkspace(tabId: TabId, workspaceId: WorkspaceId): Promise<void> {
+    return invoke('move_tab_to_workspace', { tabId, workspaceId })
+  },
+
   /** Reload a tab bypassing the HTTP cache. */
   async tabHardReload(id: TabId): Promise<void> {
     return invoke('tab_hard_reload', { id })

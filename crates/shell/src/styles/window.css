@@ -441,6 +441,14 @@ body.is-overlay-surface:not(.glass-on) {
   color: var(--text-secondary);
 }
 .kb-tabctx-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kb-tabctx-section {
+  padding: 4px 8px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
 
 /* ─── Find-in-page overlay (bottom-centred glass pill) ─────────── */
 .kb-findbar-wrap {
