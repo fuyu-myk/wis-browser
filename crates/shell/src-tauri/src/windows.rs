@@ -52,14 +52,16 @@ pub async fn spawn_window(
     let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
     let app_for_build = app.clone();
     let label_for_build = label.clone();
+    // Restore this workspace's last window geometry, if any (else default size,
+    // OS-placed).
+    let geo = state.window_geometry_for(workspace_id);
     let dispatch = app.run_on_main_thread(move || {
-        let built = WebviewWindowBuilder::new(
+        let mut builder = WebviewWindowBuilder::new(
             &app_for_build,
             &label_for_build,
             WebviewUrl::App("index.html".into()),
         )
         .title("Wis")
-        .inner_size(1280.0, 800.0)
         .min_inner_size(800.0, 600.0)
         .resizable(true)
         .transparent(true)
@@ -73,8 +75,12 @@ pub async fn spawn_window(
             state: Some(WindowEffectState::Active),
             radius: Some(14.0),
             color: None,
-        })
-        .build();
+        });
+        builder = match geo {
+            Some(g) => builder.inner_size(g.width, g.height).position(g.x, g.y),
+            None => builder.inner_size(1280.0, 800.0),
+        };
+        let built = builder.build();
         match built {
             Ok(window) => {
                 #[cfg(target_os = "macos")]
@@ -85,12 +91,16 @@ pub async fn spawn_window(
 
                 let app_for_event = app_for_build.clone();
                 let label_for_event = label_for_build.clone();
-                window.on_window_event(move |event| {
-                    if matches!(event, tauri::WindowEvent::Destroyed) {
+                window.on_window_event(move |event| match event {
+                    tauri::WindowEvent::Destroyed => {
                         app_for_event
                             .state::<AppState>()
                             .clear_window_workspace(&label_for_event);
                     }
+                    tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+                        record_window_geometry(&app_for_event, &label_for_event);
+                    }
+                    _ => {}
                 });
                 let _ = tx.send(Ok(()));
             }
@@ -133,6 +143,51 @@ pub fn focus_window(app: &AppHandle, label: &str) {
     } else {
         log::warn!("focus_window: no window labelled {label}");
     }
+}
+
+/// Snapshot a window's geometry (logical px) into the per-workspace cache and
+/// schedule a debounced persist. Called from move/resize events (which fire in
+/// bursts during a drag), so the write is coalesced via a generation counter:
+/// only the last event of a burst reaches storage.
+pub fn record_window_geometry(app: &AppHandle, label: &str) {
+    use std::sync::atomic::Ordering;
+
+    let state = app.state::<AppState>();
+    let Some(workspace_id) = state.window_workspace(label) else {
+        return;
+    };
+
+    let Some(win) = app.get_window(label) else {
+        return;
+    };
+
+    let (Ok(scale), Ok(pos), Ok(size)) =
+        (win.scale_factor(), win.outer_position(), win.inner_size())
+    else {
+        return;
+    };
+
+    let pos = pos.to_logical::<f64>(scale);
+    let size = size.to_logical::<f64>(scale);
+    state.set_window_geometry(
+        workspace_id,
+        crate::state::WindowGeometry {
+            x: pos.x,
+            y: pos.y,
+            width: size.width,
+            height: size.height,
+        },
+    );
+
+    let generation = state.geometry_gen.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        let state = app.state::<AppState>();
+        if state.geometry_gen.load(Ordering::SeqCst) == generation {
+            state.persist_window_geometry();
+        }
+    });
 }
 
 /// Open a new OS window showing an existing (free) workspace. Returns the new

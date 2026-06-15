@@ -40,6 +40,18 @@ pub trait Storage: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// Set an app-managed key in the small meta key-value store (survives a full
+    /// state save). The caller owns the value encoding (e.g. JSON). Default
+    /// no-op for non-persisting storages.
+    fn set_meta(&self, _key: &str, _value: &str) -> StorageResult<()> {
+        Ok(())
+    }
+
+    /// Read a meta key set via [`Storage::set_meta`]; `None` when absent.
+    fn get_meta(&self, _key: &str) -> StorageResult<Option<String>> {
+        Ok(None)
+    }
+
     // -- browsing history (append-style; see [`crate::history`]) ------------
 
     /// Record a visit to `url` with `title` in `workspace_id`. Deduplicated by

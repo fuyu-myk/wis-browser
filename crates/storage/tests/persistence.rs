@@ -36,6 +36,31 @@ fn fresh_store() -> SqliteStorage {
 }
 
 #[test]
+fn meta_kv_round_trips_and_survives_state_save() {
+    let store = fresh_store();
+    assert_eq!(store.get_meta("window_geometry").expect("get"), None);
+
+    store.set_meta("window_geometry", "{\"a\":1}").expect("set");
+    assert_eq!(
+        store.get_meta("window_geometry").expect("get").as_deref(),
+        Some("{\"a\":1}")
+    );
+
+    // A full state save must not wipe app-managed meta keys.
+    store.save_state(&BrowserState::new_with_defaults()).expect("save");
+    assert_eq!(
+        store.get_meta("window_geometry").expect("get").as_deref(),
+        Some("{\"a\":1}")
+    );
+
+    store.set_meta("window_geometry", "{}").expect("overwrite");
+    assert_eq!(
+        store.get_meta("window_geometry").expect("get").as_deref(),
+        Some("{}")
+    );
+}
+
+#[test]
 fn windowed_workspaces_round_trip_and_survive_state_save() {
     let store = fresh_store();
     let state = BrowserState::new_with_defaults();

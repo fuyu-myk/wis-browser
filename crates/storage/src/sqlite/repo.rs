@@ -101,6 +101,32 @@ pub fn load_windowed_workspaces(conn: &Connection) -> StorageResult<Vec<Workspac
         .unwrap_or_default())
 }
 
+/// Set an arbitrary app-managed meta key (see the `Storage` trait).
+pub fn set_meta(conn: &Connection, key: &str, value: &str) -> StorageResult<()> {
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES (?1, ?2)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )?;
+
+    Ok(())
+}
+
+/// Read a meta key; `None` when absent.
+pub fn get_meta(conn: &Connection, key: &str) -> StorageResult<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT value FROM meta WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )
+        .map(Some)
+        .or_else(|err| match err {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?)
+}
+
 fn insert_workspace(
     tx: &Transaction<'_>,
     workspace: &Workspace,

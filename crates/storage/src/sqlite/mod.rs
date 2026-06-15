@@ -109,6 +109,16 @@ impl Storage for SqliteStorage {
         repo::load_windowed_workspaces(&conn)
     }
 
+    fn set_meta(&self, key: &str, value: &str) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        repo::set_meta(&conn, key, value)
+    }
+
+    fn get_meta(&self, key: &str) -> StorageResult<Option<String>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        repo::get_meta(&conn, key)
+    }
+
     fn record_visit(
         &self,
         workspace_id: wis_core::WorkspaceId,

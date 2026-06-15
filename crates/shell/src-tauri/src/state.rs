@@ -42,6 +42,34 @@ pub struct ClosedTab {
     pub interaction_state: Option<String>,
 }
 
+/// A window's on-screen geometry in **logical** pixels (the unit the window
+/// builder and `set_position`/`set_size` use), persisted per workspace so a
+/// (re)opened window restores where and how big it last was.
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct WindowGeometry {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// Meta key under which the per-workspace geometry map is persisted (JSON, keyed
+/// by workspace uuid string so it is a valid JSON object).
+pub const WINDOW_GEOMETRY_META: &str = "window_geometry";
+
+/// Parse the persisted geometry map (uuid-string keys -> geometry). Unparsable
+/// entries are dropped; a bad blob yields an empty map.
+pub fn parse_window_geometry(json: &str) -> HashMap<WorkspaceId, WindowGeometry> {
+    let raw: HashMap<String, WindowGeometry> = serde_json::from_str(json).unwrap_or_default();
+    raw.into_iter()
+        .filter_map(|(k, v)| {
+            uuid::Uuid::parse_str(&k)
+                .ok()
+                .map(|u| (WorkspaceId::from(u), v))
+        })
+        .collect()
+}
+
 pub struct AppState {
     pub browser: Mutex<BrowserState>,
     /// Which workspace each OS window currently shows (window label ->
@@ -124,6 +152,13 @@ pub struct AppState {
     /// Set once the main window has reopened the saved multi-window layout, so
     /// `restore_session_windows` spawns the secondary windows exactly once per run.
     pub session_restored: std::sync::atomic::AtomicBool,
+    /// Current window geometry per workspace (logical px), updated on
+    /// move/resize and persisted (debounced) so a (re)opened window restores its
+    /// place/size. Loaded from storage at startup.
+    pub window_geometry: std::sync::Mutex<HashMap<WorkspaceId, WindowGeometry>>,
+    /// Generation counter debouncing geometry persistence: only the last
+    /// move/resize of a burst writes to storage.
+    pub geometry_gen: std::sync::atomic::AtomicU64,
     /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
     /// Only present with the `tor` feature.
     #[cfg(feature = "tor")]
@@ -177,6 +212,8 @@ impl AppState {
             pending_media: std::sync::Mutex::new(HashMap::new()),
             media_seq: std::sync::atomic::AtomicU64::new(0),
             session_restored: std::sync::atomic::AtomicBool::new(false),
+            window_geometry: std::sync::Mutex::new(HashMap::new()),
+            geometry_gen: std::sync::atomic::AtomicU64::new(0),
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }
@@ -225,6 +262,52 @@ impl AppState {
     fn persist_windowed_workspaces(&self, ids: &[WorkspaceId]) {
         if let Err(err) = self.storage.save_windowed_workspaces(ids) {
             log::warn!("persist windowed workspaces: {err}");
+        }
+    }
+
+    /// Record a window's geometry for `workspace_id` in the in-memory cache.
+    /// Does not write to disk; pair with the debounced `persist_window_geometry`.
+    pub fn set_window_geometry(&self, workspace_id: WorkspaceId, geo: WindowGeometry) {
+        self.window_geometry
+            .lock()
+            .expect("window_geometry poisoned")
+            .insert(workspace_id, geo);
+    }
+
+    /// Saved geometry for `workspace_id`, applied when its window (re)opens.
+    pub fn window_geometry_for(&self, workspace_id: WorkspaceId) -> Option<WindowGeometry> {
+        self.window_geometry
+            .lock()
+            .expect("window_geometry poisoned")
+            .get(&workspace_id)
+            .copied()
+    }
+
+    /// Replace the in-memory geometry cache from the persisted blob at startup,
+    /// before any window is restored.
+    pub fn load_window_geometry(&self, map: HashMap<WorkspaceId, WindowGeometry>) {
+        *self
+            .window_geometry
+            .lock()
+            .expect("window_geometry poisoned") = map;
+    }
+
+    /// Serialize the geometry cache to storage under [`WINDOW_GEOMETRY_META`].
+    /// Best-effort; failures only log.
+    pub fn persist_window_geometry(&self) {
+        let snapshot: HashMap<String, WindowGeometry> = {
+            let map = self.window_geometry.lock().expect("window_geometry poisoned");
+            map.iter()
+                .map(|(k, v)| (k.as_uuid().to_string(), *v))
+                .collect()
+        };
+        match serde_json::to_string(&snapshot) {
+            Ok(json) => {
+                if let Err(err) = self.storage.set_meta(WINDOW_GEOMETRY_META, &json) {
+                    log::warn!("persist window geometry: {err}");
+                }
+            }
+            Err(err) => log::warn!("serialize window geometry: {err}"),
         }
     }
 
@@ -610,6 +693,35 @@ mod tests {
         // Rebinding to another window moves ownership; the reverse lookup follows.
         state.set_window_workspace("win-7", primary);
         assert_eq!(state.window_for_workspace(primary).as_deref(), Some("win-7"));
+    }
+
+    #[tokio::test]
+    async fn window_geometry_persists_and_parses_back() {
+        let state = app_state_for_test();
+        let ws = state.browser.lock().await.active_workspace_id;
+
+        assert!(state.window_geometry_for(ws).is_none());
+        let geo = WindowGeometry {
+            x: 120.0,
+            y: 240.0,
+            width: 1100.0,
+            height: 720.0,
+        };
+        state.set_window_geometry(ws, geo);
+        state.persist_window_geometry();
+
+        // Round-trips through storage + the uuid-keyed JSON encoding.
+        let json = state
+            .storage
+            .get_meta(WINDOW_GEOMETRY_META)
+            .expect("get")
+            .expect("present");
+        let parsed = parse_window_geometry(&json);
+        let got = parsed.get(&ws).expect("workspace present");
+        assert_eq!(
+            (got.x, got.y, got.width, got.height),
+            (120.0, 240.0, 1100.0, 720.0)
+        );
     }
 
     #[tokio::test]

@@ -121,6 +121,7 @@ pub fn run() {
             let resolver = state::build_resolver(browser_state.settings.doh_resolver.as_deref());
             let auto_update = browser_state.settings.filter_list_auto_update;
             let initial_keybindings = browser_state.settings.keybindings.clone();
+            let primary_workspace = browser_state.active_workspace_id;
 
             app.manage(AppState::new(
                 browser_state,
@@ -130,6 +131,35 @@ pub fn run() {
                 filter_cache_dir.clone(),
                 &filter_text,
             ));
+
+            // Restore persisted per-workspace window geometry into the cache
+            // before any window opens (secondary windows read it at build time).
+            {
+                let state = app.state::<AppState>();
+                if let Ok(Some(json)) = state.storage.get_meta(state::WINDOW_GEOMETRY_META) {
+                    state.load_window_geometry(state::parse_window_geometry(&json));
+                }
+            }
+
+            // The main window is created hidden (`visible: false`): revealed after
+            // sized/positioned according to its workspace's saved geometry.
+            if let Some(main) = app.get_webview_window("main") {
+                if let Some(g) = app.state::<AppState>().window_geometry_for(primary_workspace) {
+                    let _ = main.set_size(tauri::LogicalSize::new(g.width, g.height));
+                    let _ = main.set_position(tauri::LogicalPosition::new(g.x, g.y));
+                }
+                let app_handle = app.handle().clone();
+
+                main.on_window_event(move |event| {
+                    if matches!(
+                        event,
+                        tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
+                    ) {
+                        windows::record_window_geometry(&app_handle, "main");
+                    }
+                });
+                let _ = main.show();
+            }
 
             // Drop compiled rule lists from previous filter-list versions so
             // the WebKit store doesn't accumulate stale entries forever.
