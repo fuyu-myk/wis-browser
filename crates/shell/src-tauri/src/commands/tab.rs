@@ -23,6 +23,21 @@ pub async fn create_loose_tab(
     mutate(&app, &state, |s| s.with_new_loose_tab(workspace_id, &url)).await
 }
 
+/// Open `url` in a new tab without switching to it (the opener stays active).
+/// Backs Cmd/middle-click "open link in a new background tab".
+#[tauri::command]
+pub async fn create_background_tab(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    url: String,
+) -> WisResult<Tab> {
+    mutate(&app, &state, |s| {
+        s.with_new_background_tab(workspace_id, &url)
+    })
+    .await
+}
+
 /// Split the workspace's focused pane along `dir`, opening `url` in the new
 /// pane and focusing it. Returns the newly created tab. The frontend's webview
 /// reconciler then spins up its native webview and tiles it into the pane.

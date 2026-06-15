@@ -79,7 +79,8 @@ pub async fn create_tab_webview(
         // Ride the webview configuration so even an instantly-loading first
         // document (cache, localhost, the restored startup page) gets them.
         .initialization_script(crate::video_popout::page_script())
-        .initialization_script(crate::peek::page_script());
+        .initialization_script(crate::peek::page_script())
+        .initialization_script(crate::link_open::page_script());
 
     // Per-page scriptlet swap (uBO `+js` rules) before each main-frame
     // navigation commits; Permissive workspaces opt out of blocking.
@@ -306,6 +307,9 @@ pub async fn create_tab_webview(
 
     // Opt+click "Peek" trigger (safe on all tabs; forwards only the link).
     crate::peek::install(&child);
+
+    // Cmd/middle-click -> open link in a new background tab.
+    crate::link_open::install(&child);
 
     // Video popout channel (playing-state tracking + floating mini player).
     crate::video_popout::install(&child);

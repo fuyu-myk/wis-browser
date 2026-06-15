@@ -16,6 +16,25 @@ fn assert_clean(state: &BrowserState) {
 }
 
 #[test]
+fn background_tab_appends_without_stealing_focus() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    assert_eq!(s1.workspaces[0].active_tab_id, Some(a.id));
+
+    // A background open adds the tab but leaves the opener active.
+    let (s2, b) = s1.with_new_background_tab(ws, "https://b.example/").unwrap();
+    assert!(s2.tabs.iter().any(|t| t.id == b.id));
+    assert_eq!(s2.workspaces[0].active_tab_id, Some(a.id), "opener stays active");
+    assert_clean(&s2);
+
+    // A normal open still focuses the new tab.
+    let (s3, c) = s2.with_new_tab(ws, "https://c.example/").unwrap();
+    assert_eq!(s3.workspaces[0].active_tab_id, Some(c.id));
+    assert_clean(&s3);
+}
+
+#[test]
 fn pane_split_close_unsplit_preserve_invariants() {
     let s0 = BrowserState::new_with_defaults();
     let ws = s0.workspaces[0].id;

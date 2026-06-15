@@ -8,6 +8,7 @@ impl BrowserState {
         workspace_id: WorkspaceId,
         url_str: &str,
         folder: Option<TabFolderId>,
+        focus: bool,
     ) -> WisResult<(Self, Tab)> {
         let url = Url::parse(url_str).map_err(|_| WisError::InvalidUrl {
             url: url_str.to_string(),
@@ -25,7 +26,13 @@ impl BrowserState {
             .iter()
             .map(|w| {
                 if w.id == workspace_id {
-                    w.with_tab_appended(tab_id).with_focused_tab(tab_id)
+                    let appended = w.with_tab_appended(tab_id);
+                    // A background tab is appended but does not steal focus.
+                    if focus {
+                        appended.with_focused_tab(tab_id)
+                    } else {
+                        appended
+                    }
                 } else {
                     w.clone()
                 }
@@ -42,20 +49,37 @@ impl BrowserState {
         ))
     }
 
-    /// New tabs file into the workspace's selected folder if one is set;
-    /// otherwise they inherit the active tab's folder, landing beside their
-    /// opener. Used by Cmd+T, link opens, and bookmark opens.
-    pub fn with_new_tab(&self, workspace_id: WorkspaceId, url_str: &str) -> WisResult<(Self, Tab)> {
-        let inherited_folder = self.workspace(workspace_id).ok().and_then(|workspace| {
+    /// Folder a new tab in `workspace_id` should inherit: the workspace's
+    /// selected folder, else the active tab's folder (so it lands beside its
+    /// opener), else loose.
+    fn inherited_folder(&self, workspace_id: WorkspaceId) -> Option<TabFolderId> {
+        self.workspace(workspace_id).ok().and_then(|workspace| {
             workspace.selected_folder_id.or_else(|| {
                 workspace
                     .active_tab_id
                     .and_then(|aid| self.tab(aid).ok())
                     .and_then(|t| t.folder_id)
             })
-        });
+        })
+    }
 
-        self.with_tab_created(workspace_id, url_str, inherited_folder)
+    /// New tabs file into the workspace's selected folder if one is set;
+    /// otherwise they inherit the active tab's folder, landing beside their
+    /// opener. Used by Cmd+T, link opens, and bookmark opens.
+    pub fn with_new_tab(&self, workspace_id: WorkspaceId, url_str: &str) -> WisResult<(Self, Tab)> {
+        let folder = self.inherited_folder(workspace_id);
+        self.with_tab_created(workspace_id, url_str, folder, true)
+    }
+
+    /// Like [`Self::with_new_tab`] but the new tab is **not** focused: the opener stays
+    /// active. Backs Cmd/middle-click "open link in a new background tab".
+    pub fn with_new_background_tab(
+        &self,
+        workspace_id: WorkspaceId,
+        url_str: &str,
+    ) -> WisResult<(Self, Tab)> {
+        let folder = self.inherited_folder(workspace_id);
+        self.with_tab_created(workspace_id, url_str, folder, false)
     }
 
     /// Append a new tab that is always loose (outside any folder), regardless of
@@ -65,7 +89,7 @@ impl BrowserState {
         workspace_id: WorkspaceId,
         url_str: &str,
     ) -> WisResult<(Self, Tab)> {
-        self.with_tab_created(workspace_id, url_str, None)
+        self.with_tab_created(workspace_id, url_str, None, true)
     }
 
     pub fn with_tab_closed(&self, id: TabId) -> WisResult<Self> {

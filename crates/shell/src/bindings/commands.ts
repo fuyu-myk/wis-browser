@@ -362,6 +362,11 @@ export const commands = {
     return invoke('restore_closed_tab')
   },
 
+  /** Open `url` in a new tab without switching to it. */
+  async createBackgroundTab(workspaceId: WorkspaceId, url: string): Promise<Tab> {
+    return invoke('create_background_tab', { workspaceId, url })
+  },
+
   /** Detach a tab into a new workspace shown in its own window. `name`/`accent`
    *  seed the new workspace; a private tab detaches into a new private window. */
   async moveTabToNewWindow(tabId: TabId, name: string, accent: AccentColor): Promise<void> {

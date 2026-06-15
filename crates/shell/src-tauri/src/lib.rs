@@ -13,6 +13,7 @@ mod external;
 mod favicons;
 mod find;
 mod interaction_state;
+mod link_open;
 mod memory;
 mod menu;
 mod navguard;
@@ -251,6 +252,9 @@ pub fn run() {
             // App handle for the native Opt+click "Peek" handler.
             peek::set_app_handle(app.handle().clone());
 
+            // App handle for the link-open handler.
+            link_open::set_app_handle(app.handle().clone());
+
             // App handle for the cosmetic-filtering handler.
             cosmetic::set_app_handle(app.handle().clone());
 
@@ -413,6 +417,7 @@ pub fn run() {
             commands::tor_available,
             commands::create_tab,
             commands::create_loose_tab,
+            commands::create_background_tab,
             commands::split_pane,
             commands::split_pane_with,
             commands::replace_pane_leaf,
