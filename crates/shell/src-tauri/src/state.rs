@@ -159,6 +159,10 @@ pub struct AppState {
     /// Generation counter debouncing geometry persistence: only the last
     /// move/resize of a burst writes to storage.
     pub geometry_gen: std::sync::atomic::AtomicU64,
+    /// Colour of the swipe-nav indicator: matching the webview border,
+    /// baked into new tab webviews and pushed to live ones on theme change.
+    /// A plain string the chrome owns.
+    pub swipe_accent: std::sync::Mutex<String>,
     /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
     /// Only present with the `tor` feature.
     #[cfg(feature = "tor")]
@@ -214,6 +218,7 @@ impl AppState {
             session_restored: std::sync::atomic::AtomicBool::new(false),
             window_geometry: std::sync::Mutex::new(HashMap::new()),
             geometry_gen: std::sync::atomic::AtomicU64::new(0),
+            swipe_accent: std::sync::Mutex::new("#6b77f8".to_string()),
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }

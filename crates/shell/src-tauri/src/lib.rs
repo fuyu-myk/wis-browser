@@ -27,6 +27,7 @@ mod print;
 mod save_coalescer;
 mod state;
 mod suggest;
+mod swipe_nav;
 mod themes;
 mod vault;
 mod video_popout;
@@ -493,6 +494,7 @@ pub fn run() {
             windows::new_window,
             windows::free_workspaces,
             windows::restore_session_windows,
+            swipe_nav::set_swipe_accent,
             navguard::nav_guard_proceed,
             permissions::resolve_media_permission,
             bookmarks::list_bookmark_folders,

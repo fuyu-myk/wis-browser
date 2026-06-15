@@ -15,6 +15,7 @@ import { useOpenInTab } from '@/hooks/useOpenInTab'
 import { usePeekOverlay } from '@/hooks/usePeekOverlay'
 import { useKeyActions } from '@/hooks/useKeyActions'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
+import { useSwipeAccentSync } from '@/hooks/useSwipeAccentSync'
 import { useWorkspaceBackground } from '@/hooks/useWorkspaceBackground'
 
 import { Content } from '@/components/Content'
@@ -70,6 +71,7 @@ export function Window({ state, settings }: WindowProps) {
 
   const isPrivate = activeWorkspace?.ephemeral ?? false
   useDockIcon(isPrivate)
+  useSwipeAccentSync(settings)
 
   // Warm the favicon cache for sidebar widgets on startup (and when the set
   // changes).

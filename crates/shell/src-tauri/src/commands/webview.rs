@@ -64,6 +64,14 @@ pub async fn create_tab_webview(
         )
     };
 
+    // The swipe-nav indicator colour; a new tab bakes the last
+    // value the chrome pushed (`set_swipe_accent`).
+    let swipe_accent = state
+        .swipe_accent
+        .lock()
+        .expect("swipe_accent poisoned")
+        .clone();
+
     let proxy_port = state
         .ensure_proxy_for(workspace_id)
         .await
@@ -80,7 +88,10 @@ pub async fn create_tab_webview(
         // document (cache, localhost, the restored startup page) gets them.
         .initialization_script(crate::video_popout::page_script())
         .initialization_script(crate::peek::page_script())
-        .initialization_script(crate::link_open::page_script());
+        .initialization_script(crate::link_open::page_script())
+        // Swipe back/forward: publish the indicator colour, then the gesture+UI.
+        .initialization_script(crate::swipe_nav::accent_script(&swipe_accent))
+        .initialization_script(crate::swipe_nav::page_script());
 
     // Per-page scriptlet swap (uBO `+js` rules) before each main-frame
     // navigation commits; Permissive workspaces opt out of blocking.
@@ -125,7 +136,7 @@ pub async fn create_tab_webview(
     {
         let app = app.clone();
         let label_for_load = label_ident.clone();
-        builder = builder.on_page_load(move |_webview, payload: PageLoadPayload<'_>| {
+        builder = builder.on_page_load(move |webview, payload: PageLoadPayload<'_>| {
             let event = payload.event();
             let loading = matches!(event, PageLoadEvent::Started);
             let url_string = payload.url().to_string();
@@ -160,6 +171,15 @@ pub async fn create_tab_webview(
             }
 
             if matches!(event, PageLoadEvent::Finished) {
+                // Re-apply the live swipe-nav colour.
+                let color = app
+                    .state::<AppState>()
+                    .swipe_accent
+                    .lock()
+                    .expect("swipe_accent poisoned")
+                    .clone();
+                let _ = webview.eval(crate::swipe_nav::accent_script(&color));
+
                 let app_for_favicon = app.clone();
                 let page_url_for_history = page_url.clone();
                 tauri::async_runtime::spawn(async move {
