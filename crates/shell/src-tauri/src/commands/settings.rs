@@ -4,12 +4,18 @@ use super::*;
 pub async fn update_settings(
     app: AppHandle,
     state: State<'_, AppState>,
-    patch: UserSettingsPatch,
+    mut patch: UserSettingsPatch,
 ) -> WisResult<UserSettings> {
     if let Some(themes) = &patch.custom_themes {
         for theme in themes {
             theme.validate()?;
         }
+    }
+
+    // Clamp boundary-supplied design values before they reach the 
+    // pure state transition.
+    if let Some(design) = patch.design {
+        patch.design = Some(design.sanitized());
     }
 
     let keybindings_touched = patch.keybindings.is_some();

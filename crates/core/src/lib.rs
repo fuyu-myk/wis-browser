@@ -5,6 +5,7 @@
 //! from old ones.
 
 pub mod background;
+pub mod design;
 pub mod download;
 pub mod error;
 pub mod icon;
@@ -28,6 +29,10 @@ pub mod workspace;
 
 pub use background::{
     Background, BackgroundDrafts, GradientSpec, GradientStop, ImageBackground, ImageFit,
+};
+pub use design::{
+    ChromeDesign, CloseButton, CornerStyle, Density, FolderStyle, GlassIntensity, GlassScopes,
+    TabIndicator, TabShape,
 };
 pub use download::{sanitize_filename, unique_filename, DownloadStatus, FALLBACK_FILENAME};
 pub use error::{WisError, WisResult};

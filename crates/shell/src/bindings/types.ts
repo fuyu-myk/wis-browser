@@ -39,6 +39,41 @@ export type ThemeMode = 'light' | 'dark' | 'system'
 
 export type MotionLevel = 'full' | 'reduced' | 'off'
 
+export type CornerStyle = 'round' | 'soft' | 'sharp'
+
+export type TabShape = 'pill' | 'rounded' | 'square'
+
+export type FolderStyle = 'pill' | 'outline' | 'text'
+
+export type GlassIntensity = 'light' | 'medium' | 'heavy'
+
+export type TabIndicator = 'bar' | 'underline' | 'filled' | 'dot'
+
+export type Density = 'comfortable' | 'cozy' | 'compact'
+
+export type CloseButton = 'always' | 'hover' | 'hidden'
+
+/** Which glass surfaces blur when the master `glass_enabled` toggle is on. */
+export interface GlassScopes {
+  chrome: boolean
+  menus: boolean
+  tabs: boolean
+}
+
+/** Chrome geometry and material (mirror of `wis_core::design::ChromeDesign`). */
+export interface ChromeDesign {
+  corners: CornerStyle
+  tab_shape: TabShape
+  folder_style: FolderStyle
+  glass_scopes: GlassScopes
+  glass_intensity: GlassIntensity
+  tab_indicator: TabIndicator
+  density: Density
+  close_button: CloseButton
+  /** Sidebar width in px (clamped 180..=360 boundary-side). */
+  sidebar_width: number
+}
+
 export type PrivacyMode = 'strict' | 'balanced' | 'permissive'
 
 export type SplitDir = 'horizontal' | 'vertical'
@@ -364,6 +399,8 @@ export interface UserSettings {
   active_theme: ThemeId | null
   /** Chrome animation level. */
   motion: MotionLevel
+  /** Chrome geometry and material. */
+  design: ChromeDesign
 }
 
 /**
@@ -421,6 +458,8 @@ export interface UserSettingsPatch {
   /** Replaces the whole theme list when present. */
   custom_themes?: CustomTheme[]
   motion?: MotionLevel
+  /** Replaces the whole design when present (clamped boundary-side). */
+  design?: ChromeDesign
 }
 
 // ---------------------------------------------------------------------------

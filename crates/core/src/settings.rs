@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use crate::design::ChromeDesign;
 use crate::ids::ThemeId;
 use crate::keybinding::KeyAction;
 use crate::layout::{LayoutMode, MotionLevel, RailSide, ThemeMode};
@@ -180,6 +181,10 @@ pub struct UserSettings {
     /// Chrome animation level (see [`MotionLevel`]).
     #[serde(default)]
     pub motion: MotionLevel,
+    /// Chrome geometry and material (see [`crate::design`]). Serde-default so
+    /// existing persisted settings deserialise.
+    #[serde(default)]
+    pub design: ChromeDesign,
 }
 
 fn default_top_tabs_max_expanded_folders() -> u32 {
@@ -289,6 +294,7 @@ impl Default for UserSettings {
             custom_themes: Vec::new(),
             active_theme: None,
             motion: MotionLevel::Full,
+            design: ChromeDesign::default(),
         }
     }
 }
@@ -393,6 +399,9 @@ pub struct UserSettingsPatch {
     pub custom_themes: Option<Vec<CustomTheme>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub motion: Option<MotionLevel>,
+    /// Replaces the whole design when present (clamped boundary-side).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub design: Option<ChromeDesign>,
 }
 
 impl UserSettings {
@@ -481,6 +490,7 @@ impl UserSettings {
                 .unwrap_or_else(|| self.custom_themes.clone()),
             active_theme: self.active_theme,
             motion: patch.motion.unwrap_or(self.motion),
+            design: patch.design.unwrap_or(self.design),
             keybindings: match patch.keybindings {
                 None => self.keybindings.clone(),
                 Some(overrides) => {

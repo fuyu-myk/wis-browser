@@ -150,6 +150,10 @@ fn settings_patch_round_trips_when_all_fields_set() {
         custom_accent_palette: Some(vec!["#aabbcc".into()]),
         custom_themes: Some(Vec::new()),
         motion: Some(wis_core::MotionLevel::Reduced),
+        design: Some(wis_core::ChromeDesign {
+            corners: wis_core::CornerStyle::Sharp,
+            ..wis_core::ChromeDesign::default()
+        }),
     };
     let after: UserSettingsPatch = roundtrip(&patch);
     assert_eq!(patch, after);
