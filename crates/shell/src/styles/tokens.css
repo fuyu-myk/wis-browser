@@ -51,7 +51,23 @@
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 
   --sb-w: 240px;
+
+  /* Corner rounding: every chrome box radius is a multiple of this scale, so
+     the Design "Corners" control retunes the whole UI from one variable.
+     Round = 1, Soft = 0.55, Sharp = 0 (squared). Pills and circles (999px / 50%)
+     are intentionally left literal so they stay round. */
+  --radius-scale: 1;
+  --radius-xs:  calc(4px  * var(--radius-scale));
+  --radius-sm:  calc(6px  * var(--radius-scale));
+  --radius-md:  calc(8px  * var(--radius-scale));
+  --radius-lg:  calc(10px * var(--radius-scale));
+  --radius-xl:  calc(12px * var(--radius-scale));
+  --radius-2xl: calc(16px * var(--radius-scale));
 }
+
+/* ─── CORNER STYLE (Design > Corners) ──────────────────────────── */
+[data-corners="soft"]  { --radius-scale: 0.55; }
+[data-corners="sharp"] { --radius-scale: 0; }
 
 /* ─── ACCENT OVERRIDES ─────────────────────────────────────────── */
 [data-accent="mint"] {
@@ -228,7 +244,7 @@ button {
   background: var(--scrollbar-thumb);
   border: 2px solid transparent;
   background-clip: padding-box;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
