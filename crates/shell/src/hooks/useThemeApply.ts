@@ -48,6 +48,15 @@ export function useThemeApply(settings: UserSettings | undefined) {
     body.setAttribute('data-accent', settings.accent)
     body.setAttribute('data-corners', settings.design.corners)
     body.classList.toggle('glass-on', settings.glass_enabled)
+
+    // Per-surface glass scopes only apply while the master toggle is on; each
+    // scope class gates its slice of the chrome (see window.css).
+    const scopes = settings.design.glass_scopes
+    body.classList.toggle('glass-chrome', settings.glass_enabled && scopes.chrome)
+    body.classList.toggle('glass-menus', settings.glass_enabled && scopes.menus)
+    body.classList.toggle('glass-tabs', settings.glass_enabled && scopes.tabs)
+    body.setAttribute('data-glass', settings.design.glass_intensity)
+
     body.classList.toggle('compact', settings.compact)
     body.classList.toggle('url-glow-on', settings.url_bar_focus_glow)
 

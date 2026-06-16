@@ -330,13 +330,13 @@ body.is-overlay-surface:not(.glass-on) {
   background: color-mix(in oklab, var(--surface) 96%, transparent);
   border: 1px solid var(--border);
 }
-.kb-panemenu.glass-on {
+.kb-panemenu.glass-menus {
   background: rgba(255, 255, 255, 0.62);
   border-color: rgba(255, 255, 255, 0.35);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode='dark'] .kb-panemenu.glass-on {
+[data-mode='dark'] .kb-panemenu.glass-menus {
   background: rgba(28, 28, 34, 0.7);
   border-color: rgba(255, 255, 255, 0.1);
 }
@@ -363,7 +363,7 @@ body.is-overlay-surface:not(.glass-on) {
   margin: 4px 2px;
   background: var(--border);
 }
-[data-mode='dark'] .kb-panemenu.glass-on .kb-panemenu-sep { background: rgba(255, 255, 255, 0.16); }
+[data-mode='dark'] .kb-panemenu.glass-menus .kb-panemenu-sep { background: rgba(255, 255, 255, 0.16); }
 
 /* ─── Tab context menu (split pill + move-to-folder) ─────────────── */
 /* Content-sized at the top-left of its overlay so the surface can fit the
@@ -383,13 +383,13 @@ body.is-overlay-surface:not(.glass-on) {
   border: 1px solid var(--border);
 }
 [data-mode="dark"] .kb-tabctx { background: var(--chrome-bg); }
-.kb-tabctx.glass-on {
+.kb-tabctx.glass-menus {
   background: rgba(255, 255, 255, 0.72);
   border-color: rgba(255, 255, 255, 0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"] .kb-tabctx.glass-on {
+[data-mode="dark"] .kb-tabctx.glass-menus {
   background: rgba(28, 28, 34, 0.72);
   border-color: rgba(255, 255, 255, 0.08);
 }
@@ -485,13 +485,13 @@ body.is-overlay-surface:not(.glass-on) {
   background: var(--popover);
   border-color: rgba(255,255,255,0.08);
 }
-.kb-findbar-pill.glass-on {
+.kb-findbar-pill.glass-menus {
   background: rgba(255,255,255,0.55);
   border-color: rgba(255,255,255,0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"] .kb-findbar-pill.glass-on {
+[data-mode="dark"] .kb-findbar-pill.glass-menus {
   background: rgba(28,28,34,0.55);
   border-color: rgba(255,255,255,0.10);
 }
@@ -556,20 +556,20 @@ body.is-overlay-surface:not(.glass-on) {
 [data-mode="dark"] .kb-findbar-circle:hover {
   background: color-mix(in oklab, var(--popover) 92%, white);
 }
-.kb-findbar-wrap.glass-on .kb-findbar-circle {
+.kb-findbar-wrap.glass-menus .kb-findbar-circle {
   background: rgba(255,255,255,0.55);
   border-color: rgba(255,255,255,0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-.kb-findbar-wrap.glass-on .kb-findbar-circle:hover {
+.kb-findbar-wrap.glass-menus .kb-findbar-circle:hover {
   background: rgba(255,255,255,0.78);
 }
-[data-mode="dark"] .kb-findbar-wrap.glass-on .kb-findbar-circle {
+[data-mode="dark"] .kb-findbar-wrap.glass-menus .kb-findbar-circle {
   background: rgba(28,28,34,0.65);
   border-color: rgba(255,255,255,0.10);
 }
-[data-mode="dark"] .kb-findbar-wrap.glass-on .kb-findbar-circle:hover {
+[data-mode="dark"] .kb-findbar-wrap.glass-menus .kb-findbar-circle:hover {
   background: rgba(40,40,48,0.85);
 }
 
@@ -606,13 +606,13 @@ body.is-overlay-surface:not(.glass-on) {
 [data-mode='dark'] .kb-perm-card {
   border-color: rgba(255, 255, 255, 0.08);
 }
-.kb-perm-card.glass-on {
+.kb-perm-card.glass-menus {
   background: rgba(255, 255, 255, 0.62);
   border-color: rgba(255, 255, 255, 0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode='dark'] .kb-perm-card.glass-on {
+[data-mode='dark'] .kb-perm-card.glass-menus {
   background: rgba(28, 28, 34, 0.62);
   border-color: rgba(255, 255, 255, 0.10);
 }
@@ -758,12 +758,12 @@ body.is-overlay-surface:not(.glass-on) {
 [data-mode="dark"] .kb-palette-backdrop {
   background: rgba(0,0,0,0.55);
 }
-.kb-palette-backdrop.glass-on {
+.kb-palette-backdrop.glass-menus {
   background: rgba(0,0,0,0.18);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(calc(10px * var(--glass-scale)));
+  backdrop-filter: blur(calc(10px * var(--glass-scale)));
 }
-[data-mode="dark"] .kb-palette-backdrop.glass-on {
+[data-mode="dark"] .kb-palette-backdrop.glass-menus {
   background: rgba(0,0,0,0.35);
 }
 
@@ -786,13 +786,13 @@ body.is-overlay-surface:not(.glass-on) {
   background: var(--popover);
   border-color: rgba(255,255,255,0.08);
 }
-.kb-palette.glass-on {
+.kb-palette.glass-menus {
   background: rgba(255,255,255,0.78);
   border-color: rgba(255,255,255,0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"] .kb-palette.glass-on {
+[data-mode="dark"] .kb-palette.glass-menus {
   background: rgba(28,28,34,0.78);
   border-color: rgba(255,255,255,0.10);
 }
@@ -931,9 +931,9 @@ body.is-overlay-surface:not(.glass-on) {
 .kb-winpicker:focus-visible { outline: none; }
 /* Theme-accent border. */
 .kb-palette.kb-winpicker,
-.kb-palette.kb-winpicker.glass-on,
+.kb-palette.kb-winpicker.glass-menus,
 [data-mode="dark"] .kb-palette.kb-winpicker,
-[data-mode="dark"] .kb-palette.kb-winpicker.glass-on {
+[data-mode="dark"] .kb-palette.kb-winpicker.glass-menus {
   border-color: var(--primary-500);
 }
 .kb-winpicker-title {
@@ -1000,13 +1000,13 @@ body.is-overlay-surface:not(.glass-on) {
   background: var(--popover);
   border-color: rgba(255, 255, 255, 0.08);
 }
-.kb-vaultmenu.glass-on {
+.kb-vaultmenu.glass-menus {
   background: rgba(255, 255, 255, 0.72);
   border-color: rgba(255, 255, 255, 0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"] .kb-vaultmenu.glass-on {
+[data-mode="dark"] .kb-vaultmenu.glass-menus {
   background: rgba(28, 28, 34, 0.72);
   border-color: rgba(255, 255, 255, 0.10);
 }
@@ -1150,13 +1150,13 @@ body.is-overlay-surface:not(.glass-on) {
   background: var(--popover);
   border-color: rgba(255, 255, 255, 0.08);
 }
-.kb-urlsug.glass-on {
+.kb-urlsug.glass-menus {
   background: rgba(255, 255, 255, 0.78);
   border-color: rgba(255, 255, 255, 0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"] .kb-urlsug.glass-on {
+[data-mode="dark"] .kb-urlsug.glass-menus {
   background: rgba(28, 28, 34, 0.78);
   border-color: rgba(255, 255, 255, 0.10);
 }
@@ -1431,7 +1431,7 @@ body.is-overlay-surface:not(.glass-on) {
   justify-content: flex-end;
 }
 
-.kb-window:not(.glass-on) .kb-side {
+.kb-window:not(.glass-chrome) .kb-side {
   background: var(--chrome-bar);
   border-right: 0;
   border-left: 0;
@@ -1439,12 +1439,12 @@ body.is-overlay-surface:not(.glass-on) {
 .kb-window:not(.glass-on) .kb-content { box-shadow: var(--shadow-soft), 0 0 0 100vmax var(--chrome-bar); }
 [data-mode="dark"] .kb-window:not(.glass-on) .kb-content { box-shadow: 0 0 0 100vmax var(--chrome-bar); }
 
-.glass-on .kb-side {
+.glass-chrome .kb-side {
   background: var(--chrome-bar-glass);
   border: 0;
 }
 .kb-window.collapsible .kb-side { background: transparent; }
-.kb-window:not(.glass-on).collapsible .kb-side { background: transparent; }
+.kb-window:not(.glass-chrome).collapsible .kb-side { background: transparent; }
 
 /* Hide labels / non-essentials when sidebar is collapsed */
 .kb-window.collapsible .kb-side:not(.is-expanded) .wordmark,
@@ -1558,20 +1558,20 @@ body.is-overlay-surface:not(.glass-on) {
   display: none;
 }
 
-.glass-on .kb-urlbar {
+.glass-chrome .kb-urlbar {
   background: rgba(255,255,255,0.55);
   color: rgba(20,20,28,0.92);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(22px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(22px * var(--glass-scale))) saturate(180%);
 }
-.glass-on .kb-urlbar:hover { background: rgba(255,255,255,0.72); }
-.glass-on .kb-urlbar-input::placeholder { color: rgba(40,40,52,0.55); }
-[data-mode="dark"].glass-on .kb-urlbar {
+.glass-chrome .kb-urlbar:hover { background: rgba(255,255,255,0.72); }
+.glass-chrome .kb-urlbar-input::placeholder { color: rgba(40,40,52,0.55); }
+[data-mode="dark"].glass-chrome .kb-urlbar {
   background: rgba(255,255,255,0.10);
   color: rgba(255,255,255,0.88);
 }
-[data-mode="dark"].glass-on .kb-urlbar:hover { background: rgba(255,255,255,0.18); }
-[data-mode="dark"].glass-on .kb-urlbar-input::placeholder { color: rgba(255,255,255,0.45); }
+[data-mode="dark"].glass-chrome .kb-urlbar:hover { background: rgba(255,255,255,0.18); }
+[data-mode="dark"].glass-chrome .kb-urlbar-input::placeholder { color: rgba(255,255,255,0.45); }
 
 /* ─── nav row (back/forward/refresh) ──────────────────────────── */
 .kb-nav-row {
@@ -1645,18 +1645,18 @@ body.is-overlay-surface:not(.glass-on) {
 }
 .kb-pinned-glyph:hover { background: var(--surface-raised); color: var(--text-primary); }
 .kb-pinned-glyph svg { width: 16px; height: 16px; color: var(--primary-500); }
-.glass-on .kb-pinned-glyph {
+.glass-tabs .kb-pinned-glyph {
   background: rgba(255,255,255,0.55);
   color: rgba(20,20,28,0.92);
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
-  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(18px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(18px * var(--glass-scale))) saturate(180%);
 }
-.glass-on .kb-pinned-glyph:hover { background: rgba(255,255,255,0.72); }
-[data-mode="dark"].glass-on .kb-pinned-glyph {
+.glass-tabs .kb-pinned-glyph:hover { background: rgba(255,255,255,0.72); }
+[data-mode="dark"].glass-tabs .kb-pinned-glyph {
   background: rgba(255,255,255,0.10);
   color: rgba(255,255,255,0.85);
 }
-[data-mode="dark"].glass-on .kb-pinned-glyph:hover { background: rgba(255,255,255,0.18); }
+[data-mode="dark"].glass-tabs .kb-pinned-glyph:hover { background: rgba(255,255,255,0.18); }
 /* Rail keeps the slim glyph until opened; the rail widens to host the grid. */
 .kb-pinned.is-rail .kb-pinned-glyph { display: inline-flex; }
 .kb-pinned.is-rail .kb-pinned-grid { padding: 6px 0 2px; }
@@ -1687,11 +1687,11 @@ body.is-overlay-surface:not(.glass-on) {
   background: rgba(255, 255, 255, 0.12);
   border-color: rgba(255, 255, 255, 0.16);
 }
-.glass-on .kb-pinned-cell {
+.glass-tabs .kb-pinned-cell {
   background: rgba(255, 255, 255, 0.55);
   border-color: rgba(255, 255, 255, 0.30);
 }
-[data-mode="dark"].glass-on .kb-pinned-cell {
+[data-mode="dark"].glass-tabs .kb-pinned-cell {
   background: rgba(255, 255, 255, 0.14);
   border-color: rgba(255, 255, 255, 0.16);
 }
@@ -1981,13 +1981,13 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   box-shadow: var(--shadow-pop);
 }
 [data-mode="dark"] .kb-tabfolder-menu { background: var(--chrome-bg); }
-.glass-on .kb-tabfolder-menu {
+.glass-menus .kb-tabfolder-menu {
   background: rgba(255, 255, 255, 0.85);
   border-color: rgba(255, 255, 255, 0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"].glass-on .kb-tabfolder-menu {
+[data-mode="dark"].glass-menus .kb-tabfolder-menu {
   background: rgba(28, 28, 34, 0.85);
   border-color: rgba(255, 255, 255, 0.08);
 }
@@ -2132,7 +2132,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   background: var(--chrome-bar);
   height: 52px;
 }
-.glass-on .kb-topbar {
+.glass-chrome .kb-topbar {
   background: var(--chrome-bar-glass);
   border-bottom: 0;
 }
@@ -2229,12 +2229,12 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   background: var(--surface-raised);
 }
 [data-mode="dark"] .kb-topbar .h-island { background: rgba(255, 255, 255, 0.08); }
-.glass-on .kb-topbar .h-island {
+.glass-tabs .kb-topbar .h-island {
   background: rgba(255, 255, 255, 0.62);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(20px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(20px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"].glass-on .kb-topbar .h-island { background: rgba(0, 0, 0, 0.34); }
+[data-mode="dark"].glass-tabs .kb-topbar .h-island { background: rgba(0, 0, 0, 0.34); }
 .kb-topbar .h-island.is-drop { box-shadow: inset 0 0 0 2px var(--primary-400); }
 .kb-topbar .h-island .h-tab { height: 28px; }
 
@@ -2338,8 +2338,8 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   transition: transform var(--dur-fast);
 }
 [data-mode="dark"] .kb-topbar .h-pin-circle { background: rgba(255, 255, 255, 0.10); }
-.glass-on .kb-topbar .h-pin-circle { background: rgba(255, 255, 255, 0.55); }
-[data-mode="dark"].glass-on .kb-topbar .h-pin-circle { background: rgba(255, 255, 255, 0.12); }
+.glass-tabs .kb-topbar .h-pin-circle { background: rgba(255, 255, 255, 0.55); }
+[data-mode="dark"].glass-tabs .kb-topbar .h-pin-circle { background: rgba(255, 255, 255, 0.12); }
 .kb-topbar .h-pin-circle:hover { transform: scale(1.08); }
 .kb-topbar .h-pin-circle.active {
   width: 26px;
@@ -2365,13 +2365,13 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   border: 1px solid var(--border);
 }
 [data-mode="dark"] .kb-islandmenu { background: var(--chrome-bg); }
-.kb-islandmenu.glass-on {
+.kb-islandmenu.glass-menus {
   background: rgba(255, 255, 255, 0.85);
   border-color: rgba(255, 255, 255, 0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"] .kb-islandmenu.glass-on {
+[data-mode="dark"] .kb-islandmenu.glass-menus {
   background: rgba(28, 28, 34, 0.85);
   border-color: rgba(255, 255, 255, 0.08);
 }
@@ -2437,19 +2437,19 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
 .kb-topbar .h-tab .close svg { width: 12px; height: 12px; }
 [data-mode="dark"] .kb-topbar .h-tab .close { color: rgba(255,255,255,0.65); }
 [data-mode="dark"] .kb-topbar .h-tab .close:hover { color: white; }
-.glass-on .kb-topbar .h-tab {
+.glass-tabs .kb-topbar .h-tab {
   background: color-mix(in oklab, var(--surface) 26%, transparent);
 }
-.glass-on .kb-topbar .h-tab:hover {
+.glass-tabs .kb-topbar .h-tab:hover {
   background: color-mix(in oklab, var(--surface) 45%, transparent);
 }
-[data-mode="dark"].glass-on .kb-topbar .h-tab {
+[data-mode="dark"].glass-tabs .kb-topbar .h-tab {
   background: rgba(255, 255, 255, 0.07);
 }
-[data-mode="dark"].glass-on .kb-topbar .h-tab:hover {
+[data-mode="dark"].glass-tabs .kb-topbar .h-tab:hover {
   background: rgba(255, 255, 255, 0.13);
 }
-.glass-on .kb-topbar .h-tab.active {
+.glass-tabs .kb-topbar .h-tab.active {
   background: color-mix(in oklab, var(--primary-500) 28%, transparent);
   border-color: var(--primary-400);
 }
@@ -2604,8 +2604,8 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   padding-left: 0;
 }
 
-.kb-window:not(.glass-on) .kb-side.kb-rail { background: transparent; }
-.glass-on .kb-side.kb-rail { background: transparent; }
+.kb-window:not(.glass-chrome) .kb-side.kb-rail { background: transparent; }
+.glass-chrome .kb-side.kb-rail { background: transparent; }
 
 /* ─── main content viewport ───────────────────────────────────── */
 .kb-main {
@@ -2692,22 +2692,22 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
    light reference: URL bar and chrome buttons read at the same
    contrast). Light mode uses dark text on a light glass; dark mode
    uses light text on a darker translucent fill. */
-.glass-on .kb-urlpill-inline {
+.glass-chrome .kb-urlpill-inline {
   background: rgba(255,255,255,0.55);
   color: rgba(20,20,28,0.92);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(22px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(22px * var(--glass-scale))) saturate(180%);
 }
-.glass-on .kb-urlpill-inline .protocol { color: rgba(40,40,52,0.62); }
-.glass-on .kb-urlpill-inline .domain   { color: rgba(20,20,28,0.92); }
-.glass-on .kb-urlpill-inline .path     { color: rgba(40,40,52,0.72); }
-[data-mode="dark"].glass-on .kb-urlpill-inline {
+.glass-chrome .kb-urlpill-inline .protocol { color: rgba(40,40,52,0.62); }
+.glass-chrome .kb-urlpill-inline .domain   { color: rgba(20,20,28,0.92); }
+.glass-chrome .kb-urlpill-inline .path     { color: rgba(40,40,52,0.72); }
+[data-mode="dark"].glass-chrome .kb-urlpill-inline {
   background: rgba(255,255,255,0.10);
   color: rgba(255,255,255,0.88);
 }
-[data-mode="dark"].glass-on .kb-urlpill-inline .protocol { color: rgba(255,255,255,0.50); }
-[data-mode="dark"].glass-on .kb-urlpill-inline .domain   { color: rgba(255,255,255,0.92); }
-[data-mode="dark"].glass-on .kb-urlpill-inline .path     { color: rgba(255,255,255,0.60); }
+[data-mode="dark"].glass-chrome .kb-urlpill-inline .protocol { color: rgba(255,255,255,0.50); }
+[data-mode="dark"].glass-chrome .kb-urlpill-inline .domain   { color: rgba(255,255,255,0.92); }
+[data-mode="dark"].glass-chrome .kb-urlpill-inline .path     { color: rgba(255,255,255,0.60); }
 
 /* ─── circular glass nav/settings buttons ─────────────────────── */
 .kb-circle-btn {
@@ -2728,8 +2728,8 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
 .glass-on .kb-circle-btn {
   background: rgba(255,255,255,0.55);
   color: rgba(20,20,28,0.92);
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
-  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(18px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(18px * var(--glass-scale))) saturate(180%);
   box-shadow: none;
 }
 [data-mode="dark"].glass-on .kb-circle-btn {
@@ -2915,8 +2915,8 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
 .glass-on .kb-history-search {
   background: color-mix(in oklab, var(--surface) 24%, transparent);
   border-color: rgba(255, 255, 255, 0.18);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(22px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(22px * var(--glass-scale))) saturate(180%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.14),
     0 1px 6px rgba(0, 0, 0, 0.12);
@@ -2965,8 +2965,8 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
 .glass-on .kb-history-scope {
   background: color-mix(in oklab, var(--surface) 24%, transparent);
   border-color: rgba(255, 255, 255, 0.18);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(22px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(22px * var(--glass-scale))) saturate(180%);
 }
 [data-mode='dark'].glass-on .kb-history-scope {
   background: rgba(8, 8, 12, 0.55);
@@ -2975,8 +2975,8 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
 .glass-on .kb-history-scope button.is-on {
   background: rgba(255, 255, 255, 0.22);
   color: var(--text-primary);
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
-  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(18px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(18px * var(--glass-scale))) saturate(180%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
     0 1px 6px rgba(0, 0, 0, 0.12);
@@ -3160,8 +3160,8 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   align-items: center;
   justify-content: center;
   background: rgba(10, 10, 14, 0.32);
-  -webkit-backdrop-filter: blur(2px);
-  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(calc(2px * var(--glass-scale)));
+  backdrop-filter: blur(calc(2px * var(--glass-scale)));
   animation: kb-modal-fade 120ms ease;
 }
 @keyframes kb-modal-fade { from { opacity: 0; } to { opacity: 1; } }
@@ -3179,18 +3179,18 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   to   { opacity: 1; transform: scale(1); }
 }
 [data-mode="dark"] .kb-modal { background: var(--surface-raised, var(--surface)); }
-.glass-on .kb-modal-backdrop {
+.glass-menus .kb-modal-backdrop {
   background: rgba(10, 10, 14, 0.24);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(calc(6px * var(--glass-scale)));
+  backdrop-filter: blur(calc(6px * var(--glass-scale)));
 }
-.glass-on .kb-modal {
+.glass-menus .kb-modal {
   background: rgba(255, 255, 255, 0.62);
   border-color: rgba(255, 255, 255, 0.35);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"].glass-on .kb-modal {
+[data-mode="dark"].glass-menus .kb-modal {
   background: rgba(44, 44, 54, 0.62);
   border-color: rgba(255, 255, 255, 0.12);
 }
@@ -3939,12 +3939,12 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   animation: kb-palette-fade-in 120ms ease-out;
 }
 [data-mode="dark"] .kb-peek-backdrop { background: rgba(0, 0, 0, 0.55); }
-.kb-peek-backdrop.glass-on {
+.kb-peek-backdrop.glass-menus {
   background: rgba(0, 0, 0, 0.18);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(calc(10px * var(--glass-scale)));
+  backdrop-filter: blur(calc(10px * var(--glass-scale)));
 }
-[data-mode="dark"] .kb-peek-backdrop.glass-on { background: rgba(0, 0, 0, 0.35); }
+[data-mode="dark"] .kb-peek-backdrop.glass-menus { background: rgba(0, 0, 0, 0.35); }
 .kb-peek-card {
   display: flex;
   flex-direction: column;
@@ -3962,13 +3962,13 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   background: var(--popover);
   border-color: rgba(255, 255, 255, 0.08);
 }
-.kb-peek-card.glass-on {
+.kb-peek-card.glass-menus {
   background: rgba(255, 255, 255, 0.78);
   border-color: rgba(255, 255, 255, 0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"] .kb-peek-card.glass-on {
+[data-mode="dark"] .kb-peek-card.glass-menus {
   background: rgba(28, 28, 34, 0.78);
   border-color: rgba(255, 255, 255, 0.10);
 }
@@ -4061,10 +4061,10 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   animation: kb-palette-fade-in 120ms ease-out;
 }
 [data-mode="dark"] .kb-peek-confirm-layer { background: rgba(0, 0, 0, 0.55); }
-.kb-peek-confirm-layer.glass-on {
+.kb-peek-confirm-layer.glass-menus {
   background: rgba(0, 0, 0, 0.22);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(calc(12px * var(--glass-scale)));
+  backdrop-filter: blur(calc(12px * var(--glass-scale)));
 }
 .kb-peek-confirm {
   width: min(440px, 100%);
@@ -4085,14 +4085,14 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   border-color: rgba(255, 255, 255, 0.08);
   border-top-color: var(--danger);
 }
-.kb-peek-confirm.glass-on {
+.kb-peek-confirm.glass-menus {
   background: rgba(255, 255, 255, 0.80);
   border-color: rgba(255, 255, 255, 0.30);
   border-top-color: var(--danger);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"] .kb-peek-confirm.glass-on {
+[data-mode="dark"] .kb-peek-confirm.glass-menus {
   background: rgba(28, 28, 34, 0.82);
   border-color: rgba(255, 255, 255, 0.10);
   border-top-color: var(--danger);
@@ -4168,10 +4168,10 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   animation: kb-palette-fade-in 120ms ease-out;
 }
 [data-mode="dark"] .kb-navguard-backdrop { background: rgba(0, 0, 0, 0.66); }
-.kb-navguard-backdrop.glass-on {
+.kb-navguard-backdrop.glass-menus {
   background: rgba(0, 0, 0, 0.30);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(calc(14px * var(--glass-scale)));
+  backdrop-filter: blur(calc(14px * var(--glass-scale)));
 }
 .kb-navguard {
   width: min(460px, 100%);
@@ -4192,14 +4192,14 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   border-color: rgba(255, 255, 255, 0.08);
   border-top-color: var(--danger);
 }
-.kb-navguard.glass-on {
+.kb-navguard.glass-menus {
   background: rgba(255, 255, 255, 0.82);
   border-color: rgba(255, 255, 255, 0.30);
   border-top-color: var(--danger);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"] .kb-navguard.glass-on {
+[data-mode="dark"] .kb-navguard.glass-menus {
   background: rgba(28, 28, 34, 0.84);
   border-color: rgba(255, 255, 255, 0.10);
   border-top-color: var(--danger);
@@ -4465,9 +4465,9 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   background: rgba(20, 20, 28, 0.32);
   animation: kb-palette-fade-in 120ms ease-out;
 }
-.kb-bmmenu-backdrop.glass-on { background: rgba(0, 0, 0, 0.08); }
+.kb-bmmenu-backdrop.glass-menus { background: rgba(0, 0, 0, 0.08); }
 [data-mode="dark"] .kb-bmmenu-backdrop { background: rgba(0, 0, 0, 0.34); }
-[data-mode="dark"] .kb-bmmenu-backdrop.glass-on { background: rgba(0, 0, 0, 0.12); }
+[data-mode="dark"] .kb-bmmenu-backdrop.glass-menus { background: rgba(0, 0, 0, 0.12); }
 .kb-bmmenu {
   position: absolute;
   top: 64px;
@@ -4487,13 +4487,13 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .kb-bmmenu.side-right { right: 60px; }
 .kb-bmmenu.is-top-tabs { top: 118px; max-height: calc(100vh - 138px); }
 [data-mode="dark"] .kb-bmmenu { background: var(--popover); border-color: rgba(255,255,255,0.08); }
-.kb-bmmenu.glass-on {
+.kb-bmmenu.glass-menus {
   background: rgba(255, 255, 255, 0.80);
   border-color: rgba(255, 255, 255, 0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"] .kb-bmmenu.glass-on {
+[data-mode="dark"] .kb-bmmenu.glass-menus {
   background: rgba(52, 52, 64, 0.62);
   border-color: rgba(255, 255, 255, 0.12);
 }
@@ -4592,11 +4592,11 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   background: rgba(255, 255, 255, 0.12);
   border-color: rgba(255, 255, 255, 0.16);
 }
-.kb-bmmenu.glass-on .kb-bmmenu-bubble {
+.kb-bmmenu.glass-menus .kb-bmmenu-bubble {
   background: rgba(255, 255, 255, 0.55);
   border-color: rgba(255, 255, 255, 0.30);
 }
-[data-mode="dark"] .kb-bmmenu.glass-on .kb-bmmenu-bubble {
+[data-mode="dark"] .kb-bmmenu.glass-menus .kb-bmmenu-bubble {
   background: rgba(255, 255, 255, 0.14);
   border-color: rgba(255, 255, 255, 0.16);
 }
@@ -4650,13 +4650,13 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   animation: kb-palette-scale-in 100ms ease-out;
 }
 [data-mode="dark"] .kb-bmctx { background: var(--surface); }
-.kb-bmctx.glass-on {
+.kb-bmctx.glass-menus {
   background: rgba(255, 255, 255, 0.75);
   border-color: rgba(255, 255, 255, 0.3);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"] .kb-bmctx.glass-on {
+[data-mode="dark"] .kb-bmctx.glass-menus {
   background: rgba(40, 40, 50, 0.78);
   border-color: rgba(255, 255, 255, 0.12);
 }
@@ -4875,8 +4875,8 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .glass-on .kb-omnisearch {
   background: rgba(255,255,255,0.55);
   color: rgba(20,20,28,0.92);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(22px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(22px * var(--glass-scale))) saturate(180%);
   border-color: rgba(255,255,255,0.30);
   box-shadow: none;
 }
@@ -4948,8 +4948,8 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 }
 .glass-on .kb-quicklink .ql-tile {
   background: rgba(255,255,255,0.55);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(22px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(22px * var(--glass-scale))) saturate(180%);
   box-shadow: none;
   border: 1px solid rgba(255,255,255,0.30);
 }
@@ -5179,8 +5179,8 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   background: rgba(255,255,255,0.55);
   border-color: rgba(255,255,255,0.30);
   color: rgba(20,20,28,0.95);
-  -webkit-backdrop-filter: blur(14px) saturate(180%);
-  backdrop-filter: blur(14px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(14px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(14px * var(--glass-scale))) saturate(180%);
 }
 .glass-on .kb-keybind-pill:hover {
   background: rgba(255,255,255,0.78);
@@ -5397,8 +5397,8 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .glass-on .kb-ws-pill {
   background: rgba(255,255,255,0.55);
   color: rgba(20,20,28,0.92);
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
-  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(18px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(18px * var(--glass-scale))) saturate(180%);
 }
 .glass-on .kb-ws-pill:hover { background: rgba(255,255,255,0.72); }
 [data-mode="dark"].glass-on .kb-ws-pill {
@@ -5447,13 +5447,13 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   gap: 4px;
 }
 .kb-ws-pop.is-in { animation: kb-drop-in var(--dur-med) var(--ease-standard); }
-.glass-on .kb-ws-pop {
+.glass-menus .kb-ws-pop {
   background: rgba(255,255,255,0.72);
   border-color: rgba(255,255,255,0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"].glass-on .kb-ws-pop {
+[data-mode="dark"].glass-menus .kb-ws-pop {
   background: rgba(28,28,34,0.72);
   border-color: rgba(255,255,255,0.08);
 }
@@ -5662,13 +5662,13 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   flex-direction: column;
   min-width: 120px;
 }
-.glass-on .kb-ws-menu {
+.glass-menus .kb-ws-menu {
   background: rgba(255,255,255,0.92);
   border-color: rgba(255,255,255,0.30);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(22px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(22px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"].glass-on .kb-ws-menu {
+[data-mode="dark"].glass-menus .kb-ws-menu {
   background: rgba(38,38,46,0.92);
   border-color: rgba(255,255,255,0.10);
 }
@@ -5705,13 +5705,13 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   width: max-content;
   max-width: 232px;
 }
-.glass-on .kb-ws-editpop {
+.glass-menus .kb-ws-editpop {
   background: rgba(255, 255, 255, 0.72);
   border-color: rgba(255, 255, 255, 0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"].glass-on .kb-ws-editpop {
+[data-mode="dark"].glass-menus .kb-ws-editpop {
   background: rgba(38, 38, 46, 0.72);
   border-color: rgba(255, 255, 255, 0.10);
 }
@@ -5777,9 +5777,9 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   background: rgba(20, 20, 28, 0.32);
   animation: kb-palette-fade-in 120ms ease-out;
 }
-.kb-dlmenu-backdrop.glass-on { background: rgba(0, 0, 0, 0.08); }
+.kb-dlmenu-backdrop.glass-menus { background: rgba(0, 0, 0, 0.08); }
 [data-mode="dark"] .kb-dlmenu-backdrop { background: rgba(0, 0, 0, 0.34); }
-[data-mode="dark"] .kb-dlmenu-backdrop.glass-on { background: rgba(0, 0, 0, 0.12); }
+[data-mode="dark"] .kb-dlmenu-backdrop.glass-menus { background: rgba(0, 0, 0, 0.12); }
 /* Popup entrance: the card fades in and the rows follow with a small
    stagger (replayed per open via the keyed card). */
 @keyframes kb-dlmenu-in {
@@ -5946,13 +5946,13 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .kb-dlmenu.side-right { right: 60px; }
 .kb-dlmenu.is-top-tabs { top: 118px; bottom: auto; max-height: calc(100vh - 138px); }
 [data-mode="dark"] .kb-dlmenu { background: var(--popover); border-color: rgba(255,255,255,0.08); }
-.kb-dlmenu.glass-on {
+.kb-dlmenu.glass-menus {
   background: rgba(255, 255, 255, 0.80);
   border-color: rgba(255, 255, 255, 0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"] .kb-dlmenu.glass-on {
+[data-mode="dark"] .kb-dlmenu.glass-menus {
   background: rgba(52, 52, 64, 0.62);
   border-color: rgba(255, 255, 255, 0.12);
 }
@@ -6330,13 +6330,13 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 [data-mode="dark"].glass-on .kb-ws-bg input[type="range"] {
   background: rgba(255, 255, 255, 0.18);
 }
-.glass-on .kb-colorpick-pop {
+.glass-menus .kb-colorpick-pop {
   background: rgba(255, 255, 255, 0.80);
   border-color: rgba(255, 255, 255, 0.30);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
 }
-[data-mode="dark"].glass-on .kb-colorpick-pop {
+[data-mode="dark"].glass-menus .kb-colorpick-pop {
   background: rgba(52, 52, 64, 0.62);
   border-color: rgba(255, 255, 255, 0.12);
 }
