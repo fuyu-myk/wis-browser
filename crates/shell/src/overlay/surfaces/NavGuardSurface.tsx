@@ -14,6 +14,7 @@ import { cx } from '@/lib/cx'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { menusGlass } from '@/lib/glass'
 
 const NAV_GUARD_SHOW_EVENT = 'wis-navguard-show'
 const NAV_GUARD_CLOSE_EVENT = 'wis-navguard-close'
@@ -37,7 +38,7 @@ export function NavGuardSurface() {
   const { data: state } = useBrowserState()
   useBrowserStateEvents()
   useThemeApply(state?.settings)
-  const glassOn = state?.settings.glass_enabled ?? true
+  const glassMenus = menusGlass(state?.settings)
 
   const activeWorkspace = state?.workspaces.find((w) => w.id === state.active_workspace_id)
   const activeTabId: TabId | null = activeWorkspace?.active_tab_id ?? null
@@ -97,8 +98,8 @@ export function NavGuardSurface() {
   const warnings = data.assessment.warnings
 
   return (
-    <div className={cx('kb-navguard-backdrop', `risk-${risk}`, { 'glass-on': glassOn })}>
-      <div className={cx('kb-navguard', { 'glass-on': glassOn })} role="alertdialog" aria-modal="true">
+    <div className={cx('kb-navguard-backdrop', `risk-${risk}`, { 'glass-menus': glassMenus })}>
+      <div className={cx('kb-navguard', { 'glass-menus': glassMenus })} role="alertdialog" aria-modal="true">
         <div className="kb-navguard-icon">
           <ShieldGlyph />
         </div>

@@ -422,6 +422,8 @@ pub fn run() {
             themes::set_active_theme,
             themes::export_theme,
             themes::import_theme,
+            themes::encode_theme_code,
+            themes::decode_theme_code,
             commands::set_workspace_custom_accent,
             commands::get_browser_state,
             commands::get_workspace,

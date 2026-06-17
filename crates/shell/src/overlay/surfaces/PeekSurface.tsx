@@ -19,6 +19,7 @@ import { XIcon } from '@/lib/icons'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { menusGlass } from '@/lib/glass'
 
 const PEEK_SHOW_EVENT = 'wis-peek-show'
 const PEEK_CLOSE_EVENT = 'wis-peek-close'
@@ -50,7 +51,7 @@ export function PeekSurface() {
   const { data: state } = useBrowserState()
   useBrowserStateEvents()
   useThemeApply(state?.settings)
-  const glassOn = state?.settings.glass_enabled ?? true
+  const glassMenus = menusGlass(state?.settings)
   const activeWorkspaceId: WorkspaceId | null = state?.active_workspace_id ?? null
 
   const [open, setOpen] = useState(false)
@@ -239,13 +240,13 @@ export function PeekSurface() {
 
   return (
     <div
-      className={cx('kb-peek-backdrop', { 'glass-on': glassOn })}
+      className={cx('kb-peek-backdrop', { 'glass-menus': glassMenus })}
       onClick={close}
       role="presentation"
     >
       <div
         ref={cardRef}
-        className={cx('kb-peek-card', { 'glass-on': glassOn })}
+        className={cx('kb-peek-card', { 'glass-menus': glassMenus })}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="kb-peek-header">
@@ -293,12 +294,12 @@ export function PeekSurface() {
 
       {confirmOpen && (
         <div
-          className={cx('kb-peek-confirm-layer', { 'glass-on': glassOn })}
+          className={cx('kb-peek-confirm-layer', { 'glass-menus': glassMenus })}
           onClick={(e) => e.stopPropagation()}
           role="presentation"
         >
           <div
-            className={cx('kb-peek-confirm', { 'glass-on': glassOn })}
+            className={cx('kb-peek-confirm', { 'glass-menus': glassMenus })}
             role="alertdialog"
             aria-modal="true"
             aria-label="High-risk site warning"

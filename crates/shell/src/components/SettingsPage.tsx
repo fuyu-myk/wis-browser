@@ -10,10 +10,12 @@ import {
   GridIcon,
   KeyboardIcon,
   KeyIcon,
+  PaletteIcon,
   ShieldIcon,
   WifiIcon,
 } from '@/components/settingsIcons'
 import { AppearanceSection } from '@/components/AppearanceSection'
+import { DesignSection } from '@/components/DesignSection'
 import { LayoutSection } from '@/components/LayoutSection'
 import { SidebarWidgetsSection } from '@/components/SidebarWidgetsSection'
 import { PerformanceSection } from '@/components/PerformanceSection'
@@ -33,6 +35,7 @@ interface NavSection {
 
 const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'appearance', label: 'Appearance', icon: <SunIcon /> },
+  { id: 'design', label: 'Design', icon: <PaletteIcon /> },
   { id: 'layout', label: 'Layout', icon: <PanelTopIcon /> },
   { id: 'widgets', label: 'Sidebar widgets', icon: <GridIcon /> },
   { id: 'performance', label: 'Performance', icon: <MonitorIcon /> },
@@ -175,6 +178,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
           activeWorkspace={activeWorkspace}
           onUpdate={(patch) => update.mutate(patch)}
         />
+        <DesignSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <LayoutSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <SidebarWidgetsSection
           widgets={settings.sidebar_widgets}

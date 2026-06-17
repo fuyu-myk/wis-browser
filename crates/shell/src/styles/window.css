@@ -1325,10 +1325,10 @@ body.is-overlay-surface:not(.glass-on) {
 /* Glass mode: the entire window carries one uniform dark frosted tint
    on top of the OS vibrancy. Inner chrome surfaces (sidebar, topbar,
    content) are transparent so they inherit this same tone. */
-.kb-window.glass-on {
+body.glass-chrome .kb-window {
   background: color-mix(in oklab, var(--chrome-bg) 55%, transparent);
 }
-[data-mode="dark"] .kb-window.glass-on {
+[data-mode="dark"].glass-chrome .kb-window {
   background: rgba(28,28,36,0.68);
 }
 
@@ -1338,11 +1338,11 @@ body.is-overlay-surface:not(.glass-on) {
      legible. Same idea for icon-button glyphs.
    - Dark glass: secondary text reads better when slightly brighter than
      the muted theme default. */
-[data-mode="light"].glass-on {
+[data-mode="light"].glass-chrome {
   --text-secondary: rgba(20,20,28,0.78);
   --text-tertiary:  rgba(20,20,28,0.55);
 }
-[data-mode="dark"].glass-on {
+[data-mode="dark"].glass-chrome {
   --text-secondary: rgba(255,255,255,0.72);
   --text-tertiary:  rgba(255,255,255,0.48);
 }
@@ -1431,13 +1431,13 @@ body.is-overlay-surface:not(.glass-on) {
   justify-content: flex-end;
 }
 
-.kb-window:not(.glass-chrome) .kb-side {
+body:not(.glass-chrome) .kb-side {
   background: var(--chrome-bar);
   border-right: 0;
   border-left: 0;
 }
-.kb-window:not(.glass-on) .kb-content { box-shadow: var(--shadow-soft), 0 0 0 100vmax var(--chrome-bar); }
-[data-mode="dark"] .kb-window:not(.glass-on) .kb-content { box-shadow: 0 0 0 100vmax var(--chrome-bar); }
+body:not(.glass-chrome) .kb-content { box-shadow: var(--shadow-soft), 0 0 0 100vmax var(--chrome-bar); }
+[data-mode="dark"]:not(.glass-chrome) .kb-content { box-shadow: 0 0 0 100vmax var(--chrome-bar); }
 
 .glass-chrome .kb-side {
   background: var(--chrome-bar-glass);
@@ -1616,7 +1616,7 @@ body.is-overlay-surface:not(.glass-on) {
   padding: 10px 10px 4px;
 }
 
-[data-mode="dark"].glass-on .kb-tabs .group-label { color: rgba(255,255,255,0.78); }
+[data-mode="dark"].glass-tabs .kb-tabs .group-label { color: rgba(255,255,255,0.78); }
 
 /* ─── pinned-tab quick-access strip (docked under the workspace pill) ── */
 .kb-pinned { padding: 0 4px; }
@@ -2562,15 +2562,15 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   height: 34px;
 }
 .kb-rail-vpn.is-on,
-.glass-on .kb-rail-vpn.is-on,
-[data-mode="dark"].glass-on .kb-rail-vpn.is-on {
+.glass-chrome .kb-rail-vpn.is-on,
+[data-mode="dark"].glass-chrome .kb-rail-vpn.is-on {
   background: var(--primary-500);
   color: #fff;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 .kb-rail-vpn.is-on:hover,
-.glass-on .kb-rail-vpn.is-on:hover {
+.glass-chrome .kb-rail-vpn.is-on:hover {
   background: color-mix(in oklab, var(--primary-500) 88%, black 12%);
 }
 .kb-rail-vpn.is-error { color: var(--danger); }
@@ -2639,7 +2639,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   box-shadow: 0 0 0 1px var(--border) inset, 0 0 0 100vmax var(--chrome-bar);
 }
 
-.kb-window.glass-on .kb-content {
+body.glass-chrome .kb-content {
   background: transparent;
   box-shadow: 0 0 0 100vmax var(--chrome-bar-glass);
 }
@@ -2725,22 +2725,22 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   flex-shrink: 0;
   transition: background var(--dur-fast), color var(--dur-fast), transform var(--dur-fast);
 }
-.glass-on .kb-circle-btn {
+.glass-chrome .kb-circle-btn {
   background: rgba(255,255,255,0.55);
   color: rgba(20,20,28,0.92);
   -webkit-backdrop-filter: blur(calc(18px * var(--glass-scale))) saturate(180%);
   backdrop-filter: blur(calc(18px * var(--glass-scale))) saturate(180%);
   box-shadow: none;
 }
-[data-mode="dark"].glass-on .kb-circle-btn {
+[data-mode="dark"].glass-chrome .kb-circle-btn {
   background: rgba(255,255,255,0.10);
   color: rgba(255,255,255,0.85);
 }
-.glass-on .kb-circle-btn:hover {
+.glass-chrome .kb-circle-btn:hover {
   background: rgba(255,255,255,0.72);
   transform: translateY(-1px);
 }
-[data-mode="dark"].glass-on .kb-circle-btn:hover {
+[data-mode="dark"].glass-chrome .kb-circle-btn:hover {
   background: rgba(255,255,255,0.18);
   color: rgba(255,255,255,0.95);
 }
@@ -5394,18 +5394,18 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   transition: background var(--dur-fast), padding var(--dur-slow) var(--ease-standard);
 }
 .kb-ws-pill:hover { background: var(--surface-raised); }
-.glass-on .kb-ws-pill {
+.glass-chrome .kb-ws-pill {
   background: rgba(255,255,255,0.55);
   color: rgba(20,20,28,0.92);
   -webkit-backdrop-filter: blur(calc(18px * var(--glass-scale))) saturate(180%);
   backdrop-filter: blur(calc(18px * var(--glass-scale))) saturate(180%);
 }
-.glass-on .kb-ws-pill:hover { background: rgba(255,255,255,0.72); }
-[data-mode="dark"].glass-on .kb-ws-pill {
+.glass-chrome .kb-ws-pill:hover { background: rgba(255,255,255,0.72); }
+[data-mode="dark"].glass-chrome .kb-ws-pill {
   background: rgba(255,255,255,0.10);
   color: rgba(255,255,255,0.85);
 }
-[data-mode="dark"].glass-on .kb-ws-pill:hover { background: rgba(255,255,255,0.18); }
+[data-mode="dark"].glass-chrome .kb-ws-pill:hover { background: rgba(255,255,255,0.18); }
 .kb-ws-dot {
   width: 10px; height: 10px;
   border-radius: 50%;
@@ -5741,8 +5741,9 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .accent-azur    { background: #3d7fc8; --accent: #3d7fc8; }
 
 /* ─── compact density ─────────────────────────────────────────── */
-.compact .kb-side    { padding: 8px 6px; gap: 6px; }
-.compact .kb-tab     { padding: 4px 6px; font-size: 12px; }
+.compact .kb-side    { gap: 6px; }
+.compact .kb-widget-dock { gap: 4px; }
+.compact .kb-tab     { padding: 4px 8px; font-size: 12px; }
 .compact .kb-urlbar  { height: 28px; font-size: 12px; }
 
 /* ─── Per-tab loading spinner ─────────────────────────────────── */
@@ -6118,7 +6119,8 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   min-width: 0;
 }
 /* Compact sliders. */
-.kb-ws-bg input[type="range"] {
+.kb-ws-bg input[type="range"],
+.kb-design-range {
   -webkit-appearance: none;
   appearance: none;
   flex: 1;
@@ -6128,7 +6130,8 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   border-radius: calc(2px * var(--radius-scale));
   background: var(--overlay);
 }
-.kb-ws-bg input[type="range"]::-webkit-slider-thumb {
+.kb-ws-bg input[type="range"]::-webkit-slider-thumb,
+.kb-design-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 12px;
   height: 12px;
@@ -6326,8 +6329,10 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   background: rgba(0, 0, 0, 0.28);
   border-color: rgba(255, 255, 255, 0.08);
 }
-.glass-on .kb-ws-bg input[type="range"] { background: rgba(255, 255, 255, 0.40); }
-[data-mode="dark"].glass-on .kb-ws-bg input[type="range"] {
+.glass-on .kb-ws-bg input[type="range"],
+.glass-on .kb-design-range { background: rgba(255, 255, 255, 0.40); }
+[data-mode="dark"].glass-on .kb-ws-bg input[type="range"],
+[data-mode="dark"].glass-on .kb-design-range {
   background: rgba(255, 255, 255, 0.18);
 }
 .glass-menus .kb-colorpick-pop {
@@ -6928,7 +6933,7 @@ body.is-tab-dragging .kb-loose {
   padding-left: 0;
   padding-right: 0;
 }
-[data-folder-style="text"] .kb-tabfolder-body::before { display: none; }
+/* Text keeps the sidebar's left accent rail so the folder's tabs stay grouped. */
 [data-folder-style="outline"] .kb-topbar .h-island-name { background: transparent; color: var(--accent); }
 [data-folder-style="outline"] .kb-topbar .h-island-name:not(.selected) {
   box-shadow: inset 0 0 0 1.5px var(--accent);
@@ -6954,7 +6959,7 @@ body.is-tab-dragging .kb-loose {
 [data-tab-indicator="dot"] .kb-tab.active::before {
   content: '';
   position: absolute;
-  right: 6px;
+  right: 2px;
   top: 50%;
   transform: translateY(-50%);
   width: 6px;
@@ -6964,7 +6969,6 @@ body.is-tab-dragging .kb-loose {
   z-index: 2;
   pointer-events: none;
 }
-[data-tab-indicator="dot"] .layout-sidebar-right .kb-tab.active::before { right: auto; left: 6px; }
 
 /* ─── Close button ─── Hover (default) shows it on hover/active. */
 body[data-close-btn="always"] .kb-tab .close,
@@ -6973,6 +6977,33 @@ body[data-close-btn="hidden"] .kb-tab .close,
 body[data-close-btn="hidden"] .kb-topbar .h-tab .close { display: none; }
 
 /* ─── Density ─── Cozy (default) is untouched; Compact reuses the
-   legacy `.compact` rules (driven by settings.compact). */
+   legacy `.compact` rules (driven by settings.compact). Comfortable widens
+   the vertical gap (sidebar items + rail icons) and the tab sizes; like
+   Compact it never touches horizontal padding, so centring is preserved. */
+[data-density="comfortable"] .kb-side { gap: 14px; }
+[data-density="comfortable"] .kb-widget-dock { gap: 12px; }
 [data-density="comfortable"] .kb-tab { padding: 9px 8px; }
 [data-density="comfortable"] .kb-topbar .h-tab { height: 38px; }
+
+/* ─── Design page controls ─── */
+.kb-design-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.kb-design-slider .kb-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* Track + thumb come from the shared `input[type="range"]` rules (matches the
+   workspace-background sliders); here just fit it to the settings row. */
+.kb-design-range {
+  flex: 0 0 auto;
+  width: 200px;
+  cursor: pointer;
+}
+.kb-design-note {
+  margin: -2px 0 8px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}

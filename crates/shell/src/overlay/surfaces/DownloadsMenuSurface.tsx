@@ -28,6 +28,7 @@ import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useDownloads } from '@/hooks/useDownloads'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { menusGlass } from '@/lib/glass'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 export function DownloadsMenuSurface() {
@@ -37,7 +38,7 @@ export function DownloadsMenuSurface() {
   const { downloads } = useDownloads()
   const qc = useQueryClient()
 
-  const glassOn = state?.settings.glass_enabled ?? true
+  const glassMenus = menusGlass(state?.settings)
   const layout = state?.settings.layout ?? 'sidebar_left'
   const railSide = state?.settings.top_tabs_rail_side ?? 'left'
   const side: 'left' | 'right' =
@@ -140,11 +141,11 @@ export function DownloadsMenuSurface() {
   if (!visible) return null
 
   return (
-    <div className={cx('kb-dlmenu-backdrop', { 'glass-on': glassOn })} onMouseDown={close} role="presentation">
+    <div className={cx('kb-dlmenu-backdrop', { 'glass-menus': glassMenus })} onMouseDown={close} role="presentation">
       <div
         key={openNonce}
         className={cx('kb-dlmenu', `side-${side}`, {
-          'glass-on': glassOn,
+          'glass-menus': glassMenus,
           'is-top-tabs': layout === 'top_tabs',
         })}
         role="dialog"

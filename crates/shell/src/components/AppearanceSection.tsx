@@ -1,7 +1,6 @@
 import type { ThemeMode, UserSettings, UserSettingsPatch, Workspace } from '@/bindings/types'
 import { Segmented, Switch } from '@/components/controls'
 import { BackgroundEditor } from '@/components/BackgroundEditor'
-import { ThemesSection } from '@/components/ThemesSection'
 import { MonitorIcon, MoonIcon, SunIcon } from '@/lib/icons'
 
 const THEME_OPTIONS = [
@@ -87,7 +86,6 @@ export function AppearanceSection({ settings, activeWorkspace, onUpdate }: Appea
         {activeWorkspace && !activeWorkspace.ephemeral && (
           <BackgroundEditor ws={activeWorkspace} />
         )}
-        <ThemesSection />
       </section>
   )
 }

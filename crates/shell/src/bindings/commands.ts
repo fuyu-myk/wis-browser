@@ -764,6 +764,16 @@ export const commands = {
     return invoke('import_theme')
   },
 
+  /** Encode a theme as a portable share code (`wis-theme:<base64>`). */
+  async encodeThemeCode(theme: CustomTheme): Promise<string> {
+    return invoke('encode_theme_code', { theme })
+  },
+
+  /** Decode a share code into a theme with a fresh id; rejects malformed input. */
+  async decodeThemeCode(code: string): Promise<CustomTheme> {
+    return invoke('decode_theme_code', { code })
+  },
+
   // -- settings -------------------------------------------------------------
 
   async updateSettings(patch: UserSettingsPatch): Promise<UserSettings> {

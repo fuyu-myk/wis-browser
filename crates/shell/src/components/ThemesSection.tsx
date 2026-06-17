@@ -66,6 +66,7 @@ export function ThemesSection() {
    * committed (with a fallback) on blur/Enter. */
   const [nameDraft, setNameDraft] = useState<string | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
+  const [copiedId, setCopiedId] = useState<ThemeId | null>(null)
   const timerRef = useRef<number | null>(null)
 
   // Optimistic cache patch: theme switches and edits restyle the chrome on
@@ -173,6 +174,33 @@ export function ThemesSection() {
     refresh()
   }
 
+  const copyCode = async (theme: CustomTheme) => {
+    setImportError(null)
+    try {
+      const code = await commands.encodeThemeCode(theme)
+      await navigator.clipboard.writeText(code)
+      setCopiedId(theme.id)
+      window.setTimeout(() => setCopiedId((id) => (id === theme.id ? null : id)), 1500)
+    } catch (error: unknown) {
+      setImportError(importErrorMessage(error))
+    }
+  }
+
+  const pasteCode = async () => {
+    setImportError(null)
+    let theme: CustomTheme
+    try {
+      const code = await navigator.clipboard.readText()
+      theme = await commands.decodeThemeCode(code)
+    } catch (error: unknown) {
+      setImportError(importErrorMessage(error))
+      return
+    }
+    await commands.updateSettings({ custom_themes: [...themes, theme] })
+    await commands.setActiveTheme(theme.id)
+    refresh()
+  }
+
   const editing = themes.find((t) => t.id === editingId) ?? null
 
   return (
@@ -191,6 +219,9 @@ export function ThemesSection() {
           </button>
           <button type="button" className="kb-btn" onClick={() => void importTheme()}>
             Import
+          </button>
+          <button type="button" className="kb-btn" onClick={() => void pasteCode()}>
+            Paste code
           </button>
         </div>
       </div>
@@ -261,6 +292,9 @@ export function ThemesSection() {
                 onClick={() => void commands.exportTheme(t).catch(() => undefined)}
               >
                 Export
+              </button>
+              <button type="button" className="kb-btn" onClick={() => void copyCode(t)}>
+                {copiedId === t.id ? 'Copied' : 'Copy code'}
               </button>
               <button
                 type="button"

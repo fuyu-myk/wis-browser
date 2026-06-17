@@ -23,6 +23,7 @@ import { NEW_TAB_URL } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { menusGlass } from '@/lib/glass'
 
 const OPEN_EVENT = 'wis-tabmenu-open'
 const READY_EVENT = 'wis-tabmenu-ready'
@@ -168,13 +169,13 @@ export function TabContextMenuSurface() {
     close()
   }
 
-  const glassOn = state?.settings.glass_enabled ?? true
+  const glassMenus = menusGlass(state?.settings)
 
   return (
     <div
       ref={menuRef}
       key={openNonce}
-      className={cx('kb-tabctx', { 'glass-on': glassOn })}
+      className={cx('kb-tabctx', { 'glass-menus': glassMenus })}
       role="menu"
     >
       <div className="kb-tabctx-split">

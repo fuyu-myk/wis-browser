@@ -16,6 +16,7 @@ import { cx } from '@/lib/cx'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { menusGlass } from '@/lib/glass'
 
 type Scope = 'workspace' | 'all'
 
@@ -34,7 +35,7 @@ export function ClearDataSurface() {
   const [busy, setBusy] = useState(false)
 
   const activeWorkspaceId = state?.active_workspace_id ?? null
-  const glassOn = state?.settings.glass_enabled ?? true
+  const glassMenus = menusGlass(state?.settings)
 
   const close = useCallback(async () => {
     await commands.hideOverlay('cleardata').catch(() => undefined)
@@ -109,7 +110,7 @@ export function ClearDataSurface() {
       }}
     >
       <div
-        className={cx('kb-modal', 'kb-cbd', { 'glass-on': glassOn })}
+        className={cx('kb-modal', 'kb-cbd', { 'glass-menus': glassMenus })}
         role="dialog"
         aria-modal="true"
         aria-label="Clear browsing data"

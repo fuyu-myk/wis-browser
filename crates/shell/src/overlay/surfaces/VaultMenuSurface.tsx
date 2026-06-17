@@ -28,6 +28,7 @@ import {
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { menusGlass } from '@/lib/glass'
 
 function hostOf(url: string): string {
   try {
@@ -41,7 +42,7 @@ export function VaultMenuSurface() {
   const { data: state } = useBrowserState()
   useBrowserStateEvents()
   useThemeApply(state?.settings)
-  const glassOn = state?.settings.glass_enabled ?? true
+  const glassMenus = menusGlass(state?.settings)
 
   const activeWorkspace = state?.workspaces.find((w) => w.id === state.active_workspace_id)
   const activeTab =
@@ -154,7 +155,7 @@ export function VaultMenuSurface() {
     <div className="kb-vaultmenu-backdrop" onMouseDown={close}>
       {hasContent && (
         <div
-          className={cx('kb-vaultmenu', { 'glass-on': glassOn })}
+          className={cx('kb-vaultmenu', { 'glass-menus': glassMenus })}
           role="menu"
           style={{ left: anchor.x, top: anchor.y, width: anchor.width }}
           onMouseDown={(e) => e.stopPropagation()}

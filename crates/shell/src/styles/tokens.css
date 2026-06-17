@@ -234,7 +234,7 @@ body {
   transition: color 0.35s ease;
 }
 
-body:not(.glass-on) {
+body:not(.glass-chrome) {
   background: var(--bg);
 }
 

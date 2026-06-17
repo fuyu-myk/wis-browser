@@ -18,6 +18,7 @@ import { useBookmarkSync } from '@/hooks/useBookmarkSync'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { menusGlass } from '@/lib/glass'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { BookmarkFavicon } from '@/components/BookmarkFavicon'
@@ -29,7 +30,7 @@ export function BookmarksMenuSurface() {
   useBookmarkSync()
   const qc = useQueryClient()
 
-  const glassOn = state?.settings.glass_enabled ?? true
+  const glassMenus = menusGlass(state?.settings)
   const layout = state?.settings.layout ?? 'sidebar_left'
   const railSide = state?.settings.top_tabs_rail_side ?? 'left'
   const side: 'left' | 'right' =
@@ -502,7 +503,7 @@ export function BookmarksMenuSurface() {
     <div className="kb-bmmenu-backdrop" onMouseDown={close} role="presentation">
       <div
         className={cx('kb-bmmenu', `side-${side}`, {
-          'glass-on': glassOn,
+          'glass-menus': glassMenus,
           'is-top-tabs': layout === 'top_tabs',
         })}
         role="dialog"
@@ -790,7 +791,7 @@ export function BookmarksMenuSurface() {
             }}
           />
           <div
-            className={cx('kb-bmctx', { 'glass-on': glassOn })}
+            className={cx('kb-bmctx', { 'glass-menus': glassMenus })}
             style={{ left: Math.min(ctx.x, window.innerWidth - 210), top: ctx.y }}
             role="menu"
             onMouseDown={(e) => e.stopPropagation()}

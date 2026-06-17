@@ -37,6 +37,7 @@ import {
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { menusGlass } from '@/lib/glass'
 
 const KEYACTION_EVENT = 'wis-keyaction'
 const PALETTE_FOCUS_EVENT = 'wis-overlay-palette-focus'
@@ -234,11 +235,11 @@ export function PaletteSurface() {
     }
   }
 
-  const glassOn = state?.settings.glass_enabled ?? true
+  const glassMenus = menusGlass(state?.settings)
 
   return (
     <div
-      className={cx('kb-palette-backdrop', { 'glass-on': glassOn, 'is-closing': closing })}
+      className={cx('kb-palette-backdrop', { 'glass-menus': glassMenus, 'is-closing': closing })}
       role="presentation"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) void close()
@@ -246,7 +247,7 @@ export function PaletteSurface() {
     >
       <div
         key={openNonce}
-        className={cx('kb-palette', { 'glass-on': glassOn, 'is-closing': closing })}
+        className={cx('kb-palette', { 'glass-menus': glassMenus, 'is-closing': closing })}
         role="dialog"
         aria-label="Command palette"
         onMouseDown={(e) => e.stopPropagation()}

@@ -25,6 +25,7 @@ import { SearchIcon, XIcon } from '@/lib/icons'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { menusGlass } from '@/lib/glass'
 
 const KEYACTION_EVENT = 'wis-keyaction'
 const FIND_RESULT_EVENT = 'wis-find-result'
@@ -178,12 +179,12 @@ export function FindSurface() {
     }
   }, [])
 
-  const glassOn = state?.settings.glass_enabled ?? true
+  const glassMenus = menusGlass(state?.settings)
 
   return (
     <div
       className={cx('kb-findbar-wrap', {
-        'glass-on': glassOn,
+        'glass-menus': glassMenus,
         'is-open': open && !closing,
         'is-closing': closing,
       })}
@@ -192,7 +193,7 @@ export function FindSurface() {
       <div
         className={cx('kb-findbar-pill', {
           'is-no-match': status === 'no_match',
-          'glass-on': glassOn,
+          'glass-menus': glassMenus,
         })}
       >
         <SearchIcon className="kb-findbar-icon" />

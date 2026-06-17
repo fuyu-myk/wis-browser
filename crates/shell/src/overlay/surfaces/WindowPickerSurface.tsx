@@ -24,6 +24,7 @@ import { NEW_TAB_URL } from '@/lib/url'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { menusGlass } from '@/lib/glass'
 
 const PICKER_FOCUS_EVENT = 'wis-overlay-windowpicker-focus'
 const PICKER_CLOSED_EVENT = 'wis-overlay-windowpicker-closed'
@@ -124,11 +125,11 @@ export function WindowPickerSurface() {
     }
   }
 
-  const glassOn = state?.settings.glass_enabled ?? true
+  const glassMenus = menusGlass(state?.settings)
 
   return (
     <div
-      className={cx('kb-palette-backdrop', { 'glass-on': glassOn, 'is-closing': closing })}
+      className={cx('kb-palette-backdrop', { 'glass-menus': glassMenus, 'is-closing': closing })}
       role="presentation"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) void close()
@@ -137,7 +138,7 @@ export function WindowPickerSurface() {
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={cx('kb-palette', 'kb-winpicker', { 'glass-on': glassOn, 'is-closing': closing })}
+        className={cx('kb-palette', 'kb-winpicker', { 'glass-menus': glassMenus, 'is-closing': closing })}
         role="dialog"
         aria-label="Open a workspace in a new window"
         onMouseDown={(e) => e.stopPropagation()}

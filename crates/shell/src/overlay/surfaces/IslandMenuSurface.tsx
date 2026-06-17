@@ -13,6 +13,7 @@ import { IconPicker } from '@/components/IconPicker'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { menusGlass } from '@/lib/glass'
 import {
   ISLAND_MENU_DONE,
   ISLAND_MENU_OPEN,
@@ -85,7 +86,7 @@ export function IslandMenuSurface() {
     close()
   }
 
-  const glassOn = state?.settings.glass_enabled ?? true
+  const glassMenus = menusGlass(state?.settings)
   const folderIcon =
     state?.workspaces
       .find((w) => w.id === target.workspaceId)
@@ -98,7 +99,7 @@ export function IslandMenuSurface() {
   }
 
   return (
-    <div className={cx('kb-islandmenu', { 'glass-on': glassOn })} role="menu">
+    <div className={cx('kb-islandmenu', { 'glass-menus': glassMenus })} role="menu">
       <IconPicker value={folderIcon} onPick={setIcon} />
       <div className="kb-islandmenu-swatches" role="group" aria-label="Recolor folder">
         {ACCENTS.map((accent) => (

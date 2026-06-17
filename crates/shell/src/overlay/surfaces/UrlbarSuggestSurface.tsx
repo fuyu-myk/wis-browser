@@ -17,6 +17,7 @@ import { SearchIcon, XIcon } from '@/lib/icons'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { menusGlass } from '@/lib/glass'
 import {
   isRemovable,
   URLBAR_PICK_EVENT,
@@ -73,7 +74,7 @@ export function UrlbarSuggestSurface() {
   const { data: state } = useBrowserState()
   useBrowserStateEvents()
   useThemeApply(state?.settings)
-  const glassOn = state?.settings.glass_enabled ?? true
+  const glassMenus = menusGlass(state?.settings)
 
   const [rows, setRows] = useState<RenderRow[]>([])
   const [highlight, setHighlight] = useState(-1)
@@ -98,7 +99,7 @@ export function UrlbarSuggestSurface() {
   const active = hover ?? highlight
 
   return (
-    <div className={cx('kb-urlsug', { 'glass-on': glassOn })} role="listbox">
+    <div className={cx('kb-urlsug', { 'glass-menus': glassMenus })} role="listbox">
       {rows.map((row, index) => {
         const prevSection = index > 0 ? rows[index - 1].section : null
         const header = row.section && row.section !== prevSection ? row.section : null

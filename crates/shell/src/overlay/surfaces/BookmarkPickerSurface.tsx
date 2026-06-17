@@ -20,13 +20,14 @@ import {
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { menusGlass } from '@/lib/glass'
 import { useQueryClient } from '@tanstack/react-query'
 
 export function BookmarkPickerSurface() {
   const { data: state } = useBrowserState()
   useBrowserStateEvents()
   useThemeApply(state?.settings)
-  const glassOn = state?.settings.glass_enabled ?? true
+  const glassMenus = menusGlass(state?.settings)
   const qc = useQueryClient()
 
   const [req, setReq] = useState<BmPickerOpen | null>(null)
@@ -115,7 +116,7 @@ export function BookmarkPickerSurface() {
   return (
     <div className="kb-vaultmenu-backdrop" onMouseDown={close} role="presentation">
       <div
-        className={cx('kb-vaultmenu', 'kb-bmpicker', { 'glass-on': glassOn })}
+        className={cx('kb-vaultmenu', 'kb-bmpicker', { 'glass-menus': glassMenus })}
         role="menu"
         style={{ left: req.x, top: req.y, width: req.width }}
         onMouseDown={(e) => e.stopPropagation()}

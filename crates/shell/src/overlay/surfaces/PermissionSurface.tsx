@@ -15,6 +15,7 @@ import { Switch } from '@/components/controls'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { menusGlass } from '@/lib/glass'
 
 const SHOW_EVENT = 'wis-permission-show'
 const CLOSE_EVENT = 'wis-permission-close'
@@ -43,7 +44,7 @@ export function PermissionSurface() {
   const { data: state } = useBrowserState()
   useBrowserStateEvents()
   useThemeApply(state?.settings)
-  const glassOn = state?.settings.glass_enabled ?? true
+  const glassMenus = menusGlass(state?.settings)
 
   const [req, setReq] = useState<PermissionRequest | null>(null)
   const [open, setOpen] = useState(false)
@@ -89,7 +90,7 @@ export function PermissionSurface() {
 
   return (
     <div
-      className={cx('kb-perm-card', { 'glass-on': glassOn, 'is-open': open })}
+      className={cx('kb-perm-card', { 'glass-menus': glassMenus, 'is-open': open })}
       role="alertdialog"
       aria-label="Permission request"
     >
