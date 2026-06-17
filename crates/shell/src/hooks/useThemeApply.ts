@@ -57,6 +57,14 @@ export function useThemeApply(settings: UserSettings | undefined) {
     body.classList.toggle('glass-tabs', settings.glass_enabled && scopes.tabs)
     body.setAttribute('data-glass', settings.design.glass_intensity)
 
+    const design = settings.design
+    body.setAttribute('data-tab-shape', design.tab_shape)
+    body.setAttribute('data-folder-style', design.folder_style)
+    body.setAttribute('data-tab-indicator', design.tab_indicator)
+    body.setAttribute('data-density', design.density)
+    body.setAttribute('data-close-btn', design.close_button)
+    body.style.setProperty('--sb-w', `${design.sidebar_width}px`)
+
     body.classList.toggle('compact', settings.compact)
     body.classList.toggle('url-glow-on', settings.url_bar_focus_glow)
 

@@ -6902,3 +6902,77 @@ body.is-tab-dragging .kb-loose {
 .kb-reload-spin.is-spinning {
   animation: kb-spin-once 420ms var(--ease-standard);
 }
+
+/* ═══ DESIGN VARIANTS (Settings > Design) ═══════════════════════════
+   Every block keys off a body[data-*] attribute set by useThemeApply.
+   The default value of each control is a no-op here, so the untouched
+   chrome renders exactly as before. */
+
+/* ─── Tab shape ─── Rounded (default) keeps each strip's native shape
+   (sidebar rounded box, top-tabs pill); Pill/Square force all tabs. */
+[data-tab-shape="pill"] .kb-tab { border-radius: 999px; }
+[data-tab-shape="square"] .kb-tab { border-radius: 0; }
+[data-tab-shape="square"] .kb-topbar .h-tab,
+[data-tab-shape="square"] .kb-topbar .tabs-h.compact .h-tab { border-radius: 0; }
+
+/* ─── Folder style ─── Pill (default) is the accent-filled chip. */
+[data-folder-style="outline"] .kb-tabfolder-name {
+  background: transparent;
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+[data-folder-style="text"] .kb-tabfolder-name {
+  background: transparent;
+  color: var(--accent);
+  box-shadow: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+[data-folder-style="text"] .kb-tabfolder-body::before { display: none; }
+[data-folder-style="outline"] .kb-topbar .h-island-name { background: transparent; color: var(--accent); }
+[data-folder-style="outline"] .kb-topbar .h-island-name:not(.selected) {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+[data-folder-style="text"] .kb-topbar .h-island-name {
+  background: transparent;
+  color: var(--accent);
+  padding-left: 0;
+}
+
+/* ─── Active-tab indicator (sidebar) ─── Bar (default) is the sliding
+   .kb-active-bar; the others hide it and mark the active row directly. */
+[data-tab-indicator="underline"] .kb-active-bar,
+[data-tab-indicator="filled"] .kb-active-bar,
+[data-tab-indicator="dot"] .kb-active-bar { display: none; }
+[data-tab-indicator="underline"] .kb-tab.active { box-shadow: inset 0 -2px 0 var(--primary-500); }
+[data-tab-indicator="filled"] .kb-tab.active {
+  background: color-mix(in oklab, var(--primary-500) 16%, transparent);
+}
+[data-tab-indicator="filled"] .kb-tab.active:hover {
+  background: color-mix(in oklab, var(--primary-500) 22%, transparent);
+}
+[data-tab-indicator="dot"] .kb-tab.active::before {
+  content: '';
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary-500);
+  z-index: 2;
+  pointer-events: none;
+}
+[data-tab-indicator="dot"] .layout-sidebar-right .kb-tab.active::before { right: auto; left: 6px; }
+
+/* ─── Close button ─── Hover (default) shows it on hover/active. */
+body[data-close-btn="always"] .kb-tab .close,
+body[data-close-btn="always"] .kb-topbar .h-tab .close { display: inline-flex; }
+body[data-close-btn="hidden"] .kb-tab .close,
+body[data-close-btn="hidden"] .kb-topbar .h-tab .close { display: none; }
+
+/* ─── Density ─── Cozy (default) is untouched; Compact reuses the
+   legacy `.compact` rules (driven by settings.compact). */
+[data-density="comfortable"] .kb-tab { padding: 9px 8px; }
+[data-density="comfortable"] .kb-topbar .h-tab { height: 38px; }
