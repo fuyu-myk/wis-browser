@@ -12,7 +12,7 @@ pub async fn update_settings(
         }
     }
 
-    // Clamp boundary-supplied design values before they reach the 
+    // Clamp boundary-supplied design values before they reach the
     // pure state transition.
     if let Some(design) = patch.design {
         patch.design = Some(design.sanitized());

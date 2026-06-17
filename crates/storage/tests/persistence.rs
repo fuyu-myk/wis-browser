@@ -25,7 +25,11 @@ fn tab_sessions_round_trip_survive_state_save_and_purge() {
     // Upsert replaces the prior blob for the same tab.
     store.save_tab_session(a, "blob-a2").expect("re-save a");
     assert_eq!(
-        store.load_tab_sessions().expect("load").get(&a).map(String::as_str),
+        store
+            .load_tab_sessions()
+            .expect("load")
+            .get(&a)
+            .map(String::as_str),
         Some("blob-a2")
     );
 

@@ -23,9 +23,15 @@ fn background_tab_appends_without_stealing_focus() {
     assert_eq!(s1.workspaces[0].active_tab_id, Some(a.id));
 
     // A background open adds the tab but leaves the opener active.
-    let (s2, b) = s1.with_new_background_tab(ws, "https://b.example/").unwrap();
+    let (s2, b) = s1
+        .with_new_background_tab(ws, "https://b.example/")
+        .unwrap();
     assert!(s2.tabs.iter().any(|t| t.id == b.id));
-    assert_eq!(s2.workspaces[0].active_tab_id, Some(a.id), "opener stays active");
+    assert_eq!(
+        s2.workspaces[0].active_tab_id,
+        Some(a.id),
+        "opener stays active"
+    );
     assert_clean(&s2);
 
     // A normal open still focuses the new tab.
