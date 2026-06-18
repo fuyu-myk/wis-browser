@@ -6887,12 +6887,14 @@ body.is-tab-dragging .kb-loose {
 }
 
 /* While the strip itself is resizing (sidebar expand/contract, window
-   resize), tabs must track each measurement instead of easing toward it. */
-.kb-tabs-h-wrap.is-strip-resizing .h-tab { --reflow-dur: 0s; }
+   resize), tabs ease toward each measurement with a short duration, so the
+   reflow glides fluidly instead of snapping per measurement. */
+.kb-tabs-h-wrap.is-strip-resizing .h-tab { --reflow-dur: var(--dur-fast); }
 
-/* Folder islands keep only their clip-path grow/shrink; tabs inside them
-   ride that sweep. */
-.h-island .h-tab { --reflow-dur: 0s; }
+/* Folder islands grow/shrink via clip-path; their tabs ride that sweep
+   only while the island itself is opening/closing. */
+.h-island.is-opening .h-tab,
+.h-island.is-closing .h-tab { --reflow-dur: 0s; }
 
 /* Reload icon spins once per press (keyed remount replays it). */
 @keyframes kb-spin-once {
@@ -6937,6 +6939,12 @@ body.is-tab-dragging .kb-loose {
 [data-folder-style="outline"] .kb-topbar .h-island-name { background: transparent; color: var(--accent); }
 [data-folder-style="outline"] .kb-topbar .h-island-name:not(.selected) {
   box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+/* Collapsed folder: a ring instead of a solid dot, matching the outline chip. */
+[data-folder-style="outline"] .kb-topbar .h-island-circle {
+  background: transparent;
+  border: 2px solid var(--accent);
+  color: var(--accent);
 }
 [data-folder-style="text"] .kb-topbar .h-island-name {
   background: transparent;
@@ -6984,6 +6992,7 @@ body[data-close-btn="hidden"] .kb-topbar .h-tab .close { display: none; }
 [data-density="comfortable"] .kb-widget-dock { gap: 12px; }
 [data-density="comfortable"] .kb-tab { padding: 9px 8px; }
 [data-density="comfortable"] .kb-topbar .h-tab { height: 38px; }
+[data-density="comfortable"] .kb-topbar .h-island .h-tab { height: 28px; }
 
 /* ─── Design page controls ─── */
 .kb-design-slider {
