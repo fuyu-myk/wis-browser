@@ -143,6 +143,7 @@ export type KeyAction =
   | 'next_tab'
   | 'previous_tab'
   | 'hard_reload'
+  | 'toggle_reader'
   | 'zoom_in'
   | 'zoom_out'
   | 'zoom_reset'
@@ -205,6 +206,8 @@ export interface Tab {
   muted: boolean
   /** In-memory only; reset to false on app launch. */
   loading: boolean
+  /** Showing the in-page reader transform. In-memory only; reset on reload/launch. */
+  reader: boolean
   /** Page-zoom factor (1.0 = 100%); persisted per tab. */
   zoom: number
   created_at: string // ISO 8601 from chrono::DateTime<Utc>

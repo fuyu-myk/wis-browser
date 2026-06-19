@@ -24,6 +24,7 @@ mod peek;
 mod permissions;
 mod popup_chrome;
 mod print;
+mod reader;
 mod save_coalescer;
 mod state;
 mod suggest;
@@ -495,6 +496,7 @@ pub fn run() {
             commands::update_tab_title,
             commands::update_tab_loading,
             commands::tab_reload,
+            commands::tab_set_reader,
             commands::tab_go_back,
             commands::tab_go_forward,
             commands::update_settings,

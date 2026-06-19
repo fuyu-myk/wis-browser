@@ -258,6 +258,18 @@ impl BrowserState {
         Ok(self.replace_tab(id, &updated))
     }
 
+    /// Toggle a tab's `reader` flag. Idempotent when the value doesn't change.
+    pub fn with_tab_reader(&self, id: TabId, reader: bool) -> WisResult<Self> {
+        let current = self.tab(id)?;
+        if current.reader == reader {
+            return Ok(self.clone());
+        }
+
+        let updated = current.with_reader(reader);
+
+        Ok(self.replace_tab(id, &updated))
+    }
+
     /// Update a tab's favicon reference. Idempotent when the value doesn't change.
     pub fn with_tab_favicon(
         &self,

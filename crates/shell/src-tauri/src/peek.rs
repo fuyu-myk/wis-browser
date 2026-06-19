@@ -218,7 +218,7 @@ pub async fn peek_set_reader(window: tauri::Window, enabled: bool) -> WisResult<
     };
 
     let js = if enabled {
-        READER_JS
+        crate::reader::reader_script()
     } else {
         "location.reload();"
     };
@@ -269,37 +269,6 @@ const PEEK_JS: &str = r#"(function () {
 pub fn page_script() -> &'static str {
     PEEK_JS
 }
-
-/// In-page reader transform (runs inside the isolated preview only).
-const READER_JS: &str = r#"(function () {
-  try {
-    function textLen(el) { return (el.innerText || '').replace(/\s+/g, ' ').trim().length; }
-    var best = null, bestScore = 0;
-    var named = document.querySelectorAll('article, main, [role=main], .post, .article, .entry-content, .post-content, #content, .content');
-    Array.prototype.slice.call(named).forEach(function (c) { var s = textLen(c); if (s > bestScore) { bestScore = s; best = c; } });
-    if (!best || bestScore < 200) {
-      Array.prototype.slice.call(document.querySelectorAll('div, section')).forEach(function (c) {
-        var ps = c.querySelectorAll('p'); if (ps.length < 2) return;
-        var s = 0; for (var i = 0; i < ps.length; i++) s += textLen(ps[i]);
-        if (s > bestScore) { bestScore = s; best = c; }
-      });
-    }
-    if (!best) best = document.body;
-    var title = (document.title || '').trim();
-    var clone = best.cloneNode(true);
-    ['script', 'style', 'noscript', 'iframe', 'form', 'nav', 'aside', 'header', 'footer', 'button', 'svg', '[role=navigation]'].forEach(function (sel) {
-      try { Array.prototype.slice.call(clone.querySelectorAll(sel)).forEach(function (n) { n.remove(); }); } catch (e) {}
-    });
-    Array.prototype.slice.call(clone.querySelectorAll('*')).forEach(function (n) {
-      var keep = ['href', 'src', 'alt'];
-      Array.prototype.slice.call(n.attributes || []).forEach(function (a) { if (keep.indexOf(a.name) < 0) n.removeAttribute(a.name); });
-    });
-    var css = '*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fbfbfd;color:#1d1d22}@media(prefers-color-scheme:dark){html,body{background:#16161a;color:#e9e9ee}}body{font:17px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main.kbreader{max-width:680px;margin:0 auto;padding:40px 24px 80px}main.kbreader h1.kbreader-title{font-size:28px;line-height:1.25;margin:0 0 24px}main.kbreader img{max-width:100%;height:auto;border-radius:8px}main.kbreader p{margin:0 0 18px}main.kbreader a{color:#6b77f8}';
-    var safeTitle = title.replace(/</g, '&lt;');
-    var doc = '<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><style>' + css + '</style></head><body><main class=kbreader>' + (title ? ('<h1 class=kbreader-title>' + safeTitle + '</h1>') : '') + clone.innerHTML + '</main></body></html>';
-    document.open(); document.write(doc); document.close();
-  } catch (e) {}
-})();"#;
 
 #[cfg(target_os = "macos")]
 mod imp {

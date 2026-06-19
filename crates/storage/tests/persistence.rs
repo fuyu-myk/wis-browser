@@ -344,6 +344,27 @@ fn tab_ordering_is_preserved_across_round_trips() {
 }
 
 #[test]
+fn tab_reader_flag_is_session_only_and_resets_on_round_trip() {
+    let store = fresh_store();
+    let s0 = BrowserState::new_with_defaults();
+    let ws_id = s0.workspaces[0].id;
+    let (s1, t1) = s0.with_new_tab(ws_id, "https://a.example/").unwrap();
+    let s2 = s1.with_tab_reader(t1.id, true).unwrap();
+    assert!(
+        s2.tabs.iter().find(|t| t.id == t1.id).unwrap().reader,
+        "reader flag is set in memory"
+    );
+
+    store.save_state(&s2).expect("save");
+    let loaded = store.load_state().expect("load").unwrap();
+    let tab = loaded.tabs.iter().find(|t| t.id == t1.id).unwrap();
+    assert!(
+        !tab.reader,
+        "reader is in-memory only; the store reconstructs it as false"
+    );
+}
+
+#[test]
 fn saving_again_replaces_prior_state() {
     let store = fresh_store();
     let s0 = BrowserState::new_with_defaults();

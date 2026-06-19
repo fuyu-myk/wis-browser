@@ -5,7 +5,7 @@ import { useMutation } from '@tanstack/react-query'
 import { commands } from '@/bindings/commands'
 import type { Tab } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { ArrowLeftIcon, ArrowRightIcon, RefreshIcon } from '@/lib/icons'
+import { ArrowLeftIcon, ArrowRightIcon, ReaderIcon, RefreshIcon } from '@/lib/icons'
 import { isChromeUrl } from '@/lib/url'
 
 interface NavRowProps {
@@ -39,6 +39,10 @@ export function NavRow({ activeTab, circular = false }: NavRowProps) {
   })
   const reload = useMutation({
     mutationFn: (id: Tab['id']) => commands.tabReload(id),
+  })
+  const reader = useMutation({
+    mutationFn: ({ id, enabled }: { id: Tab['id']; enabled: boolean }) =>
+      commands.tabSetReader(id, enabled),
   })
 
   // No active tab: or active tab is a chrome page with no
@@ -83,6 +87,19 @@ export function NavRow({ activeTab, circular = false }: NavRowProps) {
         >
           <RefreshIcon />
         </span>
+      </button>
+      <button
+        type="button"
+        className={cx(btnClass, { 'is-active': activeTab?.reader })}
+        aria-label="Reader mode"
+        aria-pressed={activeTab?.reader ?? false}
+        disabled={!navigable}
+        onClick={() => {
+          if (!activeTab) return
+          reader.mutate({ id: activeTab.id, enabled: !activeTab.reader })
+        }}
+      >
+        <ReaderIcon />
       </button>
     </div>
   )

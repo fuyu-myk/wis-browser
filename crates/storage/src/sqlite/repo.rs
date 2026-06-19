@@ -385,6 +385,7 @@ fn load_tabs(conn: &Connection) -> StorageResult<Vec<Tab>> {
                 .map(TabFolderId::from),
             muted: row.get(6)?,
             loading: false,
+            reader: false,
             zoom: zoom.unwrap_or_else(wis_core::tab::default_zoom),
             created_at: row.get::<_, DateTime<Utc>>(7)?,
             last_active_at: row.get::<_, DateTime<Utc>>(8)?,

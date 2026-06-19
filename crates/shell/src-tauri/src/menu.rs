@@ -159,6 +159,13 @@ fn build_menu(
             "Reload (Bypass Cache)",
         )?)
         .separator()
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::ToggleReader,
+            "Reader Mode",
+        )?)
+        .separator()
         .item(&action_item(app, keymap, KeyAction::ZoomIn, "Zoom In")?)
         .item(&action_item(app, keymap, KeyAction::ZoomOut, "Zoom Out")?)
         .item(&action_item(

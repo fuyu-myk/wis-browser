@@ -1590,6 +1590,7 @@ body:not(.glass-chrome) .kb-content { box-shadow: var(--shadow-soft), 0 0 0 100v
 }
 .kb-iconbtn:hover { background: var(--overlay); color: var(--text-primary); }
 .kb-iconbtn:disabled { opacity: 0.35; cursor: default; }
+.kb-iconbtn.is-active { background: var(--primary-100); color: var(--primary-500); }
 .kb-iconbtn svg { width: 16px; height: 16px; }
 .kb-iconbtn.lg { width: 32px; height: 32px; border-radius: calc(9px * var(--radius-scale)); }
 
@@ -2745,6 +2746,8 @@ body.glass-chrome .kb-content {
   color: rgba(255,255,255,0.95);
 }
 .kb-circle-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+.kb-circle-btn.is-active { background: var(--primary-500); color: #fff; box-shadow: none; }
+.glass-chrome .kb-circle-btn.is-active { background: var(--primary-500); color: #fff; }
 .kb-circle-btn svg { width: 16px; height: 16px; }
 .kb-nav-row.is-circular { gap: 6px; }
 

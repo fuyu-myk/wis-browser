@@ -415,6 +415,12 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
     case 'hard_reload':
       if (ctx.activeTab) await commands.tabHardReload(ctx.activeTab.id)
       return
+    case 'toggle_reader': {
+      if (!ctx.activeTab || isChromeUrl(ctx.activeTab.url)) return
+      await commands.tabSetReader(ctx.activeTab.id, !ctx.activeTab.reader)
+      ctx.invalidate()
+      return
+    }
     case 'zoom_in':
     case 'zoom_out':
     case 'zoom_reset': {

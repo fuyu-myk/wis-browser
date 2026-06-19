@@ -667,6 +667,39 @@ pub async fn tab_reload(app: AppHandle, id: TabId) -> WisResult<()> {
         })
 }
 
+/// Toggle reader mode on a tab: transform the live page into a clean article
+/// (`enabled`) or reload to restore the original page. The transform runs
+/// inside the tab's own webview, so no untrusted markup reaches the chrome.
+/// The `reader` flag mirrors this for the UI; a real navigation resets it
+/// (see the page-load handler in `commands::webview`).
+#[tauri::command]
+pub async fn tab_set_reader(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: TabId,
+    enabled: bool,
+) -> WisResult<()> {
+    let label = format!("tab-{}", id.as_uuid());
+    let webview = app
+        .webviews()
+        .get(&label)
+        .cloned()
+        .ok_or_else(|| WisError::InvalidInput {
+            message: format!("no webview labelled {label}"),
+        })?;
+
+    let js = if enabled {
+        crate::reader::reader_script()
+    } else {
+        "window.location.reload()"
+    };
+    webview.eval(js).map_err(|err| WisError::InvalidInput {
+        message: format!("reader eval failed: {err}"),
+    })?;
+
+    mutate_unit(&app, &state, |s| s.with_tab_reader(id, enabled)).await
+}
+
 /// Navigate the tab back in its history.
 #[tauri::command]
 pub async fn tab_go_back(app: AppHandle, id: TabId) -> WisResult<()> {

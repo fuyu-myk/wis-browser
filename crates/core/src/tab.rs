@@ -31,6 +31,11 @@ pub struct Tab {
     /// mid-load, so the storage layer always reconstructs `loading: false`.
     #[serde(default)]
     pub loading: bool,
+    /// Whether the tab is currently showing reader mode (the in-page article
+    /// transform). In-memory only: the transform lives in the live webview and
+    /// is lost on reload/restart, so the storage layer reconstructs `false`.
+    #[serde(default)]
+    pub reader: bool,
     /// Persisted page-zoom factor (1.0 = 100%).
     #[serde(default = "default_zoom")]
     pub zoom: f64,
@@ -56,6 +61,7 @@ impl Tab {
             folder_id: None,
             muted: false,
             loading: false,
+            reader: false,
             zoom: default_zoom(),
             created_at: now,
             last_active_at: now,
@@ -114,6 +120,13 @@ impl Tab {
     pub fn with_loading(&self, loading: bool) -> Self {
         Self {
             loading,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_reader(&self, reader: bool) -> Self {
+        Self {
+            reader,
             ..self.clone()
         }
     }

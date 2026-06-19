@@ -153,6 +153,13 @@ pub async fn create_tab_webview(
                 let result = mutate_unit(&app_for_state, &state, |s| {
                     s.with_tab_loading(tab_id, loading)
                         .and_then(|next| next.with_tab_url_synced(tab_id, &url_string))
+                        .and_then(|next| {
+                            if loading {
+                                next.with_tab_reader(tab_id, false)
+                            } else {
+                                Ok(next)
+                            }
+                        })
                 })
                 .await;
                 if let Err(err) = result {

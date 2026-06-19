@@ -594,6 +594,11 @@ export const commands = {
     return invoke('tab_reload', { id })
   },
 
+  /** Toggle reader mode on a tab. Enter transforms the page; exit reloads it. */
+  async tabSetReader(id: TabId, enabled: boolean): Promise<void> {
+    return invoke('tab_set_reader', { id, enabled })
+  },
+
   /** History back in the tab. No-ops at start of history. */
   async tabGoBack(id: TabId): Promise<void> {
     return invoke('tab_go_back', { id })
