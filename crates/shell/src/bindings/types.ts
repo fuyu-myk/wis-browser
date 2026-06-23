@@ -157,6 +157,9 @@ export type KeyAction =
   | 'toggle_sidebar'
   | 'element_picker'
   | 'pop_out_video'
+  | 'capture_visible'
+  | 'capture_region'
+  | 'capture_window'
 
 export type AccentColor =
   | 'primary'

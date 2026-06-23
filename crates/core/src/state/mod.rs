@@ -50,7 +50,7 @@ impl BrowserState {
         let state = Self::new_with_defaults();
         let ws_id = state.active_workspace_id;
         let (state, tab) = state
-            .with_new_tab(ws_id, "Enter search or web address")
+            .with_new_tab(ws_id, "about:blank")
             .expect("seed new tab into fresh defaults");
         let tabs = state
             .tabs
@@ -228,5 +228,26 @@ impl BrowserState {
         }
 
         errors
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_run_seeds_one_valid_blank_tab() {
+        // Regression: `new_first_run` must seed a parseable URL. A bad seed
+        // (e.g. a placeholder string) panics here, and at startup that panic
+        // fires inside a non-unwinding AppKit callback and aborts the app.
+        let state = BrowserState::new_first_run();
+        assert_eq!(state.tabs.len(), 1, "first run seeds exactly one tab");
+        let tab = &state.tabs[0];
+        assert_eq!(tab.url.as_str(), "about:blank");
+        assert_eq!(tab.title, "New Tab");
+        assert!(
+            state.active_workspace().tab_order.contains(&tab.id),
+            "seeded tab is in the active workspace's order",
+        );
     }
 }

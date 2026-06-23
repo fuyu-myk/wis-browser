@@ -100,6 +100,15 @@ pub enum KeyAction {
     /// Float the active tab's video as the popout mini player (toggles back
     /// when it is already popped). Unbound by default.
     PopOutVideo,
+    /// Capture the visible tab content (copies to the clipboard; the success
+    /// toast offers Save). Unbound by default.
+    CaptureVisible,
+    /// Drag-select a region of the page to capture (to the clipboard). Unbound
+    /// by default.
+    CaptureRegion,
+    /// Capture the whole browser window as it appears (to the clipboard).
+    /// Unbound by default.
+    CaptureWindow,
 }
 
 impl KeyAction {
@@ -165,6 +174,9 @@ impl KeyAction {
             Self::ToggleSidebar => "toggle_sidebar",
             Self::ElementPicker => "element_picker",
             Self::PopOutVideo => "pop_out_video",
+            Self::CaptureVisible => "capture_visible",
+            Self::CaptureRegion => "capture_region",
+            Self::CaptureWindow => "capture_window",
         }
     }
 
@@ -181,7 +193,7 @@ impl KeyAction {
     }
 }
 
-const ALL_ACTIONS: [KeyAction; 58] = [
+const ALL_ACTIONS: [KeyAction; 61] = [
     KeyAction::NewTab,
     KeyAction::NewWorkspace,
     KeyAction::CloseTab,
@@ -240,6 +252,9 @@ const ALL_ACTIONS: [KeyAction; 58] = [
     KeyAction::ToggleSidebar,
     KeyAction::ElementPicker,
     KeyAction::PopOutVideo,
+    KeyAction::CaptureVisible,
+    KeyAction::CaptureRegion,
+    KeyAction::CaptureWindow,
 ];
 
 /// Default keyboard accelerators.
@@ -336,6 +351,9 @@ mod tests {
             KeyAction::FocusUrlBarAlt,
             KeyAction::FocusNextPane,
             KeyAction::SwitchToTab9,
+            KeyAction::CaptureVisible,
+            KeyAction::CaptureRegion,
+            KeyAction::CaptureWindow,
         ];
         let map = default_keymap();
         for action in KeyAction::all() {

@@ -43,7 +43,12 @@ pub fn install_menu(app: &App, keymap: &HashMap<KeyAction, String>) -> tauri::Re
 /// handler (done once by [`install_menu`]).
 pub fn apply_menu(app: &AppHandle, keymap: &HashMap<KeyAction, String>) -> tauri::Result<()> {
     let menu = build_menu(app, keymap)?;
+
+    #[cfg(target_os = "macos")]
+    menu.set_as_app_menu()?;
     app.set_menu(menu)?;
+    log::info!("native menu (re)built with {} bound accelerators", keymap.len());
+
     Ok(())
 }
 
@@ -110,6 +115,24 @@ fn build_menu(
         .item(&action_item(app, keymap, KeyAction::CloseTab, "Close Tab")?)
         .separator()
         .item(&action_item(app, keymap, KeyAction::Print, "Print…")?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::CaptureVisible,
+            "Capture Screenshot",
+        )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::CaptureRegion,
+            "Capture Selected Region…",
+        )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::CaptureWindow,
+            "Capture Window",
+        )?)
         .separator()
         .item(&action_item(
             app,

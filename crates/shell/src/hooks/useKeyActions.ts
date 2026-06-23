@@ -24,6 +24,7 @@ import { DOWNLOADS_OPEN_EVENT } from '@/lib/downloads'
 import { BOOKMARK_PAGE_EVENT, BOOKMARKS_OPEN_EVENT } from '@/lib/bookmarkMenu'
 import type { BrowserState, KeyAction, PaneNode, Tab, TabId, Workspace, WorkspaceId } from '@/bindings/types'
 import { HISTORY_URL, NEW_TAB_URL, SETTINGS_URL, isChromeUrl, resolveNewTabUrl } from '@/lib/url'
+import { SCREENSHOT_CAPTURED_EVENT, SCREENSHOT_REGION_OPEN_EVENT } from '@/lib/screenshot'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { usePendingRename } from '@/hooks/usePendingRename'
 import { useQueryClient } from '@tanstack/react-query'
@@ -367,6 +368,32 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
     case 'print': {
       if (!ctx.activeTab || isChromeUrl(ctx.activeTab.url)) return
       await commands.printActiveTab(ctx.activeTab.id)
+      return
+    }
+    case 'capture_region': {
+      // Window-region: open the full-window selection overlay (inclusive of
+      // the chrome). The overlay hook performs the crop capture on a result.
+      if (!ctx.activeTab) return
+      window.dispatchEvent(
+        new CustomEvent(SCREENSHOT_REGION_OPEN_EVENT, { detail: { tabId: ctx.activeTab.id } }),
+      )
+      return
+    }
+    case 'capture_visible':
+    case 'capture_window': {
+      if (!ctx.activeTab) return
+      // Visible snapshots a `tab-*` webview, which chrome pages don't have;
+      // window capture grabs the whole frame, so it works anywhere.
+      if (action === 'capture_visible' && isChromeUrl(ctx.activeTab.url)) return
+      const mode = action === 'capture_window' ? 'window' : 'visible'
+      try {
+        const captured = await commands.captureToClipboard(ctx.activeTab.id, mode)
+        // A capture copies to the clipboard; the success toast offers Save.
+        if (captured) window.dispatchEvent(new CustomEvent(SCREENSHOT_CAPTURED_EVENT))
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('captureToClipboard failed', err)
+      }
       return
     }
     case 'element_picker': {

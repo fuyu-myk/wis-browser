@@ -13,6 +13,8 @@ import { useWindowPickerOverlay } from '@/hooks/useWindowPickerOverlay'
 import { useNavGuardOverlay } from '@/hooks/useNavGuardOverlay'
 import { useOpenInTab } from '@/hooks/useOpenInTab'
 import { usePeekOverlay } from '@/hooks/usePeekOverlay'
+import { useScreenshotToastOverlay } from '@/hooks/useScreenshotToastOverlay'
+import { useScreenshotRegionOverlay } from '@/hooks/useScreenshotRegionOverlay'
 import { useKeyActions } from '@/hooks/useKeyActions'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 import { useSwipeAccentSync } from '@/hooks/useSwipeAccentSync'
@@ -48,6 +50,8 @@ export function Window({ state, settings }: WindowProps) {
   useNavGuardOverlay()
   useBookmarksOverlay()
   useDownloadsOverlay()
+  useScreenshotToastOverlay()
+  useScreenshotRegionOverlay()
 
   const layoutClass = `layout-${settings.layout.replace('_', '-')}`
   const isSidebar = settings.layout !== 'top_tabs'

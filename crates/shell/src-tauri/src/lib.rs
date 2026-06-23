@@ -26,6 +26,7 @@ mod popup_chrome;
 mod print;
 mod reader;
 mod save_coalescer;
+mod screenshot;
 mod state;
 mod suggest;
 mod swipe_nav;
@@ -500,6 +501,7 @@ pub fn run() {
             commands::tab_go_back,
             commands::tab_go_forward,
             commands::update_settings,
+            commands::apply_shortcuts,
             commands::check_url_policy,
             commands::resolve_hostname,
             commands::set_window_icon,
@@ -520,6 +522,8 @@ pub fn run() {
             find::tab_find_string,
             find::tab_find_clear,
             print::print_active_tab,
+            screenshot::capture_to_clipboard,
+            screenshot::save_last_screenshot,
             peek::open_peek,
             peek::set_peek_bounds,
             peek::close_peek,

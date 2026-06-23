@@ -167,6 +167,10 @@ pub struct AppState {
     /// baked into new tab webviews and pushed to live ones on theme change.
     /// A plain string the chrome owns.
     pub swipe_accent: std::sync::Mutex<String>,
+    /// PNG bytes of the most recent screenshot (already copied to the
+    /// clipboard), held so the success toast's "Save" button can write it to
+    /// disk without re-capturing. Replaced on each capture.
+    pub last_screenshot: std::sync::Mutex<Option<Vec<u8>>>,
     /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
     /// Only present with the `tor` feature.
     #[cfg(feature = "tor")]
@@ -224,6 +228,7 @@ impl AppState {
             window_geometry: std::sync::Mutex::new(HashMap::new()),
             geometry_gen: std::sync::atomic::AtomicU64::new(0),
             swipe_accent: std::sync::Mutex::new("#6b77f8".to_string()),
+            last_screenshot: std::sync::Mutex::new(None),
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }

@@ -617,6 +617,25 @@ export const commands = {
   },
 
   /**
+   * Capture and copy to the clipboard, holding it for a later Save. `mode`:
+   * 'visible' (tab content), 'window' (whole browser frame), or 'region' (a
+   * `rect` crop of the window, in content-area CSS px from the selection
+   * overlay). Resolves true when a capture was made.
+   */
+  async captureToClipboard(
+    id: TabId,
+    mode: 'visible' | 'region' | 'window',
+    rect?: { x: number; y: number; width: number; height: number },
+  ): Promise<boolean> {
+    return invoke('capture_to_clipboard', { id, mode, rect: rect ?? null })
+  },
+
+  /** Save the most recent screenshot to a chosen file. Null if none / cancelled. */
+  async saveLastScreenshot(): Promise<string | null> {
+    return invoke('save_last_screenshot')
+  },
+
+  /**
    * Open an http(s) URL in the OS default browser (a full, separate browser).
    * An exit hatch for pages the embedded engine can't fully handle, e.g.
    * Widevine-protected video.
@@ -783,6 +802,11 @@ export const commands = {
 
   async updateSettings(patch: UserSettingsPatch): Promise<UserSettings> {
     return invoke('update_settings', { patch })
+  },
+
+  /** Re-apply the saved keyboard shortcuts to the native menu on demand. */
+  async applyShortcuts(): Promise<void> {
+    return invoke('apply_shortcuts')
   },
 
   // -- privacy engine -------------------------------------------------------

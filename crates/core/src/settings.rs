@@ -154,7 +154,7 @@ pub struct UserSettings {
     /// at runtime (see [`crate::effective_keymap`]). Absent entries fall
     /// back to the default. A serde-default empty map means existing
     /// persisted settings deserialise unchanged.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_keybindings")]
     pub keybindings: HashMap<KeyAction, String>,
     /// User scripts (Tampermonkey-style), injected into matching pages.
     #[serde(default)]
@@ -252,6 +252,24 @@ fn default_widget_memory_cap_enabled() -> bool {
 
 fn default_widget_memory_cap_mb() -> u32 {
     500
+}
+
+/// Deserialize keybinding overrides leniently: entries whose key is no longer a
+/// known [`KeyAction`] id (an action renamed or removed across versions) are
+/// dropped instead of failing the whole settings blob. Without this, changing a
+/// single action id would make the entire persisted `BrowserState` unreadable
+/// and silently reset every workspace, tab, and setting to defaults.
+fn deserialize_keybindings<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<KeyAction, String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = HashMap::<String, String>::deserialize(deserializer)?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|(id, accel)| KeyAction::from_id(&id).map(|action| (action, accel)))
+        .collect())
 }
 
 fn default_filter_subscriptions() -> Vec<String> {
@@ -528,5 +546,30 @@ impl UserSettings {
                 }
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unknown_keybinding_ids_are_dropped_not_fatal() {
+        // A persisted settings blob carrying a removed/renamed action id (here
+        // the old "save_screenshot") must still deserialize: known entries are
+        // kept, the unknown one is dropped. Otherwise one action-id change makes
+        // the entire BrowserState unreadable and silently resets the profile.
+        let mut value = serde_json::to_value(UserSettings::default()).expect("serialize defaults");
+        value["keybindings"] = serde_json::json!({
+            "new_tab": "Cmd+T",
+            "save_screenshot": "Cmd+Shift+5",
+        });
+        let back: UserSettings =
+            serde_json::from_value(value).expect("unknown keybinding id must not be fatal");
+        assert_eq!(
+            back.keybindings.get(&KeyAction::NewTab),
+            Some(&"Cmd+T".to_string()),
+        );
+        assert_eq!(back.keybindings.len(), 1, "the removed action id is dropped");
     }
 }

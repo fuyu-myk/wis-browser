@@ -45,8 +45,13 @@ pub async fn update_settings(
 
     if keybindings_touched {
         let effective = wis_core::effective_keymap(&settings.keybindings);
-        if let Err(err) = crate::menu::apply_menu(&app, &effective) {
-            log::warn!("menu rebuild after keybindings change failed: {err}");
+        let app_for_menu = app.clone();
+        if let Err(err) = app.run_on_main_thread(move || {
+            if let Err(err) = crate::menu::apply_menu(&app_for_menu, &effective) {
+                log::warn!("menu rebuild after keybindings change failed: {err}");
+            }
+        }) {
+            log::warn!("dispatching menu rebuild to the main thread failed: {err}");
         }
     }
 
@@ -88,6 +93,26 @@ pub async fn update_settings(
     }
 
     Ok(settings)
+}
+
+/// Re-apply the saved keyboard shortcuts to the native menu. The menu is also
+/// rebuilt automatically whenever a binding changes; this backs an explicit
+/// "Apply" button in Settings -> Shortcuts so the user can force the live menu
+/// to pick up their edits on demand.
+#[tauri::command]
+pub async fn apply_shortcuts(app: AppHandle, state: State<'_, AppState>) -> WisResult<()> {
+    let keybindings = state.browser.lock().await.settings.keybindings.clone();
+    let effective = wis_core::effective_keymap(&keybindings);
+    let app_for_menu = app.clone();
+
+    app.run_on_main_thread(move || {
+        if let Err(err) = crate::menu::apply_menu(&app_for_menu, &effective) {
+            log::warn!("apply_shortcuts: menu rebuild failed: {err}");
+        }
+    })
+    .map_err(|err| WisError::InvalidInput {
+        message: format!("apply_shortcuts dispatch: {err}"),
+    })
 }
 
 // ---------------------------------------------------------------------------

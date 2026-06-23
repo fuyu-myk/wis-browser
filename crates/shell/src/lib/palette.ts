@@ -205,6 +205,9 @@ const ACTION_LABELS: Record<KeyAction, string> = {
   toggle_sidebar: 'Toggle floating sidebar',
   element_picker: 'Hide element (picker)',
   pop_out_video: 'Pop out video',
+  capture_visible: 'Capture screenshot',
+  capture_region: 'Capture selected region',
+  capture_window: 'Capture window',
 }
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS) as KeyAction[]

@@ -6066,6 +6066,104 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   background: rgba(52, 52, 64, 0.62);
   border-color: rgba(255, 255, 255, 0.12);
 }
+
+/* Screenshot success toast (overlay-screenshot-toast): drops down at the
+   window's top-right after a capture, then reverses out. The wrap is
+   click-through; only the card itself is interactive. */
+.kb-shot-toast-wrap {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  pointer-events: none;
+}
+.kb-shot-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 14px;
+  background: var(--chrome-bg, #fff);
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: calc(12px * var(--radius-scale));
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+  animation: kb-shot-toast-in var(--dur-med) var(--ease-standard);
+}
+[data-mode="dark"] .kb-shot-toast { border-color: rgba(255, 255, 255, 0.10); }
+.kb-shot-toast-wrap.glass-menus .kb-shot-toast {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(255, 255, 255, 0.30);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+}
+[data-mode="dark"] .kb-shot-toast-wrap.glass-menus .kb-shot-toast {
+  background: rgba(52, 52, 64, 0.66);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.kb-shot-toast.is-closing {
+  animation: kb-shot-toast-out 220ms var(--ease-exit) forwards;
+}
+.kb-shot-toast-msg {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.kb-shot-toast-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px 5px 8px;
+  border-radius: calc(8px * var(--radius-scale));
+  background: var(--accent);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: filter var(--dur-med) var(--ease-standard);
+}
+.kb-shot-toast-save:hover { filter: brightness(1.07); }
+.kb-shot-toast-save:active { filter: brightness(0.94); }
+.kb-shot-toast-save svg { width: 15px; height: 15px; }
+.kb-shot-toast-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: calc(7px * var(--radius-scale));
+  color: var(--text-secondary);
+  transition: background var(--dur-med) var(--ease-standard);
+}
+.kb-shot-toast-x:hover { background: rgba(0, 0, 0, 0.06); color: var(--text-primary); }
+[data-mode="dark"] .kb-shot-toast-x:hover { background: rgba(255, 255, 255, 0.10); }
+.kb-shot-toast-x svg { width: 15px; height: 15px; }
+
+@keyframes kb-shot-toast-in {
+  from { opacity: 0; transform: translateY(-130%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes kb-shot-toast-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-130%); }
+}
+
+/* Window-region selection overlay (overlay-screenshot-region): a full-window
+   dim with a theme-tinted drag rectangle. Covers the chrome so a selection can
+   span toolbar/sidebar and page. */
+.kb-shot-region {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+  cursor: crosshair;
+  touch-action: none;
+}
+.kb-shot-region-box {
+  position: fixed;
+  border: 1.5px solid var(--primary-400);
+  background: color-mix(in srgb, var(--primary-400) 14%, transparent);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
 .kb-dlmenu-head {
   display: flex;
   align-items: center;
