@@ -6,6 +6,7 @@ use crate::design::ChromeDesign;
 use crate::ids::ThemeId;
 use crate::keybinding::KeyAction;
 use crate::layout::{LayoutMode, MotionLevel, RailSide, ThemeMode};
+use crate::new_tab::{default_shortcuts, NewTabTarget, ShortcutTile};
 use crate::privacy::PrivacyMode;
 use crate::search::SearchEngine;
 use crate::theme::CustomTheme;
@@ -38,7 +39,17 @@ pub struct UserSettings {
     pub compact: bool,
     pub default_privacy_mode: PrivacyMode,
     pub doh_resolver: Option<String>,
+    /// Optional homepage URL (http(s)). Used as the new-tab destination when
+    /// [`Self::new_tab_target`] is [`NewTabTarget::Homepage`].
     pub homepage: Option<String>,
+    /// Where a freshly opened tab lands: the built-in launchpad or the
+    /// homepage. Serde-default so existing settings deserialise to launchpad.
+    #[serde(default)]
+    pub new_tab_target: NewTabTarget,
+    /// Editable launchpad shortcut tiles, in display order. Defaults to a
+    /// starter set; sanitized at the IPC boundary.
+    #[serde(default = "default_shortcuts")]
+    pub shortcuts: Vec<ShortcutTile>,
     /// Default search engine for non-URL address-bar input. Serde-default so
     /// existing persisted settings deserialise to DuckDuckGo.
     #[serde(default)]
@@ -264,6 +275,8 @@ impl Default for UserSettings {
             default_privacy_mode: PrivacyMode::Balanced,
             doh_resolver: Some(DEFAULT_DOH_RESOLVER.to_string()),
             homepage: None,
+            new_tab_target: NewTabTarget::default(),
+            shortcuts: default_shortcuts(),
             search_engine: SearchEngine::default(),
             filter_list_auto_update: true,
             url_bar_focus_glow: false,
@@ -327,6 +340,12 @@ pub struct UserSettingsPatch {
     pub doh_resolver: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub homepage: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_tab_target: Option<NewTabTarget>,
+    /// Replaces the whole shortcut list when present (the UI holds the full
+    /// ordered list). Sanitized boundary-side. `None` keeps the current list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shortcuts: Option<Vec<ShortcutTile>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub search_engine: Option<SearchEngine>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -425,6 +444,8 @@ impl UserSettings {
                 .unwrap_or(self.default_privacy_mode),
             doh_resolver: patch.doh_resolver.or_else(|| self.doh_resolver.clone()),
             homepage: patch.homepage.or_else(|| self.homepage.clone()),
+            new_tab_target: patch.new_tab_target.unwrap_or(self.new_tab_target),
+            shortcuts: patch.shortcuts.unwrap_or_else(|| self.shortcuts.clone()),
             search_engine: patch.search_engine.unwrap_or(self.search_engine),
             filter_list_auto_update: patch
                 .filter_list_auto_update

@@ -4,7 +4,7 @@ import type { TabId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { useBrowserState, useUpdateSettings } from '@/hooks/useBrowserState'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
-import { DownloadIcon, GlobeIcon, MonitorIcon, PanelTopIcon, SunIcon } from '@/lib/icons'
+import { DownloadIcon, GlobeIcon, MonitorIcon, PanelTopIcon, PlusIcon, SunIcon } from '@/lib/icons'
 import {
   DatabaseIcon,
   GridIcon,
@@ -17,6 +17,7 @@ import {
 import { AppearanceSection } from '@/components/AppearanceSection'
 import { DesignSection } from '@/components/DesignSection'
 import { LayoutSection } from '@/components/LayoutSection'
+import { NewTabSection } from '@/components/NewTabSection'
 import { SidebarWidgetsSection } from '@/components/SidebarWidgetsSection'
 import { PerformanceSection } from '@/components/PerformanceSection'
 import { DownloadsSection } from '@/components/DownloadsSection'
@@ -37,6 +38,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'appearance', label: 'Appearance', icon: <SunIcon /> },
   { id: 'design', label: 'Design', icon: <PaletteIcon /> },
   { id: 'layout', label: 'Layout', icon: <PanelTopIcon /> },
+  { id: 'newtab', label: 'New tab', icon: <PlusIcon /> },
   { id: 'widgets', label: 'Sidebar widgets', icon: <GridIcon /> },
   { id: 'performance', label: 'Performance', icon: <MonitorIcon /> },
   { id: 'downloads', label: 'Downloads', icon: <DownloadIcon /> },
@@ -180,6 +182,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
         />
         <DesignSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <LayoutSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
+        <NewTabSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <SidebarWidgetsSection
           widgets={settings.sidebar_widgets}
           onUpdate={(patch) => update.mutate(patch)}

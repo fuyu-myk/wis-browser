@@ -64,6 +64,29 @@ export const ReaderIcon = (p: Props) => (
   </Icon>
 )
 
+export const ChevronUpIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="m18 15-6-6-6 6" />
+  </Icon>
+)
+
+export const ChevronDownIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="m6 9 6 6 6-6" />
+  </Icon>
+)
+
+export const GripIcon = (p: Props) => (
+  <Icon {...p} fill="currentColor" stroke="none">
+    <circle cx="9" cy="5" r="1.4" />
+    <circle cx="9" cy="12" r="1.4" />
+    <circle cx="9" cy="19" r="1.4" />
+    <circle cx="15" cy="5" r="1.4" />
+    <circle cx="15" cy="12" r="1.4" />
+    <circle cx="15" cy="19" r="1.4" />
+  </Icon>
+)
+
 export const XIcon = (p: Props) => (
   <Icon {...p}>
     <path d="M18 6 6 18" />

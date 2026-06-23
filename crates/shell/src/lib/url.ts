@@ -1,4 +1,4 @@
-import type { SearchEngine } from '@/bindings/types'
+import type { SearchEngine, UserSettings } from '@/bindings/types'
 
 /** Per-engine metadata: display label + query-URL builder. */
 export const SEARCH_ENGINES: Record<
@@ -75,6 +75,18 @@ export function isChromeUrl(url: string): boolean {
 
 /** Chrome page URLs treated as opaque sentinels by the rest of the app. */
 export const NEW_TAB_URL = 'about:blank'
+
+/**
+ * The URL a freshly opened tab should load, honouring the new-tab preference:
+ * the homepage when chosen and set, otherwise the launchpad. Falls back to the
+ * launchpad if settings haven't loaded yet.
+ */
+export function resolveNewTabUrl(settings: UserSettings | undefined): string {
+  if (settings?.new_tab_target === 'homepage' && settings.homepage) {
+    return settings.homepage
+  }
+  return NEW_TAB_URL
+}
 export const SETTINGS_URL = 'about:settings'
 export const HISTORY_URL = 'about:history'
 export const DOWNLOADS_URL = 'about:downloads'

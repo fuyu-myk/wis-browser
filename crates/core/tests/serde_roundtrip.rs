@@ -96,6 +96,11 @@ fn settings_patch_round_trips_when_all_fields_set() {
         default_privacy_mode: Some(PrivacyMode::Strict),
         doh_resolver: Some("https://dns.example/dns-query".into()),
         homepage: Some("https://start.example".into()),
+        new_tab_target: Some(wis_core::NewTabTarget::Homepage),
+        shortcuts: Some(vec![wis_core::ShortcutTile {
+            label: "Example".into(),
+            url: "https://example.com/".into(),
+        }]),
         search_engine: Some(wis_core::SearchEngine::Google),
         filter_list_auto_update: Some(false),
         url_bar_focus_glow: Some(true),

@@ -18,6 +18,15 @@ pub async fn update_settings(
         patch.design = Some(design.sanitized());
     }
 
+    // Normalize the homepage (an empty/invalid value clears it) and sanitize
+    // launchpad shortcut tiles (both are user-controlled and navigated to).
+    if let Some(raw) = patch.homepage.take() {
+        patch.homepage = Some(wis_core::sanitize_homepage(&raw).unwrap_or_default());
+    }
+    if let Some(tiles) = patch.shortcuts.take() {
+        patch.shortcuts = Some(wis_core::sanitize_shortcuts(tiles));
+    }
+
     let keybindings_touched = patch.keybindings.is_some();
     let userscripts_touched = patch.userscripts.is_some();
     let cosmetic_touched = patch.user_cosmetic_rules.is_some();

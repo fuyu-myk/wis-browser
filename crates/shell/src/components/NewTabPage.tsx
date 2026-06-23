@@ -2,14 +2,17 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
-import type { Tab } from '@/bindings/types'
+import type { ShortcutTile, Tab } from '@/bindings/types'
 
 const FAVICON_CACHED_EVENT = 'favicon-cached'
 import { SearchIcon } from '@/lib/icons'
+import { cx } from '@/lib/cx'
 import { normaliseUrl } from '@/lib/url'
-import { useBrowserState } from '@/hooks/useBrowserState'
+import { reorderByKeys } from '@/lib/shortcuts'
+import { useBrowserState, useUpdateSettings } from '@/hooks/useBrowserState'
 import { useActivePrivacyMode } from '@/hooks/useActivePrivacyMode'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
+import { usePointerReorder } from '@/hooks/usePointerReorder'
 import { useWindowIconSwap } from '@/hooks/useWindowIcon'
 import { useWorkspaceSlide } from '@/hooks/useWorkspaceSlide'
 import { WisMark } from '@/components/WisMark'
@@ -18,20 +21,8 @@ import { WisMark } from '@/components/WisMark'
  *  asking the omnisearch input to take focus. */
 export const FOCUS_LAUNCHPAD_SEARCH_EVENT = 'wis-focus-launchpad-search'
 
-interface QuickLink {
-  label: string
-  url: string
-  fallbackClass: string
-  initial: string
-}
-
-const QUICK_LINKS: QuickLink[] = [
-  { label: 'DuckDuckGo', url: 'https://duckduckgo.com/', fallbackClass: 'fav-mint', initial: 'D' },
-  { label: 'Wikipedia', url: 'https://wikipedia.org/', fallbackClass: 'fav-gray', initial: 'W' },
-  { label: 'GitHub', url: 'https://github.com/', fallbackClass: 'fav-ink', initial: 'G' },
-  { label: 'YouTube', url: 'https://youtube.com/', fallbackClass: 'fav-rose', initial: 'Y' },
-  { label: 'Hacker News', url: 'https://news.ycombinator.com/', fallbackClass: 'fav-azur', initial: 'H' },
-]
+/** Deterministic fallback-tile colours, cycled by position. */
+const FALLBACK_CLASSES = ['fav-mint', 'fav-gray', 'fav-ink', 'fav-rose', 'fav-azur'] as const
 
 const MAX_BUBBLES = 8
 
@@ -76,6 +67,17 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   const navigate = useNavigateOrCreateTab(activeWorkspaceId, activeTab)
+
+  // Launchpad tiles are drag-reorderable; the new order persists to settings.
+  const update = useUpdateSettings()
+  const shortcuts = state?.settings.shortcuts ?? []
+  const reorder = usePointerReorder({
+    keys: shortcuts.map((tile) => tile.url),
+    axis: 'x',
+    containerSelector: '.kb-quicklinks',
+    ghostClass: 'kb-ghost-tile',
+    onReorder: (keys) => update.mutate({ shortcuts: reorderByKeys(shortcuts, keys) }),
+  })
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -181,8 +183,18 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
           />
         </form>
         <div className="kb-quicklinks">
-          {QUICK_LINKS.slice(0, MAX_BUBBLES).map((link) => (
-            <QuickLinkBubble key={link.label} link={link} onNavigate={navigate} />
+          {shortcuts.slice(0, MAX_BUBBLES).map((tile, i) => (
+            <QuickLinkBubble
+              key={tile.url}
+              tile={tile}
+              index={i}
+              isSource={reorder.draggedKey === tile.url}
+              transform={reorder.itemTransform(i)}
+              dragHandlers={reorder.dragHandlers(tile.url)}
+              onActivate={(url) => {
+                if (!reorder.consumeClickSuppressed()) navigate(url)
+              }}
+            />
           ))}
         </div>
       </div>
@@ -191,13 +203,29 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
 }
 
 interface QuickLinkBubbleProps {
-  link: QuickLink
-  onNavigate: (url: string) => void
+  tile: ShortcutTile
+  index: number
+  /** This tile is the one being dragged (it goes invisible; the ghost moves). */
+  isSource: boolean
+  /** Parting transform while a sibling is dragged, or undefined. */
+  transform: string | undefined
+  dragHandlers: { onPointerDown: (e: React.PointerEvent) => void }
+  /** Called on a real click (a press-drag is suppressed by the caller). */
+  onActivate: (url: string) => void
 }
 
 type QuickLinkStatus = 'pending' | 'loaded' | 'failed'
 
-function QuickLinkBubble({ link, onNavigate }: QuickLinkBubbleProps) {
+function QuickLinkBubble({
+  tile,
+  index,
+  isSource,
+  transform,
+  dragHandlers,
+  onActivate,
+}: QuickLinkBubbleProps) {
+  const fallbackClass = FALLBACK_CLASSES[index % FALLBACK_CLASSES.length]
+  const initial = (tile.label.trim()[0] ?? '?').toUpperCase()
   const [icon, setIcon] = useState<string | null>(null)
   // Three-state status so the letter fallback only appears once we know
   // the cache + prefetch round-trip has definitively failed.
@@ -208,7 +236,7 @@ function QuickLinkBubble({ link, onNavigate }: QuickLinkBubbleProps) {
     setStatus('pending')
     let cancelled = false
     const lookup = async () => {
-      const hash = await commands.faviconOriginHash(link.url).catch(() => null)
+      const hash = await commands.faviconOriginHash(tile.url).catch(() => null)
       if (cancelled) return
       if (!hash) {
         setStatus('failed')
@@ -217,7 +245,7 @@ function QuickLinkBubble({ link, onNavigate }: QuickLinkBubbleProps) {
       ownHashRef.current = hash
       let url = await commands.getFaviconDataUrl(hash).catch(() => null)
       if (!url) {
-        const writeHash = await commands.prefetchFavicon(link.url).catch(() => null)
+        const writeHash = await commands.prefetchFavicon(tile.url).catch(() => null)
         if (cancelled) return
         if (writeHash) {
           url = await commands.getFaviconDataUrl(writeHash).catch(() => null)
@@ -231,7 +259,7 @@ function QuickLinkBubble({ link, onNavigate }: QuickLinkBubbleProps) {
     return () => {
       cancelled = true
     }
-  }, [link.url])
+  }, [tile.url])
 
   useEffect(() => {
     let unlisten: UnlistenFn | null = null
@@ -259,9 +287,12 @@ function QuickLinkBubble({ link, onNavigate }: QuickLinkBubbleProps) {
   return (
     <button
       type="button"
-      className="kb-quicklink"
-      onClick={() => onNavigate(link.url)}
-      title={link.label}
+      data-key={tile.url}
+      className={cx('kb-quicklink', { 'is-dragsource': isSource })}
+      style={{ transform }}
+      onClick={() => onActivate(tile.url)}
+      title={tile.label}
+      {...dragHandlers}
     >
       <span className="ql-tile">
         {status === 'loaded' && icon ? (
@@ -270,15 +301,16 @@ function QuickLinkBubble({ link, onNavigate }: QuickLinkBubbleProps) {
             alt=""
             width={28}
             height={28}
+            draggable={false}
             onError={() => setStatus('failed')}
           />
         ) : status === 'pending' ? (
           <span className="ql-pending" aria-hidden />
         ) : (
-          <span className={`ql-fallback ${link.fallbackClass}`}>{link.initial}</span>
+          <span className={`ql-fallback ${fallbackClass}`}>{initial}</span>
         )}
       </span>
-      <span className="ql-lbl">{link.label}</span>
+      <span className="ql-lbl">{tile.label}</span>
     </button>
   )
 }

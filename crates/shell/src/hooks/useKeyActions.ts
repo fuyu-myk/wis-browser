@@ -23,7 +23,7 @@ import { closeTabAnimated } from '@/lib/tabClose'
 import { DOWNLOADS_OPEN_EVENT } from '@/lib/downloads'
 import { BOOKMARK_PAGE_EVENT, BOOKMARKS_OPEN_EVENT } from '@/lib/bookmarkMenu'
 import type { BrowserState, KeyAction, PaneNode, Tab, TabId, Workspace, WorkspaceId } from '@/bindings/types'
-import { HISTORY_URL, NEW_TAB_URL, SETTINGS_URL, isChromeUrl } from '@/lib/url'
+import { HISTORY_URL, NEW_TAB_URL, SETTINGS_URL, isChromeUrl, resolveNewTabUrl } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { usePendingRename } from '@/hooks/usePendingRename'
 import { useQueryClient } from '@tanstack/react-query'
@@ -146,7 +146,7 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
   switch (action) {
     case 'new_tab': {
       if (!ctx.activeWorkspace) return
-      await commands.createTab(ctx.activeWorkspace.id, NEW_TAB_URL)
+      await commands.createTab(ctx.activeWorkspace.id, resolveNewTabUrl(ctx.state?.settings))
       ctx.invalidate()
       return
     }

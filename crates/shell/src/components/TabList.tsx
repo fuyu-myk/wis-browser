@@ -11,10 +11,18 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
 import { closeTabAnimated, onTabClosing, TAB_EXIT_MS } from '@/lib/tabClose'
-import type { AccentColor, TabFolder, TabFolderId, TabId, WorkspaceId, Tab } from '@/bindings/types'
+import type {
+  AccentColor,
+  BrowserState,
+  TabFolder,
+  TabFolderId,
+  TabId,
+  WorkspaceId,
+  Tab,
+} from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { FolderPlusIcon, PlusIcon, XIcon } from '@/lib/icons'
-import { tabDisplayName } from '@/lib/url'
+import { resolveNewTabUrl, tabDisplayName } from '@/lib/url'
 import {
   partOffset,
   patchFolderOrder,
@@ -141,8 +149,13 @@ export function TabList({
   })
   const createTab = useMutation({
     // The explicit "+ New tab" button always makes a loose, top-level tab; only
-    // Cmd+T and link/bookmark opens honour the selected folder.
-    mutationFn: () => commands.createLooseTab(workspaceId, 'about:blank'),
+    // Cmd+T and link/bookmark opens honour the selected folder. Read settings
+    // from the cache at click time so the button honours the new-tab target
+    // (homepage vs launchpad) without subscribing the strip to re-renders.
+    mutationFn: () => {
+      const settings = qc.getQueryData<BrowserState>([...BROWSER_STATE_KEY])?.settings
+      return commands.createLooseTab(workspaceId, resolveNewTabUrl(settings))
+    },
     onSuccess: invalidate,
   })
   const reorder = useMutation({

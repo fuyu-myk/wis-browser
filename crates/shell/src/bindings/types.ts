@@ -329,6 +329,15 @@ export interface Workspace {
  */
 export type UaProfile = 'default' | 'safari' | 'chrome' | { custom: string }
 
+/** Where a freshly opened tab lands. */
+export type NewTabTarget = 'launchpad' | 'homepage'
+
+/** An editable launchpad shortcut tile. */
+export interface ShortcutTile {
+  label: string
+  url: string
+}
+
 export interface UserSettings {
   layout: LayoutMode
   top_tabs_rail_side: RailSide
@@ -346,6 +355,10 @@ export interface UserSettings {
   default_privacy_mode: PrivacyMode
   doh_resolver: string | null
   homepage: string | null
+  /** Where a freshly opened tab lands: launchpad or the homepage. */
+  new_tab_target: NewTabTarget
+  /** Editable launchpad shortcut tiles, in display order. */
+  shortcuts: ShortcutTile[]
   search_engine: SearchEngine
   filter_list_auto_update: boolean
   url_bar_focus_glow: boolean
@@ -422,6 +435,8 @@ export interface UserSettingsPatch {
   default_privacy_mode?: PrivacyMode
   doh_resolver?: string
   homepage?: string
+  new_tab_target?: NewTabTarget
+  shortcuts?: ShortcutTile[]
   search_engine?: SearchEngine
   filter_list_auto_update?: boolean
   url_bar_focus_glow?: boolean

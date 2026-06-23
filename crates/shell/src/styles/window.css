@@ -3681,6 +3681,90 @@ body.has-custom-img .kb-launch-mark {
 }
 .kb-ua-remove:hover { color: var(--text-primary); }
 
+/* -- New-tab launchpad shortcuts ---------------------------------------- */
+.kb-shortcut-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.kb-shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  /* Siblings part smoothly to make room for the dragged row. */
+  transition: transform var(--dur-med) var(--ease-standard);
+}
+/* The grabbed row goes invisible (its ghost clone is the moving copy) but
+   keeps its slot, so parted siblings pre-occupy their final positions. */
+.kb-shortcut-item.is-dragsource { opacity: 0; transition: none; }
+/* The grabbed-row ghost. */
+.kb-drag-ghost.kb-ghost-row {
+  border: 1px solid var(--primary-400);
+  background: var(--surface-raised);
+  border-radius: var(--radius-lg);
+  opacity: 0.95;
+  padding: 6px 8px 6px 4px;
+}
+.kb-shortcut-grip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 28px;
+  color: var(--text-secondary);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.kb-shortcut-grip:active { cursor: grabbing; }
+.kb-shortcut-grip:hover { color: var(--text-primary); }
+.kb-shortcut-label {
+  flex: 0 0 auto;
+  max-width: 30%;
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-shortcut-url {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-shortcut-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.kb-shortcut-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 4px;
+}
+.kb-shortcut-add .kb-text-input:first-child { flex: 0 0 30%; }
+.kb-shortcut-add .kb-text-input:nth-child(2) { flex: 1 1 auto; }
+.kb-shortcut-hint {
+  padding: 8px 0 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 /* -- Sidebar quick-launch widgets --------------------------------------- */
 .kb-widget-dock {
   display: flex;
@@ -4927,6 +5011,28 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   overflow: hidden;
 }
 .kb-quicklink:hover .ql-tile { transform: translateY(-2px); }
+.kb-quicklink {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  /* Siblings part smoothly to make room for the dragged tile. */
+  transition: transform var(--dur-med) var(--ease-standard);
+}
+.kb-quicklink img { -webkit-user-drag: none; }
+/* The grabbed tile goes invisible (its ghost clone is the moving copy) but
+   keeps its slot, so parted siblings pre-occupy their final positions. */
+.kb-quicklink.is-dragsource { opacity: 0; transition: none; }
+/* The grabbed-tile ghost: just the lifted favicon tile, no button chrome. */
+.kb-drag-ghost.kb-ghost-tile {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.92;
+}
+.kb-drag-ghost.kb-ghost-tile .ql-tile {
+  transform: scale(1.06);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3);
+}
 .kb-quicklink .ql-tile img { width: 28px; height: 28px; display: block; }
 .kb-quicklink .ql-fallback {
   width: 100%; height: 100%;
