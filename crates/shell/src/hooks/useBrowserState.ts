@@ -15,12 +15,36 @@ export function useBrowserState() {
 }
 
 /**
- * Convenience: pull `UserSettings` off the browser state. Returns
- * `undefined` while the initial query is still loading.
+ * Subscribe to a derived slice of `BrowserState`. React Query runs `select` in
+ * the query observer (not in the component) on each refetch and applies
+ * structural sharing to its output, so a component using this re-renders only
+ * when the *selected* value changes, not on every unrelated state mutation
+ * (tab spawn/switch, navigation, loading flips). Returns `undefined` while the
+ * initial query is still loading.
+ *
+ * Pass a stable, pure `select`. An inline selector still re-runs each render but
+ * never triggers an extra re-render, since the output is structurally compared.
+ */
+export function useBrowserStateSelector<T>(
+  select: (state: BrowserState) => T,
+): T | undefined {
+  const { data } = useQuery({
+    queryKey: BROWSER_STATE_KEY,
+    queryFn: () => commands.getBrowserState(),
+    staleTime: Infinity,
+    retry: 0,
+    select,
+  })
+  return data
+}
+
+/**
+ * Convenience: subscribe to just `UserSettings`. A component that only reads
+ * settings re-renders when settings change, not on every unrelated state
+ * change. Returns `undefined` while the initial query is still loading.
  */
 export function useSettings(): UserSettings | undefined {
-  const { data } = useBrowserState()
-  return data?.settings
+  return useBrowserStateSelector((s) => s.settings)
 }
 
 /**

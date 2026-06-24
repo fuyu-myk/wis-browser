@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 
 import { useActivePrivacyMode } from '@/hooks/useActivePrivacyMode'
 import { useWindowIconSwap } from '@/hooks/useWindowIcon'
@@ -17,8 +17,12 @@ export function TrafficLights() {
 /**
  * Owl-only brand mark for sidebar and rail chrome surfaces. Strict workspaces
  * close the eyes as a steady signal that the browser is not watching.
+ *
+ * Memoized: it takes no props and now reads privacy mode via a narrowed
+ * selector, so the parent's per-state-change re-render no longer cascades into
+ * it. It re-renders only on hover or an actual privacy-mode change.
  */
-export function Brand() {
+export const Brand = memo(function Brand() {
   const [hovered, setHovered] = useState(false)
   const swapIcon = useWindowIconSwap()
   const mode = useActivePrivacyMode()
@@ -48,4 +52,4 @@ export function Brand() {
       <WisMark variant={closed ? 'solid-closed' : 'solid-open'} size={20} />
     </span>
   )
-}
+})
