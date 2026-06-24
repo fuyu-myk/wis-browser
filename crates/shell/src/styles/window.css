@@ -3646,6 +3646,14 @@ body.has-custom-img .kb-launch-mark {
 }
 .kb-text-input:focus { border-color: var(--primary-500); }
 
+/* Backup & restore status line. */
+.kb-backup-status {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.kb-backup-status.is-error { color: #e5484d; }
+
 .kb-ua-add {
   display: flex;
   align-items: center;

@@ -47,7 +47,10 @@ pub fn apply_menu(app: &AppHandle, keymap: &HashMap<KeyAction, String>) -> tauri
     #[cfg(target_os = "macos")]
     menu.set_as_app_menu()?;
     app.set_menu(menu)?;
-    log::info!("native menu (re)built with {} bound accelerators", keymap.len());
+    log::info!(
+        "native menu (re)built with {} bound accelerators",
+        keymap.len()
+    );
 
     Ok(())
 }

@@ -8,6 +8,7 @@
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
+use wis_core::backup::CredentialBackup;
 use wis_core::{TabId, WisError, WisResult};
 use wis_secrets::EncryptedBlob;
 
@@ -82,6 +83,110 @@ fn create_master_key() -> WisResult<wis_secrets::MasterKey> {
     let key = wis_secrets::generate_master_key();
     wis_secrets::keychain_store(&key).map_err(vault_err)?;
     Ok(key)
+}
+
+/// Touch-ID-authorize a vault backup operation and load the master key for the
+/// session. **Always** prompts (even when the vault is already unlocked), since
+/// exporting or restoring saved passwords is an explicit, sensitive action the
+/// user should confirm each time. `reason` is shown in the system prompt.
+pub(crate) async fn authorize_vault(state: &State<'_, AppState>, reason: &str) -> WisResult<()> {
+    if !cfg!(target_os = "macos") {
+        return Err(unsupported());
+    }
+
+    let authed = crate::biometrics::authenticate(reason.to_string()).await;
+    if !authed {
+        return Err(WisError::InvalidInput {
+            message: "Touch ID was cancelled".to_string(),
+        });
+    }
+
+    if state.vault_key.lock().await.is_none() {
+        let key = match wis_secrets::keychain_load() {
+            Ok(Some(key)) => key,
+            Ok(None) => create_master_key()?,
+            Err(err) => {
+                log::warn!("vault: stored key unreadable ({err}); recreating master key");
+                create_master_key()?
+            }
+        };
+        *state.vault_key.lock().await = Some(key);
+    }
+
+    Ok(())
+}
+
+/// Decrypt every saved login for an encrypted backup, unlocking the vault first
+/// (Touch ID). The plaintext only ever lives inside the passphrase-sealed
+/// bundle the caller builds.
+pub(crate) async fn export_credentials(
+    state: &State<'_, AppState>,
+) -> WisResult<Vec<CredentialBackup>> {
+    authorize_vault(state, "Include your saved passwords in this backup").await?;
+    let storage = state.storage.clone();
+    let records = run_blocking(move || storage.list_credentials(None)).await?;
+
+    let guard = state.vault_key.lock().await;
+    let key = guard.as_ref().ok_or_else(locked)?;
+    let mut out = Vec::with_capacity(records.len());
+    for record in records {
+        let plaintext = wis_secrets::decrypt(
+            key,
+            &EncryptedBlob {
+                ciphertext: record.ciphertext,
+                nonce: record.nonce,
+            },
+        )
+        .map_err(vault_err)?;
+        let password = String::from_utf8(plaintext).map_err(|_| WisError::InvalidInput {
+            message: "a stored password is not valid UTF-8".to_string(),
+        })?;
+
+        out.push(CredentialBackup {
+            host: record.host,
+            username: record.username,
+            password,
+        });
+    }
+
+    Ok(out)
+}
+
+/// Re-encrypt imported logins under this device's vault key and save them,
+/// unlocking first (Touch ID). Upserts by `(host, username)`, so a re-import
+/// updates rather than duplicates. Returns the count written.
+pub(crate) async fn import_credentials(
+    state: &State<'_, AppState>,
+    creds: Vec<CredentialBackup>,
+) -> WisResult<usize> {
+    if creds.is_empty() {
+        return Ok(0);
+    }
+    authorize_vault(state, "Restore your saved passwords").await?;
+
+    let sealed: Vec<(String, String, EncryptedBlob)> = {
+        let guard = state.vault_key.lock().await;
+        let key = guard.as_ref().ok_or_else(locked)?;
+        creds
+            .into_iter()
+            .map(|c| {
+                let blob = wis_secrets::encrypt(key, c.password.as_bytes()).map_err(vault_err)?;
+                Ok((c.host, c.username, blob))
+            })
+            .collect::<WisResult<Vec<_>>>()?
+    };
+
+    let count = sealed.len();
+    let storage = state.storage.clone();
+    run_blocking(move || {
+        for (host, username, blob) in &sealed {
+            storage.save_credential(host, username, &blob.ciphertext, &blob.nonce)?;
+        }
+        Ok(())
+    })
+    .await?;
+
+    Ok(count)
 }
 
 /// Drop the in-memory master key; the vault returns to the locked state.

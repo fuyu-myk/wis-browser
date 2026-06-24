@@ -4,7 +4,7 @@ import type { TabId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { useBrowserState, useUpdateSettings } from '@/hooks/useBrowserState'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
-import { DownloadIcon, GlobeIcon, MonitorIcon, PanelTopIcon, PlusIcon, SunIcon } from '@/lib/icons'
+import { DownloadIcon, GlobeIcon, LockIcon, MonitorIcon, PanelTopIcon, PlusIcon, SunIcon } from '@/lib/icons'
 import {
   DatabaseIcon,
   GridIcon,
@@ -27,6 +27,7 @@ import { CompatibilitySection } from '@/components/CompatibilitySection'
 import { SiteDataSection } from '@/components/SiteDataSection'
 import { PasswordsSection } from '@/components/PasswordsSection'
 import { KeyboardShortcutsSection } from '@/components/KeyboardShortcutsSection'
+import { BackupSection } from '@/components/BackupSection'
 
 interface NavSection {
   id: string
@@ -48,6 +49,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'sitedata', label: 'Site data', icon: <DatabaseIcon /> },
   { id: 'passwords', label: 'Passwords', icon: <KeyIcon /> },
   { id: 'shortcuts', label: 'Shortcuts', icon: <KeyboardIcon /> },
+  { id: 'backup', label: 'Backup & restore', icon: <LockIcon /> },
 ]
 
 export function SettingsPage({ tabId }: { tabId: TabId }) {
@@ -209,6 +211,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
           keybindings={settings.keybindings}
           onChange={(patch) => update.mutate({ keybindings: patch })}
         />
+        <BackupSection settings={settings} />
       </div>
     </div>
   )

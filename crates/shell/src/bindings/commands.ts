@@ -9,6 +9,8 @@ import { invoke } from '@tauri-apps/api/core'
 import type {
   AccentColor,
   Background,
+  BackupOptions,
+  ImportSummary,
   Bookmark,
   BookmarkFolder,
   BrowserState,
@@ -796,6 +798,21 @@ export const commands = {
   /** Decode a share code into a theme with a fresh id; rejects malformed input. */
   async decodeThemeCode(code: string): Promise<CustomTheme> {
     return invoke('decode_theme_code', { code })
+  },
+
+  // -- encrypted backup -----------------------------------------------------
+
+  /** Export the selected categories to a passphrase-encrypted `.wisbackup`
+   *  file via a save panel. Resolves false on cancel. */
+  async exportBackup(passphrase: string, options: BackupOptions): Promise<boolean> {
+    return invoke('export_backup', { passphrase, options })
+  },
+
+  /** Open a `.wisbackup` file, decrypt it with `passphrase`, apply the profile
+   *  graph natively, and return a summary (incl. the settings to apply). Null
+   *  on cancel; throws on a wrong passphrase or a corrupted file. */
+  async importBackup(passphrase: string): Promise<ImportSummary | null> {
+    return invoke('import_backup', { passphrase })
   },
 
   // -- settings -------------------------------------------------------------

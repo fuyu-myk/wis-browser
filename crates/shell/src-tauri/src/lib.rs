@@ -1,4 +1,5 @@
 mod audio;
+mod backup;
 mod biometrics;
 mod bookmarks;
 mod capture;
@@ -426,6 +427,8 @@ pub fn run() {
             themes::import_theme,
             themes::encode_theme_code,
             themes::decode_theme_code,
+            backup::export_backup,
+            backup::import_backup,
             commands::set_workspace_custom_accent,
             commands::get_browser_state,
             commands::get_workspace,

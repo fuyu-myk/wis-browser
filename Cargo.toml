@@ -66,6 +66,8 @@ chacha20poly1305 = "0.10"
 rand = "0.8"
 zeroize = { version = "1", features = ["derive"] }
 security-framework = "2.11"
+# Passphrase key derivation for portable encrypted backups.
+argon2 = "0.5"
 
 # Internal crates
 wis-core = { path = "crates/core" }

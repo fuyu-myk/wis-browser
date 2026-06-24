@@ -5,6 +5,7 @@
 //! from old ones.
 
 pub mod background;
+pub mod backup;
 pub mod design;
 pub mod download;
 pub mod error;

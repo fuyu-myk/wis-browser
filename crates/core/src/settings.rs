@@ -259,9 +259,7 @@ fn default_widget_memory_cap_mb() -> u32 {
 /// dropped instead of failing the whole settings blob. Without this, changing a
 /// single action id would make the entire persisted `BrowserState` unreadable
 /// and silently reset every workspace, tab, and setting to defaults.
-fn deserialize_keybindings<'de, D>(
-    deserializer: D,
-) -> Result<HashMap<KeyAction, String>, D::Error>
+fn deserialize_keybindings<'de, D>(deserializer: D) -> Result<HashMap<KeyAction, String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -570,6 +568,10 @@ mod tests {
             back.keybindings.get(&KeyAction::NewTab),
             Some(&"Cmd+T".to_string()),
         );
-        assert_eq!(back.keybindings.len(), 1, "the removed action id is dropped");
+        assert_eq!(
+            back.keybindings.len(),
+            1,
+            "the removed action id is dropped"
+        );
     }
 }

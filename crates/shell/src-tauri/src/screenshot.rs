@@ -67,26 +67,25 @@ pub async fn capture_to_clipboard(
 
     #[cfg(target_os = "macos")]
     {
-        let png = match mode {
-            ScreenshotMode::Visible => {
-                let label = format!("tab-{}", id.as_uuid());
-                let webview =
-                    app.webviews()
-                        .get(&label)
-                        .cloned()
-                        .ok_or_else(|| WisError::InvalidInput {
+        let png =
+            match mode {
+                ScreenshotMode::Visible => {
+                    let label = format!("tab-{}", id.as_uuid());
+                    let webview = app.webviews().get(&label).cloned().ok_or_else(|| {
+                        WisError::InvalidInput {
                             message: format!("no webview labelled {label}"),
-                        })?;
-                imp::capture(&webview, false).await?
-            }
-            ScreenshotMode::Region => {
-                let r = rect.ok_or_else(|| WisError::InvalidInput {
-                    message: "region capture requires a selection rect".to_string(),
-                })?;
-                imp::capture_window(&app, &chrome, Some((r.x, r.y, r.width, r.height))).await?
-            }
-            ScreenshotMode::Window => imp::capture_window(&app, &chrome, None).await?,
-        };
+                        }
+                    })?;
+                    imp::capture(&webview, false).await?
+                }
+                ScreenshotMode::Region => {
+                    let r = rect.ok_or_else(|| WisError::InvalidInput {
+                        message: "region capture requires a selection rect".to_string(),
+                    })?;
+                    imp::capture_window(&app, &chrome, Some((r.x, r.y, r.width, r.height))).await?
+                }
+                ScreenshotMode::Window => imp::capture_window(&app, &chrome, None).await?,
+            };
 
         if !imp::copy_image_to_pasteboard(&app, png.clone()).await {
             return Err(WisError::InvalidInput {
@@ -305,11 +304,12 @@ mod imp {
         crop: Option<(f64, f64, f64, f64)>,
     ) -> WisResult<Vec<u8>> {
         // Base layer: the chrome, which also reports the window metrics.
-        let (chrome_shot, metrics) = snapshot_layer(chrome, false)
-            .await
-            .ok_or_else(|| WisError::InvalidInput {
-                message: "could not snapshot the window chrome".to_string(),
-            })?;
+        let (chrome_shot, metrics) =
+            snapshot_layer(chrome, false)
+                .await
+                .ok_or_else(|| WisError::InvalidInput {
+                    message: "could not snapshot the window chrome".to_string(),
+                })?;
         let (cw, ch, scale, flipped) = metrics;
         log::info!(
             "capture_window: chrome {cw}x{ch} @{scale}x flipped={flipped} crop={crop:?} frame={:?}",
@@ -324,14 +324,16 @@ mod imp {
         let tabs: Vec<_> = app
             .webviews()
             .iter()
-            .filter(|(label, wv)| {
-                label.starts_with("tab-") && wv.window().label() == win_label
-            })
+            .filter(|(label, wv)| label.starts_with("tab-") && wv.window().label() == win_label)
             .map(|(_, wv)| wv.clone())
             .collect();
         for tab in tabs {
             if let Some((shot, _)) = snapshot_layer(&tab, true).await {
-                log::info!("capture_window: tab layer frame={:?} radius={}", shot.1, shot.2);
+                log::info!(
+                    "capture_window: tab layer frame={:?} radius={}",
+                    shot.1,
+                    shot.2
+                );
                 shots.push(shot);
             }
         }
@@ -638,7 +640,9 @@ mod imp {
             return false;
         }
 
-        recv_blocking(rx, Duration::from_secs(3)).await.unwrap_or(false)
+        recv_blocking(rx, Duration::from_secs(3))
+            .await
+            .unwrap_or(false)
     }
 
     /// Await a channel value off the async runtime so the worker isn't blocked.

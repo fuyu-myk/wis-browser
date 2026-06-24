@@ -341,6 +341,30 @@ export interface ShortcutTile {
   url: string
 }
 
+/** Categories an export includes (mirror of the Rust `BackupOptions`). */
+export interface BackupOptions {
+  settings: boolean
+  /** Workspaces + their tabs + bookmarks. */
+  profile: boolean
+  /** Browsing history (only meaningful alongside `profile`). */
+  history: boolean
+  /** Saved passwords (Touch ID required to decrypt them). */
+  vault: boolean
+}
+
+/**
+ * What an import applied (mirror of the Rust `ImportSummary`). The profile
+ * graph is applied natively; `settings` is returned for the frontend to apply
+ * through the settings commands.
+ */
+export interface ImportSummary {
+  settings?: UserSettings | null
+  workspaces_added: number
+  bookmarks_added: number
+  history_added: number
+  passwords_added: number
+}
+
 export interface UserSettings {
   layout: LayoutMode
   top_tabs_rail_side: RailSide

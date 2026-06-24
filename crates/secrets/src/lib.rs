@@ -10,6 +10,7 @@
 //! Plaintext passwords exist only transiently in memory during seal/open and
 //! are never logged or persisted.
 
+use argon2::Argon2;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use rand::RngCore;
@@ -17,6 +18,9 @@ use zeroize::Zeroizing;
 
 /// A 32-byte vault master key; zeroized on drop.
 pub type MasterKey = Zeroizing<[u8; 32]>;
+
+/// Salt length (bytes) for passphrase key derivation.
+pub const BACKUP_SALT_LEN: usize = 16;
 
 /// A sealed value: AEAD ciphertext plus the random nonce used to seal it.
 #[derive(Debug, Clone)]
@@ -42,6 +46,27 @@ pub fn generate_master_key() -> MasterKey {
     let mut key = Zeroizing::new([0u8; 32]);
     rand::rngs::OsRng.fill_bytes(key.as_mut_slice());
     key
+}
+
+/// A fresh random salt for passphrase key derivation.
+pub fn random_salt() -> [u8; BACKUP_SALT_LEN] {
+    let mut salt = [0u8; BACKUP_SALT_LEN];
+    rand::rngs::OsRng.fill_bytes(&mut salt);
+    salt
+}
+
+/// Derive a 32-byte key from a passphrase and salt with Argon2id (default
+/// params). Used to encrypt portable backups under a user-chosen passphrase,
+/// deliberately distinct from the device-bound Keychain master key so a bundle
+/// is decryptable on another machine. The same passphrase + salt always yields
+/// the same key; a wrong passphrase yields a different key and AEAD open fails.
+pub fn derive_passphrase_key(passphrase: &str, salt: &[u8]) -> Result<MasterKey, VaultError> {
+    let mut key = Zeroizing::new([0u8; 32]);
+    Argon2::default()
+        .hash_password_into(passphrase.as_bytes(), salt, key.as_mut_slice())
+        .map_err(|_| VaultError::Crypto)?;
+
+    Ok(key)
 }
 
 /// Seal `plaintext` under `key` with a fresh random 96-bit nonce.
@@ -212,5 +237,33 @@ mod tests {
         let b = encrypt(&key, b"same").unwrap();
         assert_ne!(a.nonce, b.nonce);
         assert_ne!(a.ciphertext, b.ciphertext);
+    }
+
+    #[test]
+    fn passphrase_key_is_deterministic_per_salt() {
+        let salt = random_salt();
+        let a = derive_passphrase_key("correct horse", &salt).unwrap();
+        let b = derive_passphrase_key("correct horse", &salt).unwrap();
+        assert_eq!(a.as_ref(), b.as_ref());
+        // A different passphrase or salt diverges.
+        let other_pass = derive_passphrase_key("wrong horse", &salt).unwrap();
+        assert_ne!(a.as_ref(), other_pass.as_ref());
+        let other_salt = derive_passphrase_key("correct horse", &random_salt()).unwrap();
+        assert_ne!(a.as_ref(), other_salt.as_ref());
+    }
+
+    #[test]
+    fn passphrase_round_trip_and_wrong_passphrase_fails() {
+        let salt = random_salt();
+        let key = derive_passphrase_key("s3cret", &salt).unwrap();
+        let blob = encrypt(&key, b"backup payload").unwrap();
+
+        // Re-deriving from the same passphrase + salt opens the bundle.
+        let rederived = derive_passphrase_key("s3cret", &salt).unwrap();
+        assert_eq!(decrypt(&rederived, &blob).unwrap(), b"backup payload");
+
+        // A wrong passphrase derives a different key and fails to open.
+        let wrong = derive_passphrase_key("nope", &salt).unwrap();
+        assert!(decrypt(&wrong, &blob).is_err());
     }
 }
