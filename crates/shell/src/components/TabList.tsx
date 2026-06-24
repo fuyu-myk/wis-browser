@@ -711,7 +711,12 @@ export function TabList({
         )}
       </div>
       {barTop !== null && (
-        <span key={workspaceId} className="kb-active-bar" style={{ top: barTop }} aria-hidden />
+        <span
+          key={workspaceId}
+          className="kb-active-bar"
+          style={{ transform: `translateY(${barTop}px)` }}
+          aria-hidden
+        />
       )}
     </div>
   )

@@ -2343,9 +2343,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
 [data-mode="dark"].glass-tabs .kb-topbar .h-pin-circle { background: rgba(255, 255, 255, 0.12); }
 .kb-topbar .h-pin-circle:hover { transform: scale(1.08); }
 .kb-topbar .h-pin-circle.active {
-  width: 26px;
-  height: 26px;
-  box-shadow: 0 0 0 2px var(--primary-500);
+  box-shadow: inset 0 0 0 2px var(--primary-500);
 }
 .kb-topbar .h-pin-circle.drop-before { box-shadow: inset 2px 0 0 0 var(--primary-400); }
 .kb-topbar .h-pin-circle.drop-after { box-shadow: inset -2px 0 0 0 var(--primary-400); }
@@ -2486,8 +2484,10 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   flex: 1;
   min-width: 0;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
+  padding-inline: 6px;
 }
+.kb-window.rail-right .kb-tabs-h-wrap { justify-content: flex-end; }
 .kb-tabs-h-wrap.compact {
   width: 100%;
   max-width: none;
@@ -2501,13 +2501,20 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   min-width: 0;
   min-height: 34px;
   gap: 4px;
-  justify-content: center;
+  justify-content: flex-start;
 }
-.kb-tabs-h-wrap.is-inactive-compact .h-tab:not(.active) {
+.kb-window.rail-right .kb-tabs-h-wrap.compact .tabs-h { justify-content: flex-end; }
+/* Title hidden: collapse to symmetric padding so the lone favicon sits at the
+   true tab center. */
+.kb-tabs-h-wrap.is-inactive-compact .h-tab:not(.active),
+.kb-tabs-h-wrap.compact.is-inactive-compact .tabs-h .h-tab:not(.active) {
   padding: 0 8px;
 }
 .kb-tabs-h-wrap.is-inactive-compact .h-tab:not(.active):hover .close,
 .kb-tabs-h-wrap.is-inactive-compact .h-tab:not(.active) .close {
+  display: none;
+}
+.kb-tabs-h-wrap.is-inactive-compact .h-tab:not(.active) .ttl {
   display: none;
 }
 .kb-topbar .tabs-h.compact .h-tab {
@@ -6291,8 +6298,8 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   animation: kb-dl-indeterminate 1.1s ease-in-out infinite;
 }
 @keyframes kb-dl-indeterminate {
-  0% { left: -40%; }
-  100% { left: 100%; }
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
 }
 
 /* Full downloads page tweaks on top of the history-page table. */
@@ -7054,6 +7061,7 @@ body.is-tab-dragging .kb-loose {
 .kb-tabs .kb-tab.active::after { content: none; }
 .kb-active-bar {
   position: absolute;
+  top: 0;
   right: 2px;
   width: 3px;
   height: 18px;
@@ -7061,7 +7069,9 @@ body.is-tab-dragging .kb-loose {
   background: var(--primary-500);
   z-index: 2;
   pointer-events: none;
-  transition: top var(--dur-med) var(--ease-standard);
+  /* Position via transform (translateY) so the slide between tabs composites
+     on the GPU instead of triggering layout every frame (was `top`). */
+  transition: transform var(--dur-med) var(--ease-standard);
 }
 .layout-sidebar-right .kb-active-bar {
   right: auto;
@@ -7077,8 +7087,11 @@ body.is-tab-dragging .kb-loose {
   gap: 6px;
   flex: 1 1 auto;
   min-width: 0;
-  /* Non-scrolling strips still clip transient overflow inside the bar. */
-  clip-path: inset(-20px 0);
+  /* Clip transient reflow overflow, but leave a few px of horizontal slack so
+     the edge tab's rounded corner / active highlight isn't shaved when the
+     strip sits flush (e.g. against an expanded rail). Matches the scrolling
+     variant's 2px breathing room. */
+  clip-path: inset(-20px -4px);
   justify-content: flex-start;
 }
 .kb-window.rail-right .kb-topbar .h-strip-run { justify-content: flex-end; }
