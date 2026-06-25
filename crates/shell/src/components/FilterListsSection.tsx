@@ -9,6 +9,10 @@ import { useState } from 'react'
 
 import { commands } from '@/bindings/commands'
 import { XIcon } from '@/lib/icons'
+import { DEFAULT_KEYMAP } from '@/lib/palette'
+
+// Element-picker default, host-localized (Cmd on macOS, Ctrl elsewhere).
+const PICKER_SHORTCUT = DEFAULT_KEYMAP.element_picker ?? 'Cmd+Shift+X'
 
 const BUILTINS = [
   { name: 'EasyPrivacy', detail: 'Tracker rules (also compiled for WebKit blocking)' },
@@ -110,7 +114,8 @@ export function FilterListsSection({
             <div className="l">
               <span>Hidden elements</span>
               <span>
-                Elements you hid with the picker (Cmd+Shift+X), kept per site.
+                Elements you hid with the picker ({PICKER_SHORTCUT}), kept per
+                site.
               </span>
             </div>
           </div>

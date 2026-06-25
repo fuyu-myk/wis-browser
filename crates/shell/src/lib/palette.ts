@@ -17,9 +17,14 @@ import type {
   UserSettings,
   UserSettingsPatch,
 } from '@/bindings/types'
+import { localizeAccelerator, prettyAccelerator } from '@/lib/keybindings'
 import { normaliseUrl } from '@/lib/url'
 
 export type PaletteSection = 'tabs' | 'actions' | 'settings' | 'open'
+
+// Close-tab-from-palette secondary action: rendered per platform (⌘⌫ on
+// macOS, Ctrl+Backspace elsewhere), matching its Cmd/Ctrl+Backspace handler.
+const CLOSE_TAB_SHORTCUT = prettyAccelerator(localizeAccelerator('Cmd+Backspace'))
 
 export interface TabMeta {
   workspaceName: string
@@ -89,8 +94,9 @@ export function effectiveKeymap(
   return merged
 }
 
-// Mirror of `default_keymap()` in crates/core/src/keybinding.rs.
-export const DEFAULT_KEYMAP: Partial<Record<KeyAction, string>> = {
+// Canonical (macOS) default bindings, mirroring `default_keymap_for(true)` in
+// crates/core/src/keybinding.rs. Localized to the host platform just below.
+const DEFAULT_KEYMAP_MAC: Partial<Record<KeyAction, string>> = {
   new_tab: 'Cmd+T',
   new_workspace: 'Cmd+N',
   close_tab: 'Cmd+W',
@@ -145,6 +151,16 @@ export const DEFAULT_KEYMAP: Partial<Record<KeyAction, string>> = {
   toggle_sidebar: 'Cmd+S',
   element_picker: 'Cmd+Shift+X',
 }
+
+// Host-platform defaults: Windows/Linux swap `Cmd` for `Ctrl` (mirrors
+// `default_keymap_for` in keybinding.rs); macOS passes through unchanged.
+export const DEFAULT_KEYMAP: Partial<Record<KeyAction, string>> =
+  Object.fromEntries(
+    Object.entries(DEFAULT_KEYMAP_MAC).map(([action, accel]) => [
+      action,
+      localizeAccelerator(accel),
+    ]),
+  ) as Partial<Record<KeyAction, string>>
 
 const ACTION_LABELS: Record<KeyAction, string> = {
   new_tab: 'New tab',
@@ -304,7 +320,7 @@ export function makeTabsSource({ state, onActivate, onClose }: TabsSourceArgs): 
           : undefined,
         secondaryAction: {
           label: 'Close tab',
-          shortcut: '⌘⌫',
+          shortcut: CLOSE_TAB_SHORTCUT,
           run: () => onClose(tab),
         },
         activate: () => onActivate(tab),

@@ -6,6 +6,8 @@
  * symbols and letters pass through.
  */
 
+import { isMacOS } from '@/lib/platform'
+
 /** True when `name` is a function key (F1..F24). */
 function isFunctionKey(name: string): boolean {
   return /^F([1-9]|1[0-9]|2[0-4])$/.test(name)
@@ -96,36 +98,74 @@ export function keyboardEventToAccelerator(
 }
 
 /**
- * Render a Tauri accelerator string with macOS-native glyphs for the
- * pill UI (e.g. `Cmd+Shift+G` -> `⇧⌘G`). Order is the standard macOS
- * convention: Ctrl ⌃, Option ⌥, Shift ⇧, Cmd ⌘, then the key.
+ * Swap the macOS `Cmd` modifier for `Ctrl` on Windows/Linux, mirroring
+ * `localize_accelerator` in crates/core/src/keybinding.rs so this display
+ * mirror matches what the native menu actually registers. A no-op on macOS.
+ */
+export function localizeAccelerator(accel: string): string {
+  if (isMacOS()) return accel
+  return accel
+    .split('+')
+    .map((p) => (p === 'Cmd' ? 'Ctrl' : p))
+    .join('+')
+}
+
+// Modifier sort priority. `Alt` and `Option` are the same physical key (Tauri
+// defaults use `Alt`, captured overrides use `Option`); both are listed so a
+// modifier is never mistaken for the key part.
+const MOD_ORDER: Record<string, number> = {
+  Ctrl: 0,
+  Option: 1,
+  Alt: 1,
+  Shift: 2,
+  Cmd: 3,
+}
+
+// macOS renders accelerators as concatenated glyphs (⇧⌘G); Windows/Linux use
+// textual tokens joined by `+` (Ctrl+Shift+G), the native convention there.
+const MAC_GLYPHS: Record<string, string> = {
+  Cmd: '⌘',
+  Shift: '⇧',
+  Option: '⌥',
+  Alt: '⌥',
+  Ctrl: '⌃',
+  Left: '←',
+  Right: '→',
+  Up: '↑',
+  Down: '↓',
+  Backspace: '⌫',
+  Delete: '⌦',
+  Enter: '↩',
+  Tab: '⇥',
+  Space: '␣',
+  Escape: '⎋',
+}
+
+// Windows/Linux modifier labels. `Cmd` should never reach here (localized
+// away) but is mapped defensively.
+const PC_LABELS: Record<string, string> = { Cmd: 'Ctrl', Option: 'Alt' }
+
+/**
+ * Render a Tauri accelerator string for the pill UI. On macOS: native glyphs
+ * in the standard order (Ctrl ⌃, Option ⌥, Shift ⇧, Cmd ⌘, then the key,
+ * concatenated). On Windows/Linux: textual tokens joined by `+`.
  */
 export function prettyAccelerator(accel: string | null | undefined): string {
   if (!accel) return '—'
   const parts = accel.split('+')
-  const order: Record<string, number> = { Ctrl: 0, Option: 1, Shift: 2, Cmd: 3 }
   const modParts = parts
-    .filter((p) => p in order)
-    .sort((a, b) => order[a] - order[b])
-  const keyPart = parts.find((p) => !(p in order))
+    .filter((p) => p in MOD_ORDER)
+    .sort((a, b) => MOD_ORDER[a] - MOD_ORDER[b])
+  const keyPart = parts.find((p) => !(p in MOD_ORDER))
 
-  const glyphs: Record<string, string> = {
-    Cmd: '⌘',
-    Shift: '⇧',
-    Option: '⌥',
-    Ctrl: '⌃',
-    Left: '←',
-    Right: '→',
-    Up: '↑',
-    Down: '↓',
-    Backspace: '⌫',
-    Delete: '⌦',
-    Enter: '↩',
-    Tab: '⇥',
-    Space: '␣',
-    Escape: '⎋',
+  if (isMacOS()) {
+    const display = [
+      ...modParts.map((p) => MAC_GLYPHS[p] ?? p),
+      MAC_GLYPHS[keyPart ?? ''] ?? keyPart ?? '',
+    ]
+    return display.join('')
   }
 
-  const display = [...modParts.map((p) => glyphs[p] ?? p), glyphs[keyPart ?? ''] ?? keyPart ?? '']
-  return display.join('')
+  const display = [...modParts.map((p) => PC_LABELS[p] ?? p), keyPart ?? '']
+  return display.filter(Boolean).join('+')
 }

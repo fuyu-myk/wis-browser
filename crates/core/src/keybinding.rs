@@ -7,7 +7,11 @@
 //! configurable-shortcuts pass).
 //!
 //! Accelerator strings are Tauri's syntax (`Cmd+T`, `Cmd+Shift+G`,
-//! `Cmd+Left`).
+//! `Cmd+Left`). The canonical table is written in macOS form; on Windows and
+//! Linux the `Cmd` modifier is swapped for `Ctrl` (the conventional desktop
+//! equivalent, and what `muda` registers as Control, because `Cmd` would otherwise
+//! bind to the Windows/Super key). `Alt`, `Shift`, and the keys are identical
+//! across platforms, so a single-token swap is the whole difference.
 
 use std::collections::HashMap;
 
@@ -257,8 +261,30 @@ const ALL_ACTIONS: [KeyAction; 61] = [
     KeyAction::CaptureWindow,
 ];
 
-/// Default keyboard accelerators.
+/// Rewrite a macOS accelerator for a non-mac platform: the `Cmd` modifier
+/// becomes `Ctrl`, everything else is untouched. Pure, so both forms are
+/// testable from any host. On macOS the string passes through unchanged.
+fn localize_accelerator(accel: &str, mac: bool) -> String {
+    if mac {
+        return accel.to_string();
+    }
+    accel
+        .split('+')
+        .map(|part| if part == "Cmd" { "Ctrl" } else { part })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+/// Default keyboard accelerators for the running platform: macOS uses `Cmd`,
+/// Windows and Linux use `Ctrl`.
 pub fn default_keymap() -> HashMap<KeyAction, String> {
+    default_keymap_for(cfg!(target_os = "macos"))
+}
+
+/// Default keyboard accelerators for the given platform (`mac` chooses the
+/// `Cmd` vs `Ctrl` modifier). Split out from [`default_keymap`] so both
+/// platforms' maps are unit-testable on a single host.
+pub fn default_keymap_for(mac: bool) -> HashMap<KeyAction, String> {
     let pairs: &[(KeyAction, &str)] = &[
         (KeyAction::NewTab, "Cmd+T"),
         (KeyAction::NewWindow, "Cmd+N"),
@@ -316,7 +342,10 @@ pub fn default_keymap() -> HashMap<KeyAction, String> {
         (KeyAction::ElementPicker, "Cmd+Shift+X"),
         (KeyAction::PopOutVideo, "Cmd+Shift+O"),
     ];
-    pairs.iter().map(|(a, s)| (*a, (*s).to_string())).collect()
+    pairs
+        .iter()
+        .map(|(a, s)| (*a, localize_accelerator(s, mac)))
+        .collect()
 }
 
 /// Merge user-supplied overrides on top of the defaults. Actions
@@ -370,8 +399,29 @@ mod tests {
     }
 
     #[test]
-    fn print_defaults_to_cmd_p() {
-        assert_eq!(default_keymap().get(&KeyAction::Print).unwrap(), "Cmd+P");
+    fn mac_keymap_uses_cmd() {
+        let mac = default_keymap_for(true);
+        assert_eq!(mac.get(&KeyAction::Print).unwrap(), "Cmd+P");
+        assert_eq!(mac.get(&KeyAction::NewTab).unwrap(), "Cmd+T");
+        assert_eq!(mac.get(&KeyAction::ClosePane).unwrap(), "Alt+Cmd+W");
+    }
+
+    #[test]
+    fn non_mac_keymap_swaps_cmd_for_ctrl() {
+        let pc = default_keymap_for(false);
+        // Same actions are bound, only the Cmd modifier changes.
+        assert_eq!(pc.len(), default_keymap_for(true).len());
+        assert_eq!(pc.get(&KeyAction::Print).unwrap(), "Ctrl+P");
+        assert_eq!(pc.get(&KeyAction::NewTab).unwrap(), "Ctrl+T");
+        // Alt is shared across platforms; only Cmd -> Ctrl.
+        assert_eq!(pc.get(&KeyAction::ClosePane).unwrap(), "Alt+Ctrl+W");
+        // No Cmd token may survive a non-mac localization.
+        for accel in pc.values() {
+            assert!(
+                !accel.split('+').any(|p| p == "Cmd"),
+                "non-mac accelerator still has Cmd: {accel}"
+            );
+        }
     }
 
     #[test]
@@ -380,8 +430,11 @@ mod tests {
         overrides.insert(KeyAction::NewTab, "Cmd+Shift+T".to_string());
         let effective = effective_keymap(&overrides);
         assert_eq!(effective.get(&KeyAction::NewTab).unwrap(), "Cmd+Shift+T");
-        // Untouched action keeps default.
-        assert_eq!(effective.get(&KeyAction::Reload).unwrap(), "Cmd+R");
+        // Untouched action keeps the host default (Cmd on mac, Ctrl elsewhere).
+        assert_eq!(
+            effective.get(&KeyAction::Reload),
+            default_keymap().get(&KeyAction::Reload)
+        );
     }
 
     #[test]
