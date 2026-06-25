@@ -1,4 +1,5 @@
-import { useEffect,
+import { useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -8,7 +9,7 @@ import { useEffect,
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
-import { closeTabAnimated, onTabClosing, TAB_EXIT_MS } from '@/lib/tabClose'
+import { onTabClosing, TAB_EXIT_MS } from '@/lib/tabClose'
 import {
   COMPACT_MEMBER_TAB_MAX,
   COMPACT_MINIMUM_CURRENT_TAB_SIZE,
@@ -28,6 +29,7 @@ import {
 import type {
   AccentColor,
   BrowserState,
+  PaneNode,
   RailSide,
   Tab,
   TabFolder,
@@ -35,6 +37,7 @@ import type {
   TabId,
   WorkspaceId,
 } from '@/bindings/types'
+import { predictActiveAfterClose } from '@/lib/paneActive'
 import { cx } from '@/lib/cx'
 import { renderIconRef } from '@/lib/iconGlyphs'
 import { XIcon } from '@/lib/icons'
@@ -51,6 +54,9 @@ import { TabAudioButton } from '@/components/TabAudioButton'
 import { TabFavicon } from '@/components/TabFavicon'
 import { useDiscardedTabs } from '@/components/DiscardedTabsContext'
 import { CollapseChevron, UrlContent } from '@/components/HorizontalTabsParts'
+
+/** Marks the close-FLIP glide animations so a rapid re-close can cancel them. */
+const FLIP_ANIM_ID = 'wis-tab-flip'
 
 interface HorizontalTabsProps {
   workspaceId: WorkspaceId
@@ -77,6 +83,13 @@ interface HorizontalTabsProps {
    * least-recently-expanded (accordion). 0 means no limit.
    */
   maxExpandedFolders?: number
+  /**
+   * The active workspace's split pane tree (null when unsplit). Used to predict
+   * which tab the backend promotes when the active tab closes, so the strip can
+   * grow + highlight it immediately (a split promotes a pane leaf rather than
+   * the tab-order neighbour).
+   */
+  paneTree?: PaneNode | null
 }
 
 /**
@@ -98,6 +111,7 @@ export function HorizontalTabs({
   integrateUrlBar,
   compact = false,
   maxExpandedFolders = 0,
+  paneTree = null,
 }: HorizontalTabsProps) {
   const qc = useQueryClient()
   const invalidate = () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
@@ -170,20 +184,99 @@ export function HorizontalTabs({
     }, 240)
     return () => window.clearTimeout(t)
   }, [openingIslandId, openingArmed])
-  useEffect(
-    () =>
-      onTabClosing((id) => {
-        setClosingIds((prev) => new Set(prev).add(id))
-        window.setTimeout(() => {
-          setClosingIds((prev) => {
-            const next = new Set(prev)
-            next.delete(id)
-            return next
-          })
-        }, TAB_EXIT_MS + 400)
-      }),
-    [],
+  // FLIP close: snapshot every sizable tab's left edge before the close lands,
+  // so the layout effect can glide each survivor from its old slot to its new
+  // one once the closing tab has been pulled out of layout instantly.
+  const flipFromRef = useRef<Map<string, { left: number; width: number }>>(new Map())
+  const captureFlip = useCallback(() => {
+    const strip = stripRef.current
+    if (!strip) return
+    const map = new Map<string, { left: number; width: number }>()
+    strip
+      .querySelectorAll<HTMLElement>('[data-tab-id], [data-mtab-id]')
+      .forEach((el) => {
+        const id = el.dataset.tabId ?? el.dataset.mtabId
+        if (!id) return
+        const r = el.getBoundingClientRect()
+        map.set(id, { left: r.left, width: r.width })
+      })
+    flipFromRef.current = map
+  }, [])
+  // Dedupe a single close.
+  const handledRef = useRef<Set<TabId>>(new Set())
+  const markClosing = useCallback((id: TabId) => {
+    setClosingIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)))
+    window.setTimeout(() => {
+      handledRef.current.delete(id)
+      setClosingIds((prev) => {
+        if (!prev.has(id)) return prev
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+    }, TAB_EXIT_MS + 400)
+  }, [])
+  const beginClose = useCallback(
+    (id: TabId) => {
+      if (handledRef.current.has(id)) return
+      handledRef.current.add(id)
+      captureFlip()
+      markClosing(id)
+    },
+    [captureFlip, markClosing],
   )
+  const closeHere = useCallback(
+    (id: TabId) => {
+      beginClose(id)
+      void commands.closeTab(id).catch(() => undefined)
+    },
+    [beginClose],
+  )
+  useEffect(() => onTabClosing(beginClose), [beginClose])
+  useLayoutEffect(() => {
+    const from = flipFromRef.current
+    if (from.size === 0) return
+    flipFromRef.current = new Map()
+    const strip = stripRef.current
+    if (!strip) return
+    const els = Array.from(
+      strip.querySelectorAll<HTMLElement>('[data-tab-id], [data-mtab-id]'),
+    )
+    // Prevent stacking animations.
+    for (const el of els) {
+      for (const a of el.getAnimations()) if (a.id === FLIP_ANIM_ID) a.cancel()
+    }
+    const moves: Array<{ el: HTMLElement; dx: number; sx: number }> = []
+    for (const el of els) {
+      const id = el.dataset.tabId ?? el.dataset.mtabId
+      if (id === undefined || closingIds.has(id as TabId)) continue
+      const old = from.get(id)
+      if (old === undefined) continue
+      const now = el.getBoundingClientRect()
+      const dx = old.left - now.left
+      const sx = now.width > 0.5 ? old.width / now.width : 1
+      if (Math.abs(dx) > 0.5 || Math.abs(sx - 1) > 0.005) moves.push({ el, dx, sx })
+    }
+    if (moves.length === 0) return
+    const cs = getComputedStyle(els[0])
+    const durRaw = cs.getPropertyValue('--reflow-dur').trim()
+    const dur = durRaw.endsWith('ms')
+      ? parseFloat(durRaw)
+      : durRaw.endsWith('s')
+        ? parseFloat(durRaw) * 1000
+        : 0
+    if (!(dur > 0)) return // motion off: the snap is intended
+    for (const { el, dx, sx } of moves) {
+      const anim = el.animate(
+        [
+          { transform: `translateX(${dx}px) scaleX(${sx})`, transformOrigin: 'left center' },
+          { transform: 'translateX(0px) scaleX(1)', transformOrigin: 'left center' },
+        ],
+        { duration: dur, easing: 'linear' },
+      )
+      anim.id = FLIP_ANIM_ID
+    }
+  }, [closingIds])
   const [draft, setDraft] = useState('')
   const renameInputRef = useRef<HTMLInputElement>(null)
   // Set true right before an Escape-cancel so the input's blur skips saving.
@@ -372,16 +465,28 @@ export function HorizontalTabs({
   }
 
   const hasAudioIcon = (t: Tab) => tabAudio.audible.has(t.id) || tabAudio.muted.has(t.id)
+  const liveOf = <T extends { id: TabId }>(list: T[]): T[] =>
+    closingIds.size === 0 ? list : list.filter((t) => !closingIds.has(t.id))
+  const effectiveActiveId: TabId | null = (() => {
+    if (activeTabId === null || !closingIds.has(activeTabId)) return activeTabId
+    const predicted = predictActiveAfterClose(
+      activeTabId,
+      activeTabId,
+      tabs.map((t) => t.id),
+      paneTree,
+    )
+    return predicted ?? activeTabId
+  })()
   const { sizing, isMany, inactiveCompact, audioExtra, activeVisible } = computeStripSizing({
-    sizableTabs,
-    looseTabs,
-    pinnedCount: pinnedTabs.length,
+    sizableTabs: liveOf(sizableTabs),
+    looseTabs: liveOf(looseTabs),
+    pinnedCount: liveOf(pinnedTabs).length,
     folderGroups,
     collapsedCount,
     closingIslandId,
     stripWidth,
     compact,
-    activeTabId,
+    activeTabId: effectiveActiveId,
     minActive,
     minInactive,
     isAudio: hasAudioIcon,
@@ -389,13 +494,13 @@ export function HorizontalTabs({
 
   const sizeFor = (tab: Tab) => {
     const base =
-      tab.id === activeTabId && activeVisible ? sizing.activeSize : sizing.inactiveSize
+      tab.id === effectiveActiveId && activeVisible ? sizing.activeSize : sizing.inactiveSize
     return base + (hasAudioIcon(tab) ? audioExtra : 0)
   }
   // Expanded-island members: same share as loose tabs, but capped (see
   // MEMBER_TAB_MAX) so filing always reads as the tab tucking into the pill.
   const memberSizeFor = (tab: Tab) => {
-    const isActive = tab.id === activeTabId && activeVisible
+    const isActive = tab.id === effectiveActiveId && activeVisible
     const base = Math.min(
       isActive ? sizing.activeSize : sizing.inactiveSize,
       isActive ? minActive : compact ? COMPACT_MEMBER_TAB_MAX : MEMBER_TAB_MAX,
@@ -412,11 +517,12 @@ export function HorizontalTabs({
       memberFrom?: number
     } = {},
   ) => {
-    const isActive = tab.id === activeTabId
+    const isActive = tab.id === effectiveActiveId
     const loose = opts.looseIndex !== undefined
     const member = opts.memberOf !== undefined
     const scope = dragScopeRef.current
     const isSource = dragPart?.id === tab.id
+    const isClosing = closingIds.has(tab.id)
     // Optimistic resize.
     const lifted = isSource && scope !== (member ? opts.memberOf : loose ? 'loose' : null)
     let shift = 0
@@ -444,11 +550,12 @@ export function HorizontalTabs({
           'is-dragsource': isSource,
         })}
         style={{
-          flex: lifted
-            ? '0 0 0px'
-            : `${loose && !sizing.scrolling && dragPart === null ? '1 1' : '0 0'} ${
-                member ? memberSizeFor(tab) : sizeFor(tab)
-              }px`,
+          flex:
+            lifted || isClosing
+              ? '0 0 0px'
+              : `${loose && !sizing.scrolling && dragPart === null ? '1 1' : '0 0'} ${
+                  member ? memberSizeFor(tab) : sizeFor(tab)
+                }px`,
           ...(lifted ? { marginLeft: `${-GAP_PX}px` } : {}),
           ...(shift !== 0 && dragPart
             ? { transform: `translateX(${shift * dragPart.size}px)` }
@@ -467,7 +574,7 @@ export function HorizontalTabs({
         onAuxClick={(e) => {
           if (e.button === 1) {
             e.preventDefault()
-            closeTabAnimated(tab.id)
+            closeHere(tab.id)
           }
         }}
         onKeyDown={(e) => {
@@ -499,7 +606,7 @@ export function HorizontalTabs({
           aria-label="Close tab"
           onClick={(e) => {
             e.stopPropagation()
-            closeTabAnimated(tab.id)
+            closeHere(tab.id)
           }}
         >
           <XIcon />
@@ -619,9 +726,9 @@ export function HorizontalTabs({
     // Optimistic resize.
     const liftedOut =
       memberFrom >= 0 && dragPart !== null && dragScopeRef.current !== folder.id
-    const sizedMembers = liftedOut
-      ? members.filter((m) => m.id !== dragPart?.id)
-      : members
+    const sizedMembers = (
+      liftedOut ? members.filter((m) => m.id !== dragPart?.id) : members
+    ).filter((m) => !closingIds.has(m.id))
     const memberSum = sizedMembers.reduce((s, m) => s + memberSizeFor(m), 0)
     const externalTarget =
       dragPart !== null &&
@@ -749,6 +856,7 @@ export function HorizontalTabs({
         'is-scrolling': sizing.scrolling,
         'is-inactive-compact': inactiveCompact,
         'is-strip-resizing': stripResizing,
+        'is-tab-closing': closingIds.size > 0,
       })}
       ref={wrapRef}
       onClick={onStripClick}

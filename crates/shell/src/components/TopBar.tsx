@@ -79,6 +79,7 @@ export function TopBar({ state }: TopBarProps) {
           integrateUrlBar={false}
           compact
           maxExpandedFolders={state.settings.top_tabs_max_expanded_folders}
+          paneTree={activeWorkspace?.pane_tree ?? null}
         />
       </div>
     </div>

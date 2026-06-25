@@ -2166,7 +2166,8 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
 .kb-topbar .tabs-h {
   display: flex;
   align-items: center;
-  gap: 6px;
+  --strip-gap: 6px;
+  gap: var(--strip-gap);
   flex: 1;
   min-width: 0;
 }
@@ -2191,7 +2192,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
      corner-anchored .h-strip-run, so the pinned circles never shift. */
   transition: background var(--dur-fast), color var(--dur-fast),
     box-shadow var(--dur-fast), transform var(--dur-fast),
-    flex-basis var(--reflow-dur, var(--dur-med)) var(--ease-standard);
+    flex-basis var(--reflow-dur, var(--dur-med)) var(--reflow-ease, var(--ease-standard));
   border: 2px solid transparent;
   box-sizing: border-box;
   background: color-mix(in oklab, var(--surface) 40%, transparent);
@@ -2220,7 +2221,8 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
+  --strip-gap: 4px;
+  gap: var(--strip-gap);
   height: 34px;
   padding: 3px;
   border-radius: calc(14px * var(--radius-scale));
@@ -2500,7 +2502,8 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   flex: 1;
   min-width: 0;
   min-height: 34px;
-  gap: 4px;
+  --strip-gap: 4px;
+  gap: var(--strip-gap);
   justify-content: flex-start;
 }
 .kb-window.rail-right .kb-tabs-h-wrap.compact .tabs-h { justify-content: flex-end; }
@@ -6946,14 +6949,8 @@ body.motion-off .kb-window *::after {
   pointer-events: none;
 }
 .h-tab { animation: kb-scale-pop var(--dur-med) var(--ease-emphasized); }
-@keyframes kb-tab-out-h {
-  from { max-width: 260px; opacity: 1; }
-  to { max-width: 0; min-width: 0; padding-left: 0; padding-right: 0; opacity: 0; }
-}
 .h-tab.is-closing {
-  animation: kb-tab-out-h 180ms var(--ease-exit) forwards;
-  overflow: hidden;
-  pointer-events: none;
+  display: none;
 }
 
 /* Palette + find bar rise from the bottom edge and sink back on dismiss. */
@@ -7084,7 +7081,8 @@ body.is-tab-dragging .kb-loose {
 .kb-topbar .h-strip-run {
   display: flex;
   align-items: center;
-  gap: 6px;
+  --strip-gap: 6px;
+  gap: var(--strip-gap);
   flex: 1 1 auto;
   min-width: 0;
   /* Clip transient reflow overflow, but leave a few px of horizontal slack so
@@ -7096,7 +7094,8 @@ body.is-tab-dragging .kb-loose {
 }
 .kb-window.rail-right .kb-topbar .h-strip-run { justify-content: flex-end; }
 .kb-tabs-h-wrap.compact .h-strip-run {
-  gap: 4px;
+  --strip-gap: 4px;
+  gap: var(--strip-gap);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -7118,6 +7117,16 @@ body.is-tab-dragging .kb-loose {
    resize), tabs ease toward each measurement with a short duration, so the
    reflow glides fluidly instead of snapping per measurement. */
 .kb-tabs-h-wrap.is-strip-resizing .h-tab { --reflow-dur: var(--dur-fast); }
+.kb-tabs-h-wrap.is-tab-closing .h-tab {
+  --reflow-dur: var(--dur-fast);
+  --reflow-ease: linear;
+}
+/* A folder island whose member is closing shrinks its pill width on the same
+   fast linear clock, so the background glides shut in step with the members'
+   FLIP glide rather than snapping. */
+.kb-tabs-h-wrap.is-tab-closing .h-island {
+  transition: flex-basis var(--dur-fast) linear;
+}
 
 /* Folder islands grow/shrink via clip-path; their tabs ride that sweep
    only while the island itself is opening/closing. */
