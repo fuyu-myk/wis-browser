@@ -309,7 +309,7 @@ pub async fn open_widget_panel(
             parsed.host_str().unwrap_or_default(),
             &browser.settings.ua_site_overrides,
             &browser.settings.user_agent_profile,
-            wis_core::DEFAULT_MAC_OS_VERSION,
+            wis_core::UaPlatform::host(),
         );
 
         (

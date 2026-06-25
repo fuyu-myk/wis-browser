@@ -48,7 +48,7 @@ pub async fn create_tab_webview(
             parsed.host_str().unwrap_or_default(),
             &browser.settings.ua_site_overrides,
             &browser.settings.user_agent_profile,
-            wis_core::DEFAULT_MAC_OS_VERSION,
+            wis_core::UaPlatform::host(),
         );
         let nav_privacy_mode = browser
             .workspace(workspace_id)

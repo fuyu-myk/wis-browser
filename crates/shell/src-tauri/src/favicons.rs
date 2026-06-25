@@ -386,7 +386,7 @@ async fn ensure_favicon_cached(
     let client = reqwest::Client::builder()
         .timeout(FAVICON_TIMEOUT)
         .user_agent(wis_core::user_agent::compatibility_user_agent(
-            wis_core::DEFAULT_MAC_OS_VERSION,
+            wis_core::UaPlatform::host(),
         ))
         .danger_accept_invalid_certs(true)
         .proxy(proxy)
