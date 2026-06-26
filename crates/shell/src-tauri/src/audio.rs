@@ -59,7 +59,19 @@ pub fn apply_page_muted<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>,
         });
     }
 
-    #[cfg(not(target_os = "macos"))]
+    // Engine-side mute via WebView2 (media elements, iframes, Web Audio);
+    // a page cannot un-mute itself.
+    #[cfg(windows)]
+    crate::win_webview2::with_core_webview2(webview, move |core| {
+        use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_8;
+        use windows::core::Interface;
+        if let Ok(c8) = core.cast::<ICoreWebView2_8>() {
+            // SAFETY: runs on the UI thread via `with_core_webview2`.
+            let _ = unsafe { c8.SetIsMuted(muted) };
+        }
+    });
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     let _ = (webview, muted);
 }
 
@@ -217,6 +229,46 @@ fn poll_once(app: &AppHandle) {
                     audible.remove(&uuid)
                 }
             };
+            if changed {
+                log::debug!("audio: tab {uuid} audible={playing}");
+                emit_snapshot(&app);
+            }
+        });
+    }
+
+    #[cfg(windows)]
+    for label in labels {
+        let Some(webview) = app.webviews().get(&label).cloned() else {
+            continue;
+        };
+        let uuid = label[TAB_LABEL_PREFIX.len()..].to_string();
+        let app = app.clone();
+        crate::win_webview2::with_core_webview2(&webview, move |core| {
+            use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_8;
+            use windows::core::{Interface, BOOL};
+
+            let playing = core
+                .cast::<ICoreWebView2_8>()
+                .ok()
+                .and_then(|c8| {
+                    let mut b = BOOL(0);
+                    // SAFETY: runs on the UI thread via `with_core_webview2`.
+                    unsafe { c8.IsDocumentPlayingAudio(&mut b) }
+                        .ok()
+                        .map(|()| b.as_bool())
+                })
+                .unwrap_or(false);
+
+            let state = app.state::<AppState>();
+            let changed = {
+                let mut audible = state.audible_tabs.lock().expect("audible_tabs poisoned");
+                if playing {
+                    audible.insert(uuid.clone())
+                } else {
+                    audible.remove(&uuid)
+                }
+            };
+
             if changed {
                 log::debug!("audio: tab {uuid} audible={playing}");
                 emit_snapshot(&app);

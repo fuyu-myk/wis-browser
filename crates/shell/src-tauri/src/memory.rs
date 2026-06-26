@@ -2,13 +2,15 @@
 //! WebContent process, for the Settings task manager and memory-pressure
 //! eviction policies.
 //!
-//! The pid comes from WebKit's `_webProcessIdentifier` (guarded behind
-//! `respondsToSelector`, returning 0 when unavailable); the footprint is
-//! `proc_pid_rusage`'s `ri_phys_footprint`, the same metric Activity
-//! Monitor's Memory column uses.
+//! macOS only. The pid comes from WebKit's `_webProcessIdentifier` (guarded
+//! behind `respondsToSelector`, returning 0 when unavailable); the footprint is
+//! `proc_pid_rusage`'s `ri_phys_footprint`, the same metric Activity Monitor's
+//! Memory column uses. WebView2 (Windows) exposes no equivalent per-webview
+//! renderer pid, so the readout degrades to empty off macOS (see
+//! [`collect_webview_memory`]).
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use wis_core::WisResult;
 
 #[derive(Debug, Clone, Serialize)]
@@ -23,6 +25,13 @@ pub struct WebviewMemory {
 /// Snapshot every webview's WebContent process footprint.
 #[tauri::command]
 pub async fn list_webview_memory(app: AppHandle) -> WisResult<Vec<WebviewMemory>> {
+    Ok(collect_webview_memory(&app))
+}
+
+#[cfg(target_os = "macos")]
+fn collect_webview_memory(app: &AppHandle) -> Vec<WebviewMemory> {
+    use tauri::Manager;
+
     let webviews: Vec<_> = app
         .webviews()
         .iter()
@@ -49,7 +58,18 @@ pub async fn list_webview_memory(app: AppHandle) -> WisResult<Vec<WebviewMemory>
         out.push(WebviewMemory { label, pid, bytes });
     }
 
-    Ok(out)
+    out
+}
+
+/// WebView2 (Windows) shares a single browser process across every tab and
+/// exposes no per-webview renderer pid (the analogue of WKWebView's
+/// `_webProcessIdentifier` SPI). A faithful per-tab footprint is therefore
+/// unavailable off macOS, so the snapshot is empty: the task manager shows no
+/// per-tab memory and the widget memory-cap sweep is inert rather than
+/// reporting a wrong number.
+#[cfg(not(target_os = "macos"))]
+fn collect_webview_memory(_app: &AppHandle) -> Vec<WebviewMemory> {
+    Vec::new()
 }
 
 #[cfg(target_os = "macos")]
@@ -70,11 +90,6 @@ fn web_process_pid(wk: *mut objc2::runtime::AnyObject) -> i32 {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-fn web_process_pid(_wk: *mut objc2::runtime::AnyObject) -> i32 {
-    0
-}
-
 #[cfg(target_os = "macos")]
 fn phys_footprint(pid: i32) -> Option<u64> {
     let mut info: libc::rusage_info_v4 = unsafe { std::mem::zeroed() };
@@ -87,9 +102,4 @@ fn phys_footprint(pid: i32) -> Option<u64> {
     };
 
     (ret == 0).then_some(info.ri_phys_footprint)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn phys_footprint(_pid: i32) -> Option<u64> {
-    None
 }

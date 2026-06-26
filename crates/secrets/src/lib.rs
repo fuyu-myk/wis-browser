@@ -2,10 +2,16 @@
 //!
 //! - **Crypto:** entries are sealed with ChaCha20-Poly1305 (AEAD) under a
 //!   32-byte master key, with a fresh random nonce per seal.
-//! - **Master key:** generated once with the OS CSPRNG and kept in the macOS
-//!   login Keychain (this-device-only). It is released into memory only after a
-//!   successful Touch ID check (enforced by the shell via `LocalAuthentication`
-//!   before calling [`keychain_load`]); the in-memory copy zeroizes on drop.
+//! - **Master key:** generated once with the OS CSPRNG and kept in the OS
+//!   secure store, this-device-only: the macOS login Keychain, or on Windows a
+//!   DPAPI-sealed blob in the per-user app data folder. It is released into
+//!   memory only after a successful biometric check (Touch ID via
+//!   `LocalAuthentication`, or Windows Hello via `UserConsentVerifier`,
+//!   enforced by the shell before calling [`keychain_load`]); the in-memory
+//!   copy zeroizes on drop.
+//!
+//! The `keychain_*` names are the cross-platform key-store surface; on Windows
+//! they are DPAPI-on-disk, not a literal keychain.
 //!
 //! Plaintext passwords exist only transiently in memory during seal/open and
 //! are never logged or persisted.
@@ -186,19 +192,195 @@ pub fn session_key_load_or_create() -> Result<MasterKey, VaultError> {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+// ---------------------------------------------------------------------------
+// Master-key storage (Windows DPAPI)
+// ---------------------------------------------------------------------------
+//
+// DPAPI only encrypts; unlike the Keychain it provides no storage, so the
+// sealed blob is written to a file in the per-user app data folder (beside the
+// SQLite profile under the bundle identifier). DPAPI binds the blob to the
+// Windows user account, so the on-disk file is useless to another account or a
+// stolen disk (the user-scope analogue of the Keychain ACL and Chrome's
+// DPAPI-protected "Safe Storage" key). Biometric gating is a separate UI layer
+// in the shell (`UserConsentVerifier`), exactly as Touch ID gates the Keychain.
+
+#[cfg(windows)]
+const WIN_APP_DIR: &str = "app.myk.wis";
+#[cfg(windows)]
+const MASTER_KEY_FILE: &str = "vault-master.key";
+#[cfg(windows)]
+const SESSION_KEY_FILE: &str = "session-cookie.key";
+
+/// The per-user app data folder holding the sealed key blobs, created on first
+/// use. Matches Tauri's `app_data_dir()` so the keys sit beside `wis.db`.
+#[cfg(windows)]
+fn secrets_dir() -> Result<std::path::PathBuf, VaultError> {
+    let base = dirs::data_dir().ok_or_else(|| VaultError::Keychain("no app data dir".into()))?;
+    let dir = base.join(WIN_APP_DIR);
+    std::fs::create_dir_all(&dir)
+        .map_err(|err| VaultError::Keychain(format!("create secrets dir: {err}")))?;
+
+    Ok(dir)
+}
+
+/// Seal `plain` with DPAPI (user scope, no UI). The returned ciphertext is safe
+/// to write to disk; only this Windows user can unseal it.
+#[cfg(windows)]
+fn dpapi_protect(plain: &[u8]) -> Result<Vec<u8>, VaultError> {
+    use windows_sys::Win32::Security::Cryptography::{
+        CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
+    };
+    use windows_sys::Win32::Foundation::LocalFree;
+
+    let in_blob = CRYPT_INTEGER_BLOB {
+        cbData: plain.len() as u32,
+        pbData: plain.as_ptr() as *mut u8,
+    };
+    let mut out_blob = CRYPT_INTEGER_BLOB {
+        cbData: 0,
+        pbData: std::ptr::null_mut(),
+    };
+
+    let ok = unsafe {
+        CryptProtectData(
+            &in_blob,
+            std::ptr::null(),
+            std::ptr::null(),
+            std::ptr::null(),
+            std::ptr::null(),
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut out_blob,
+        )
+    };
+    if ok == 0 {
+        return Err(VaultError::Keychain("DPAPI protect failed".into()));
+    }
+
+    // Copy the OS-owned buffer out, then release it with LocalFree.
+    let sealed =
+        unsafe { std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec() };
+    unsafe { LocalFree(out_blob.pbData as *mut core::ffi::c_void) };
+
+    Ok(sealed)
+}
+
+/// Unseal a DPAPI blob. The plaintext is wrapped in `Zeroizing` so it never
+/// lingers in memory.
+#[cfg(windows)]
+fn dpapi_unprotect(sealed: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
+    use windows_sys::Win32::Security::Cryptography::{
+        CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
+    };
+    use windows_sys::Win32::Foundation::LocalFree;
+
+    let in_blob = CRYPT_INTEGER_BLOB {
+        cbData: sealed.len() as u32,
+        pbData: sealed.as_ptr() as *mut u8,
+    };
+    let mut out_blob = CRYPT_INTEGER_BLOB {
+        cbData: 0,
+        pbData: std::ptr::null_mut(),
+    };
+
+    let ok = unsafe {
+        CryptUnprotectData(
+            &in_blob,
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            std::ptr::null(),
+            std::ptr::null(),
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut out_blob,
+        )
+    };
+    if ok == 0 {
+        return Err(VaultError::Keychain("DPAPI unprotect failed".into()));
+    }
+
+    let plain = Zeroizing::new(unsafe {
+        std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec()
+    });
+    unsafe { LocalFree(out_blob.pbData as *mut core::ffi::c_void) };
+
+    Ok(plain)
+}
+
+/// Unseal a file's DPAPI blob into a validated 32-byte master key.
+#[cfg(windows)]
+fn master_key_from_sealed(sealed: &[u8]) -> Result<MasterKey, VaultError> {
+    let plain = dpapi_unprotect(sealed)?;
+    if plain.len() != 32 {
+        return Err(VaultError::Malformed);
+    }
+    let mut key = Zeroizing::new([0u8; 32]);
+    key.copy_from_slice(&plain);
+
+    Ok(key)
+}
+
+#[cfg(windows)]
+pub fn keychain_load() -> Result<Option<MasterKey>, VaultError> {
+    let path = secrets_dir()?.join(MASTER_KEY_FILE);
+    match std::fs::read(&path) {
+        Ok(sealed) => Ok(Some(master_key_from_sealed(&sealed)?)),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(VaultError::Keychain(format!("read master key: {err}"))),
+    }
+}
+
+#[cfg(windows)]
+pub fn keychain_store(key: &MasterKey) -> Result<(), VaultError> {
+    let sealed = dpapi_protect(key.as_ref())?;
+    let path = secrets_dir()?.join(MASTER_KEY_FILE);
+    std::fs::write(&path, &sealed)
+        .map_err(|err| VaultError::Keychain(format!("write master key: {err}")))
+}
+
+#[cfg(windows)]
+pub fn keychain_delete() -> Result<(), VaultError> {
+    let path = secrets_dir()?.join(MASTER_KEY_FILE);
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(VaultError::Keychain(format!("delete master key: {err}"))),
+    }
+}
+
+/// Load (creating on first use) the session-cookie key. Like macOS this is
+/// **not** biometric-gated: it must be available automatically at launch.
+#[cfg(windows)]
+pub fn session_key_load_or_create() -> Result<MasterKey, VaultError> {
+    let path = secrets_dir()?.join(SESSION_KEY_FILE);
+    match std::fs::read(&path) {
+        Ok(sealed) => master_key_from_sealed(&sealed),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            let key = generate_master_key();
+            let sealed = dpapi_protect(key.as_ref())?;
+            std::fs::write(&path, &sealed)
+                .map_err(|e| VaultError::Keychain(format!("write session key: {e}")))?;
+            Ok(key)
+        }
+        Err(err) => Err(VaultError::Keychain(format!("read session key: {err}"))),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Master-key storage (other platforms)
+// ---------------------------------------------------------------------------
+
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn keychain_load() -> Result<Option<MasterKey>, VaultError> {
     Err(VaultError::Unsupported)
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn keychain_store(_key: &MasterKey) -> Result<(), VaultError> {
     Err(VaultError::Unsupported)
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn keychain_delete() -> Result<(), VaultError> {
     Err(VaultError::Unsupported)
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn session_key_load_or_create() -> Result<MasterKey, VaultError> {
     Err(VaultError::Unsupported)
 }

@@ -1,7 +1,9 @@
 //! Password-vault commands.
 //!
-//! Unlock requires a Touch ID (or password) check; on success the master key is
-//! loaded from the Keychain into [`AppState::vault_key`] for the session.
+//! Unlock requires a biometric check (Touch ID on macOS, Windows Hello on
+//! Windows, with the OS password/PIN fallback where offered); on success the
+//! master key is loaded from the OS key store (Keychain / DPAPI-sealed blob)
+//! into [`AppState::vault_key`] for the session.
 //! Listing, revealing, saving, and deleting require the vault to be unlocked.
 //! Plaintext passwords cross the IPC boundary only on an explicit reveal and
 //! are never logged.
@@ -19,8 +21,14 @@ use crate::state::AppState;
 pub struct VaultStatus {
     pub unlocked: bool,
     pub has_master_key: bool,
-    /// False on platforms without Keychain/biometric support.
+    /// False on platforms without an OS key store + biometric gate.
     pub supported: bool,
+}
+
+/// Platforms with both an OS key store and a biometric gate: macOS
+/// (Keychain + Touch ID) and Windows (DPAPI + Windows Hello).
+fn vault_supported() -> bool {
+    cfg!(any(target_os = "macos", windows))
 }
 
 /// A credential without its password (safe to list).
@@ -35,7 +43,7 @@ pub struct CredentialSummary {
 #[tauri::command]
 pub async fn vault_status(state: State<'_, AppState>) -> WisResult<VaultStatus> {
     let unlocked = state.vault_key.lock().await.is_some();
-    let supported = cfg!(target_os = "macos");
+    let supported = vault_supported();
     let has_master_key = if supported {
         // No biometric prompt: this only checks for the item's existence.
         wis_secrets::keychain_load()
@@ -57,7 +65,7 @@ pub async fn vault_status(state: State<'_, AppState>) -> WisResult<VaultStatus> 
 /// vault is now unlocked.
 #[tauri::command]
 pub async fn vault_unlock(_app: AppHandle, state: State<'_, AppState>) -> WisResult<bool> {
-    if !cfg!(target_os = "macos") {
+    if !vault_supported() {
         return Err(unsupported());
     }
     let authed = crate::biometrics::authenticate("Unlock your saved passwords".to_string()).await;
@@ -90,14 +98,14 @@ fn create_master_key() -> WisResult<wis_secrets::MasterKey> {
 /// exporting or restoring saved passwords is an explicit, sensitive action the
 /// user should confirm each time. `reason` is shown in the system prompt.
 pub(crate) async fn authorize_vault(state: &State<'_, AppState>, reason: &str) -> WisResult<()> {
-    if !cfg!(target_os = "macos") {
+    if !vault_supported() {
         return Err(unsupported());
     }
 
     let authed = crate::biometrics::authenticate(reason.to_string()).await;
     if !authed {
         return Err(WisError::InvalidInput {
-            message: "Touch ID was cancelled".to_string(),
+            message: "Authentication was cancelled".to_string(),
         });
     }
 
@@ -424,7 +432,7 @@ fn locked() -> WisError {
 
 fn unsupported() -> WisError {
     WisError::InvalidInput {
-        message: "the password vault is only available on macOS".to_string(),
+        message: "the password vault is not available on this platform".to_string(),
     }
 }
 

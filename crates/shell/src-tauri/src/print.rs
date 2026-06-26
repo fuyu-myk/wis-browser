@@ -5,6 +5,10 @@
 //! a single path covers both printing and exporting a page to PDF. The
 //! operation runs as a document-modal sheet on the tab's window when it has
 //! one, falling back to an app-modal run otherwise.
+//!
+//! On Windows the same single-path intent holds: `ICoreWebView2_16::ShowPrintUI`
+//! opens the system print dialog, whose "Microsoft Print to PDF" destination
+//! covers PDF export.
 
 use tauri::{AppHandle, Manager};
 use wis_core::{TabId, WisError, WisResult};
@@ -59,7 +63,21 @@ pub async fn print_active_tab(app: AppHandle, id: TabId) -> WisResult<()> {
             })?;
     }
 
-    #[cfg(not(target_os = "macos"))]
+    // Covers both printing and PDF export, mirroring the macOS print
+    // panel's "PDF -> Save as PDF" menu.
+    #[cfg(windows)]
+    crate::win_webview2::with_core_webview2(&webview, |core| {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            ICoreWebView2_16, COREWEBVIEW2_PRINT_DIALOG_KIND_SYSTEM,
+        };
+        use windows::core::Interface;
+        if let Ok(c16) = core.cast::<ICoreWebView2_16>() {
+            // SAFETY: runs on the UI thread via `with_core_webview2`.
+            let _ = unsafe { c16.ShowPrintUI(COREWEBVIEW2_PRINT_DIALOG_KIND_SYSTEM) };
+        }
+    });
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = webview;
     }

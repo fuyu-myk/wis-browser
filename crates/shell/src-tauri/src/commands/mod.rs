@@ -383,7 +383,16 @@ pub(crate) fn apply_tab_zoom(app: &AppHandle, id: TabId, factor: f64) {
             }
         });
     }
-    #[cfg(not(target_os = "macos"))]
+
+    // The controller's `ZoomFactor` is the user-facing (Ctrl +/-) page zoom,
+    // the analog of WKWebView's `setPageZoom:`.
+    #[cfg(windows)]
+    crate::win_webview2::with_controller(&webview, move |controller| {
+        // SAFETY: runs on the UI thread via `with_controller`.
+        let _ = unsafe { controller.SetZoomFactor(factor) };
+    });
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = (webview, factor);
     }
@@ -426,7 +435,29 @@ pub(crate) fn apply_tab_appearance<R: tauri::Runtime>(
         });
     }
 
-    #[cfg(not(target_os = "macos"))]
+    // WebView2's preferred color scheme lives on the profile. `Auto` follows the OS.
+    #[cfg(windows)]
+    crate::win_webview2::with_core_webview2(webview, move |core| {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            ICoreWebView2_13, COREWEBVIEW2_PREFERRED_COLOR_SCHEME_AUTO,
+            COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK, COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT,
+        };
+        use windows::core::Interface;
+
+        let scheme = match theme {
+            ThemeMode::Dark => COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK,
+            ThemeMode::Light => COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT,
+            ThemeMode::System => COREWEBVIEW2_PREFERRED_COLOR_SCHEME_AUTO,
+        };
+        if let Ok(c13) = core.cast::<ICoreWebView2_13>() {
+            if let Ok(profile) = unsafe { c13.Profile() } {
+                // SAFETY: runs on the UI thread via `with_core_webview2`.
+                let _ = unsafe { profile.SetPreferredColorScheme(scheme) };
+            }
+        }
+    });
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = (webview, theme);
     }

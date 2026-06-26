@@ -29,6 +29,28 @@ const BUILD_TIMEOUT: Duration = Duration::from_secs(10);
 /// keyed off this, so it must stay in sync with `capabilities/default.json`.
 const WINDOW_PREFIX: &str = "win-";
 
+/// The chrome window's glass treatment, per platform. macOS uses the HUD
+/// material (the dark vibrancy the liquid-glass chrome is tuned against);
+/// Windows 11 uses Mica (Windows 10 silently gets no glass, since
+/// `window-vibrancy`'s `apply_mica` errors there and Tauri swallows it); other
+/// platforms get no effect, leaving the transparent window to show the chrome's
+/// own backdrop. `state`/`radius` are macOS knobs and are ignored elsewhere.
+pub fn chrome_window_effects() -> WindowEffectsConfig {
+    #[cfg(target_os = "macos")]
+    let effects = vec![WindowEffect::HudWindow];
+    #[cfg(windows)]
+    let effects = vec![WindowEffect::Mica];
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let effects: Vec<WindowEffect> = Vec::new();
+
+    WindowEffectsConfig {
+        effects,
+        state: Some(WindowEffectState::Active),
+        radius: Some(14.0),
+        color: None,
+    }
+}
+
 /// Spawn a chrome window bound to `workspace_id` and return its label. The bind
 /// is registered before the build so the chrome's first state read resolves to
 /// this workspace; a failed build rolls the bind back.
@@ -70,12 +92,7 @@ pub async fn spawn_window(
         .hidden_title(true)
         .accept_first_mouse(true)
         .disable_drag_drop_handler()
-        .effects(WindowEffectsConfig {
-            effects: vec![WindowEffect::HudWindow],
-            state: Some(WindowEffectState::Active),
-            radius: Some(14.0),
-            color: None,
-        });
+        .effects(chrome_window_effects());
         builder = match geo {
             Some(g) => builder.inner_size(g.width, g.height).position(g.x, g.y),
             None => builder.inner_size(1280.0, 800.0),

@@ -1,13 +1,18 @@
-//! Touch ID (and password-fallback) gate for the password vault, via macOS
-//! `LocalAuthentication`.
+//! Biometric gate for the password vault.
 //!
-//! `evaluatePolicy:localizedReason:reply:` is asynchronous (it shows the system
-//! Touch ID sheet and replies on a private queue). It is called from a blocking
-//! task and the reply is awaited, so the API is a simple `async fn -> bool`.
+//! - **macOS:** `LocalAuthentication`'s `evaluatePolicy:localizedReason:reply:`
+//!   shows the Touch ID sheet (with login-password fallback) and replies on a
+//!   private queue, awaited from a blocking task.
+//! - **Windows:** Windows Hello via `UserConsentVerifier`. The gate is applied
+//!   only when Hello is actually available; on a machine with no configured PIN
+//!   or biometric the unlock proceeds without a prompt (the key stays
+//!   DPAPI-sealed at rest), so the vault is never permanently locked out.
+//!
+//! Either way the API is a simple `async fn -> bool`.
 
-/// Prompt the device owner to authenticate (Touch ID, Apple Watch, or the login
-/// password as fallback). Returns `true` only on success. Non-macOS builds and
-/// machines without any enrolled authentication return `false`.
+/// Prompt the device owner to authenticate (Touch ID / Windows Hello, with the
+/// OS password/PIN fallback where the platform offers one). Returns `true` only
+/// on success. Unsupported platforms return `false`.
 pub async fn authenticate(reason: String) -> bool {
     tokio::task::spawn_blocking(move || authenticate_blocking(&reason))
         .await
@@ -63,7 +68,49 @@ fn authenticate_blocking(reason: &str) -> bool {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+fn authenticate_blocking(reason: &str) -> bool {
+    use windows::core::{factory, HSTRING};
+    use windows::Security::Credentials::UI::{
+        UserConsentVerificationResult, UserConsentVerifier, UserConsentVerifierAvailability,
+    };
+    use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+    use windows::Win32::System::WinRT::IUserConsentVerifierInterop;
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    use windows_future::IAsyncOperation;
+
+    // WinRT calls need a COM apartment on this worker thread. UserConsentVerifier
+    // shows system UI, so initialize an STA.
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+    }
+
+    let outcome = (|| -> windows::core::Result<bool> {
+        // Gate only when Hello is actually available; otherwise allow the unlock.
+        let availability = UserConsentVerifier::CheckAvailabilityAsync()?.get()?;
+        if availability != UserConsentVerifierAvailability::Available {
+            log::warn!(
+                "vault: Windows Hello unavailable ({availability:?}); unlocking without a biometric gate"
+            );
+            return Ok(true);
+        }
+
+        // Desktop (non-packaged) apps must drive the consent dialog through the
+        // interop interface with a parent window handle.
+        let interop: IUserConsentVerifierInterop =
+            factory::<UserConsentVerifier, IUserConsentVerifierInterop>()?;
+        let hwnd = unsafe { GetForegroundWindow() };
+        let message = HSTRING::from(reason);
+        let op: IAsyncOperation<UserConsentVerificationResult> =
+            unsafe { interop.RequestVerificationForWindowAsync(hwnd, &message)? };
+
+        Ok(op.get()? == UserConsentVerificationResult::Verified)
+    })();
+
+    outcome.unwrap_or(false)
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 fn authenticate_blocking(_reason: &str) -> bool {
     false
 }

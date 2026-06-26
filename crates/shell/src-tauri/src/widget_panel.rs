@@ -345,6 +345,12 @@ pub async fn open_widget_panel(
         builder = builder.data_store_identifier(crate::commands::workspace_id_to_data_store_bytes(
             workspace_id,
         ));
+        // WebView2 isolates by user-data folder, not `data_store_identifier`.
+        #[cfg(windows)]
+        {
+            builder = builder
+                .data_directory(crate::commands::workspace_webview_data_dir(&app, workspace_id));
+        }
     }
     // File downloads from widget sites go through the same sanitised-download pipeline as tabs.
     builder = crate::downloads::attach_download_handler(builder, ephemeral);

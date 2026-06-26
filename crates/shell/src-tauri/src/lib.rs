@@ -38,6 +38,8 @@ mod video_popout;
 mod wallpapers;
 mod webview_prefs;
 mod widget_panel;
+#[cfg(windows)]
+mod win_webview2;
 mod windows;
 
 use std::sync::Arc;
@@ -206,6 +208,11 @@ pub fn run() {
                         windows::record_window_geometry(&app_handle, "main");
                     }
                 });
+
+                // Windows glass applied by Mica.
+                #[cfg(windows)]
+                let _ = main.set_effects(windows::chrome_window_effects());
+
                 let _ = main.show();
             }
 

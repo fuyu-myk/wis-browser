@@ -110,6 +110,14 @@ pub async fn create_tab_webview(
         builder = builder.incognito(true);
     } else {
         builder = builder.data_store_identifier(workspace_id_to_data_store_bytes(workspace_id));
+        // WKWebView honours `data_store_identifier`; WebView2 ignores it and
+        // keys cookie/storage isolation off the user-data folder instead, so
+        // each persistent workspace needs its own directory or they all collapse
+        // into one profile (and one shared cookie jar).
+        #[cfg(windows)]
+        {
+            builder = builder.data_directory(workspace_webview_data_dir(&app, workspace_id));
+        }
     }
 
     // Document title changes: fires when the page sets `<title>` or
@@ -394,6 +402,22 @@ pub async fn create_tab_webview(
 
 pub(crate) fn workspace_id_to_data_store_bytes(workspace_id: WorkspaceId) -> [u8; 16] {
     *workspace_id.as_uuid().as_bytes()
+}
+
+/// The WebView2 user-data folder for a persistent workspace (Windows). Derived
+/// from the workspace uuid so it is stable across restarts (cookies/storage
+/// persist); WebView2 creates the folder if it is missing. The macOS analogue is
+/// [`workspace_id_to_data_store_bytes`] via `data_store_identifier`.
+#[cfg(windows)]
+pub(crate) fn workspace_webview_data_dir(
+    app: &AppHandle,
+    workspace_id: WorkspaceId,
+) -> std::path::PathBuf {
+    let base = app
+        .path()
+        .app_local_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir().join("app.myk.wis"));
+    base.join("webviews").join(workspace_id.as_uuid().to_string())
 }
 
 /// Set a tab webview's position and size in a single IPC round-trip, applying

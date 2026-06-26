@@ -4,14 +4,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands } from '@/bindings/commands'
 import { cx } from '@/lib/cx'
 import { LockIcon, SearchIcon, XIcon } from '@/lib/icons'
+import { isMacOS } from '@/lib/platform'
 
 const VAULT_STATUS_KEY = ['vault-status'] as const
 const VAULT_LIST_KEY = ['vault-list'] as const
 
+// The OS biometric the vault gate uses on this platform.
+const BIOMETRIC_NAME = isMacOS() ? 'Touch ID' : 'Windows Hello'
+
 /**
- * Settings → Passwords: a Touch ID-gated vault. Locked by default; once
- * unlocked, lists saved logins with reveal/copy/delete and an inline add form.
- * Passwords are fetched (decrypted) only on an explicit reveal/copy.
+ * Settings → Passwords: a biometric-gated vault (Touch ID / Windows Hello).
+ * Locked by default; once unlocked, lists saved logins with reveal/copy/delete
+ * and an inline add form. Passwords are fetched (decrypted) only on an explicit
+ * reveal/copy.
  */
 export function PasswordsSection() {
   const qc = useQueryClient()
@@ -59,7 +64,9 @@ export function PasswordsSection() {
       <div className="sec-h">Passwords</div>
 
       {!supported ? (
-        <p className="kb-vault-msg">The password vault is available on macOS only.</p>
+        <p className="kb-vault-msg">
+          The password vault is not available on this platform.
+        </p>
       ) : !unlocked ? (
         <div className="kb-vault-locked">
           <span className="kb-vault-lock-icon">
@@ -67,7 +74,7 @@ export function PasswordsSection() {
           </span>
           <div className="kb-vault-locked-text">
             <span>{hasKey ? 'Your vault is locked' : 'Set up your password vault'}</span>
-            <span>Unlocked with Touch ID. Passwords are encrypted on this device.</span>
+            <span>Unlocked with {BIOMETRIC_NAME}. Passwords are encrypted on this device.</span>
           </div>
           <button
             type="button"

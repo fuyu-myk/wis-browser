@@ -8539,6 +8539,9 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+ "webview2-com",
+ "windows",
+ "windows-future",
  "wis-core",
  "wis-network",
  "wis-secrets",
@@ -8588,9 +8591,11 @@ version = "0.1.0"
 dependencies = [
  "argon2",
  "chacha20poly1305",
+ "dirs",
  "rand 0.8.6",
  "security-framework 2.11.1",
  "thiserror 2.0.18",
+ "windows-sys 0.59.0",
  "zeroize",
 ]
 

@@ -12,6 +12,7 @@ import { commands } from '@/bindings/commands'
 import type { BrowserState, TabId, WebviewMemory } from '@/bindings/types'
 import { closeTabAnimated } from '@/lib/tabClose'
 import { XIcon } from '@/lib/icons'
+import { isMacOS } from '@/lib/platform'
 import { tabDisplayName } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 
@@ -78,10 +79,26 @@ export function TaskManagerSection() {
     queryKey: ['webview-memory'],
     queryFn: () => commands.listWebviewMemory(),
     refetchInterval: POLL_MS,
+    // Per-tab memory is macOS only (see memory.rs); skip the poll elsewhere.
+    enabled: isMacOS(),
   })
 
   const sorted = [...rows].sort((a, b) => b.bytes - a.bytes)
   const total = rows.reduce((sum, r) => sum + r.bytes, 0)
+
+  if (!isMacOS()) {
+    return (
+      <div className="row">
+        <div className="l">
+          <span>Memory by webview</span>
+          <span>
+            Per-tab memory is available on macOS only: WebView2 shares one
+            process across tabs and exposes no per-tab figure.
+          </span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <>
