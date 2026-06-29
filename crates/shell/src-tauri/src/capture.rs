@@ -60,6 +60,36 @@ pub fn set_app_handle(app: AppHandle) {
     let _ = APP.set(app);
 }
 
+/// Forward a captured login from a parsed `{ username, password }` payload (the
+/// Windows dispatcher's entry; macOS reaches `intake` through its `wisCapture`
+/// script-message handler). The **host is read from the webview's own URL**,
+/// never the page, so a page can only ever offer to save a login for its own
+/// origin. The dispatcher gates this to non-ephemeral tabs.
+#[cfg(windows)]
+pub(crate) fn dispatch_message(label: &str, username: String, password: String) {
+    if password.is_empty() {
+        return;
+    }
+    let Some(app) = APP.get() else {
+        return;
+    };
+    let Some(webview) = app.webviews().get(label).cloned() else {
+        return;
+    };
+    let Some(host) = webview
+        .url()
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+    else {
+        return;
+    };
+
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        intake(app, host, username, password).await;
+    });
+}
+
 fn strip_www(host: &str) -> &str {
     host.strip_prefix("www.").unwrap_or(host)
 }
@@ -170,6 +200,7 @@ fn locked() -> WisError {
 /// the shadow host otherwise). The last typed password/username are remembered as a
 /// fallback. A per-page dedup avoids re-posting the same credentials. No-ops when
 /// the handler isn't present (private tabs).
+#[cfg(any(target_os = "macos", windows))]
 const CAPTURE_JS: &str = r#"(function () {
   if (window.__wisCaptureInstalled) return;
   window.__wisCaptureInstalled = true;
@@ -326,6 +357,13 @@ const CAPTURE_JS: &str = r#"(function () {
     mo.observe(document.documentElement, { childList: true, subtree: true });
   } catch (e) {}
 })();"#;
+
+/// The capture page script, exposed so the Windows tab builder can inject it as
+/// a document-start init script.
+#[cfg(windows)]
+pub fn capture_script() -> &'static str {
+    CAPTURE_JS
+}
 
 #[cfg(target_os = "macos")]
 mod imp {

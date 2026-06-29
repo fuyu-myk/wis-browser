@@ -134,12 +134,30 @@ fn open_panel(extensions: &[String]) -> Option<PathBuf> {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+// `rfd` shows the native IFileDialog; it runs on the main thread here (via
+// `dispatch`), the same as macOS's `runModal`.
+#[cfg(windows)]
+fn save_panel(suggested: &str) -> Option<PathBuf> {
+    rfd::FileDialog::new().set_file_name(suggested).save_file()
+}
+
+#[cfg(windows)]
+fn open_panel(extensions: &[String]) -> Option<PathBuf> {
+    let mut dialog = rfd::FileDialog::new();
+    if !extensions.is_empty() {
+        let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
+        dialog = dialog.add_filter("Supported", &exts);
+    }
+
+    dialog.pick_file()
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 fn save_panel(_suggested: &str) -> Option<PathBuf> {
     None
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 fn open_panel(_extensions: &[String]) -> Option<PathBuf> {
     None
 }

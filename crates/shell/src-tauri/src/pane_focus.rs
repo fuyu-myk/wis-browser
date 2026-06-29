@@ -14,7 +14,7 @@ pub const PANE_FOCUS_EVENT: &str = "wis-pane-focus";
 
 /// The `accessibilityIdentifier` stamped on each tab `WKWebView`. Mirrors the
 /// webview label `tab-<uuid>`; `install` strips the prefix before emitting.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 const LABEL_PREFIX: &str = "tab-";
 
 /// Mirror of Cocoa's `NSPoint` (a `CGPoint`), with the objc2 encoding so it can
@@ -110,3 +110,53 @@ pub fn install(app: &AppHandle) {
 
 #[cfg(not(target_os = "macos"))]
 pub fn install(_app: &AppHandle) {}
+
+/// Windows click-to-focus: WebView2 has no app-wide mouse monitor, so each tab
+/// controller gets a `GotFocus` handler that emits [`PANE_FOCUS_EVENT`] with the
+/// tab uuid when the user interacts with that pane. Called per tab webview from
+/// `create_tab_webview`. No-op off Windows.
+#[cfg(windows)]
+pub fn install_controller<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    use tauri::{Emitter, Manager};
+    use webview2_com::FocusChangedEventHandler;
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Controller;
+
+    let Some(uuid) = webview
+        .label()
+        .strip_prefix(LABEL_PREFIX)
+        .map(str::to_string)
+    else {
+        return;
+    };
+
+    let app = webview.app_handle().clone();
+    crate::win_webview2::with_controller(webview, move |controller| {
+        let handler = FocusChangedEventHandler::create(Box::new(
+            move |_sender: Option<ICoreWebView2Controller>,
+                  _args: Option<windows::core::IUnknown>|
+                  -> windows::core::Result<()> {
+                // `GotFocus` also fires on window re-activation and programmatic
+                // focus.
+                if left_button_down() {
+                    let _ = app.emit(PANE_FOCUS_EVENT, uuid.clone());
+                }
+                Ok(())
+            },
+        ));
+        let mut token = 0_i64;
+        // SAFETY: runs on the UI thread via `with_controller`.
+        let _ = unsafe { controller.add_GotFocus(&handler, &mut token) };
+    });
+}
+
+/// True while a physical left mouse button is held, so a `GotFocus` event can be
+/// distinguished from a click-driven one.
+#[cfg(windows)]
+fn left_button_down() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_LBUTTON};
+    // The high bit of GetKeyState is set while the key/button is down.
+    (unsafe { GetKeyState(VK_LBUTTON.0 as i32) } as u16 & 0x8000) != 0
+}
+
+#[cfg(not(windows))]
+pub fn install_controller<R: tauri::Runtime>(_webview: &tauri::webview::Webview<R>) {}

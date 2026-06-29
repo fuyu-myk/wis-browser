@@ -227,10 +227,10 @@ fn secrets_dir() -> Result<std::path::PathBuf, VaultError> {
 /// to write to disk; only this Windows user can unseal it.
 #[cfg(windows)]
 fn dpapi_protect(plain: &[u8]) -> Result<Vec<u8>, VaultError> {
+    use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{
         CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
     };
-    use windows_sys::Win32::Foundation::LocalFree;
 
     let in_blob = CRYPT_INTEGER_BLOB {
         cbData: plain.len() as u32,
@@ -268,10 +268,10 @@ fn dpapi_protect(plain: &[u8]) -> Result<Vec<u8>, VaultError> {
 /// lingers in memory.
 #[cfg(windows)]
 fn dpapi_unprotect(sealed: &[u8]) -> Result<Zeroizing<Vec<u8>>, VaultError> {
+    use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{
         CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
     };
-    use windows_sys::Win32::Foundation::LocalFree;
 
     let in_blob = CRYPT_INTEGER_BLOB {
         cbData: sealed.len() as u32,

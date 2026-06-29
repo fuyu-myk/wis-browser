@@ -22,6 +22,21 @@ pub fn set_app_handle(app: AppHandle) {
     let _ = APP.set(app);
 }
 
+/// Emit the open-in-tab event for a parsed href (the Windows dispatcher's entry;
+/// macOS reaches the same emit through its `wisOpenInTab` script-message handler).
+#[cfg(windows)]
+pub(crate) fn dispatch_message(href: &str) {
+    use tauri::Emitter;
+
+    if href.is_empty() {
+        return;
+    }
+
+    if let Some(app) = APP.get() {
+        let _ = app.emit(OPEN_IN_TAB_EVENT, href);
+    }
+}
+
 /// Injected page script (tab webviews): `Cmd`/`Ctrl`+click or middle-click a
 /// link to open it in a background tab instead of navigating / popping a window.
 const OPEN_IN_TAB_JS: &str = r#"(function () {

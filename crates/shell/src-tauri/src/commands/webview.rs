@@ -93,6 +93,30 @@ pub async fn create_tab_webview(
         .initialization_script(crate::swipe_nav::accent_script(&swipe_accent))
         .initialization_script(crate::swipe_nav::page_script());
 
+    // Windows multiplexes every `window.webkit.messageHandlers.*` channel over
+    // WebView2's single message pipe; the shim recreates those handler objects so
+    // the feature page scripts above post unchanged (see `win_dispatch`). The
+    // camera/mic consent gate and the save-password capture script, which macOS
+    // injects via each feature's `install` (a Windows no-op), ride the builder
+    // here instead. The gate applies on every tab; capture skips private ones.
+    #[cfg(windows)]
+    {
+        builder = builder
+            .initialization_script(crate::win_dispatch::SHIM_SCRIPT)
+            .initialization_script(crate::permissions::gate_script());
+        if !ephemeral {
+            builder = builder.initialization_script(crate::capture::capture_script());
+        }
+        // Cosmetic element-hiding page script (macOS injects it via
+        // `cosmetic::install`); Permissive workspaces opt out of blocking.
+        if nav_privacy_mode != wis_core::PrivacyMode::Permissive {
+            builder = builder.initialization_script(crate::cosmetic::page_script());
+        }
+        // Find-in-page engine (CSS Custom Highlight reimplementation; macOS uses
+        // the native WebKit find SPI instead).
+        builder = builder.initialization_script(crate::find::engine_script());
+    }
+
     // Per-page scriptlet swap (uBO `+js` rules) before each main-frame
     // navigation commits; Permissive workspaces opt out of blocking.
     if nav_privacy_mode != wis_core::PrivacyMode::Permissive {
@@ -383,6 +407,21 @@ pub async fn create_tab_webview(
     // Plain-click navigation safety interstitial for risky links.
     crate::navguard::install(&child);
 
+    // Windows: one receiver multiplexes every page->chrome channel registered
+    // above (those per-feature installs are macOS no-ops there). `ephemeral`
+    // gates the save-password channel off and the privacy flag gates cosmetic/zap,
+    // matching macOS not installing those handlers in those cases.
+    #[cfg(windows)]
+    crate::win_dispatch::install(
+        &child,
+        ephemeral,
+        privacy_mode != wis_core::PrivacyMode::Permissive,
+    );
+
+    // Windows click-to-focus is per-controller (no app-wide mouse monitor like
+    // macOS); a no-op elsewhere.
+    crate::pane_focus::install_controller(&child);
+
     // Restore the tab's persisted page zoom (if it isn't the default), and force
     // the page's `prefers-color-scheme` to match the browser theme.
     let (zoom, theme) = {
@@ -417,7 +456,8 @@ pub(crate) fn workspace_webview_data_dir(
         .path()
         .app_local_data_dir()
         .unwrap_or_else(|_| std::env::temp_dir().join("app.myk.wis"));
-    base.join("webviews").join(workspace_id.as_uuid().to_string())
+    base.join("webviews")
+        .join(workspace_id.as_uuid().to_string())
 }
 
 /// Set a tab webview's position and size in a single IPC round-trip, applying

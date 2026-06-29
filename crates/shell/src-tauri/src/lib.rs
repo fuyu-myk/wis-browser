@@ -39,6 +39,8 @@ mod wallpapers;
 mod webview_prefs;
 mod widget_panel;
 #[cfg(windows)]
+mod win_dispatch;
+#[cfg(windows)]
 mod win_webview2;
 mod windows;
 

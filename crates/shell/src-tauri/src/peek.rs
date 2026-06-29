@@ -44,6 +44,22 @@ pub fn set_app_handle(app: AppHandle) {
     let _ = APP.set(app);
 }
 
+/// Emit the peek-open event from a parsed `{ href, text, x, y }` payload (the
+/// Windows dispatcher's entry; macOS reaches the same emit through its `wisPeek`
+/// script-message handler).
+#[cfg(windows)]
+pub(crate) fn dispatch_message(href: String, text: String, x: f64, y: f64) {
+    use tauri::Emitter;
+
+    if href.is_empty() {
+        return;
+    }
+
+    if let Some(app) = APP.get() {
+        let _ = app.emit(PEEK_OPEN_EVENT, PeekOpenEvent { href, text, x, y });
+    }
+}
+
 #[derive(Debug, Serialize, Clone)]
 struct PeekOpenEvent {
     href: String,

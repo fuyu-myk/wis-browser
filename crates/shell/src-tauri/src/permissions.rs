@@ -32,6 +32,39 @@ pub fn set_app_handle(app: AppHandle) {
     let _ = APP.set(app);
 }
 
+/// The getUserMedia consent gate, exposed so the Windows tab builder can inject
+/// it as a document-start init script.
+#[cfg(windows)]
+pub fn gate_script() -> &'static str {
+    GATE_JS
+}
+
+/// Decide a camera/mic request from a parsed `{ id, origin, kind }` payload (the
+/// Windows dispatcher's entry; macOS reaches `handle` through its
+/// `wisMediaPermission` script-message handler). A remembered decision resolves
+/// in the page immediately; an unknown one is deferred to the prompt overlay
+/// (which `handle` raises), then answered by `resolve_media_permission`.
+#[cfg(windows)]
+pub(crate) fn dispatch_message(label: &str, page_id: &str, origin: &str, kind: &str) {
+    // `id` splices into the resolve-callback string, so restrict it to digits.
+    if page_id.is_empty() || !page_id.bytes().all(|b| b.is_ascii_digit()) {
+        return;
+    }
+    let Some(granted) = handle(label, page_id, origin, kind) else {
+        return;
+    };
+
+    if let Some(app) = APP.get() {
+        if let Some(wv) = app.webviews().get(label).cloned() {
+            let js = format!(
+                "window.__wisMediaResolve && window.__wisMediaResolve(\"{page_id}\", {});",
+                if granted { "true" } else { "false" }
+            );
+            let _ = wv.eval(&js);
+        }
+    }
+}
+
 /// A request awaiting the user's decision: how to reach the page that asked.
 pub struct PendingMedia {
     pub webview_label: String,
@@ -52,7 +85,7 @@ struct PermissionRequest {
 /// `MediaDevices.prototype.getUserMedia` so the camera/microphone is reachable
 /// only after the `wisMediaPermission` handler resolves the request; the
 /// original is captured in `realGUM`, which the page cannot reach.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 const GATE_JS: &str = r#"(function () {
   var proto = window.MediaDevices && window.MediaDevices.prototype;
   if (!proto || typeof proto.getUserMedia !== 'function' || window.__wisMediaGate) return;

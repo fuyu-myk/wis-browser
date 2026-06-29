@@ -75,6 +75,7 @@ pub fn swap_scriptlets(app: &tauri::AppHandle, label: &str, url: &str) {
 }
 
 /// Injected page script: collects classes/ids and applies returned CSS.
+#[cfg(any(target_os = "macos", windows))]
 const COSMETIC_JS: &str = r#"(function () {
   if (window.__wisCosmeticInstalled) return;
   window.__wisCosmeticInstalled = true;
@@ -175,6 +176,65 @@ const COSMETIC_JS: &str = r#"(function () {
   } catch (e) {}
 })();"#;
 
+/// Compute the `window.__wisCosmeticApply(...)` argument JSON for a posted scan,
+/// or `None` when there is nothing to apply (a non-initial scan with no matching
+/// generic selectors). The platform-agnostic core of the cosmetic handler,
+/// shared by the macOS `wisCosmetic` handler and the Windows dispatcher; only
+/// the eval-back (frame-aware on macOS, main-frame on Windows) differs.
+#[cfg(any(target_os = "macos", windows))]
+fn build_cosmetic_apply(
+    href: &str,
+    initial: bool,
+    classes: &[String],
+    ids: &[String],
+) -> Option<String> {
+    use tauri::Manager;
+
+    if !(href.starts_with("http://") || href.starts_with("https://")) {
+        return None;
+    }
+    let app = APP.get()?;
+    let blocker = {
+        let state = app.state::<crate::state::AppState>();
+        let guard = state
+            .tracker_blocker
+            .read()
+            .expect("tracker_blocker poisoned");
+        guard.clone()
+    };
+
+    let page = blocker.cosmetic_for_page(href);
+    let mut host_css = String::new();
+    if initial {
+        host_css.push_str(&page.hide_css);
+        if let Ok(parsed) = url::Url::parse(href) {
+            if let Some(host) = parsed.host_str() {
+                let state = app.state::<crate::state::AppState>();
+                for selector in state.user_cosmetic_selectors(host) {
+                    host_css.push_str(&selector);
+                    host_css.push_str("{display:none!important;}\n");
+                }
+            }
+        }
+    }
+    let generic_css = if !page.generichide && (!classes.is_empty() || !ids.is_empty()) {
+        blocker.cosmetic_generic_css(classes, ids, &page.exceptions)
+    } else {
+        String::new()
+    };
+    // Nothing to apply: a non-initial scan with no matching generics.
+    if !initial && generic_css.is_empty() {
+        return None;
+    }
+
+    let payload = serde_json::json!({
+        "host": if initial { Some(host_css) } else { None },
+        "generic": if generic_css.is_empty() { None } else { Some(generic_css) },
+    });
+
+    serde_json::to_string(&payload).ok()
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
     use std::ffi::{CStr, CString};
@@ -185,7 +245,6 @@ mod imp {
     use objc2::{
         class, declare_class, msg_send, msg_send_id, mutability, sel, ClassType, DeclaredClass,
     };
-    use tauri::Manager;
 
     use super::{APP, COSMETIC_JS, END_MARKER, INJECT_MARKER_PREFIX, PICKER_JS, START_MARKER};
 
@@ -338,47 +397,7 @@ mod imp {
         let classes = dict_string_array(body, "classes", 2000);
         let ids = dict_string_array(body, "ids", 2000);
 
-        let Some(app) = APP.get() else {
-            return;
-        };
-
-        let blocker = {
-            let state = app.state::<crate::state::AppState>();
-            let guard = state
-                .tracker_blocker
-                .read()
-                .expect("tracker_blocker poisoned");
-            guard.clone()
-        };
-
-        let page = blocker.cosmetic_for_page(&href);
-        let mut host_css = String::new();
-        if initial {
-            host_css.push_str(&page.hide_css);
-            if let Ok(parsed) = url::Url::parse(&href) {
-                if let Some(host) = parsed.host_str() {
-                    let state = app.state::<crate::state::AppState>();
-                    for selector in state.user_cosmetic_selectors(host) {
-                        host_css.push_str(&selector);
-                        host_css.push_str("{display:none!important;}\n");
-                    }
-                }
-            }
-        }
-        let generic_css = if !page.generichide && (!classes.is_empty() || !ids.is_empty()) {
-            blocker.cosmetic_generic_css(&classes, &ids, &page.exceptions)
-        } else {
-            String::new()
-        };
-        // Nothing to apply: a non-initial scan with no matching generics.
-        if !initial && generic_css.is_empty() {
-            return;
-        }
-        let payload = serde_json::json!({
-            "host": if initial { Some(host_css) } else { None },
-            "generic": if generic_css.is_empty() { None } else { Some(generic_css) },
-        });
-        let Ok(arg) = serde_json::to_string(&payload) else {
+        let Some(arg) = super::build_cosmetic_apply(&href, initial, &classes, &ids) else {
             return;
         };
         let js = ns_string(&format!("window.__wisCosmeticApply({arg});"));
@@ -580,6 +599,7 @@ mod imp {
 /// under the cursor, and on click computes a stable-ish CSS selector, hides
 /// it locally, and posts `{href, selector}` to the `wisZap` handler. Esc
 /// (or right-click) cancels. Self-removing.
+#[cfg(any(target_os = "macos", windows))]
 const PICKER_JS: &str = r#"(function () {
   if (window.__wisPickerActive) {
     if (window.__wisPickerCancel) window.__wisPickerCancel();
@@ -681,7 +701,12 @@ pub fn start_picker<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
     #[cfg(target_os = "macos")]
     imp::eval_picker(webview);
 
-    #[cfg(not(target_os = "macos"))]
+    // The picker runs in the main frame (where `eval` lands), the same as
+    // macOS's `evaluateJavaScript:`; PICKER_JS posts to `wisZap` through the shim.
+    #[cfg(windows)]
+    let _ = webview.eval(PICKER_JS);
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     let _ = webview;
 }
 
@@ -726,4 +751,94 @@ pub async fn persist_zap(app: &tauri::AppHandle, href: &str, selector: &str) {
     state
         .save_coalescer
         .schedule(state.storage.clone(), snapshot);
+}
+
+/// The cosmetic page script, exposed so the Windows tab builder can inject it as
+/// an init script (macOS injects it via `imp::install`). It is observer-based,
+/// so the document-start timing still catches the DOM as it builds.
+///
+/// Restricted to the **top frame**: WebView2 runs every init script in all
+/// subframes too (wry ignores main-frame-only there), but the dispatcher can
+/// only eval the reply into the main frame, so an iframe running the collector
+/// would have its host CSS land in (and overwrite) the main document. macOS
+/// replies into the sender's frame, so it injects in all frames instead.
+#[cfg(windows)]
+pub fn page_script() -> String {
+    let mut s = String::from("if (window.top === window.self) {\n");
+    s.push_str(COSMETIC_JS);
+    s.push_str("\n}");
+    s
+}
+
+/// Read a JSON string-array field, capped to match the macOS handler's 2000 cap.
+#[cfg(windows)]
+fn json_str_array(body: &serde_json::Value, key: &str) -> Vec<String> {
+    body.get(key)
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .take(2000)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Windows dispatcher entry for `wisCosmetic`: build the apply payload via the
+/// shared [`build_cosmetic_apply`] and push it into the page with `webview.eval`.
+/// macOS reaches the same logic through its `wisCosmetic` script-message handler,
+/// which can target the sender's iframe; this eval lands in the main frame, so
+/// cross-origin-iframe cosmetic is the one piece not mirrored on Windows.
+#[cfg(windows)]
+pub(crate) fn dispatch_cosmetic(label: &str, body: &serde_json::Value) {
+    use tauri::Manager;
+
+    let href = body
+        .get("href")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let initial = body
+        .get("initial")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let classes = json_str_array(body, "classes");
+    let ids = json_str_array(body, "ids");
+
+    let Some(arg) = build_cosmetic_apply(href, initial, &classes, &ids) else {
+        return;
+    };
+
+    if let Some(app) = APP.get() {
+        if let Some(wv) = app.webviews().get(label).cloned() {
+            let _ = wv.eval(&format!("window.__wisCosmeticApply({arg});"));
+        }
+    }
+}
+
+/// Windows dispatcher entry for `wisZap`: persist the zapped selector for the
+/// tab's host. The host is read from the **webview's own URL**, never the
+/// page-supplied href, so a page cannot persist a hide-rule for another origin
+/// (stricter than macOS, and identical for the in-page picker, whose
+/// `location.href` is the main-frame URL).
+#[cfg(windows)]
+pub(crate) fn dispatch_zap(label: &str, selector: String) {
+    use tauri::Manager;
+
+    if selector.is_empty() {
+        return;
+    }
+    let Some(app) = APP.get() else {
+        return;
+    };
+    let Some(webview) = app.webviews().get(label).cloned() else {
+        return;
+    };
+    let Some(url) = webview.url().ok().map(|u| u.to_string()) else {
+        return;
+    };
+
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        persist_zap(&app, &url, &selector).await;
+    });
 }

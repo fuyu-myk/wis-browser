@@ -99,7 +99,19 @@ pub async fn tab_find_string(
             })?;
     }
 
-    #[cfg(not(target_os = "macos"))]
+    // Windows: drive the JS find engine (CSS Custom Highlight API). The engine
+    // rides the tab builder as an init script.
+    #[cfg(windows)]
+    {
+        let _ = label;
+        let q = serde_json::to_string(&query).unwrap_or_else(|_| "\"\"".to_string());
+        let js = format!(
+            "window.__wisFindSearch && window.__wisFindSearch({q}, {backwards}, {case_sensitive});"
+        );
+        let _ = webview.eval(&js);
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = (webview, query, backwards, case_sensitive, label);
     }
@@ -134,7 +146,13 @@ pub async fn tab_find_clear(app: AppHandle, id: TabId) -> WisResult<()> {
             })?;
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        let _ = label;
+        let _ = webview.eval("window.__wisFindClear && window.__wisFindClear();");
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = (webview, label);
     }
@@ -358,4 +376,160 @@ mod imp {
 
         Some(CStr::from_ptr(utf8).to_string_lossy().into_owned())
     }
+}
+
+/// Windows find engine: WebView2 has no native find SPI, so the match-count find
+/// is reimplemented in JS with the CSS Custom Highlight API. Injected once per
+/// tab as an init script; `tab_find_string`/`tab_find_clear` call
+/// `window.__wisFindSearch` / `__wisFindClear`, and results come back over the
+/// `wisFindResult` channel to [`dispatch_message`]. Top-document only
+/// (cross-origin iframes aren't searched), and capped at `MAX` matches like the
+/// macOS path.
+#[cfg(windows)]
+const FIND_ENGINE_JS: &str = r#"(function () {
+  if (window.__wisFindInstalled) return;
+  window.__wisFindInstalled = true;
+  var MAX = 1000;
+  var state = { query: '', ci: true, ranges: [], index: -1 };
+  // ASCII-only lowercasing keeps the string length 1:1 so match offsets stay
+  // valid against the original node text.
+  function ciLower(s) {
+    return s.replace(/[A-Z]/g, function (c) { return c.toLowerCase(); });
+  }
+  function ensureStyle() {
+    if (document.getElementById('wis-find-style')) return;
+    var st = document.createElement('style');
+    st.id = 'wis-find-style';
+    st.textContent =
+      '::highlight(wis-find){background:#ffe08a;color:#000}' +
+      '::highlight(wis-find-current){background:#ff9800;color:#000}';
+    (document.head || document.documentElement).appendChild(st);
+  }
+  function post(found, total, index) {
+    try {
+      window.webkit.messageHandlers.wisFindResult.postMessage(
+        { query: state.query, found: found, total: total, index: index }
+      );
+    } catch (e) {}
+  }
+  function clearHl() {
+    try {
+      if (window.CSS && CSS.highlights) {
+        CSS.highlights.delete('wis-find');
+        CSS.highlights.delete('wis-find-current');
+      }
+    } catch (e) {}
+  }
+  function apply() {
+    if (!window.CSS || !CSS.highlights || typeof Highlight === 'undefined') return;
+    clearHl();
+    if (state.ranges.length === 0) return;
+    try {
+      var hl = new Highlight();
+      for (var i = 0; i < state.ranges.length; i++) hl.add(state.ranges[i]);
+      CSS.highlights.set('wis-find', hl);
+      if (state.index >= 0 && state.index < state.ranges.length) {
+        CSS.highlights.set('wis-find-current', new Highlight(state.ranges[state.index]));
+      }
+    } catch (e) {}
+  }
+  function scrollCurrent() {
+    if (state.index < 0 || state.index >= state.ranges.length) return;
+    try {
+      var r = state.ranges[state.index];
+      var rect = r.getBoundingClientRect();
+      var vh = window.innerHeight || document.documentElement.clientHeight;
+      if (rect.top < 0 || rect.bottom > vh) {
+        var el = r.startContainer.parentElement;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center', inline: 'nearest' });
+      }
+    } catch (e) {}
+  }
+  function collect(query, ci) {
+    var ranges = [];
+    if (!query) return ranges;
+    var needle = ci ? ciLower(query) : query;
+    var root = document.body || document.documentElement;
+    if (!root) return ranges;
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+        var p = node.parentElement;
+        if (!p) return NodeFilter.FILTER_REJECT;
+        var tag = p.tagName;
+        if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT' || tag === 'TEXTAREA') {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    var node;
+    while ((node = walker.nextNode())) {
+      var hay = ci ? ciLower(node.nodeValue) : node.nodeValue;
+      var from = 0, idx;
+      while ((idx = hay.indexOf(needle, from)) !== -1) {
+        // `ciLower` preserves length, so `idx` is a valid offset into the
+        // original node text.
+        try {
+          var range = document.createRange();
+          range.setStart(node, idx);
+          range.setEnd(node, idx + needle.length);
+          ranges.push(range);
+        } catch (e) {}
+        from = idx + needle.length;
+        if (ranges.length >= MAX) return ranges;
+      }
+    }
+    return ranges;
+  }
+  window.__wisFindSearch = function (query, backwards, caseSensitive) {
+    ensureStyle();
+    var ci = !caseSensitive;
+    if (query && query === state.query && ci === state.ci && state.ranges.length > 0) {
+      state.index += backwards ? -1 : 1;
+      if (state.index < 0) state.index = state.ranges.length - 1;
+      if (state.index >= state.ranges.length) state.index = 0;
+      apply(); scrollCurrent();
+      post(true, state.ranges.length, state.index + 1);
+      return;
+    }
+    state.query = query || '';
+    state.ci = ci;
+    state.ranges = collect(state.query, ci);
+    if (state.ranges.length === 0) {
+      state.index = -1;
+      clearHl();
+      post(false, 0, -1);
+      return;
+    }
+    state.index = backwards ? state.ranges.length - 1 : 0;
+    apply(); scrollCurrent();
+    post(true, state.ranges.length, state.index + 1);
+  };
+  window.__wisFindClear = function () {
+    state = { query: '', ci: true, ranges: [], index: -1 };
+    clearHl();
+  };
+})();"#;
+
+/// The find engine, exposed so the Windows tab builder can inject it as an init
+/// script.
+#[cfg(windows)]
+pub fn engine_script() -> &'static str {
+    FIND_ENGINE_JS
+}
+
+/// Windows dispatcher entry for `wisFindResult`: re-emit the JS engine's result
+/// over [`FIND_RESULT_EVENT`] (macOS reaches the same emit through its
+/// `_WKFindDelegate`).
+#[cfg(windows)]
+pub(crate) fn dispatch_message(label: &str, body: &serde_json::Value) {
+    let query = body
+        .get("query")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let found = body.get("found").and_then(|v| v.as_bool()).unwrap_or(false);
+    let total = body.get("total").and_then(|v| v.as_i64()).unwrap_or(-1);
+    let index = body.get("index").and_then(|v| v.as_i64()).unwrap_or(-1);
+    emit_result(label, query, found, total, index);
 }

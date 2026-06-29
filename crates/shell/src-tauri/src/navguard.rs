@@ -32,6 +32,23 @@ pub fn set_app_handle(app: AppHandle) {
     let _ = APP.set(app);
 }
 
+/// Drive a nav-guard request from a parsed `{ href, text }` payload (the Windows
+/// dispatcher's entry; macOS reaches `intake` through its `wisNavGuard`
+/// script-message handler).
+#[cfg(windows)]
+pub(crate) fn dispatch_message(href: String, text: String) {
+    if href.is_empty() {
+        return;
+    }
+
+    if let Some(app) = APP.get() {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            intake(app, href, text).await;
+        });
+    }
+}
+
 #[derive(Debug, Serialize, Clone)]
 struct NavGuardEvent {
     url: String,

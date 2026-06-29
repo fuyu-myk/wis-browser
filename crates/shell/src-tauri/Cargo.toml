@@ -57,7 +57,13 @@ windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_System_Com",
     "Win32_System_WinRT",
+    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }
 windows-future = "0.2"
 webview2-com = "0.38"
+# Cross-platform clipboard + native file dialogs (the macOS path uses NSPasteboard
+# / NSSave-OpenPanel directly; these cover the Windows equivalents). arboard only
+# copies text here, so its image-data default (the heavy `image` crate) is off.
+arboard = { version = "3", default-features = false }
+rfd = "0.16"
