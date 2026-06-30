@@ -121,6 +121,69 @@ const MOD_ORDER: Record<string, number> = {
   Cmd: 3,
 }
 
+// Tokens that prefix an accelerator's key. `Meta` should never reach a binding
+// (it is the Windows/Super key) but is listed so it is never mistaken for the
+// key part during normalization.
+const MODIFIER_TOKENS = new Set(['Cmd', 'Ctrl', 'Option', 'Alt', 'Shift', 'Meta'])
+
+// US-layout shifted symbols folded back to the base key the keymap is authored
+// against. A focused webview reports `KeyboardEvent.key` as the shifted glyph
+// (Shift+] -> "}"), but the canonical accelerator (and muda's native
+// registration) is keyed by the base symbol, so a Shift binding like
+// `Ctrl+Shift+]` must compare equal. Layout-specific, matching muda's own
+// US-centric default parsing.
+const SHIFTED_SYMBOL_BASE: Record<string, string> = {
+  '~': '`',
+  '!': '1',
+  '@': '2',
+  '#': '3',
+  $: '4',
+  '%': '5',
+  '^': '6',
+  '&': '7',
+  '*': '8',
+  '(': '9',
+  ')': '0',
+  _: '-',
+  '+': '=',
+  '{': '[',
+  '}': ']',
+  '|': '\\',
+  ':': ';',
+  '"': "'",
+  '<': ',',
+  '>': '.',
+  '?': '/',
+}
+
+/**
+ * Canonicalize an accelerator string for equality comparison: unify
+ * `Option`/`Alt`, sort the modifiers into a stable order, and (when Shift is
+ * held) fold a shifted symbol back to its base key. Applied to both sides of a
+ * lookup so a keymap entry like `Alt+Cmd+W` matches a `KeyboardEvent`-derived
+ * `Ctrl+Option+W` after the `Cmd`->`Ctrl` host localization, and `Ctrl+Shift+]`
+ * matches a keystroke whose `key` came through as `}`.
+ */
+export function normalizeAccelerator(accel: string): string {
+  const mods: string[] = []
+  let key = ''
+  for (const part of accel.split('+')) {
+    if (MODIFIER_TOKENS.has(part)) {
+      mods.push(part === 'Option' ? 'Alt' : part)
+    } else {
+      key = part
+    }
+  }
+  if (mods.includes('Shift') && key in SHIFTED_SYMBOL_BASE) {
+    key = SHIFTED_SYMBOL_BASE[key]
+  }
+  if (key.length === 1) key = key.toUpperCase()
+  const uniqueSorted = [...new Set(mods)].sort(
+    (a, b) => (MOD_ORDER[a] ?? 9) - (MOD_ORDER[b] ?? 9),
+  )
+  return [...uniqueSorted, key].join('+')
+}
+
 // macOS renders accelerators as concatenated glyphs (⇧⌘G); Windows/Linux use
 // textual tokens joined by `+` (Ctrl+Shift+G), the native convention there.
 const MAC_GLYPHS: Record<string, string> = {

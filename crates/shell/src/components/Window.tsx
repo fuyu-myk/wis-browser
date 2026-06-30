@@ -16,6 +16,7 @@ import { usePeekOverlay } from '@/hooks/usePeekOverlay'
 import { useScreenshotToastOverlay } from '@/hooks/useScreenshotToastOverlay'
 import { useScreenshotRegionOverlay } from '@/hooks/useScreenshotRegionOverlay'
 import { useKeyActions } from '@/hooks/useKeyActions'
+import { useKeybindCapture } from '@/hooks/useKeybindCapture'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 import { useSwipeAccentSync } from '@/hooks/useSwipeAccentSync'
 import { useWorkspaceBackground } from '@/hooks/useWorkspaceBackground'
@@ -42,6 +43,7 @@ export function Window({ state, settings }: WindowProps) {
     [],
   )
   useKeyActions()
+  useKeybindCapture(settings.keybindings)
   useCommandPaletteOverlay()
   useWindowPickerOverlay()
   useClearDataOverlay()

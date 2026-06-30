@@ -47,6 +47,12 @@ pub fn apply_menu(app: &AppHandle, keymap: &HashMap<KeyAction, String>) -> tauri
     #[cfg(target_os = "macos")]
     menu.set_as_app_menu()?;
     app.set_menu(menu)?;
+
+    #[cfg(not(target_os = "macos"))]
+    if let Err(err) = app.hide_menu() {
+        log::warn!("hide native menu bar failed: {err}");
+    }
+
     log::info!(
         "native menu (re)built with {} bound accelerators",
         keymap.len()

@@ -94,6 +94,7 @@ export function KeybindingInput({
         onKeyDown={onKeyDown}
         onBlur={() => recording && stopRecord()}
         aria-label={ariaLabel ? `${ariaLabel} shortcut` : 'Shortcut'}
+        data-keybind-capture={recording ? '' : undefined}
       >
         {display}
       </button>

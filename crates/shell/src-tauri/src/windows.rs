@@ -112,7 +112,9 @@ pub async fn spawn_window(
                 crate::disable_chrome_window_shadow(&window);
 
                 #[cfg(not(target_os = "macos"))]
-                let _ = &window;
+                if let Err(err) = window.hide_menu() {
+                    log::warn!("hide native menu bar for {label_for_build} failed: {err}");
+                }
 
                 let app_for_event = app_for_build.clone();
                 let label_for_event = label_for_build.clone();
