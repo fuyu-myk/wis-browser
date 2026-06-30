@@ -115,6 +115,9 @@ pub async fn create_tab_webview(
         // Find-in-page engine (CSS Custom Highlight reimplementation; macOS uses
         // the native WebKit find SPI instead).
         builder = builder.initialization_script(crate::find::engine_script());
+        // Navigation-guard click interceptor (macOS injects it via
+        // `navguard::install`); applies on every tab like macOS.
+        builder = builder.initialization_script(crate::navguard::page_script());
     }
 
     // Per-page scriptlet swap (uBO `+js` rules) before each main-frame

@@ -1,3 +1,6 @@
+// macOS is the primary platform and keeps the strict dead-code gate.
+#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+
 mod audio;
 mod backup;
 mod biometrics;

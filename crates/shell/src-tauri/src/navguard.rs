@@ -402,3 +402,11 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
     #[cfg(not(target_os = "macos"))]
     let _ = webview;
 }
+
+/// The click-interceptor script, exposed so the Windows tab builder can inject
+/// it as an init script (macOS injects it via `imp::install`); it posts risky
+/// links to `wisNavGuard`, routed by `win_dispatch` to [`dispatch_message`].
+#[cfg(windows)]
+pub fn page_script() -> &'static str {
+    NAVGUARD_JS
+}

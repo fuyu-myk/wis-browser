@@ -810,7 +810,7 @@ pub(crate) fn dispatch_cosmetic(label: &str, body: &serde_json::Value) {
 
     if let Some(app) = APP.get() {
         if let Some(wv) = app.webviews().get(label).cloned() {
-            let _ = wv.eval(&format!("window.__wisCosmeticApply({arg});"));
+            let _ = wv.eval(format!("window.__wisCosmeticApply({arg});"));
         }
     }
 }
