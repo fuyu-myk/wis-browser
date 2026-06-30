@@ -6,7 +6,10 @@
 //! tab id stamped on that view's `accessibilityIdentifier`, and emits
 //! [`PANE_FOCUS_EVENT`] for the chrome to focus that pane.
 
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
+
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
 
 /// Emitted with a tab id (bare uuid string, matching `Tab.id`) when the user
 /// clicks inside that tab's webview.

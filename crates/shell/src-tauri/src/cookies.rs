@@ -12,9 +12,11 @@
 
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
-use wis_core::{WisError, WisResult, WorkspaceId};
+use wis_core::{WisResult, WorkspaceId};
 
 #[cfg(target_os = "macos")]
+use wis_core::WisError;
+
 use crate::state::AppState;
 
 /// A persisted session cookie (one with no expiry, which WebKit keeps only in

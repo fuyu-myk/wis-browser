@@ -11,10 +11,14 @@
 //! All snapshots run on the main thread via `with_webview`; the async completion
 //! bridges back over an mpsc channel.
 
+#[cfg(target_os = "macos")]
 use std::sync::mpsc;
+#[cfg(target_os = "macos")]
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager, State};
+#[cfg(target_os = "macos")]
+use tauri::Manager;
+use tauri::{AppHandle, State};
 use wis_core::{TabId, WisError, WisResult};
 
 use crate::state::AppState;

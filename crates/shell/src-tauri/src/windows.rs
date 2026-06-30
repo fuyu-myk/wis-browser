@@ -16,7 +16,10 @@ use std::time::Duration;
 
 use tauri::utils::config::WindowEffectsConfig;
 use tauri::utils::{WindowEffect, WindowEffectState};
-use tauri::{AppHandle, Manager, State, TitleBarStyle, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
+
+#[cfg(target_os = "macos")]
+use tauri::TitleBarStyle;
 use wis_core::{WisError, WisResult, WorkspaceId};
 
 use crate::state::AppState;
@@ -88,11 +91,16 @@ pub async fn spawn_window(
         .resizable(true)
         .transparent(true)
         .decorations(true)
-        .title_bar_style(TitleBarStyle::Overlay)
-        .hidden_title(true)
         .accept_first_mouse(true)
         .disable_drag_drop_handler()
         .effects(chrome_window_effects());
+
+        #[cfg(target_os = "macos")]
+        {
+            builder = builder
+                .title_bar_style(TitleBarStyle::Overlay)
+                .hidden_title(true);
+        }
         builder = match geo {
             Some(g) => builder.inner_size(g.width, g.height).position(g.x, g.y),
             None => builder.inner_size(1280.0, 800.0),

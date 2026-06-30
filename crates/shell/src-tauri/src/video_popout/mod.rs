@@ -36,7 +36,9 @@ use crate::state::AppState;
 mod geometry;
 mod script;
 
+#[cfg(target_os = "macos")]
 pub(crate) use geometry::MAX_DELTA;
+#[cfg(target_os = "macos")]
 pub use geometry::*;
 pub use script::page_script;
 
