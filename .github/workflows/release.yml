@@ -1,6 +1,11 @@
-name: Release (macOS)
+name: Release
 
-# Builds a universal (Apple Silicon + Intel) .dmg and attaches it to a GitHub Release.
+# Builds the installer for each OS and attaches it to a GitHub Release:
+#   - macOS:   universal (Apple Silicon + Intel) .dmg
+#   - Windows: .msi / NSIS .exe
+#   - Linux:   .deb / .AppImage
+# Each matrix job uploads to the same draft release and `includeUpdaterJson`
+# merges the per-platform entries into one `latest.json` for the Tauri updater.
 on:
   push:
     tags:
@@ -15,14 +20,42 @@ permissions:
   contents: write
 
 jobs:
-  release-macos:
-    runs-on: macos-latest
+  release:
+    name: release (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      # Serialized so each job merges its platform into the previous job's
+      # `latest.json` rather than racing to overwrite the updater manifest.
+      max-parallel: 1
+      matrix:
+        include:
+          - platform: macos-latest
+            args: "--target universal-apple-darwin"
+            rust-targets: "aarch64-apple-darwin,x86_64-apple-darwin"
+          - platform: ubuntu-22.04
+            args: ""
+            rust-targets: ""
+          - platform: windows-latest
+            args: ""
+            rust-targets: ""
+    runs-on: ${{ matrix.platform }}
     timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -39,7 +72,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: ${{ matrix.rust-targets }}
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -50,7 +83,7 @@ jobs:
         working-directory: crates/shell
         run: pnpm install --frozen-lockfile
 
-      - name: Build .dmg and publish release
+      - name: Build installer and publish release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -67,8 +100,111 @@ jobs:
           projectPath: crates/shell
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
           releaseName: "Wis __VERSION__"
-          releaseBody: "Download the .dmg below to install Wis on macOS."
+          releaseBody: "Download the installer for your platform below (.dmg for macOS, .msi/.exe for Windows, .deb/.AppImage for Linux)."
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
-          args: --target universal-apple-darwin
+          args: ${{ matrix.args }}
+
+      # The AppImage built on Ubuntu 22.04 bundles libwayland 1.20; on hosts with
+      # newer Mesa (1.22+: Fedora 43, Arch, Bazzite) the bundled copy shadows the
+      # host's and EGL fails with EGL_BAD_PARAMETER. Strip the three libwayland
+      # libs (every GTK system has them) so the host copies resolve, then re-sign.
+      # The updater manifest's now-stale Linux signature is corrected in the
+      # `patch-appimage-updater` job after every matrix leg has merged.
+      - name: Fix AppImage Wayland libs and re-sign
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          APPIMAGE=$(find target crates/shell/src-tauri/target \
+            -path '*/release/bundle/appimage/*.AppImage' 2>/dev/null | head -n1 || true)
+          test -n "$APPIMAGE" || { echo "no AppImage found under target/"; exit 1; }
+          APPIMAGE=$(realpath "$APPIMAGE")
+          BASENAME=$(basename "$APPIMAGE")
+          echo "Patching: $APPIMAGE"
+
+          WORK=$(mktemp -d)
+          cp "$APPIMAGE" "$WORK/"
+          pushd "$WORK" >/dev/null
+          chmod +x "./$BASENAME"
+          "./$BASENAME" --appimage-extract >/dev/null
+
+          # Fail loud if Tauri/linuxdeploy stops bundling these, so a future
+          # layout change cannot silently ship an unfixed AppImage.
+          for lib in libwayland-client.so.0 libwayland-egl.so.1 libwayland-cursor.so.0; do
+            test -e "squashfs-root/usr/lib/$lib" \
+              || { echo "expected bundled lib missing: $lib (AppImage layout changed?)"; exit 1; }
+          done
+
+          rm -f squashfs-root/usr/lib/libwayland-client.so.0 \
+                squashfs-root/usr/lib/libwayland-egl.so.1 \
+                squashfs-root/usr/lib/libwayland-cursor.so.0 \
+                squashfs-root/usr/lib/libwayland-server.so.0
+
+          curl -fsSL -o appimagetool.AppImage \
+            https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          chmod +x appimagetool.AppImage
+          ARCH=x86_64 ./appimagetool.AppImage --appimage-extract-and-run squashfs-root "$BASENAME"
+
+          # Sanity-check the repacked image before it replaces the original.
+          rm -rf squashfs-root
+          chmod +x "./$BASENAME"
+          "./$BASENAME" --appimage-extract >/dev/null
+          for lib in libwayland-client.so.0 libwayland-egl.so.1 libwayland-cursor.so.0; do
+            test ! -e "squashfs-root/usr/lib/$lib" \
+              || { echo "lib still present after repack: $lib"; exit 1; }
+          done
+          test -n "$(find squashfs-root/usr/bin -maxdepth 1 -type f -executable | head -n1)" \
+            || { echo "repacked AppImage has no executable in usr/bin"; exit 1; }
+          popd >/dev/null
+
+          cp "$WORK/$BASENAME" "$APPIMAGE"
+
+          rm -f "$APPIMAGE.sig"
+          ( cd crates/shell && pnpm tauri signer sign "$APPIMAGE" )
+
+          gh release upload "$RELEASE_TAG" "$APPIMAGE" "$APPIMAGE.sig" \
+            --clobber --repo "$GITHUB_REPOSITORY"
+
+  # Patch the re-signed AppImage signature into the merged updater manifest.
+  # Runs once, after every matrix leg has merged its platform into latest.json,
+  # so it operates on the full manifest and a later leg cannot clobber it. Both
+  # Linux updater keys point at the AppImage, so both signatures are patched.
+  patch-appimage-updater:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Patch latest.json with the re-signed AppImage signature
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "latest.json" --pattern "*_amd64.AppImage.sig" --clobber
+
+          SIG_FILE=$(ls ./*_amd64.AppImage.sig | head -n1)
+          NEW_SIG=$(cat "$SIG_FILE")
+
+          jq -e 'has("platforms") and (.platforms | has("linux-x86_64"))' latest.json >/dev/null \
+            || { echo "latest.json missing platforms.linux-x86_64"; exit 1; }
+
+          jq --arg sig "$NEW_SIG" '
+            .platforms["linux-x86_64"].signature = $sig
+            | if .platforms["linux-x86_64-appimage"]
+              then .platforms["linux-x86_64-appimage"].signature = $sig else . end
+          ' latest.json > latest.json.tmp
+          mv latest.json.tmp latest.json
+
+          gh release upload "$RELEASE_TAG" latest.json --clobber --repo "$GITHUB_REPOSITORY"
