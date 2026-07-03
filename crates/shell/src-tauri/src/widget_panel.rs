@@ -408,10 +408,9 @@ pub async fn open_widget_panel(
     let _ = child.hide();
     let (tx, rx) = std::sync::mpsc::channel::<()>();
     apply_panel_surface(&child, dark, Some(tx));
-    let _ = tokio::task::spawn_blocking(move || {
-        rx.recv_timeout(std::time::Duration::from_millis(500))
-    })
-    .await;
+    let _ =
+        tokio::task::spawn_blocking(move || rx.recv_timeout(std::time::Duration::from_millis(500)))
+            .await;
 
     // Apple-proxied Safe Browsing warning.
     crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);

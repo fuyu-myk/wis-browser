@@ -59,7 +59,8 @@ fn revisiting_a_url_dedups_within_a_workspace() {
 fn fragment_variants_dedupe_to_one_row() {
     let s = store();
     let ws = WorkspaceId::new();
-    s.record_visit(ws, "https://example.com/doc", "Doc").unwrap();
+    s.record_visit(ws, "https://example.com/doc", "Doc")
+        .unwrap();
     s.record_visit(ws, "https://example.com/doc#intro", "Doc")
         .unwrap();
     s.record_visit(ws, "https://example.com/doc#usage", "Doc")
