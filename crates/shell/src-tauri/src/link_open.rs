@@ -4,8 +4,10 @@
 //! `<a href>` (Opt+click stays peek's), `preventDefault`s WebKit's open-in-new-
 //! window, and posts the href to the `wisOpenInTab` message handler, which
 //! re-emits it to the chrome. The focused window creates a background tab in its
-//! own workspace. `window.open` / `target=_blank` popups are untouched: those
-//! still flow through `on_new_window` -> `popup_chrome`.
+//! own workspace. Engine new-window requests (`window.open` / `target=_blank`)
+//! flow through `on_new_window` instead, which routes plain navigations here as
+//! [`OPEN_TAB_FOREGROUND_EVENT`] and keeps geometry-carrying popups native
+//! (see `create_tab_webview`).
 
 use std::sync::OnceLock;
 
@@ -13,6 +15,9 @@ use tauri::AppHandle;
 
 /// Event emitted to the chrome with the link to open in a background tab.
 const OPEN_IN_TAB_EVENT: &str = "wis-open-in-tab";
+
+/// Event emitted to the chrome with a link to open as a **foreground** tab.
+pub const OPEN_TAB_FOREGROUND_EVENT: &str = "wis-open-in-tab-fg";
 
 /// App handle so the native message handler can reach the event bus.
 static APP: OnceLock<AppHandle> = OnceLock::new();

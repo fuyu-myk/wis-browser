@@ -314,6 +314,9 @@ pub fn run() {
             // Native click-to-focus for split panes.
             pane_focus::install(app.handle());
 
+            // Trackpad scroll-phase monitor (macOS; no-op elsewhere).
+            swipe_nav::install_phase_monitor(app.handle());
+
             // App handle for the native "Save password?" capture handler.
             capture::set_app_handle(app.handle().clone());
 

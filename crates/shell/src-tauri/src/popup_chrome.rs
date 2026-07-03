@@ -13,6 +13,101 @@
 
 use tauri::AppHandle;
 
+/// Whether an engine new-window request should become a native popup window
+/// rather than a tab.
+pub fn wants_popup(url: &tauri::Url, features: &tauri::webview::NewWindowFeatures) -> bool {
+    features.size().is_some()
+        || features.position().is_some()
+        || url.as_str() == "about:blank"
+        || !matches!(url.scheme(), "http" | "https")
+}
+
+/// Whether two URLs belong to the same registrable site (eTLD+1
+/// approximation, no public-suffix list): hosts match on their last two
+/// labels, or three when the suffix looks like a ccSLD ("co.uk", "com.au"),
+/// so `mail.google.com` and `accounts.google.com` are one site while
+/// `a.co.uk` and `b.co.uk` are not. IP hosts must match exactly.
+pub fn same_site(a: &tauri::Url, b: &tauri::Url) -> bool {
+    match (a.host_str(), b.host_str()) {
+        (Some(a), Some(b)) => {
+            let (ra, rb) = (registrable(a), registrable(b));
+            !ra.is_empty() && ra == rb
+        }
+        _ => false,
+    }
+}
+
+fn registrable(host: &str) -> String {
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    if host.chars().all(|c| c.is_ascii_digit() || c == '.') || host.starts_with('[') {
+        return host;
+    }
+
+    let labels: Vec<&str> = host.split('.').filter(|l| !l.is_empty()).collect();
+    if labels.len() <= 2 {
+        return labels.join(".");
+    }
+
+    // ccSLD shapes ("co.uk", "com.au"): the registrable name is one label deeper.
+    const CC_SECOND: &[&str] = &["co", "com", "org", "net", "ac", "gov", "edu", "ne", "or"];
+    let tld = labels[labels.len() - 1];
+    let second = labels[labels.len() - 2];
+    let take = if tld.len() == 2 && CC_SECOND.contains(&second) {
+        3
+    } else {
+        2
+    };
+
+    labels[labels.len() - take.min(labels.len())..].join(".")
+}
+
+#[cfg(test)]
+mod site_tests {
+    use super::same_site;
+
+    fn u(s: &str) -> tauri::Url {
+        s.parse().expect("valid test URL")
+    }
+
+    #[test]
+    fn google_properties_are_one_site() {
+        assert!(same_site(
+            &u("https://mail.google.com/mail/u/0/"),
+            &u("https://accounts.google.com/SignOutOptions"),
+        ));
+        assert!(same_site(
+            &u("https://mail.google.com/"),
+            &u("https://mail.google.com/mail/u/2/"),
+        ));
+    }
+
+    #[test]
+    fn different_sites_do_not_match() {
+        assert!(!same_site(
+            &u("https://example.com/"),
+            &u("https://other.com/"),
+        ));
+        // ccSLD suffixes never merge unrelated registrants.
+        assert!(!same_site(&u("https://a.co.uk/"), &u("https://b.co.uk/")));
+        assert!(same_site(
+            &u("https://www.a.co.uk/"),
+            &u("https://shop.a.co.uk/"),
+        ));
+    }
+
+    #[test]
+    fn ip_hosts_require_exact_match() {
+        assert!(same_site(
+            &u("http://192.168.1.1/a"),
+            &u("http://192.168.1.1/b"),
+        ));
+        assert!(!same_site(
+            &u("http://192.168.1.1/"),
+            &u("http://192.168.1.2/"),
+        ));
+    }
+}
+
 /// Called from `on_new_window` with the popup's target URL. Records that URL
 /// so the bar can show the destination immediately (the popup's `WKWebView`
 /// reports `about:blank` until it navigates), then decorates the new window on
@@ -36,9 +131,66 @@ mod imp {
     use std::os::raw::c_char;
     use std::sync::{Mutex, OnceLock};
 
-    use objc2::runtime::{AnyObject, Bool};
-    use objc2::{class, msg_send, sel};
+    use objc2::rc::Id;
+    use objc2::runtime::{AnyObject, Bool, NSObject};
+    use objc2::{
+        class, declare_class, msg_send, msg_send_id, mutability, sel, ClassType, DeclaredClass,
+    };
     use tauri::{AppHandle, Manager};
+
+    declare_class!(
+        /// Minimal `WKUIDelegate` for engine popups, implementing only
+        /// `webViewDidClose:` so a popup page's `window.close()` closes the
+        /// native window.
+        struct PopupCloseDelegate;
+
+        unsafe impl ClassType for PopupCloseDelegate {
+            type Super = NSObject;
+            type Mutability = mutability::InteriorMutable;
+            const NAME: &'static str = "WisPopupCloseDelegate";
+        }
+
+        impl DeclaredClass for PopupCloseDelegate {
+            type Ivars = ();
+        }
+
+        unsafe impl PopupCloseDelegate {
+            #[method(webViewDidClose:)]
+            fn web_view_did_close(&self, webview: *mut AnyObject) {
+                unsafe {
+                    if webview.is_null() {
+                        return;
+                    }
+
+                    let window: *mut AnyObject = msg_send![webview, window];
+                    if window.is_null() {
+                        return;
+                    }
+
+                    // Only the engine-popup shape may close its window.
+                    let content: *mut AnyObject = msg_send![window, contentView];
+                    if content != webview {
+                        return;
+                    }
+
+                    let _: () = msg_send![window, close];
+                }
+            }
+        }
+    );
+
+    /// The shared, app-lifetime delegate instance. `WKWebView.UIDelegate` is a
+    /// weak reference, so the singleton is deliberately leaked to keep it alive.
+    fn close_delegate() -> *mut AnyObject {
+        static DELEGATE: OnceLock<usize> = OnceLock::new();
+        *DELEGATE.get_or_init(|| {
+            let d: Id<PopupCloseDelegate> =
+                unsafe { msg_send_id![PopupCloseDelegate::alloc(), init] };
+            let ptr = Id::as_ptr(&d) as usize;
+            std::mem::forget(d);
+            ptr
+        }) as *mut AnyObject
+    }
 
     const POLL_INTERVAL_SECS: f64 = 0.35;
     // Stop polling a short grace period after the last popup closes (covers a
@@ -188,6 +340,10 @@ mod imp {
             }
 
             live += 1;
+            let ui_delegate: *mut AnyObject = msg_send![content, UIDelegate];
+            if ui_delegate.is_null() {
+                let _: () = msg_send![content, setUIDelegate: close_delegate()];
+            }
             if view_with_tag(win, URL_FIELD_TAG).is_null() {
                 build_bar(win, content);
             }

@@ -9,22 +9,52 @@
 //! in sync). The indicator lives in a shadow root for style isolation and is
 //! drawn in-page so it tracks the gesture with zero IPC latency.
 //!
+//! Wheel events carry no gesture phase in JS, so the shell supplies the two
+//! signals the script cannot read itself:
+//!
+//! - **Finger lift** (macOS): an app-wide `NSEvent` scroll-wheel monitor
+//!   ([`install_phase_monitor`]) forwards `began`/`ended` phase transitions to
+//!   every tab webview. Commit fires exactly at lift, and the momentum tail
+//!   after it never moves the indicator or re-engages a gesture. Off macOS the
+//!   script falls back to a wheel-quiet debounce.
+//! - **History availability**: `canGoBack`/`canGoForward` are pushed per
+//!   direction after each load and title change ([`push_nav_state`], both
+//!   platforms), so the gesture only engages toward a direction that can
+//!   actually navigate. `pushState` is tracked in-page (it adds a back entry
+//!   and clears the forward list); anything else falls back to
+//!   `history.length`.
+//!
+//! The scroll-vs-gesture call is made **once per wheel sequence** (finger down
+//! to lift + momentum end): a sequence that starts vertical, over a
+//! horizontally-scrollable element, or away from the page edge is a scroll for
+//! its whole lifetime, so an inner carousel reaching its edge mid-swipe can
+//! never turn into a navigation.
+//!
 //! The accent colour is baked per tab via a tiny `window.__wisSwipeAccent`
 //! script (see `create_tab_webview`), built from the workspace's accent /
-//! custom accent. Detection is wheel-based (WebKit exposes no native gesture
-//! phase to JS), so feel constants live at the top of the script for tuning.
+//! custom accent. Feel constants live at the top of the script for tuning.
 
 /// Builder-level script (run at document start) implementing the gesture + UI.
 const SWIPE_NAV_JS: &str = r#"(function () {
   if (window.__wisSwipeNav) return;
   window.__wisSwipeNav = true;
 
-  var THRESHOLD = 110;   // px of edge overscroll to arm a commit
-  var R = 26;            // indicator radius (px); bulge depth = R, height = 2R
-  var M = 4;             // viewBox padding so the stroke/apex is never clipped flat
-  var END_DELAY = 90;    // ms with no wheel event = gesture ended
+  var THRESHOLD = 110;     // px of edge overscroll to arm a commit
+  var R = 26;              // indicator radius (px); bulge depth = R, height = 2R
+  var M = 4;               // viewBox padding so the stroke/apex is never clipped flat
+  var END_DELAY = 90;      // no-phase fallback: ms of wheel quiet = fingers lifted
+  var SAFETY_DELAY = 1200; // native mode: wheel quiet after which a gesture is abandoned
+  var MIN_DECIDE = 3;      // |dx|+|dy| below this is too small to classify a sequence
 
   function accent() { return window.__wisSwipeAccent || '#6b77f8'; }
+
+  // Horizontal overscroll must never move the page.
+  function lockOverscroll() {
+    var de = document.documentElement;
+    if (de && de.style.overscrollBehaviorX !== 'none') de.style.overscrollBehaviorX = 'none';
+  }
+  lockOverscroll();
+  document.addEventListener('DOMContentLoaded', lockOverscroll);
 
   // Black/white arrow for the filled state, by the accent's relative luminance.
   function contrast(hex) {
@@ -104,17 +134,101 @@ const SWIPE_NAV_JS: &str = r#"(function () {
   }
   function hide() { if (ind) ind.style.opacity = '0'; }
 
-  var active = null, endTimer = null;
+  // Session-history availability, pushed by the shell after loads and title
+  // changes.
+  var navState = { back: null, fwd: null };
+  window.__wisSwipeNavState = function (back, fwd) {
+    navState.back = !!back;
+    navState.fwd = !!fwd;
+  };
+  try {
+    var origPush = history.pushState;
+    history.pushState = function () {
+      var r = origPush.apply(this, arguments);
+      navState.back = true;
+      navState.fwd = false;
+      return r;
+    };
+  } catch (e) {}
+  window.addEventListener('popstate', function () { navState.back = null; navState.fwd = null; });
+
+  function canNavigate(dir) {
+    var known = dir === 'back' ? navState.back : navState.fwd;
+    if (known !== null) return known;
+    return window.history.length > 1;
+  }
+
+  // One wheel "sequence" runs from finger-down (or the first wheel event) to
+  // lift + momentum end, and is classified exactly once at its start.
+  var seq = null;      // null | 'scroll' | 'gesture'
+  var active = null;   // gesture state while seq === 'gesture'
+  var fingersDown = false;
+  var nativePhase = !!window.__wisSwipeHasPhase;
+  var quietTimer = null;
+
+  function armQuiet(ms, fn) { clearTimeout(quietTimer); quietTimer = setTimeout(fn, ms); }
+
+  function finalize() {
+    clearTimeout(quietTimer);
+    seq = null;
+    if (!active) return;
+    var commit = active.armed, dir = active.dir;
+    active = null;
+    hide();
+    if (commit) { if (dir === 'back') history.back(); else history.forward(); }
+  }
+
+  function cancel() {
+    clearTimeout(quietTimer);
+    seq = null;
+    active = null;
+    hide();
+  }
+
+  window.__wisSwipePhase = function (p) {
+    nativePhase = true;
+    if (p === 'began') {
+      fingersDown = true;
+      if (active) cancel();
+      seq = null;
+    } else if (p === 'ended') {
+      fingersDown = false;
+      finalize();
+    }
+  };
 
   window.addEventListener('wheel', function (e) {
-    if (!active && Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // vertical
-    if (window.history.length <= 1) return;
+    // Native mode: everything after finger lift is momentum; it neither moves
+    // the indicator nor starts a new sequence.
+    if (nativePhase && !fingersDown) return;
 
-    if (!active) {
-      if (e.deltaX < 0 && !canScroll(e.target, -1)) active = { dir: 'back', acc: 0, armed: false };
-      else if (e.deltaX > 0 && !canScroll(e.target, 1)) active = { dir: 'forward', acc: 0, armed: false };
-      else return;
-      show(active.dir);
+    if (seq === 'scroll') {
+      if (!nativePhase) armQuiet(END_DELAY, function () { seq = null; });
+      return;
+    }
+
+    if (seq === null) {
+      if (Math.abs(e.deltaX) + Math.abs(e.deltaY) < MIN_DECIDE) return;
+      var horizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+      var dir = e.deltaX < 0 ? 'back' : 'forward';
+      var sign = e.deltaX < 0 ? -1 : 1;
+      if (!e.cancelable || !horizontal || canScroll(e.target, sign) || !canNavigate(dir)) {
+        seq = 'scroll';
+        if (!nativePhase) armQuiet(END_DELAY, function () { seq = null; });
+        return;
+      }
+      seq = 'gesture';
+      active = { dir: dir, acc: 0, armed: false };
+      show(dir);
+    }
+
+    if (!active) return;
+
+    if (!e.cancelable) {
+      seq = 'scroll';
+      active = null;
+      hide();
+      return;
     }
 
     active.acc += active.dir === 'back' ? -e.deltaX : e.deltaX;
@@ -126,23 +240,23 @@ const SWIPE_NAV_JS: &str = r#"(function () {
     var armed = active.acc >= THRESHOLD;
     if (armed !== active.armed) { active.armed = armed; setArmed(armed); }
 
-    clearTimeout(endTimer);
-    endTimer = setTimeout(end, END_DELAY);
+    if (nativePhase) armQuiet(SAFETY_DELAY, cancel);
+    else armQuiet(END_DELAY, finalize);
   }, { passive: false, capture: true });
-
-  function end() {
-    if (!active) return;
-    var commit = active.armed, dir = active.dir;
-    active = null;
-    hide();
-    if (commit) { if (dir === 'back') history.back(); else history.forward(); }
-  }
 })();"#;
 
 /// The swipe-nav script, exposed so tab webviews bake it in as a builder-level
 /// initialization script (runs at document start, before the first document).
 pub fn page_script() -> &'static str {
     SWIPE_NAV_JS
+}
+
+/// Marks native gesture-phase delivery as available, injected before
+/// [`page_script`] on platforms with a scroll-phase monitor (macOS). The
+/// script then treats finger lift as authoritative and ignores momentum.
+#[cfg(target_os = "macos")]
+pub fn phase_flag_script() -> &'static str {
+    "window.__wisSwipeHasPhase=true;"
 }
 
 /// A tiny per-tab script that publishes the indicator colour ahead of
@@ -154,6 +268,115 @@ pub fn accent_script(accent: &str) -> String {
         serde_json::to_string(accent).unwrap_or_default()
     )
 }
+
+fn nav_state_script(back: bool, fwd: bool) -> String {
+    format!("window.__wisSwipeNavState&&window.__wisSwipeNavState({back},{fwd});")
+}
+
+/// Push the engine's `canGoBack`/`canGoForward` into a tab webview so the
+/// swipe gesture only engages toward a direction with history. Called after
+/// each page-load event and title change.
+pub fn push_nav_state<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::msg_send;
+        use objc2::runtime::{AnyObject, Bool};
+
+        let _ = webview.with_webview(|w| unsafe {
+            let wk: *mut AnyObject = w.inner() as *mut AnyObject;
+            if wk.is_null() {
+                return;
+            }
+
+            let back: Bool = msg_send![wk, canGoBack];
+            let fwd: Bool = msg_send![wk, canGoForward];
+            let js = ns_string(&nav_state_script(back.as_bool(), fwd.as_bool()));
+            let nil: *mut AnyObject = std::ptr::null_mut();
+            let _: () = msg_send![wk, evaluateJavaScript: js, completionHandler: nil];
+        });
+    }
+
+    #[cfg(windows)]
+    {
+        let wv = webview.clone();
+        crate::win_webview2::with_core_webview2(webview, move |core| {
+            let mut back = windows::Win32::Foundation::BOOL::default();
+            let mut fwd = windows::Win32::Foundation::BOOL::default();
+            // SAFETY: runs on the UI thread via `with_core_webview2`.
+            unsafe {
+                let _ = core.CanGoBack(&mut back);
+                let _ = core.CanGoForward(&mut fwd);
+            }
+            let _ = wv.eval(&nav_state_script(back.as_bool(), fwd.as_bool()));
+        });
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let _ = webview;
+}
+
+#[cfg(target_os = "macos")]
+unsafe fn ns_string(s: &str) -> *mut objc2::runtime::AnyObject {
+    use objc2::msg_send;
+    let c = std::ffi::CString::new(s).unwrap_or_default();
+    msg_send![objc2::class!(NSString), stringWithUTF8String: c.as_ptr()]
+}
+
+/// App-wide scroll-wheel phase monitor (macOS): forwards trackpad finger-down
+/// and finger-lift transitions to every tab webview, so the swipe script can
+/// commit exactly at lift and ignore the momentum tail.
+#[cfg(target_os = "macos")]
+pub fn install_phase_monitor(app: &tauri::AppHandle) {
+    use block2::RcBlock;
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    use tauri::Manager;
+
+    // NSEventMaskScrollWheel = 1 << NSEventTypeScrollWheel(22).
+    const MASK_SCROLL_WHEEL: u64 = 1 << 22;
+    // NSEventPhase bits.
+    const PHASE_BEGAN: u64 = 1 << 0;
+    const PHASE_ENDED: u64 = 1 << 3;
+    const PHASE_CANCELLED: u64 = 1 << 4;
+
+    let app = app.clone();
+    let handler = RcBlock::new(move |event: *mut AnyObject| -> *mut AnyObject {
+        if event.is_null() {
+            return event;
+        }
+
+        let phase: u64 = unsafe { msg_send![event, phase] };
+        let js = if phase & PHASE_BEGAN != 0 {
+            Some("window.__wisSwipePhase&&window.__wisSwipePhase('began');")
+        } else if phase & (PHASE_ENDED | PHASE_CANCELLED) != 0 {
+            Some("window.__wisSwipePhase&&window.__wisSwipePhase('ended');")
+        } else {
+            None
+        };
+        if let Some(js) = js {
+            for (label, webview) in app.webviews() {
+                if label.starts_with("tab-") {
+                    let _ = webview.eval(js);
+                }
+            }
+        }
+
+        event
+    });
+
+    unsafe {
+        let _token: *mut AnyObject = msg_send![
+            objc2::class!(NSEvent),
+            addLocalMonitorForEventsMatchingMask: MASK_SCROLL_WHEEL,
+            handler: &*handler
+        ];
+    }
+
+    std::mem::forget(handler);
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn install_phase_monitor(_app: &tauri::AppHandle) {}
 
 /// Update the swipe-nav indicator colour to the same colour that
 /// themes the webview border: store it so new tab webviews bake it, and

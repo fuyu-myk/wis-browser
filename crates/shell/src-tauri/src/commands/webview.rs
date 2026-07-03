@@ -90,8 +90,14 @@ pub async fn create_tab_webview(
         .initialization_script(crate::peek::page_script())
         .initialization_script(crate::link_open::page_script())
         // Swipe back/forward: publish the indicator colour, then the gesture+UI.
-        .initialization_script(crate::swipe_nav::accent_script(&swipe_accent))
-        .initialization_script(crate::swipe_nav::page_script());
+        .initialization_script(crate::swipe_nav::accent_script(&swipe_accent));
+
+    // The scroll-phase monitor.
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.initialization_script(crate::swipe_nav::phase_flag_script());
+    }
+    builder = builder.initialization_script(crate::swipe_nav::page_script());
 
     // Windows multiplexes every `window.webkit.messageHandlers.*` channel over
     // WebView2's single message pipe; the shim recreates those handler objects so
@@ -158,6 +164,7 @@ pub async fn create_tab_webview(
     {
         let app = app.clone();
         builder = builder.on_document_title_changed(move |webview, title: String| {
+            crate::swipe_nav::push_nav_state(&webview);
             let app = app.clone();
             let live_url = webview.url().ok();
             tauri::async_runtime::spawn(async move {
@@ -187,6 +194,8 @@ pub async fn create_tab_webview(
             if matches!(event, PageLoadEvent::Started) {
                 crate::video_popout::handle_navigation(&app, &label_for_load);
             }
+
+            crate::swipe_nav::push_nav_state(&webview);
 
             let app_for_state = app.clone();
             tauri::async_runtime::spawn(async move {
@@ -272,14 +281,42 @@ pub async fn create_tab_webview(
         });
     }
 
-    // Allow `window.open` / `target=_blank` popups (e.g. "Continue with Google"
-    // and other OAuth flows), and give each a read-only address bar so the user
-    // can see where it leads.
+    // Engine new-window requests. A scripted popup that asks for geometry
+    // ("Continue with Google" and other OAuth consent windows) stays a native
+    // popup, whose shared configuration preserves the `window.opener` link the
+    // flow needs, decorated with a read-only address bar. A plain navigation
+    // (`target=_blank`, featureless `window.open`) to the opener's own site
+    // replaces the current tab; a cross-site one opens a foreground tab in the
+    // focused window.
     builder = builder.on_new_window({
         let app = app.clone();
-        move |url, _features| {
-            crate::popup_chrome::ensure_running(&app, url.as_str());
-            tauri::webview::NewWindowResponse::Allow
+        let opener_label = label_ident.clone();
+        move |url, features| {
+            if crate::popup_chrome::wants_popup(&url, &features) {
+                crate::popup_chrome::ensure_running(&app, url.as_str());
+                return tauri::webview::NewWindowResponse::Allow;
+            }
+
+            if let Some(wv) = app.webviews().get(&opener_label) {
+                let in_place = wv
+                    .url()
+                    .ok()
+                    .is_some_and(|cur| crate::popup_chrome::same_site(&cur, &url));
+                if in_place {
+                    if let Err(err) = wv.navigate(url) {
+                        log::warn!("same-site new-window navigate failed: {err}");
+                    }
+                    return tauri::webview::NewWindowResponse::Deny;
+                }
+            }
+
+            let _ = tauri::Emitter::emit(
+                &app,
+                crate::link_open::OPEN_TAB_FOREGROUND_EVENT,
+                url.to_string(),
+            );
+
+            tauri::webview::NewWindowResponse::Deny
         }
     });
 
