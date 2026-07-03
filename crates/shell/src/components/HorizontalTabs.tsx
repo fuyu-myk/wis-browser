@@ -571,6 +571,9 @@ export function HorizontalTabs({
           syncToTab(tab)
         }}
         onContextMenu={(e) => openSplitMenu(e, tab.id)}
+        onMouseDown={(e) => {
+          if (e.button === 1) e.preventDefault()
+        }}
         onAuxClick={(e) => {
           if (e.button === 1) {
             e.preventDefault()

@@ -5,6 +5,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
@@ -487,6 +488,23 @@ export function BookmarksMenuSurface() {
     close()
   }
 
+  // Middle-click: open in a background tab and keep the menu up.
+  const openBookmarkBackground = (b: Bookmark) => {
+    if (workspaceId) {
+      void commands.createBackgroundTab(workspaceId, b.url).catch(() => undefined)
+    }
+  }
+
+  const auxOpen = (e: ReactMouseEvent, b: Bookmark) => {
+    if (e.button !== 1) return
+    e.preventDefault()
+    openBookmarkBackground(b)
+  }
+
+  const preemptAutoscroll = (e: ReactMouseEvent) => {
+    if (e.button === 1) e.preventDefault()
+  }
+
   const toggleFolder = (id: number) =>
     setOpenFolders((s) => {
       const next = new Set(s)
@@ -564,6 +582,8 @@ export function BookmarksMenuSurface() {
                   onDragEnd={onFaviconDragEnd}
                   onContextMenu={(e) => openCtx(e, b.id)}
                   onClick={() => openBookmark(b)}
+                  onMouseDown={preemptAutoscroll}
+                  onAuxClick={(e) => auxOpen(e, b)}
                 >
                   <BookmarkFavicon bm={b} />
                 </button>
@@ -710,6 +730,8 @@ export function BookmarksMenuSurface() {
                             onDragEnd={onFaviconDragEnd}
                             onContextMenu={(e) => openCtx(e, b.id)}
                             onClick={() => openBookmark(b)}
+                            onMouseDown={preemptAutoscroll}
+                            onAuxClick={(e) => auxOpen(e, b)}
                           >
                             <span className="kb-bmmenu-row-fav">
                               <BookmarkFavicon bm={b} />
@@ -751,6 +773,8 @@ export function BookmarksMenuSurface() {
                     onDragEnd={onFaviconDragEnd}
                     onContextMenu={(e) => openCtx(e, b.id)}
                     onClick={() => openBookmark(b)}
+                    onMouseDown={preemptAutoscroll}
+                    onAuxClick={(e) => auxOpen(e, b)}
                   >
                     <span className="kb-bmmenu-row-fav">
                       <BookmarkFavicon bm={b} />

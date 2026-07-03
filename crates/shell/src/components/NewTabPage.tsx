@@ -194,6 +194,13 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
               onActivate={(url) => {
                 if (!reorder.consumeClickSuppressed()) navigate(url)
               }}
+              onAuxActivate={(url) => {
+                if (activeWorkspaceId) {
+                  void commands
+                    .createBackgroundTab(activeWorkspaceId, url)
+                    .catch(() => undefined)
+                }
+              }}
             />
           ))}
         </div>
@@ -212,6 +219,8 @@ interface QuickLinkBubbleProps {
   dragHandlers: { onPointerDown: (e: React.PointerEvent) => void }
   /** Called on a real click (a press-drag is suppressed by the caller). */
   onActivate: (url: string) => void
+  /** Called on a middle-click (open in a background tab). */
+  onAuxActivate: (url: string) => void
 }
 
 type QuickLinkStatus = 'pending' | 'loaded' | 'failed'
@@ -223,6 +232,7 @@ function QuickLinkBubble({
   transform,
   dragHandlers,
   onActivate,
+  onAuxActivate,
 }: QuickLinkBubbleProps) {
   const fallbackClass = FALLBACK_CLASSES[index % FALLBACK_CLASSES.length]
   const initial = (tile.label.trim()[0] ?? '?').toUpperCase()
@@ -291,6 +301,14 @@ function QuickLinkBubble({
       className={cx('kb-quicklink', { 'is-dragsource': isSource })}
       style={{ transform }}
       onClick={() => onActivate(tile.url)}
+      onMouseDown={(e) => {
+        if (e.button === 1) e.preventDefault()
+      }}
+      onAuxClick={(e) => {
+        if (e.button !== 1) return
+        e.preventDefault()
+        onAuxActivate(tile.url)
+      }}
       title={tile.label}
       {...dragHandlers}
     >

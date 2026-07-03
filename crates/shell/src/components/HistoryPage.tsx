@@ -239,6 +239,13 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
                         scope === 'all' ? workspaceName.get(entry.workspace_id) : undefined
                       }
                       onOpen={() => navigate(entry.url)}
+                      onAuxOpen={() => {
+                        if (activeWorkspaceId) {
+                          void commands
+                            .createBackgroundTab(activeWorkspaceId, entry.url)
+                            .catch(() => undefined)
+                        }
+                      }}
                       onToggle={() => toggle(entry.id)}
                       onDelete={() => deleteEntries.mutate([entry.id])}
                     />
@@ -275,6 +282,8 @@ interface HistoryRowProps {
   /** Workspace name shown in the all-workspaces view. */
   workspaceLabel?: string
   onOpen: () => void
+  /** Middle-click: open in a background tab. */
+  onAuxOpen: () => void
   onToggle: () => void
   onDelete: () => void
 }
@@ -285,6 +294,7 @@ function HistoryRow({
   selected,
   workspaceLabel,
   onOpen,
+  onAuxOpen,
   onToggle,
   onDelete,
 }: HistoryRowProps) {
@@ -296,6 +306,14 @@ function HistoryRow({
         type="button"
         className="kb-history-link"
         onClick={selectMode ? onToggle : onOpen}
+        onMouseDown={(e) => {
+          if (e.button === 1) e.preventDefault()
+        }}
+        onAuxClick={(e) => {
+          if (e.button !== 1 || selectMode) return
+          e.preventDefault()
+          onAuxOpen()
+        }}
         title={entry.url}
       >
         {selectMode ? (
