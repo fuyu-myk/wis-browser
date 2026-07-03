@@ -16,7 +16,7 @@ use std::sync::mpsc;
 #[cfg(target_os = "macos")]
 use std::time::Duration;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 use tauri::Manager;
 use tauri::{AppHandle, State};
 use wis_core::{TabId, WisError, WisResult};
@@ -104,11 +104,49 @@ pub async fn capture_to_clipboard(
         Ok(true)
     }
 
-    #[cfg(not(target_os = "macos"))]
+    // Windows: only the visible page is capturable. WebView2's CapturePreview
+    // grabs the tab content; window/region composites (chrome + overlays) have
+    // no WebView2 equivalent and stay macOS-only.
+    #[cfg(windows)]
+    {
+        let _ = (&chrome, &rect);
+        let png =
+            match mode {
+                ScreenshotMode::Visible => {
+                    let label = format!("tab-{}", id.as_uuid());
+                    let webview = app.webviews().get(&label).cloned().ok_or_else(|| {
+                        WisError::InvalidInput {
+                            message: format!("no webview labelled {label}"),
+                        }
+                    })?;
+
+                    imp_win::capture_visible(&webview).await?
+                }
+                ScreenshotMode::Window | ScreenshotMode::Region => {
+                    return Err(WisError::InvalidInput {
+                        message: "only the visible page can be captured on Windows yet".to_string(),
+                    });
+                }
+            };
+
+
+        let copied = copy_png_to_clipboard(&png);
+        *state
+            .last_screenshot
+            .lock()
+            .expect("last_screenshot poisoned") = Some(png);
+        if !copied {
+            log::warn!("copying the screenshot to the clipboard failed");
+        }
+
+        Ok(true)
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = (&app, &chrome, id, mode, rect, &state);
         Err(WisError::InvalidInput {
-            message: "page capture is only available on macOS".to_string(),
+            message: "page capture is not available on this platform yet".to_string(),
         })
     }
 }
@@ -130,27 +168,17 @@ pub async fn save_last_screenshot(
         return Ok(None);
     };
 
-    #[cfg(target_os = "macos")]
-    {
-        let Some(path) = crate::panels::run_save_panel(&app, &screenshot_filename())? else {
-            return Ok(None);
-        };
-        tokio::fs::write(&path, &png)
-            .await
-            .map_err(|err| WisError::InvalidInput {
-                message: format!("writing {}: {err}", path.display()),
-            })?;
+    // `run_save_panel` is cross-platform (NSSavePanel on macOS, `rfd` elsewhere).
+    let Some(path) = crate::panels::run_save_panel(&app, &screenshot_filename())? else {
+        return Ok(None);
+    };
+    tokio::fs::write(&path, &png)
+        .await
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("writing {}: {err}", path.display()),
+        })?;
 
-        Ok(Some(path.to_string_lossy().into_owned()))
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = (&app, &png);
-        Err(WisError::InvalidInput {
-            message: "saving is only available on macOS".to_string(),
-        })
-    }
+    Ok(Some(path.to_string_lossy().into_owned()))
 }
 
 /// Suggested file name, e.g. `Screenshot 2026-06-23 at 14.30.05.png`.
@@ -759,6 +787,146 @@ mod imp {
         let _: () = msg_send![image, release];
 
         ok
+    }
+}
+
+/// Copy a captured PNG to the clipboard as an image. macOS uses the native
+/// pasteboard (`imp::copy_image_to_pasteboard`); Windows decodes the PNG to
+/// RGBA and hands it to arboard's image clipboard.
+#[cfg(windows)]
+fn copy_png_to_clipboard(png: &[u8]) -> bool {
+    let Ok(mut reader) = png::Decoder::new(png).read_info() else {
+        return false;
+    };
+
+    let mut buf = vec![0u8; reader.output_buffer_size()];
+    let Ok(info) = reader.next_frame(&mut buf) else {
+        return false;
+    };
+
+    if info.bit_depth != png::BitDepth::Eight {
+        return false;
+    }
+
+    // CapturePreview emits 8-bit RGB(A); expand RGB to the RGBA arboard wants.
+    let rgba: Vec<u8> = match info.color_type {
+        png::ColorType::Rgba => buf[..info.buffer_size()].to_vec(),
+        png::ColorType::Rgb => buf[..info.buffer_size()]
+            .chunks_exact(3)
+            .flat_map(|p| [p[0], p[1], p[2], 255])
+            .collect(),
+        _ => return false,
+    };
+
+    match arboard::Clipboard::new() {
+        Ok(mut clipboard) => clipboard
+            .set_image(arboard::ImageData {
+                width: info.width as usize,
+                height: info.height as usize,
+                bytes: rgba.into(),
+            })
+            .is_ok(),
+        Err(_) => false,
+    }
+}
+
+/// Windows page capture via WebView2's `CapturePreview`.
+#[cfg(windows)]
+mod imp_win {
+    use super::*;
+
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use webview2_com::CapturePreviewCompletedHandler;
+    use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG;
+    use windows::Win32::Foundation::HGLOBAL;
+    use windows::Win32::System::Com::StructuredStorage::CreateStreamOnHGlobal;
+    use windows::Win32::System::Com::{IStream, STREAM_SEEK_SET};
+
+    /// Capture the visible viewport of a tab webview as PNG bytes. `CapturePreview`
+    /// is async.
+    pub(super) async fn capture_visible<R: tauri::Runtime>(
+        webview: &tauri::webview::Webview<R>,
+    ) -> WisResult<Vec<u8>> {
+        let (tx, rx) = mpsc::channel::<Option<Vec<u8>>>();
+        crate::win_webview2::with_core_webview2(webview, move |core| {
+            let tx_done = tx.clone();
+            let started = (|| -> windows::core::Result<()> {
+                // SAFETY: on the UI thread via `with_core_webview2`.
+                unsafe {
+                    let stream = CreateStreamOnHGlobal(HGLOBAL(std::ptr::null_mut()), true)?;
+                    let stream_read = stream.clone();
+                    let handler = CapturePreviewCompletedHandler::create(Box::new(move |hr| {
+                        // SAFETY (read_stream): the stream is complete once the
+                        // handler fires; still in the enclosing `unsafe` context.
+                        let bytes = if hr.is_ok() {
+                            read_stream(&stream_read).ok()
+                        } else {
+                            None
+                        };
+                        let _ = tx_done.send(bytes);
+
+                        Ok(())
+                    }));
+
+                    core.CapturePreview(
+                        COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
+                        &stream,
+                        &handler,
+                    )
+                }
+            })();
+            if started.is_err() {
+                let _ = tx.send(None);
+            }
+        });
+
+        match recv_blocking(rx, Duration::from_secs(10)).await.flatten() {
+            Some(bytes) if !bytes.is_empty() => Ok(bytes),
+            _ => Err(WisError::InvalidInput {
+                message: "capturing the page failed".to_string(),
+            }),
+        }
+    }
+
+    /// Drain an in-memory `IStream` from its start into a byte vec.
+    ///
+    /// # Safety
+    /// `stream` must be a valid, complete `IStream` (the capture has finished).
+    unsafe fn read_stream(stream: &IStream) -> windows::core::Result<Vec<u8>> {
+        stream.Seek(0, STREAM_SEEK_SET, None)?;
+        let mut out = Vec::new();
+        let mut buf = [0u8; 8192];
+        loop {
+            let mut read = 0u32;
+            stream
+                .Read(
+                    buf.as_mut_ptr() as *mut core::ffi::c_void,
+                    buf.len() as u32,
+                    Some(&mut read as *mut u32),
+                )
+                .ok()?;
+
+            if read == 0 {
+                break;
+            }
+
+            out.extend_from_slice(&buf[..read as usize]);
+        }
+
+        Ok(out)
+    }
+
+    /// Await a channel value off the async runtime so the worker isn't blocked.
+    async fn recv_blocking<T: Send + 'static>(
+        rx: mpsc::Receiver<T>,
+        timeout: Duration,
+    ) -> Option<T> {
+        tokio::task::spawn_blocking(move || rx.recv_timeout(timeout).ok())
+            .await
+            .ok()
+            .flatten()
     }
 }
 

@@ -152,12 +152,20 @@ fn open_panel(extensions: &[String]) -> Option<PathBuf> {
     dialog.pick_file()
 }
 
+// Linux: `rfd` uses the XDG desktop portal (or GTK) for a native dialog, run
+// on the main thread here (via `dispatch`) like the other platforms.
 #[cfg(not(any(target_os = "macos", windows)))]
-fn save_panel(_suggested: &str) -> Option<PathBuf> {
-    None
+fn save_panel(suggested: &str) -> Option<PathBuf> {
+    rfd::FileDialog::new().set_file_name(suggested).save_file()
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-fn open_panel(_extensions: &[String]) -> Option<PathBuf> {
-    None
+fn open_panel(extensions: &[String]) -> Option<PathBuf> {
+    let mut dialog = rfd::FileDialog::new();
+    if !extensions.is_empty() {
+        let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
+        dialog = dialog.add_filter("Supported", &exts);
+    }
+
+    dialog.pick_file()
 }

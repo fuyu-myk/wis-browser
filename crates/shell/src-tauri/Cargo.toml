@@ -56,14 +56,18 @@ windows = { version = "0.61", features = [
     "Security_Credentials_UI",
     "Win32_Foundation",
     "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
     "Win32_System_WinRT",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }
 windows-future = "0.2"
 webview2-com = "0.38"
+# Decode WebView2's CapturePreview PNG to RGBA for the clipboard (screenshot).
+png = "0.17"
+
 # Cross-platform clipboard + native file dialogs (the macOS path uses NSPasteboard
-# / NSSave-OpenPanel directly; these cover the Windows equivalents). arboard only
-# copies text here, so its image-data default (the heavy `image` crate) is off.
-arboard = { version = "3", default-features = false }
+# / NSSave-OpenPanel directly; these cover the Windows/Linux equivalents).
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+arboard = { version = "3", default-features = false, features = ["image-data"] }
 rfd = "0.16"
