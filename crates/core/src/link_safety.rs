@@ -76,6 +76,19 @@ const RISKY_TLDS: &[&str] = &[
     "xyz", "rest", "fit",
 ];
 
+/// TLDs a person plausibly reads as a website inside anchor text. Bare dotted
+/// text only counts as "naming a site" when its final label is one of these,
+/// so dotted filenames ("README.md", "Cargo.toml", "main.cc") never register
+/// as deceptive text.
+pub const TEXT_DOMAIN_TLDS: &[&str] = &[
+    "com", "org", "net", "edu", "gov", "mil", "int", "info", "biz", "app", "dev", "io", "ai", "co",
+    "me", "tv", "gg", "to", "ly", "fm", "site", "online", "shop", "store", "blog", "news", "live",
+    "cloud", "wiki", "xyz", "top", "us", "uk", "ca", "au", "nz", "ie", "de", "fr", "es", "it",
+    "nl", "se", "no", "fi", "dk", "ch", "at", "be", "pt", "gr", "cz", "ru", "ua", "jp", "cn", "kr",
+    "sg", "hk", "tw", "id", "my", "th", "ph", "vn", "br", "mx", "ar", "cl", "za", "tr", "il", "ae",
+    "sa", "eu",
+];
+
 fn strip_www(host: &str) -> &str {
     host.strip_prefix("www.").unwrap_or(host)
 }
@@ -99,8 +112,14 @@ fn host_from_text(text: &str) -> Option<String> {
         if let Ok(u) = Url::parse(&format!("https://{t}")) {
             if let Some(h) = u.host_str() {
                 let h = strip_www(h).to_lowercase();
-                // Require a dot so plain words ("Click here.") don't match.
-                if h.contains('.') {
+                // Require a dot so plain words ("Click here.") don't match,
+                // and a recognised TLD so dotted filenames ("README.md",
+                // "Cargo.toml") listed as link text never read as domains.
+                if h.contains('.')
+                    && h.rsplit('.')
+                        .next()
+                        .is_some_and(|tld| TEXT_DOMAIN_TLDS.contains(&tld))
+                {
                     return Some(h);
                 }
             }
@@ -314,6 +333,39 @@ mod tests {
     fn non_domain_anchor_text_is_ignored() {
         let a = assess_link("https://example.com/", Some("Click here to continue"));
         assert!(!codes(&a).contains(&"deceptive_text".to_string()));
+    }
+
+    #[test]
+    fn dotted_filename_anchor_text_is_not_deceptive() {
+        for name in [
+            "README.md",
+            "Cargo.toml",
+            "main.cc",
+            "install.sh",
+            "demo.mov",
+        ] {
+            let a = assess_link(
+                &format!("https://github.com/user/repo/blob/main/{name}"),
+                Some(name),
+            );
+            assert!(
+                !codes(&a).contains(&"deceptive_text".to_string()),
+                "{name} flagged as deceptive"
+            );
+            assert_eq!(a.risk, RiskLevel::Low, "{name} raised risk");
+        }
+    }
+
+    #[test]
+    fn explicit_url_anchor_text_is_deceptive_regardless_of_tld() {
+        let a = assess_link("https://evil.example/", Some("https://readme.md/docs"));
+        assert!(codes(&a).contains(&"deceptive_text".to_string()));
+    }
+
+    #[test]
+    fn bare_domain_with_common_tld_is_still_deceptive() {
+        let a = assess_link("https://evil.example/", Some("paypal.co.uk"));
+        assert!(codes(&a).contains(&"deceptive_text".to_string()));
     }
 
     #[test]

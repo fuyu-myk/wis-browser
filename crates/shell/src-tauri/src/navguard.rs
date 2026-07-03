@@ -202,12 +202,24 @@ pub async fn nav_guard_proceed(
     Ok(())
 }
 
+/// The interceptor script with the shared text-TLD set baked in, so the coarse
+/// JS gate and `wis_core::assess_link` agree on what anchor text names a site.
+fn navguard_js() -> &'static str {
+    static JS: OnceLock<String> = OnceLock::new();
+    JS.get_or_init(|| {
+        let tlds = serde_json::to_string(wis_core::link_safety::TEXT_DOMAIN_TLDS)
+            .unwrap_or_else(|_| "[]".to_string());
+        NAVGUARD_JS.replace("__WIS_TEXT_TLDS__", &tlds)
+    })
+}
+
 /// Injected page script: intercept a plain left-click on a risky link before it
 /// navigates. Option+click is left for Peek. The JS risk check is coarse; the
 /// authoritative assessment is recomputed in Rust.
 const NAVGUARD_JS: &str = r#"(function () {
   if (window.__wisNavGuardInstalled) return;
   window.__wisNavGuardInstalled = true;
+  var TEXT_TLDS = __WIS_TEXT_TLDS__;
   function hostFromText(t) {
     t = (t || '').trim();
     if (!t || t.length > 200) return '';
@@ -217,7 +229,8 @@ const NAVGUARD_JS: &str = r#"(function () {
     if (/\s/.test(t) || t.indexOf('.') < 0) return '';
     try {
       var h = new URL('https://' + t).hostname.toLowerCase().replace(/^www\./, '');
-      return h.indexOf('.') >= 0 ? h : '';
+      if (h.indexOf('.') < 0) return '';
+      return TEXT_TLDS.indexOf(h.slice(h.lastIndexOf('.') + 1)) >= 0 ? h : '';
     } catch (e) { return ''; }
   }
   function shouldGuard(href, text) {
@@ -246,6 +259,10 @@ const NAVGUARD_JS: &str = r#"(function () {
     if (!a) return;
     var href = a.href || '';
     if (!href) return;
+    try {
+      var u = new URL(href, location.href);
+      if (u.hash && u.origin === location.origin && u.pathname === location.pathname && u.search === location.search) return;
+    } catch (err) {}
     var text = (a.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
     if (!shouldGuard(href, text)) return;
     e.preventDefault();
@@ -269,7 +286,7 @@ mod imp {
         class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass,
     };
 
-    use super::{intake, APP, NAVGUARD_JS};
+    use super::{intake, navguard_js, APP};
 
     declare_class!(
         struct NavGuardHandler;
@@ -376,7 +393,7 @@ mod imp {
                 return;
             }
 
-            let src = ns_string(NAVGUARD_JS);
+            let src = ns_string(navguard_js());
             let script: *mut AnyObject = msg_send![class!(WKUserScript), alloc];
             let injection_time: isize = 1; // WKUserScriptInjectionTimeAtDocumentEnd
             let script: *mut AnyObject = msg_send![
@@ -408,5 +425,5 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
 /// links to `wisNavGuard`, routed by `win_dispatch` to [`dispatch_message`].
 #[cfg(windows)]
 pub fn page_script() -> &'static str {
-    NAVGUARD_JS
+    navguard_js()
 }
