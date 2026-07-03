@@ -48,13 +48,23 @@ pub fn default_zoom() -> f64 {
     1.0
 }
 
+/// Placeholder title for a page that has not reported one: the bare site name
+/// (`www.`-stripped host), so an untitled page reads as "example.com" in the
+/// tab strip, tooltips, and history. Non-host URLs (about:) fall back to the
+/// URL itself.
+pub fn placeholder_title(url: &Url) -> String {
+    url.host_str()
+        .map(|h| h.strip_prefix("www.").unwrap_or(h).to_string())
+        .unwrap_or_else(|| url.as_str().to_string())
+}
+
 impl Tab {
     pub fn new(workspace_id: WorkspaceId, url: Url) -> Self {
         let now = Utc::now();
         Self {
             id: TabId::new(),
             workspace_id,
-            title: url.as_str().to_string(),
+            title: placeholder_title(&url),
             url,
             favicon: None,
             pinned: false,
@@ -137,5 +147,32 @@ impl Tab {
             last_active_at: Utc::now(),
             ..self.clone()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn placeholder_title_is_the_bare_site_name() {
+        let url = Url::parse("https://www.example.com/some/long/path?q=1#frag").unwrap();
+        assert_eq!(placeholder_title(&url), "example.com");
+
+        let no_www = Url::parse("https://docs.rs/tokio/latest").unwrap();
+        assert_eq!(placeholder_title(&no_www), "docs.rs");
+    }
+
+    #[test]
+    fn placeholder_title_falls_back_to_the_url_without_a_host() {
+        let url = Url::parse("about:blank").unwrap();
+        assert_eq!(placeholder_title(&url), "about:blank");
+    }
+
+    #[test]
+    fn new_tab_seeds_the_placeholder_title() {
+        let url = Url::parse("https://www.example.com/deep/path").unwrap();
+        let tab = Tab::new(crate::WorkspaceId::new(), url);
+        assert_eq!(tab.title, "example.com");
     }
 }

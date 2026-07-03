@@ -109,7 +109,8 @@ export function tabDisplayName(tab: { title: string; url: string }): string {
   }
 }
 
-const TITLE_SEPARATOR_RE = /\s+[-|·—–»]\s+|:\s+/g
+// Site separators only ("Page - Site", "Page | Site").
+const TITLE_SEPARATOR_RE = /\s+[-|·—–»]\s+/g
 
 function shortTitle(title: string, url: string): string {
   const parts = title.split(TITLE_SEPARATOR_RE).map((p) => p.trim()).filter(Boolean)
@@ -125,7 +126,7 @@ function shortTitle(title: string, url: string): string {
     }
   }
 
-  return parts.reduce((shortest, p) => (p.length < shortest.length ? p : shortest))
+  return parts[0]
 }
 
 function matchesBrand(segment: string, brand: string): boolean {

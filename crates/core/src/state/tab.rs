@@ -192,7 +192,7 @@ impl BrowserState {
 
     // -- tab folders --------------------------------------------------------
 
-    /// Replace a tab's URL. The title is also bumped to the URL string as a
+    /// Replace a tab's URL. The title is also bumped to the site name as a
     /// placeholder: useful when initiating the navigation (URL bar, new
     /// tab) because the real `<title>` arrives via a separate event afterward
     /// and overwrites this placeholder. `last_active_at` is refreshed.
@@ -203,7 +203,7 @@ impl BrowserState {
         let current = self.tab(id)?;
         let updated = current
             .with_url(url.clone())
-            .with_title(url.to_string())
+            .with_title(crate::tab::placeholder_title(&url))
             .touched();
 
         Ok((self.replace_tab(id, &updated), updated))
