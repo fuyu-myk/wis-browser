@@ -553,7 +553,7 @@ export function HorizontalTabs({
           flex:
             lifted || isClosing
               ? '0 0 0px'
-              : `${loose && !sizing.scrolling && dragPart === null ? '1 1' : '0 0'} ${
+              : `${loose && !sizing.scrolling && (dragPart === null || scope === 'loose') ? '1 1' : '0 0'} ${
                   member ? memberSizeFor(tab) : sizeFor(tab)
                 }px`,
           ...(lifted ? { marginLeft: `${-GAP_PX}px` } : {}),

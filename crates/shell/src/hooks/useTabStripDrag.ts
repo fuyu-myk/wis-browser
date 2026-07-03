@@ -19,6 +19,7 @@ import {
 import {
   useTabSplit,
   tabDropTarget,
+  layoutRect,
   insertedAmong,
   reorderedAmong,
   type TabReorder,
@@ -117,7 +118,7 @@ export function useTabStripDrag(d: TabStripDragArgs): TabStripDrag {
     const root = d.stripRef.current
     if (!root) return undefined
     for (const el of root.querySelectorAll<HTMLElement>('[data-island-id]')) {
-      const r = el.getBoundingClientRect()
+      const r = layoutRect(el)
       if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
         return el.dataset.islandId as TabFolderId
       }
@@ -128,6 +129,17 @@ export function useTabStripDrag(d: TabStripDragArgs): TabStripDrag {
   const withinStrip = (x: number, y: number): boolean => {
     const r = d.stripRef.current?.getBoundingClientRect()
     return !!r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
+  }
+
+  // Whether the pointer is horizontally over the islands/pinned block.
+  const overFixedCells = (x: number): boolean => {
+    const root = d.stripRef.current
+    if (!root) return false
+    for (const el of root.querySelectorAll<HTMLElement>('[data-island-id], [data-pin-id]')) {
+      const r = layoutRect(el)
+      if (x >= r.left - GAP_PX && x <= r.right + GAP_PX) return true
+    }
+    return false
   }
 
   const makeReorder = (tab: Tab): TabReorder => ({
@@ -160,7 +172,10 @@ export function useTabStripDrag(d: TabStripDragArgs): TabStripDrag {
       }
       if (tab.folder_id != null && withinStrip(x, y)) {
         // Member over the open strip.
-        const t = d.stripRef.current ? tabDropTarget(d.stripRef.current, 'x', x, y) : null
+        const t =
+          d.stripRef.current && !overFixedCells(x)
+            ? tabDropTarget(d.stripRef.current, 'x', x, y)
+            : null
         if (t) {
           folderDropRef.current = undefined
           setFolderDropHint(null)
@@ -175,6 +190,10 @@ export function useTabStripDrag(d: TabStripDragArgs): TabStripDrag {
       folderDropRef.current = undefined
       setFolderDropHint(null)
       if (tab.folder_id == null && d.stripRef.current) {
+        if (overFixedCells(x)) {
+          dragScopeRef.current = null
+          return null
+        }
         dragScopeRef.current = 'loose'
         return tabDropTarget(d.stripRef.current, 'x', x, y)
       }
@@ -261,17 +280,15 @@ export function useTabStripDrag(d: TabStripDragArgs): TabStripDrag {
     let ghost: HTMLElement | null = null
     let lastIndex: number | null = null
 
-    const insertionAt = (x: number, y: number): number => {
+    const insertionAt = (x: number): number => {
       const root = d.stripRef.current
       if (!root) return d.pinnedTabs.length
-      const cells = Array.from(root.querySelectorAll<HTMLElement>('[data-pin-id]'))
-      for (let i = 0; i < cells.length; i++) {
-        const r = cells[i].getBoundingClientRect()
-        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-          return x < r.left + r.width / 2 ? i : i + 1
-        }
+      let idx = 0
+      for (const el of root.querySelectorAll<HTMLElement>('[data-pin-id]')) {
+        const r = layoutRect(el)
+        if (x > r.left + r.width / 2) idx += 1
       }
-      return cells.length
+      return idx
     }
 
     const move = (ev: PointerEvent) => {
@@ -292,7 +309,7 @@ export function useTabStripDrag(d: TabStripDragArgs): TabStripDrag {
         ghost.style.left = `${ev.clientX - grabX}px`
         ghost.style.top = `${ev.clientY - grabY}px`
       }
-      lastIndex = insertionAt(ev.clientX, ev.clientY)
+      lastIndex = insertionAt(ev.clientX)
       setPinDropIndex(lastIndex)
     }
     const up = () => {
@@ -337,7 +354,7 @@ export function useTabStripDrag(d: TabStripDragArgs): TabStripDrag {
       if (!root) return order.length
       const els = Array.from(root.querySelectorAll<HTMLElement>('[data-island-id]'))
       for (let i = 0; i < els.length; i++) {
-        const r = els[i].getBoundingClientRect()
+        const r = layoutRect(els[i])
         if (x < r.left + r.width / 2) return i
       }
       return els.length

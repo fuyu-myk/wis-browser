@@ -76,6 +76,17 @@ interface UseTabSplitReturn {
 }
 
 /**
+ * An element's viewport rect with any in-flight transform removed.
+ */
+export function layoutRect(el: HTMLElement): DOMRect {
+  const r = el.getBoundingClientRect()
+  const t = getComputedStyle(el).transform
+  if (!t || t === 'none') return r
+  const m = new DOMMatrixReadOnly(t)
+  return new DOMRect(r.x - m.e, r.y - m.f, r.width, r.height)
+}
+
+/**
  * Drop target for a drag at (x,y) over a tab strip container, or null when the
  * cursor is outside it. `axis` is 'y' for the vertical sidebar list, 'x' for the
  * horizontal strip. Tabs are matched by their `data-tab-id` attribute.
@@ -101,7 +112,7 @@ export function tabDropTarget(
   if (els.length === 0) return null
   const pos = axis === 'y' ? clientY : clientX
   for (let i = 0; i < els.length; i++) {
-    const r = els[i].getBoundingClientRect()
+    const r = layoutRect(els[i])
     const start = axis === 'y' ? r.top : r.left
     const mid = axis === 'y' ? r.top + r.height / 2 : r.left + r.width / 2
     if (pos < mid) {
