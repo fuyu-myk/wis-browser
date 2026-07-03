@@ -358,9 +358,19 @@ pub async fn open_widget_panel(
     builder = crate::downloads::attach_download_handler(builder, ephemeral);
     builder = builder.on_new_window({
         let app = app.clone();
-        move |url, _features| {
-            crate::popup_chrome::ensure_running(&app, url.as_str());
-            tauri::webview::NewWindowResponse::Allow
+        move |url, features| {
+            if crate::popup_chrome::wants_popup(&url, &features) {
+                crate::popup_chrome::ensure_running(&app, url.as_str());
+                return tauri::webview::NewWindowResponse::Allow;
+            }
+
+            let _ = tauri::Emitter::emit(
+                &app,
+                crate::link_open::OPEN_TAB_FOREGROUND_EVENT,
+                url.to_string(),
+            );
+
+            tauri::webview::NewWindowResponse::Deny
         }
     });
 
@@ -398,7 +408,10 @@ pub async fn open_widget_panel(
     let _ = child.hide();
     let (tx, rx) = std::sync::mpsc::channel::<()>();
     apply_panel_surface(&child, dark, Some(tx));
-    let _ = rx.recv_timeout(std::time::Duration::from_millis(500));
+    let _ = tokio::task::spawn_blocking(move || {
+        rx.recv_timeout(std::time::Duration::from_millis(500))
+    })
+    .await;
 
     // Apple-proxied Safe Browsing warning.
     crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);

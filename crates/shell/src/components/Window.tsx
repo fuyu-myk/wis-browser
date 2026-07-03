@@ -83,7 +83,10 @@ export function Window({ state, settings }: WindowProps) {
   // changes).
   const widgetUrlsKey = settings.sidebar_widgets.map((w) => w.url).join('\n')
   useEffect(() => {
-    prefetchWidgetFavicons(widgetUrlsKey ? widgetUrlsKey.split('\n') : [])
+    const timer = window.setTimeout(() => {
+      prefetchWidgetFavicons(widgetUrlsKey ? widgetUrlsKey.split('\n') : [])
+    }, 4000)
+    return () => window.clearTimeout(timer)
   }, [widgetUrlsKey])
 
   return (
