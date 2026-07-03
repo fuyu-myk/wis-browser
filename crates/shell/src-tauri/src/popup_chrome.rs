@@ -61,53 +61,6 @@ fn registrable(host: &str) -> String {
     labels[labels.len() - take.min(labels.len())..].join(".")
 }
 
-#[cfg(test)]
-mod site_tests {
-    use super::same_site;
-
-    fn u(s: &str) -> tauri::Url {
-        s.parse().expect("valid test URL")
-    }
-
-    #[test]
-    fn google_properties_are_one_site() {
-        assert!(same_site(
-            &u("https://mail.google.com/mail/u/0/"),
-            &u("https://accounts.google.com/SignOutOptions"),
-        ));
-        assert!(same_site(
-            &u("https://mail.google.com/"),
-            &u("https://mail.google.com/mail/u/2/"),
-        ));
-    }
-
-    #[test]
-    fn different_sites_do_not_match() {
-        assert!(!same_site(
-            &u("https://example.com/"),
-            &u("https://other.com/"),
-        ));
-        // ccSLD suffixes never merge unrelated registrants.
-        assert!(!same_site(&u("https://a.co.uk/"), &u("https://b.co.uk/")));
-        assert!(same_site(
-            &u("https://www.a.co.uk/"),
-            &u("https://shop.a.co.uk/"),
-        ));
-    }
-
-    #[test]
-    fn ip_hosts_require_exact_match() {
-        assert!(same_site(
-            &u("http://192.168.1.1/a"),
-            &u("http://192.168.1.1/b"),
-        ));
-        assert!(!same_site(
-            &u("http://192.168.1.1/"),
-            &u("http://192.168.1.2/"),
-        ));
-    }
-}
-
 /// Called from `on_new_window` with the popup's target URL. Records that URL
 /// so the bar can show the destination immediately (the popup's `WKWebView`
 /// reports `about:blank` until it navigates), then decorates the new window on
@@ -621,5 +574,54 @@ mod imp {
                 <NSSize as objc2::Encode>::ENCODING,
             ],
         );
+    }
+}
+
+// Kept last so `clippy::items_after_test_module` stays satisfied on every target
+// (the macOS-only `imp` module above is a real item that must precede the tests).
+#[cfg(test)]
+mod site_tests {
+    use super::same_site;
+
+    fn u(s: &str) -> tauri::Url {
+        s.parse().expect("valid test URL")
+    }
+
+    #[test]
+    fn google_properties_are_one_site() {
+        assert!(same_site(
+            &u("https://mail.google.com/mail/u/0/"),
+            &u("https://accounts.google.com/SignOutOptions"),
+        ));
+        assert!(same_site(
+            &u("https://mail.google.com/"),
+            &u("https://mail.google.com/mail/u/2/"),
+        ));
+    }
+
+    #[test]
+    fn different_sites_do_not_match() {
+        assert!(!same_site(
+            &u("https://example.com/"),
+            &u("https://other.com/"),
+        ));
+        // ccSLD suffixes never merge unrelated registrants.
+        assert!(!same_site(&u("https://a.co.uk/"), &u("https://b.co.uk/")));
+        assert!(same_site(
+            &u("https://www.a.co.uk/"),
+            &u("https://shop.a.co.uk/"),
+        ));
+    }
+
+    #[test]
+    fn ip_hosts_require_exact_match() {
+        assert!(same_site(
+            &u("http://192.168.1.1/a"),
+            &u("http://192.168.1.1/b"),
+        ));
+        assert!(!same_site(
+            &u("http://192.168.1.1/"),
+            &u("http://192.168.1.2/"),
+        ));
     }
 }

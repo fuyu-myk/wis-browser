@@ -300,14 +300,14 @@ pub fn push_nav_state<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
     {
         let wv = webview.clone();
         crate::win_webview2::with_core_webview2(webview, move |core| {
-            let mut back = windows::Win32::Foundation::BOOL::default();
-            let mut fwd = windows::Win32::Foundation::BOOL::default();
+            let mut back = windows::core::BOOL::default();
+            let mut fwd = windows::core::BOOL::default();
             // SAFETY: runs on the UI thread via `with_core_webview2`.
             unsafe {
                 let _ = core.CanGoBack(&mut back);
                 let _ = core.CanGoForward(&mut fwd);
             }
-            let _ = wv.eval(&nav_state_script(back.as_bool(), fwd.as_bool()));
+            let _ = wv.eval(nav_state_script(back.as_bool(), fwd.as_bool()));
         });
     }
 
