@@ -19,7 +19,7 @@ let focused = true
 void getCurrentWindow()
   .isFocused()
   .then((f) => {
-    focused = f
+    focused = f || document.hasFocus()
   })
   .catch(() => undefined)
 
@@ -28,6 +28,13 @@ void getCurrentWindow()
     focused = e.payload
   })
   .catch(() => undefined)
+
+window.addEventListener('focus', () => {
+  focused = true
+})
+window.addEventListener('pointerdown', () => {
+  focused = true
+}, { capture: true })
 
 /**
  * Whether this webview's OS window currently has focus. Gate handlers for

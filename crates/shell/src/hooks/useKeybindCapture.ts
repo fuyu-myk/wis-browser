@@ -14,15 +14,19 @@
  * - Windows only. macOS dispatches via the global menu bar and Linux via GTK's
  *   window accel-group (which fires through webview focus and survives the
  *   menu-bar hide), so running this there would double-fire each action.
- * - Chrome focus only. When a tab webview has focus its own keydown fires in
- *   the page, not here; that path is covered by an injected forwarder.
+ * - This webview's focus only. When a tab webview has focus its own keydown
+ *   fires in the page, covered by the injected forwarder (`keybind.rs`).
  *
- * Mount exactly once (see `Window.tsx`), like `useKeyActions`.
+ * Mount exactly once per webview: the chrome mounts it in `Window.tsx` (with
+ * `takeFocusOnMount`, see below), and each overlay surface webview mounts it
+ * via `OverlayRoot` so shortcuts keep working while a find bar or palette
+ * input holds keyboard focus.
  */
 
 import { useEffect, useMemo } from 'react'
 import { emit } from '@tauri-apps/api/event'
 
+import { commands } from '@/bindings/commands'
 import { currentPlatform } from '@/lib/platform'
 import {
   keyboardEventToAccelerator,
@@ -33,9 +37,15 @@ import type { KeyAction } from '@/bindings/types'
 
 const KEYACTION_EVENT = 'wis-keyaction'
 
+interface KeybindCaptureOptions {
+  takeFocusOnMount?: boolean
+}
+
 export function useKeybindCapture(
   keybindings: Partial<Record<KeyAction, string>> | undefined,
+  opts?: KeybindCaptureOptions,
 ): void {
+  const takeFocusOnMount = opts?.takeFocusOnMount ?? false
   // Reverse the effective keymap into normalized-accelerator -> action. Rebuilt
   // only when the user's overrides change, not every render.
   const lookup = useMemo(() => {
@@ -45,6 +55,11 @@ export function useKeybindCapture(
     }
     return map
   }, [keybindings])
+
+  useEffect(() => {
+    if (currentPlatform() !== 'windows' || !takeFocusOnMount) return
+    void commands.focusSelf().catch(() => undefined)
+  }, [takeFocusOnMount])
 
   useEffect(() => {
     if (currentPlatform() !== 'windows') return

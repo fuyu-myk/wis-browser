@@ -98,7 +98,8 @@ export function effectiveKeymap(
 // crates/core/src/keybinding.rs. Localized to the host platform just below.
 const DEFAULT_KEYMAP_MAC: Partial<Record<KeyAction, string>> = {
   new_tab: 'Cmd+T',
-  new_workspace: 'Cmd+N',
+  new_window: 'Cmd+N',
+  new_workspace: 'Alt+Cmd+N',
   close_tab: 'Cmd+W',
   focus_url_bar: 'Cmd+E',
   reload: 'Cmd+R',
@@ -150,6 +151,7 @@ const DEFAULT_KEYMAP_MAC: Partial<Record<KeyAction, string>> = {
   print: 'Cmd+P',
   toggle_sidebar: 'Cmd+S',
   element_picker: 'Cmd+Shift+X',
+  pop_out_video: 'Cmd+Shift+O',
 }
 
 // Host-platform defaults: Windows/Linux swap `Cmd` for `Ctrl` (mirrors

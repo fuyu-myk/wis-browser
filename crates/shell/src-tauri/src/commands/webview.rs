@@ -118,6 +118,12 @@ pub async fn create_tab_webview(
         // Navigation-guard click interceptor (macOS injects it via
         // `navguard::install`); applies on every tab like macOS.
         builder = builder.initialization_script(crate::navguard::page_script());
+        // Page-side keyboard shortcuts.
+        {
+            let keybindings = state.browser.lock().await.settings.keybindings.clone();
+            let effective = wis_core::effective_keymap(&keybindings);
+            builder = builder.initialization_script(crate::keybind::page_script(&effective));
+        }
     }
 
     // Per-page scriptlet swap (uBO `+js` rules) before each main-frame

@@ -5,6 +5,9 @@
  * nothing (the overlay stays transparent and click-through).
  */
 
+import { useBrowserState } from '@/hooks/useBrowserState'
+import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
+import { useKeybindCapture } from '@/hooks/useKeybindCapture'
 import { ClearDataSurface } from '@/overlay/surfaces/ClearDataSurface'
 import { DownloadsMenuSurface } from '@/overlay/surfaces/DownloadsMenuSurface'
 import { FindSurface } from '@/overlay/surfaces/FindSurface'
@@ -29,6 +32,10 @@ interface OverlayRootProps {
 }
 
 export function OverlayRoot({ surface }: OverlayRootProps) {
+  const { data: state } = useBrowserState()
+  useBrowserStateEvents()
+  useKeybindCapture(state?.settings.keybindings)
+
   if (surface === 'find') return <FindSurface />
   if (surface === 'palette') return <PaletteSurface />
   if (surface === 'tabmenu') return <TabContextMenuSurface />

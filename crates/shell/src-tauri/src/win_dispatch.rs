@@ -26,7 +26,8 @@ use webview2_com::{CoTaskMemPWSTR, WebMessageReceivedEventHandler};
 pub const SHIM_SCRIPT: &str = r#"(function () {
   if (!window.chrome || !window.chrome.webview) return;
   var names = ['wisOpenInTab', 'wisNavGuard', 'wisPeek', 'wisCosmetic',
-               'wisZap', 'wisMediaPermission', 'wisCapture', 'wisPopout', 'wisFindResult'];
+               'wisZap', 'wisMediaPermission', 'wisCapture', 'wisPopout', 'wisFindResult',
+               'wisKeybind'];
   function forward(name, body) {
     try {
       window.chrome.webview.postMessage(
@@ -180,6 +181,7 @@ fn dispatch(label: &str, ephemeral: bool, cosmetic_enabled: bool, top_frame: boo
             }
         }
         "wisFindResult" => crate::find::dispatch_message(label, &env.body),
+        "wisKeybind" => crate::keybind::dispatch_action(label, &env.body),
         other => {
             // wisPopout: deferred to the Windows runner (reparent plumbing).
             log::debug!("win_dispatch: handler {other} not yet wired");

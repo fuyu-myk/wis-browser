@@ -45,6 +45,8 @@ pub async fn update_settings(
 
     if keybindings_touched {
         let effective = wis_core::effective_keymap(&settings.keybindings);
+        #[cfg(windows)]
+        crate::keybind::apply_to_all_tabs(&app, &effective);
         let app_for_menu = app.clone();
         if let Err(err) = app.run_on_main_thread(move || {
             if let Err(err) = crate::menu::apply_menu(&app_for_menu, &effective) {
@@ -103,6 +105,8 @@ pub async fn update_settings(
 pub async fn apply_shortcuts(app: AppHandle, state: State<'_, AppState>) -> WisResult<()> {
     let keybindings = state.browser.lock().await.settings.keybindings.clone();
     let effective = wis_core::effective_keymap(&keybindings);
+    #[cfg(windows)]
+    crate::keybind::apply_to_all_tabs(&app, &effective);
     let app_for_menu = app.clone();
 
     app.run_on_main_thread(move || {

@@ -43,7 +43,7 @@ export function Window({ state, settings }: WindowProps) {
     [],
   )
   useKeyActions()
-  useKeybindCapture(settings.keybindings)
+  useKeybindCapture(settings.keybindings, { takeFocusOnMount: true })
   useCommandPaletteOverlay()
   useWindowPickerOverlay()
   useClearDataOverlay()

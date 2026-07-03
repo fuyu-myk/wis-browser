@@ -17,6 +17,8 @@ mod external;
 mod favicons;
 mod find;
 mod interaction_state;
+#[cfg(windows)]
+mod keybind;
 mod link_open;
 mod memory;
 mod menu;
@@ -219,6 +221,13 @@ pub fn run() {
                 let _ = main.set_effects(windows::chrome_window_effects());
 
                 let _ = main.show();
+
+                // On Windows, show() alone may leave the window shown but not
+                // focused, and keyboard focus only reaches a WebView2 once the
+                // window has it (the chrome also calls focus_self on mount for
+                // the webview-level half; see useKeybindCapture).
+                #[cfg(windows)]
+                let _ = main.set_focus();
             }
 
             // Drop compiled rule lists from previous filter-list versions so
@@ -328,6 +337,10 @@ pub fn run() {
 
             // App handle for the find-in-page match-count delegate.
             find::set_app_handle(app.handle().clone());
+
+            // App handle for the page-side keyboard-shortcut forwarder.
+            #[cfg(windows)]
+            keybind::set_app_handle(app.handle().clone());
 
             // Per-tab audibility poll (tab audio icons + click-to-mute).
             audio::start_poll(app.handle().clone());

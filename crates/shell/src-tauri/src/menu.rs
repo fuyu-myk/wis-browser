@@ -31,9 +31,7 @@ pub fn install_menu(app: &App, keymap: &HashMap<KeyAction, String>) -> tauri::Re
     let handle = app.handle().clone();
     apply_menu(&handle, keymap)?;
     let dispatch_handle = handle.clone();
-    app.on_menu_event(move |_app, event| {
-        dispatch_menu_event(&dispatch_handle, event.id().as_ref())
-    });
+    app.on_menu_event(move |_app, event| dispatch_keyaction(&dispatch_handle, event.id().as_ref()));
 
     Ok(())
 }
@@ -61,7 +59,9 @@ pub fn apply_menu(app: &AppHandle, keymap: &HashMap<KeyAction, String>) -> tauri
     Ok(())
 }
 
-fn dispatch_menu_event(app: &AppHandle, item_id: &str) {
+/// Resolve a `KeyAction` id and broadcast it as `wis-keyaction` (menu clicks +
+/// native accelerators).
+fn dispatch_keyaction(app: &AppHandle, item_id: &str) {
     let Some(action) = KeyAction::from_id(item_id) else {
         return;
     };

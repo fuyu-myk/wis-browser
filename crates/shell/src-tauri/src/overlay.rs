@@ -99,7 +99,17 @@ pub async fn focus_self(webview: tauri::Webview) -> WisResult<()> {
         let _ = rx.recv_timeout(std::time::Duration::from_millis(500));
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC;
+
+        crate::win_webview2::with_controller(&webview, |controller| {
+            // SAFETY: runs on the UI thread via `with_controller`.
+            let _ = unsafe { controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC) };
+        });
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = webview;
     }

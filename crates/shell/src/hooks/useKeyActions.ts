@@ -40,6 +40,9 @@ export const WINDOW_PICKER_OPEN_EVENT = 'wis-window-picker-open'
 
 interface KeyActionEvent {
   action: KeyAction
+  /** Source tab when dispatched by the Windows page forwarder (`keybind.rs`);
+   *  absent for native menu / chrome-emitted actions. */
+  tab?: string
 }
 
 export function useKeyActions(): void {
@@ -84,7 +87,8 @@ export function useKeyActions(): void {
   const requestRenameRef = useRef(requestRename)
   requestRenameRef.current = requestRename
 
-  activeDispatchRef.current = (action) => {
+  activeDispatchRef.current = (action, sourceTab) => {
+    if (sourceTab && !tabsRef.current.some((t) => t.id === sourceTab)) return
     void handle(action, {
       state: stateRef.current,
       activeWorkspace: activeWorkspaceRef.current,
@@ -110,13 +114,13 @@ export function useKeyActions(): void {
 // ---------------------------------------------------------------------------
 
 type KeyActionGlobals = typeof globalThis & {
-  __wisKeyactionDispatch?: (action: KeyAction) => void
+  __wisKeyactionDispatch?: (action: KeyAction, sourceTab?: string) => void
   __wisKeyactionListening?: boolean
 }
 const keyactionGlobals = globalThis as KeyActionGlobals
 
 const activeDispatchRef = {
-  set current(fn: ((action: KeyAction) => void) | null) {
+  set current(fn: ((action: KeyAction, sourceTab?: string) => void) | null) {
     keyactionGlobals.__wisKeyactionDispatch = fn ?? undefined
   },
 }
@@ -126,7 +130,7 @@ function ensureKeyActionListener(): void {
   keyactionGlobals.__wisKeyactionListening = true
   void listen<KeyActionEvent>(KEYACTION_EVENT, (e) => {
     if (!isWindowFocused()) return
-    keyactionGlobals.__wisKeyactionDispatch?.(e.payload.action)
+    keyactionGlobals.__wisKeyactionDispatch?.(e.payload.action, e.payload.tab)
   })
 }
 
