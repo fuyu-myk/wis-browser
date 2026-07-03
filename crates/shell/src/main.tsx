@@ -4,10 +4,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import App from '@/App'
 import { OverlayRoot } from '@/overlay/OverlayRoot'
+import { currentPlatform } from '@/lib/platform'
 
 import '@/styles/fonts.css'
 import '@/styles/tokens.css'
 import '@/styles/window.css'
+
+// Host OS for platform-conditional styling. Static for the session.
+document.body.setAttribute('data-platform', currentPlatform())
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -117,6 +117,9 @@
     0 0 0 2px var(--primary-400),
     0 0 0 100vmax var(--pane-fill);
 }
+body:not([data-platform='macos']) .pane-split .pane-leaf > .pane-surface {
+  border-radius: 0;
+}
 /* Black player placeholder for a manually popped-out tab. Chrome paints
    under native webviews, so this only shows once the webview departs into
    the popout window (no flash while the handshake is pending). */
