@@ -129,7 +129,6 @@ pub async fn capture_to_clipboard(
                 }
             };
 
-
         let copied = copy_png_to_clipboard(&png);
         *state
             .last_screenshot
