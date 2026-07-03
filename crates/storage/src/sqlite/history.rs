@@ -14,7 +14,15 @@ use wis_core::WorkspaceId;
 use crate::error::{StorageError, StorageResult};
 use crate::history::{HistoryEntry, HistoryQuery};
 
-/// Upsert a visit, deduplicated by `(workspace_id, url)`.
+/// The identity a visit is stored under: the URL without its fragment. A `#`
+/// only ever delimits the fragment in a valid URL (it is percent-encoded
+/// anywhere else), so in-page anchor jumps (`page#a`, `page#b`) update the one
+/// `page` row instead of piling up near-duplicate history entries.
+fn history_key(url: &str) -> &str {
+    url.split('#').next().unwrap_or(url)
+}
+
+/// Upsert a visit, deduplicated by `(workspace_id, url)`, fragment ignored.
 pub fn record_visit(
     conn: &Connection,
     workspace_id: WorkspaceId,
@@ -32,7 +40,12 @@ pub fn record_visit(
             title       = CASE WHEN excluded.title <> '' THEN excluded.title
                                ELSE history.title END
         "#,
-        params![workspace_id.as_uuid().to_string(), url, title, now],
+        params![
+            workspace_id.as_uuid().to_string(),
+            history_key(url),
+            title,
+            now
+        ],
     )?;
 
     Ok(())
@@ -133,7 +146,7 @@ pub fn update_title(
 
     conn.execute(
         "UPDATE history SET title = ?3 WHERE workspace_id = ?1 AND url = ?2",
-        params![workspace_id.as_uuid().to_string(), url, title],
+        params![workspace_id.as_uuid().to_string(), history_key(url), title],
     )?;
 
     Ok(())

@@ -56,6 +56,36 @@ fn revisiting_a_url_dedups_within_a_workspace() {
 }
 
 #[test]
+fn fragment_variants_dedupe_to_one_row() {
+    let s = store();
+    let ws = WorkspaceId::new();
+    s.record_visit(ws, "https://example.com/doc", "Doc").unwrap();
+    s.record_visit(ws, "https://example.com/doc#intro", "Doc")
+        .unwrap();
+    s.record_visit(ws, "https://example.com/doc#usage", "Doc")
+        .unwrap();
+
+    let rows = ws_rows(&s, ws);
+    assert_eq!(rows.len(), 1, "anchor jumps update the fragmentless row");
+    assert_eq!(rows[0].url, "https://example.com/doc");
+    assert_eq!(rows[0].visit_count, 3);
+}
+
+#[test]
+fn query_and_fragment_distinguish_correctly() {
+    let s = store();
+    let ws = WorkspaceId::new();
+    // Different queries are different pages and keep separate rows.
+    s.record_visit(ws, "https://example.com/search?q=a", "A")
+        .unwrap();
+    s.record_visit(ws, "https://example.com/search?q=b", "B")
+        .unwrap();
+
+    let rows = ws_rows(&s, ws);
+    assert_eq!(rows.len(), 2);
+}
+
+#[test]
 fn the_same_url_in_two_workspaces_is_independent() {
     let s = store();
     let a = WorkspaceId::new();
