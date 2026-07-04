@@ -184,14 +184,18 @@ pub fn run() {
                     Ok(sessions) if !sessions.is_empty() => {
                         let restored: std::collections::HashSet<wis_core::TabId> =
                             restored_tab_ids.iter().copied().collect();
-                        tauri::async_runtime::block_on(async {
-                            let mut guard = state.pending_restore_states.lock().await;
-                            for (id, blob) in sessions {
-                                if restored.contains(&id) {
-                                    guard.insert(id, blob);
+                        match state.pending_restore_states.try_lock() {
+                            Ok(mut guard) => {
+                                for (id, blob) in sessions {
+                                    if restored.contains(&id) {
+                                        guard.insert(id, blob);
+                                    }
                                 }
                             }
-                        });
+                            Err(_) => {
+                                log::warn!("pending_restore_states busy at startup; not seeded")
+                            }
+                        }
                     }
                     Ok(_) => {}
                     Err(err) => log::warn!("load persisted tab sessions: {err}"),

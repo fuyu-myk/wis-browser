@@ -298,7 +298,7 @@ pub fn push_nav_state<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
 
     #[cfg(windows)]
     {
-        let wv = webview.clone();
+        let (tx, rx) = std::sync::mpsc::sync_channel::<(bool, bool)>(1);
         crate::win_webview2::with_core_webview2(webview, move |core| {
             let mut back = windows::core::BOOL::default();
             let mut fwd = windows::core::BOOL::default();
@@ -307,8 +307,11 @@ pub fn push_nav_state<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
                 let _ = core.CanGoBack(&mut back);
                 let _ = core.CanGoForward(&mut fwd);
             }
-            let _ = wv.eval(nav_state_script(back.as_bool(), fwd.as_bool()));
+            let _ = tx.send((back.as_bool(), fwd.as_bool()));
         });
+        if let Ok((back, fwd)) = rx.try_recv() {
+            let _ = webview.eval(nav_state_script(back, fwd));
+        }
     }
 
     #[cfg(not(any(target_os = "macos", windows)))]

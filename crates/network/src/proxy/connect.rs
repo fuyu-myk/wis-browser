@@ -18,6 +18,12 @@ use crate::resolver::Resolver;
 /// How long a reachability probe waits before giving up.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Backstop for DNS resolution.
+const RESOLVE_TIMEOUT: Duration = Duration::from_secs(12);
+
+/// Per-address connect timeout.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
+
 /// Check that a SOCKS5 upstream is reachable and speaks the protocol, without
 /// opening any onward connection.
 pub async fn probe_upstream(upstream: &UpstreamProxy) -> Result<(), String> {
@@ -73,18 +79,39 @@ pub async fn connect_target(
     }
 }
 
-/// Direct connection: DoH-resolve the host, then dial the first address.
+/// Direct connection: DoH-resolve the host, then dial each address in turn
+/// until one connects.
 async fn direct(host: &str, port: u16, resolver: &Arc<dyn Resolver>) -> Result<TcpStream, String> {
-    let ip = resolver
-        .resolve(host)
-        .await
-        .map_err(|e| format!("dns {host}: {e}"))?
-        .into_iter()
-        .next()
-        .ok_or_else(|| format!("no addresses for {host}"))?;
-    TcpStream::connect((ip, port))
-        .await
-        .map_err(|e| format!("connect {ip}:{port}: {e}"))
+    let addrs = match timeout(RESOLVE_TIMEOUT, resolver.resolve(host)).await {
+        Ok(Ok(addrs)) => addrs,
+        Ok(Err(e)) => return Err(format!("dns {host}: {e}")),
+        Err(_) => {
+            return Err(format!(
+                "dns {host}: timed out after {}s",
+                RESOLVE_TIMEOUT.as_secs()
+            ))
+        }
+    };
+
+    if addrs.is_empty() {
+        return Err(format!("no addresses for {host}"));
+    }
+
+    let mut last_err = format!("no addresses reachable for {host}");
+    for ip in addrs {
+        match timeout(CONNECT_TIMEOUT, TcpStream::connect((ip, port))).await {
+            Ok(Ok(stream)) => return Ok(stream),
+            Ok(Err(e)) => last_err = format!("connect {ip}:{port}: {e}"),
+            Err(_) => {
+                last_err = format!(
+                    "connect {ip}:{port}: timed out after {}s",
+                    CONNECT_TIMEOUT.as_secs()
+                )
+            }
+        }
+    }
+
+    Err(last_err)
 }
 
 /// SOCKS5 no-auth CONNECT, asking the proxy to reach `host:port` by name.
