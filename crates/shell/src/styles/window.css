@@ -117,7 +117,8 @@
     0 0 0 2px var(--primary-400),
     0 0 0 100vmax var(--pane-fill);
 }
-body:not([data-platform='macos']) .pane-split .pane-leaf > .pane-surface {
+/* Linux has no native webview corner rounding yet. */
+body[data-platform='linux'] .pane-split .pane-leaf > .pane-surface {
   border-radius: 0;
 }
 /* Black player placeholder for a manually popped-out tab. Chrome paints
