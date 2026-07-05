@@ -4,6 +4,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { commands } from '@/bindings/commands'
 import type { BrowserState, KeyAction, PaneBranch, PaneNode, SplitDir, Tab, TabId } from '@/bindings/types'
 import { isChromeUrl, SETTINGS_URL } from '@/lib/url'
+import { currentPlatform } from '@/lib/platform'
 import { isWindowFocused } from '@/lib/windowFocus'
 import { useOverlay } from '@/hooks/useOverlay'
 import { usePermissionOverlay } from '@/hooks/usePermissionOverlay'
@@ -286,6 +287,13 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
   // Measure each webview pane-leaf and tile its native webview into place.
   const focusWebviewId =
     activeTab && !isChromeUrl(activeTab.url) ? activeTab.id : null
+
+  useEffect(() => {
+    if (currentPlatform() !== 'windows' || focusWebviewId !== null) return
+    if (findOpenRef.current || document.hasFocus()) return
+    void commands.focusSelf().catch(() => undefined)
+  }, [focusWebviewId])
+
   useLayoutEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -364,6 +372,11 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     const closeFind = async () => {
       findOpenRef.current = false
       await findOverlay.hide()
+      if (currentPlatform() === 'windows') {
+        const id = focusableTabRef.current
+        if (id) void commands.focusWebview(`tab-${id}`).catch(() => undefined)
+        else void commands.focusSelf().catch(() => undefined)
+      }
     }
 
     void listen<{ action: KeyAction }>(KEYACTION_EVENT, (e) => {

@@ -92,7 +92,9 @@ export function PeekSurface() {
           height: r.height,
         })
         .then(setAssessment)
-        .catch(() => undefined)
+        .catch((err: unknown) => {
+          console.error('open peek', err)
+        })
     } else {
       void commands.setPeekBounds(r.x, r.y, r.width, r.height).catch(() => undefined)
     }

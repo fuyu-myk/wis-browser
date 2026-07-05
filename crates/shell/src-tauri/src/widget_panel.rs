@@ -88,7 +88,22 @@ pub fn promote_panels_to_front(app: &AppHandle, window_label: &str) {
         }
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        let prefix = panel_prefix(window_label);
+        let panels: Vec<_> = app
+            .webviews()
+            .iter()
+            .filter(|(label, _)| label.starts_with(&prefix))
+            .map(|(_, wv)| wv.clone())
+            .collect();
+
+        for wv in panels {
+            crate::win_webview2::promote_to_front(&wv);
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = (app, window_label);
     }

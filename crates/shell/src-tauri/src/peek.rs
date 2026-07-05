@@ -104,13 +104,17 @@ pub async fn open_peek(
         let _ = existing.close();
     }
 
-    let (active_ws, user_agent, fraud_warning, media_extensions) = {
+    let (active_ws, ephemeral, user_agent, fraud_warning, media_extensions) = {
         let browser = state.browser.lock().await;
         // Preview through the calling window's workspace (one per window), so a
         // peek inherits that window's proxy / blocking / UA.
         let active_ws = state
             .window_workspace(window.label())
             .unwrap_or(browser.active_workspace_id);
+        let ephemeral = browser
+            .workspace(active_ws)
+            .map(|w| w.ephemeral)
+            .unwrap_or(false);
         let user_agent = wis_core::ua_for_host(
             parsed.host_str().unwrap_or_default(),
             &browser.settings.ua_site_overrides,
@@ -119,11 +123,14 @@ pub async fn open_peek(
         );
         (
             active_ws,
+            ephemeral,
             user_agent,
             browser.settings.fraud_warning_enabled,
             browser.settings.media_extensions_enabled,
         )
     };
+    #[cfg(not(windows))]
+    let _ = ephemeral;
     let proxy_port = state
         .ensure_proxy_for(active_ws)
         .await
@@ -142,14 +149,27 @@ pub async fn open_peek(
     // Peek is always incognito, so its downloads stay out of history.
     builder = crate::downloads::attach_download_handler(builder, true);
 
+    #[cfg(windows)]
+    {
+        let dir = if ephemeral {
+            crate::commands::ephemeral_webview_data_dir(app, active_ws)
+        } else {
+            crate::commands::workspace_webview_data_dir(app, active_ws)
+        };
+        builder = builder.data_directory(dir);
+    }
+
     let child = window
         .add_child(
             builder,
             tauri::LogicalPosition::new(x, y),
             tauri::LogicalSize::new(width.max(1.0), height.max(1.0)),
         )
-        .map_err(|err| WisError::InvalidInput {
-            message: format!("peek add_child failed: {err}"),
+        .map_err(|err| {
+            log::warn!("peek add_child failed: {err}");
+            WisError::InvalidInput {
+                message: format!("peek add_child failed: {err}"),
+            }
         })?;
 
     // Apple-proxied Safe Browsing warning.
@@ -180,6 +200,9 @@ pub async fn open_peek(
         });
     }
 
+    #[cfg(windows)]
+    crate::win_webview2::set_corner_radius(&child, 12.0);
+
     Ok(assessment)
 }
 
@@ -206,6 +229,9 @@ pub async fn set_peek_bounds(
             message: format!("peek set_size: {err}"),
         })?;
 
+    #[cfg(windows)]
+    crate::win_webview2::reapply_corner_radius(&wv, (width.max(1.0), height.max(1.0)));
+
     Ok(())
 }
 
@@ -217,6 +243,11 @@ pub async fn close_peek(window: tauri::Window) -> WisResult<()> {
         wv.close().map_err(|err| WisError::InvalidInput {
             message: format!("peek close: {err}"),
         })?;
+    }
+    #[cfg(windows)]
+    {
+        crate::win_webview2::forget_corner_radius(&label);
+        crate::win_focus::restore_webview_focus(window.app_handle(), window.label());
     }
 
     Ok(())

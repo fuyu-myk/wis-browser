@@ -65,7 +65,23 @@ pub fn promote_overlays_to_front(app: &AppHandle, window_label: &str) {
             });
         }
     }
-    #[cfg(not(target_os = "macos"))]
+
+    #[cfg(windows)]
+    {
+        let prefix = format!("{OVERLAY_PREFIX}{window_label}-");
+        let overlays: Vec<_> = app
+            .webviews()
+            .iter()
+            .filter(|(label, _)| label.starts_with(&prefix))
+            .map(|(_, wv)| wv.clone())
+            .collect();
+
+        for wv in overlays {
+            crate::win_webview2::promote_to_front(&wv);
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = (app, window_label);
     }
@@ -100,14 +116,7 @@ pub async fn focus_self(webview: tauri::Webview) -> WisResult<()> {
     }
 
     #[cfg(windows)]
-    {
-        use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC;
-
-        crate::win_webview2::with_controller(&webview, |controller| {
-            // SAFETY: runs on the UI thread via `with_controller`.
-            let _ = unsafe { controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC) };
-        });
-    }
+    crate::win_webview2::move_focus(&webview);
 
     #[cfg(not(any(target_os = "macos", windows)))]
     {
@@ -161,7 +170,12 @@ pub async fn focus_webview(app: AppHandle, label: String) -> WisResult<()> {
         let _ = rx.recv_timeout(std::time::Duration::from_millis(500));
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    if let Some(wv) = app.webviews().get(&label).cloned() {
+        crate::win_webview2::move_focus(&wv);
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = (app, label);
     }
