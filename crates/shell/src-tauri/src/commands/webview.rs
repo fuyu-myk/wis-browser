@@ -147,6 +147,11 @@ pub async fn create_tab_webview(
     }
     if ephemeral {
         builder = builder.incognito(true);
+
+        #[cfg(windows)]
+        {
+            builder = builder.data_directory(ephemeral_webview_data_dir(&app, workspace_id));
+        }
     } else {
         builder = builder.data_store_identifier(workspace_id_to_data_store_bytes(workspace_id));
         // WKWebView honours `data_store_identifier`; WebView2 ignores it and
@@ -506,6 +511,43 @@ pub(crate) fn workspace_webview_data_dir(
         .join(workspace_id.as_uuid().to_string())
 }
 
+/// The WebView2 user-data folder for an ephemeral (private) workspace's
+/// webviews (Windows). InPrivate controllers keep browsing data out of it, but
+/// WebView2 still needs a dedicated folder so the environment's browser
+/// arguments (`--proxy-server`) never collide with the default folder's
+/// already-running browser process. Ephemeral workspace uuids are minted per
+/// session, so [`sweep_ephemeral_webview_data`] clears stale trees at startup.
+#[cfg(windows)]
+pub(crate) fn ephemeral_webview_data_dir(
+    app: &AppHandle,
+    workspace_id: WorkspaceId,
+) -> std::path::PathBuf {
+    let base = app
+        .path()
+        .app_local_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir().join("app.myk.wis"));
+    base.join("webviews-ephemeral")
+        .join(workspace_id.as_uuid().to_string())
+}
+
+/// Best-effort removal of ephemeral webview data folders left by previous
+/// runs (a crash, or WebView2 still flushing at quit). Runs off the setup
+/// path; failures only log.
+#[cfg(windows)]
+pub(crate) fn sweep_ephemeral_webview_data(app: &AppHandle) {
+    let Ok(base) = app.path().app_local_data_dir() else {
+        return;
+    };
+    let dir = base.join("webviews-ephemeral");
+    tauri::async_runtime::spawn_blocking(move || {
+        if dir.exists() {
+            if let Err(err) = std::fs::remove_dir_all(&dir) {
+                log::warn!("sweep ephemeral webview data: {err}");
+            }
+        }
+    });
+}
+
 /// Set a tab webview's position and size in a single IPC round-trip, applying
 /// both atomically. Resolving the webview is best-effort: a not-yet-created webview is
 /// a silent no-op.
@@ -531,6 +573,9 @@ pub async fn set_tab_webview_bounds(
         .map_err(|err| WisError::InvalidInput {
             message: format!("set webview size failed: {err}"),
         })?;
+
+    #[cfg(windows)]
+    crate::win_webview2::reapply_corner_radius(&webview, (width, height));
 
     Ok(())
 }
@@ -597,7 +642,10 @@ pub async fn set_webview_corner_radius(
             })?;
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    crate::win_webview2::set_corner_radius(&webview, radius);
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = webview;
         let _ = radius;
