@@ -22,3 +22,21 @@ Removal checklist: a wry release containing #1729 exists -> delete
 `vendor/wry` and the `[patch.crates-io]` entry, `cargo update -p wry`, and
 re-test: fraud-warning page -> "go back" on a tab whose warned URL was its
 first navigation.
+
+## Second patch: webview2 container leak on failed creation
+
+- `src/webview2/mod.rs`, `new_in_hwnd`: the container HWND is created before
+  the WebView2 environment/controller, and any failure in those steps
+  early-returned without `DestroyWindow`. The leaked container is
+  `WS_VISIBLE`, paints nothing (null class brush) and is fully hit-testable,
+  so it silently swallowed mouse input over its rect for the process
+  lifetime (observed: a failed Peek webview creation left the page center
+  wheel-dead and click-dead). A drop guard now destroys the container on
+  any failed creation step, defused once `InnerWebView` takes ownership
+  (its `Drop` destroys child hwnds, so a later `set_bounds` failure on a
+  child webview is covered). Scope: the guard is defused before the final
+  `set_bounds`/`resize_to_parent`; a `resize_to_parent` failure on a
+  **non-child** webview still relies on the parent window's teardown to
+  reap the container (unchanged from upstream), which Wis never exercises
+  (every Wis webview is `add_child`, i.e. a child). Not yet upstreamed;
+  re-apply (or upstream) when bumping wry.
