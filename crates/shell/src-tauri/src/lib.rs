@@ -46,6 +46,8 @@ mod widget_panel;
 #[cfg(windows)]
 mod win_dispatch;
 #[cfg(windows)]
+mod win_focus;
+#[cfg(windows)]
 mod win_webview2;
 mod windows;
 
@@ -224,6 +226,14 @@ pub fn run() {
                 #[cfg(windows)]
                 let _ = main.set_effects(windows::chrome_window_effects());
 
+                // Forward the boot activation's frame-level WM_SETFOCUS (and
+                // every later one) into a webview, before the window can gain
+                // focus for the first time; see `win_focus`.
+                #[cfg(windows)]
+                if let Some(win) = app.get_window("main") {
+                    win_focus::install(&win);
+                }
+
                 let _ = main.show();
 
                 // On Windows, show() alone may leave the window shown but not
@@ -233,6 +243,10 @@ pub fn run() {
                 #[cfg(windows)]
                 let _ = main.set_focus();
             }
+
+            // Clear any ephemeral-workspace WebView2 data folders a previous run left behind.
+            #[cfg(windows)]
+            commands::sweep_ephemeral_webview_data(app.handle());
 
             // Drop compiled rule lists from previous filter-list versions so
             // the WebKit store doesn't accumulate stale entries forever.

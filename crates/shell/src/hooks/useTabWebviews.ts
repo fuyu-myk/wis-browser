@@ -5,7 +5,10 @@ import { Window, getCurrentWindow } from '@tauri-apps/api/window'
 import { commands } from '@/bindings/commands'
 import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { isChromeUrl } from '@/lib/url'
+import { currentPlatform } from '@/lib/platform'
 import type { VideoPopoutController } from '@/hooks/useVideoPopout'
+
+const PARK_HIDDEN_OFFSCREEN = currentPlatform() === 'windows'
 
 const WEBVIEW_CORNER_RADIUS = 12
 
@@ -272,6 +275,7 @@ export function useTabWebviews({
       if (vis.get(id) !== false) {
         vis.set(id, false)
         void wv.hide().catch(() => undefined)
+        if (PARK_HIDDEN_OFFSCREEN) applyBounds(wv, OFFSCREEN_BOUNDS)
         if (!transientRef.current && id !== activeTabIdRef.current) {
           popoutRef.current?.onHidden(id)
         }

@@ -116,6 +116,17 @@ impl InnerWebView {
 
     let hwnd = Self::create_container_hwnd(parent, &attributes, is_child)?;
 
+    // WIS PATCH: destroy the container if any later creation step fails.
+    struct ContainerGuard(Option<HWND>);
+    impl Drop for ContainerGuard {
+      fn drop(&mut self) {
+        if let Some(hwnd) = self.0.take() {
+          let _ = unsafe { DestroyWindow(hwnd) };
+        }
+      }
+    }
+    let mut container_guard = ContainerGuard(Some(hwnd));
+
     let drop_handler = attributes.drag_drop_handler.take();
     let bounds = attributes.bounds;
 
@@ -146,6 +157,8 @@ impl InnerWebView {
       pl_attrs,
       is_child,
     )?;
+
+    container_guard.0 = None;
 
     let drag_drop_controller = drop_handler.map(|handler| {
       // Disable file drops, so our handler can capture it

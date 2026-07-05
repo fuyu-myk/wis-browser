@@ -116,6 +116,13 @@ pub async fn spawn_window(
                     log::warn!("hide native menu bar for {label_for_build} failed: {err}");
                 }
 
+                // Frame-level focus repair; see `win_focus`. Runs on the main
+                // thread (this closure is a main-thread dispatch).
+                #[cfg(windows)]
+                if let Some(win) = app_for_build.get_window(&label_for_build) {
+                    crate::win_focus::install(&win);
+                }
+
                 let app_for_event = app_for_build.clone();
                 let label_for_event = label_for_build.clone();
                 window.on_window_event(move |event| match event {

@@ -114,6 +114,7 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
   }, [])
 
   const close = useCallback(() => {
+    reqIdRef.current += 1
     if (!openRef.current) return
     openRef.current = false
     highlightRef.current = -1
@@ -243,9 +244,14 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
         return
       }
       await showUnderBar()
+      if (reqId !== reqIdRef.current) {
+        openRef.current = false
+        void overlay.hide().catch(() => undefined)
+        return
+      }
       pushRender()
     },
-    [workspaceId, assemble, findCompletion, close, showUnderBar, pushRender],
+    [workspaceId, assemble, findCompletion, close, showUnderBar, pushRender, overlay],
   )
 
   const move = useCallback(
