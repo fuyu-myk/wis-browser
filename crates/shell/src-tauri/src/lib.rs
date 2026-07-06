@@ -16,6 +16,7 @@ mod error_compat;
 mod external;
 mod favicons;
 mod find;
+mod hover_guard;
 mod interaction_state;
 #[cfg(windows)]
 mod keybind;
@@ -352,6 +353,9 @@ pub fn run() {
 
             // App handle for the video-popout message handler.
             video_popout::set_app_handle(app.handle().clone());
+
+            // App handle for the popup hover-guard.
+            hover_guard::set_app_handle(app.handle().clone());
 
             // App handle for the camera/microphone consent message handler.
             permissions::set_app_handle(app.handle().clone());

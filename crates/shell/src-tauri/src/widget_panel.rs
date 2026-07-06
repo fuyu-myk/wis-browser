@@ -434,6 +434,9 @@ pub async fn open_widget_panel(
     // Per-site camera/microphone consent gate.
     crate::permissions::install(&child);
 
+    // While the cursor is over the panel, suppress hover on the tabs it covers.
+    crate::hover_guard::install_panel_hover_guard(&child, window.label());
+
     // A muted widget stays muted across panel reclaim/reopen.
     {
         let muted = state
@@ -574,6 +577,8 @@ pub async fn hide_widget_panel(window: tauri::Window, id: String) -> WisResult<(
         set_media_suspended(&wv, true);
     }
 
+    crate::hover_guard::set_window_tabs_suppressed(window.label(), false);
+
     Ok(())
 }
 
@@ -653,6 +658,8 @@ pub async fn close_widget_panel(window: tauri::Window, id: String) -> WisResult<
         notify_panels_changed(app);
     }
 
+    crate::hover_guard::set_window_tabs_suppressed(window.label(), false);
+
     Ok(())
 }
 
@@ -677,6 +684,8 @@ pub async fn close_all_widget_panels(window: tauri::Window) -> WisResult<()> {
     if any {
         notify_panels_changed(app);
     }
+
+    crate::hover_guard::set_window_tabs_suppressed(window.label(), false);
 
     Ok(())
 }

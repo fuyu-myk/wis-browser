@@ -86,6 +86,9 @@ struct HoverIvars {
     /// The reparented tab WKWebView the handler evals into. wry leaks this on
     /// drop, so the raw pointer stays valid for the handler's lifetime.
     webview: *mut AnyObject,
+    /// The window the popped tab came from, whose other tabs the popout floats
+    /// over: their hover is suppressed while the cursor is on the popout.
+    origin_window: String,
 }
 
 declare_class!(
@@ -115,12 +118,18 @@ declare_class!(
 );
 
 impl HoverHandler {
-    fn new(webview: *mut AnyObject) -> Id<Self> {
-        let this = Self::alloc().set_ivars(HoverIvars { webview });
+    fn new(webview: *mut AnyObject, origin_window: String) -> Id<Self> {
+        let this = Self::alloc().set_ivars(HoverIvars {
+            webview,
+            origin_window,
+        });
         unsafe { msg_send_id![super(this), init] }
     }
 
     unsafe fn eval_hover(&self, on: bool) {
+        // Suppress hover on the origin window's other tabs that the popout floats over.
+        crate::hover_guard::set_window_tabs_suppressed(&self.ivars().origin_window, on);
+
         let wk = self.ivars().webview;
         if wk.is_null() {
             return;
@@ -142,8 +151,11 @@ impl HoverHandler {
 /// Install the always-active hover tracking on the popout window's content
 /// view. The handler is associated with and retained by the content view.
 /// Runs inside `with_webview` so only main-thread-safe pointers are touched.
-fn install_hover_tracking<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
-    let _ = webview.with_webview(|w| unsafe {
+fn install_hover_tracking<R: tauri::Runtime>(
+    webview: &tauri::webview::Webview<R>,
+    origin_window: String,
+) {
+    let _ = webview.with_webview(move |w| unsafe {
         let wk = w.inner() as *mut AnyObject;
         if wk.is_null() {
             return;
@@ -162,7 +174,7 @@ fn install_hover_tracking<R: tauri::Runtime>(webview: &tauri::webview::Webview<R
         // Let the window post mouse-moved even when it is not key.
         let _: () = msg_send![window, setAcceptsMouseMovedEvents: objc2::runtime::Bool::YES];
 
-        let handler = HoverHandler::new(wk);
+        let handler = HoverHandler::new(wk, origin_window);
         let rect = HoverRect {
             x: 0.0,
             y: 0.0,
@@ -452,7 +464,7 @@ fn on_entered(app: &AppHandle, label: &str, aspect: f64) {
     // bare window surface beside the video at larger sizes.
     set_fills_window(&webview, true);
     let _ = webview.show();
-    install_hover_tracking(&webview);
+    install_hover_tracking(&webview, origin_window.clone());
 
     {
         let mut guard = state.video_popout.lock().expect("video_popout poisoned");
@@ -595,6 +607,9 @@ pub fn close_and_notify(app: &AppHandle, label: &str, eval_exit: bool) {
     };
 
     if was_active {
+        if let Some(origin) = origin_window.as_deref() {
+            crate::hover_guard::set_window_tabs_suppressed(origin, false);
+        }
         if let Some(webview) = app.webviews().get(label).cloned() {
             if eval_exit {
                 let _ = webview.eval(EXIT_EVAL);

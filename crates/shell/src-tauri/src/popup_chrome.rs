@@ -8,8 +8,10 @@
 //! on from the app side: a lazily started main-thread poll finds any window
 //! that is not Tauri-owned and whose content is a `WKWebView`, gives it a
 //! titlebar accessory showing the current URL (read-only, with an https lock
-//! glyph), and keeps it in sync as the popup navigates. The poll stops once
-//! every popup has closed, so it costs nothing when none are open.
+//! glyph), and keeps it in sync as the popup navigates. The same pass installs a
+//! `hover_guard` tracking area on each popup so the tab beneath it stops
+//! highlighting while the cursor is over the popup. The poll stops once every
+//! popup has closed, so it costs nothing when none are open.
 
 use tauri::AppHandle;
 
@@ -284,6 +286,12 @@ mod imp {
 
         let live = unsafe { decorate_pass(&tauri_windows) };
 
+        // No popup remains: release any hover suppression left armed by a popup
+        // that closed while the cursor was inside it.
+        if live == 0 {
+            crate::hover_guard::release_popup_suppression_if_idle();
+        }
+
         let mut guard = state().lock().unwrap();
         if live > 0 {
             guard.misses = 0;
@@ -340,6 +348,7 @@ mod imp {
             }
             if view_with_tag(win, URL_FIELD_TAG).is_null() {
                 build_bar(win, content);
+                crate::hover_guard::attach_popup_hover_guard(content);
             }
             refresh_url(win, content);
         }
