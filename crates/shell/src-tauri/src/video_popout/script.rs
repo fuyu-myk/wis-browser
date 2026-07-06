@@ -141,6 +141,22 @@ const POPOUT_JS: &str = r#"(function () {
     if (hoverBtn) hoverBtn.style.display = 'none';
     hoverFor = null;
   }
+  function topmostAt(x, y) {
+    var stack = document.elementsFromPoint(x, y);
+    for (var i = 0; i < stack.length; i++) {
+      var el = stack[i];
+      if (hoverBtn && (el === hoverBtn || hoverBtn.contains(el))) continue;
+      return el;
+    }
+    return null;
+  }
+  function videoUnoccluded(target, vr, x, y) {
+    var top = topmostAt(x, y);
+    if (!top) return false;
+    if (top === target || target.contains(top) || top.contains(target)) return true;
+    var tr = top.getBoundingClientRect();
+    return tr.width >= vr.width * 0.9 && tr.height >= vr.height * 0.9;
+  }
   function placeHover(cx, cy) {
     if (active) { hideHover(); return; }
     var vids = document.querySelectorAll('video');
@@ -156,6 +172,10 @@ const POPOUT_JS: &str = r#"(function () {
       if (area > bestArea) { bestArea = area; target = v; targetRect = r; }
     }
     if (!target) { hideHover(); return; }
+    // Hide when a page popup occludes the video where the button would land.
+    var bx = targetRect.right - 27;
+    var by = targetRect.top + targetRect.height / 2;
+    if (!videoUnoccluded(target, targetRect, bx, by)) { hideHover(); return; }
     var b = hoverButton();
     b.style.left = Math.round(targetRect.right - 44) + 'px';
     b.style.top = Math.round(targetRect.top + (targetRect.height - 34) / 2) + 'px';
@@ -181,10 +201,10 @@ const POPOUT_JS: &str = r#"(function () {
     'video.__wis-popout-video::-webkit-media-controls-enclosure{display:none!important;}' +
     '#__wis-popout-overlay{position:fixed;inset:0;z-index:2147483645;cursor:default;-webkit-user-select:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,sans-serif;}' +
     '#__wis-popout-x{position:absolute;top:10px;right:10px;width:28px;height:28px;border:0;border-radius:50%;background:rgba(15,15,20,0.62);color:#fff;font-size:17px;line-height:28px;text-align:center;padding:0;cursor:pointer;opacity:0;transition:opacity 0.18s ease,background 0.18s ease;z-index:3;}' +
-    '#__wis-popout-overlay:hover #__wis-popout-x,#__wis-popout-overlay.is-fresh #__wis-popout-x{opacity:1;}' +
+    '#__wis-popout-overlay:hover #__wis-popout-x,#__wis-popout-overlay.is-hover #__wis-popout-x,#__wis-popout-overlay.is-fresh #__wis-popout-x{opacity:1;}' +
     '#__wis-popout-x:hover{background:rgba(15,15,20,0.85);}' +
     '#__wis-popout-vol{position:absolute;left:10px;bottom:10px;display:flex;align-items:center;gap:6px;height:28px;padding:0 10px 0 3px;border-radius:14px;background:rgba(15,15,20,0.62);opacity:0;transition:opacity 0.18s ease;z-index:3;}' +
-    '#__wis-popout-overlay:hover #__wis-popout-vol,#__wis-popout-overlay.is-fresh #__wis-popout-vol{opacity:1;}' +
+    '#__wis-popout-overlay:hover #__wis-popout-vol,#__wis-popout-overlay.is-hover #__wis-popout-vol,#__wis-popout-overlay.is-fresh #__wis-popout-vol{opacity:1;}' +
     '#__wis-popout-vol button{width:24px;height:24px;border:0;border-radius:50%;background:transparent;color:#fff;cursor:pointer;padding:0;display:grid;place-items:center;}' +
     '#__wis-popout-vol button:hover{background:rgba(255,255,255,0.18);}' +
     '#__wis-popout-vol button svg{width:15px;height:15px;display:block;}' +
@@ -330,6 +350,11 @@ const POPOUT_JS: &str = r#"(function () {
       if (Date.now() < deadline) setTimeout(kick, 200);
     }
     kick();
+  };
+
+  window.__wisPopoutHover = function (on) {
+    if (!active) return;
+    active.overlay.classList.toggle('is-hover', !!on);
   };
 
   function teardown(notifyKind) {
