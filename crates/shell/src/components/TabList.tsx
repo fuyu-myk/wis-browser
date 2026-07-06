@@ -12,7 +12,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { commands } from '@/bindings/commands'
 import { closeTabAnimated, onTabClosing, TAB_EXIT_MS } from '@/lib/tabClose'
 import type {
-  AccentColor,
   BrowserState,
   TabFolder,
   TabFolderId,
@@ -20,6 +19,7 @@ import type {
   WorkspaceId,
   Tab,
 } from '@/bindings/types'
+import { FOLDER_ACCENTS } from '@/lib/accents'
 import { cx } from '@/lib/cx'
 import { FolderPlusIcon, PlusIcon, XIcon } from '@/lib/icons'
 import { resolveNewTabUrl, tabDisplayName } from '@/lib/url'
@@ -66,17 +66,6 @@ interface TabListProps {
   /** Workspace ids in display order, for the directional switch slide. */
   workspaceOrder?: WorkspaceId[]
 }
-
-const ACCENTS: AccentColor[] = [
-  'primary',
-  'mint',
-  'rose',
-  'sun',
-  'lila',
-  'gray',
-  'ink',
-  'azur',
-]
 
 /** A non-reorder drop target signalling "assign to folder", not "insert here". */
 const FOLDER_DROP: DropTarget = { index: -1, anchorIndex: -1, side: 'before' }
@@ -176,7 +165,7 @@ export function TabList({
       commands.createTabFolder(
         workspaceId,
         'New folder',
-        ACCENTS[folders.length % ACCENTS.length],
+        FOLDER_ACCENTS[folders.length % FOLDER_ACCENTS.length],
       ),
     onSuccess: invalidate,
   })
@@ -635,6 +624,15 @@ export function TabList({
         <PlusIcon />
         <span>New tab</span>
       </button>
+      <button
+        type="button"
+        className="kb-newfolder-row"
+        onClick={() => createFolder.mutate()}
+        disabled={!workspaceId || createFolder.isPending}
+      >
+        <FolderPlusIcon />
+        <span>New folder</span>
+      </button>
 
       {sortedFolders.map((folder, idx) => {
         const members = membersOf(folder.id)
@@ -693,16 +691,6 @@ export function TabList({
           </div>
         )
       })}
-
-      <button
-        type="button"
-        className="kb-newfolder-row"
-        onClick={() => createFolder.mutate()}
-        disabled={!workspaceId || createFolder.isPending}
-      >
-        <FolderPlusIcon />
-        <span>New folder</span>
-      </button>
 
       <div
         className={cx('kb-loose', { 'is-drop': folderDropHint === 'loose' })}

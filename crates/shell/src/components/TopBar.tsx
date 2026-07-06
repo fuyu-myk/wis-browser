@@ -2,7 +2,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
 import type { BrowserState, Tab } from '@/bindings/types'
-import { PlusIcon } from '@/lib/icons'
+import { FOLDER_ACCENTS } from '@/lib/accents'
+import { FolderPlusIcon, PlusIcon } from '@/lib/icons'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 
 import { HorizontalTabs } from '@/components/HorizontalTabs'
@@ -44,6 +45,21 @@ export function TopBar({ state }: TopBarProps) {
     onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
   })
 
+  const createFolder = useMutation({
+    mutationFn: async () => {
+      if (!activeWorkspace) throw new Error('no active workspace')
+      const folders = activeWorkspace.tab_folders
+      const folder = await commands.createTabFolder(
+        activeWorkspace.id,
+        'New folder',
+        FOLDER_ACCENTS[folders.length % FOLDER_ACCENTS.length],
+      )
+      if (activeTab) await commands.assignTabToFolder(activeTab.id, folder.id)
+      return folder
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
+  })
+
   return (
     <div className="kb-topbar">
       <div className="kb-topbar-row primary" data-tauri-drag-region>
@@ -63,6 +79,16 @@ export function TopBar({ state }: TopBarProps) {
           disabled={!activeWorkspace || createTab.isPending}
         >
           <PlusIcon />
+        </button>
+        <button
+          type="button"
+          className="kb-circle-btn"
+          aria-label="New folder"
+          title="New folder"
+          onClick={() => createFolder.mutate()}
+          disabled={!activeWorkspace || createFolder.isPending}
+        >
+          <FolderPlusIcon />
         </button>
       </div>
       <div className="kb-topbar-row tabs">
