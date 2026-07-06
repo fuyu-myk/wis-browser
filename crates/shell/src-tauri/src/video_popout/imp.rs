@@ -37,6 +37,158 @@ impl PopoutHandler {
     }
 }
 
+// Always-active hover tracking for the PiP window.
+extern "C" {
+    fn objc_setAssociatedObject(
+        obj: *mut AnyObject,
+        key: *const std::os::raw::c_void,
+        value: *mut AnyObject,
+        policy: usize,
+    );
+}
+const OBJC_ASSOCIATION_RETAIN_NONATOMIC: usize = 1;
+static HOVER_ASSOC_KEY: u8 = 0;
+// NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways | NSTrackingInVisibleRect.
+const HOVER_TRACKING_OPTS: usize = 0x01 | 0x80 | 0x200;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct HoverRect {
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+}
+
+unsafe impl objc2::Encode for HoverRect {
+    const ENCODING: objc2::Encoding = objc2::Encoding::Struct(
+        "CGRect",
+        &[
+            objc2::Encoding::Struct(
+                "CGPoint",
+                &[
+                    <f64 as objc2::Encode>::ENCODING,
+                    <f64 as objc2::Encode>::ENCODING,
+                ],
+            ),
+            objc2::Encoding::Struct(
+                "CGSize",
+                &[
+                    <f64 as objc2::Encode>::ENCODING,
+                    <f64 as objc2::Encode>::ENCODING,
+                ],
+            ),
+        ],
+    );
+}
+
+struct HoverIvars {
+    /// The reparented tab WKWebView the handler evals into. wry leaks this on
+    /// drop, so the raw pointer stays valid for the handler's lifetime.
+    webview: *mut AnyObject,
+}
+
+declare_class!(
+    struct HoverHandler;
+
+    unsafe impl ClassType for HoverHandler {
+        type Super = NSObject;
+        type Mutability = mutability::InteriorMutable;
+        const NAME: &'static str = "WisPopoutHoverHandler";
+    }
+
+    impl DeclaredClass for HoverHandler {
+        type Ivars = HoverIvars;
+    }
+
+    unsafe impl HoverHandler {
+        #[method(mouseEntered:)]
+        fn mouse_entered(&self, _event: *mut AnyObject) {
+            unsafe { self.eval_hover(true) }
+        }
+
+        #[method(mouseExited:)]
+        fn mouse_exited(&self, _event: *mut AnyObject) {
+            unsafe { self.eval_hover(false) }
+        }
+    }
+);
+
+impl HoverHandler {
+    fn new(webview: *mut AnyObject) -> Id<Self> {
+        let this = Self::alloc().set_ivars(HoverIvars { webview });
+        unsafe { msg_send_id![super(this), init] }
+    }
+
+    unsafe fn eval_hover(&self, on: bool) {
+        let wk = self.ivars().webview;
+        if wk.is_null() {
+            return;
+        }
+        let js = if on {
+            "window.__wisPopoutHover&&window.__wisPopoutHover(true);"
+        } else {
+            "window.__wisPopoutHover&&window.__wisPopoutHover(false);"
+        };
+        let s = ns_string(js);
+        let _: () = msg_send![
+            wk,
+            evaluateJavaScript: s,
+            completionHandler: std::ptr::null_mut::<AnyObject>(),
+        ];
+    }
+}
+
+/// Install the always-active hover tracking on the popout window's content
+/// view. The handler is associated with and retained by the content view.
+/// Runs inside `with_webview` so only main-thread-safe pointers are touched.
+fn install_hover_tracking<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    let _ = webview.with_webview(|w| unsafe {
+        let wk = w.inner() as *mut AnyObject;
+        if wk.is_null() {
+            return;
+        }
+
+        let window: *mut AnyObject = msg_send![wk, window];
+        if window.is_null() {
+            return;
+        }
+
+        let content: *mut AnyObject = msg_send![window, contentView];
+        if content.is_null() {
+            return;
+        }
+
+        // Let the window post mouse-moved even when it is not key.
+        let _: () = msg_send![window, setAcceptsMouseMovedEvents: objc2::runtime::Bool::YES];
+
+        let handler = HoverHandler::new(wk);
+        let rect = HoverRect {
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+        };
+        let area: *mut AnyObject = msg_send![class!(NSTrackingArea), alloc];
+        let area: *mut AnyObject = msg_send![
+            area,
+            initWithRect: rect,
+            options: HOVER_TRACKING_OPTS,
+            owner: &*handler,
+            userInfo: std::ptr::null_mut::<AnyObject>(),
+        ];
+        let _: () = msg_send![content, addTrackingArea: area];
+        let _: () = msg_send![area, release];
+
+        objc_setAssociatedObject(
+            content,
+            &HOVER_ASSOC_KEY as *const u8 as *const std::os::raw::c_void,
+            Id::as_ptr(&handler) as *mut AnyObject,
+            OBJC_ASSOCIATION_RETAIN_NONATOMIC,
+        );
+    });
+}
+
 unsafe fn ns_string(s: &str) -> *mut AnyObject {
     let c = std::ffi::CString::new(s).unwrap_or_default();
     msg_send![class!(NSString), stringWithUTF8String: c.as_ptr()]
@@ -300,6 +452,7 @@ fn on_entered(app: &AppHandle, label: &str, aspect: f64) {
     // bare window surface beside the video at larger sizes.
     set_fills_window(&webview, true);
     let _ = webview.show();
+    install_hover_tracking(&webview);
 
     {
         let mut guard = state.video_popout.lock().expect("video_popout poisoned");
