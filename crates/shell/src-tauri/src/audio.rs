@@ -75,6 +75,56 @@ pub fn apply_page_muted<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>,
     let _ = (webview, muted);
 }
 
+/// Stop and silence every sound a webview's page can make, for a webview that
+/// is about to be torn down. Safe to call on any live tab webview.
+pub fn stop_all_media<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = webview.with_webview(|w| unsafe {
+            use objc2::runtime::AnyObject;
+            use objc2::{msg_send, sel};
+
+            let wk = w.inner() as *mut AnyObject;
+            if wk.is_null() {
+                return;
+            }
+
+            // Engine-side mute (SPI): sticky across the teardown, silences media
+            // elements, iframes and Web Audio.
+            let responds_mute: bool = msg_send![wk, respondsToSelector: sel!(_setPageMuted:)];
+            if responds_mute {
+                let mask: usize = 1; // _WKMediaMutedState bit 0 = audio
+                let _: () = msg_send![wk, _setPageMuted: mask];
+            }
+
+            let null_block: *mut AnyObject = std::ptr::null_mut();
+
+            let responds_pause: bool =
+                msg_send![wk, respondsToSelector: sel!(pauseAllMediaPlaybackWithCompletionHandler:)];
+            if responds_pause {
+                let _: () = msg_send![wk, pauseAllMediaPlaybackWithCompletionHandler: null_block];
+            }
+
+            // Dismiss any native fullscreen / picture-in-picture surface it owns.
+            let responds_close: bool = msg_send![
+                wk,
+                respondsToSelector: sel!(closeAllMediaPresentationsWithCompletionHandler:)
+            ];
+            if responds_close {
+                let _: () =
+                    msg_send![wk, closeAllMediaPresentationsWithCompletionHandler: null_block];
+            }
+        });
+    }
+
+    // Pre-emptive mute.
+    #[cfg(windows)]
+    apply_page_muted(webview, true);
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let _ = webview;
+}
+
 fn emit_snapshot(app: &AppHandle) {
     let state = app.state::<AppState>();
     let audible: Vec<String> = {
@@ -137,9 +187,18 @@ pub async fn tab_audio_state(state: State<'_, AppState>) -> WisResult<AudioState
     Ok(AudioState { audible, muted })
 }
 
-/// Forget a closed tab's audio bookkeeping.
+/// Tear down a closed tab's audio: stop and mute its live webview's media, then
+/// forget its mute/audible bookkeeping. Called from every tab-teardown path.
 pub fn forget_tab(app: &AppHandle, id: TabId) {
     let uuid = id.as_uuid().to_string();
+    if let Some(webview) = app
+        .webviews()
+        .get(&format!("{TAB_LABEL_PREFIX}{uuid}"))
+        .cloned()
+    {
+        stop_all_media(&webview);
+    }
+
     let state = app.state::<AppState>();
     let removed_muted = state
         .muted_tabs
