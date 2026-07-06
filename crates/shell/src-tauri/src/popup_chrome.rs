@@ -92,22 +92,24 @@ mod imp {
     use tauri::{AppHandle, Manager};
 
     declare_class!(
-        /// Minimal `WKUIDelegate` for engine popups, implementing only
-        /// `webViewDidClose:` so a popup page's `window.close()` closes the
-        /// native window.
-        struct PopupCloseDelegate;
+        /// `WKUIDelegate` for engine popups. wry builds these popup webviews
+        /// with a nil `UIDelegate`, so the shell supplies one: `webViewDidClose:`
+        /// lets a popup page's `window.close()` close the native window, and
+        /// `runOpenPanelWithParameters:` shows the file picker for
+        /// `<input type=file>`.
+        struct PopupUiDelegate;
 
-        unsafe impl ClassType for PopupCloseDelegate {
+        unsafe impl ClassType for PopupUiDelegate {
             type Super = NSObject;
             type Mutability = mutability::InteriorMutable;
-            const NAME: &'static str = "WisPopupCloseDelegate";
+            const NAME: &'static str = "WisPopupUiDelegate";
         }
 
-        impl DeclaredClass for PopupCloseDelegate {
+        impl DeclaredClass for PopupUiDelegate {
             type Ivars = ();
         }
 
-        unsafe impl PopupCloseDelegate {
+        unsafe impl PopupUiDelegate {
             #[method(webViewDidClose:)]
             fn web_view_did_close(&self, webview: *mut AnyObject) {
                 unsafe {
@@ -129,16 +131,55 @@ mod imp {
                     let _: () = msg_send![window, close];
                 }
             }
+
+            #[method(webView:runOpenPanelWithParameters:initiatedByFrame:completionHandler:)]
+            fn run_open_panel(
+                &self,
+                _webview: *mut AnyObject,
+                parameters: *mut AnyObject,
+                _frame: *mut AnyObject,
+                handler: &block2::Block<dyn Fn(*mut AnyObject)>,
+            ) {
+                unsafe {
+                    let panel: *mut AnyObject = msg_send![class!(NSOpenPanel), openPanel];
+                    if panel.is_null() {
+                        handler.call((std::ptr::null_mut(),));
+                        return;
+                    }
+
+                    // Honour the `<input>`'s multiple/directory flags.
+                    let allow_multi: Bool = if parameters.is_null() {
+                        Bool::NO
+                    } else {
+                        msg_send![parameters, allowsMultipleSelection]
+                    };
+                    let allow_dirs: Bool = if parameters.is_null() {
+                        Bool::NO
+                    } else {
+                        msg_send![parameters, allowsDirectories]
+                    };
+                    let _: () = msg_send![panel, setCanChooseFiles: Bool::YES];
+                    let _: () = msg_send![panel, setCanChooseDirectories: allow_dirs];
+                    let _: () = msg_send![panel, setAllowsMultipleSelection: allow_multi];
+
+                    let response: isize = msg_send![panel, runModal];
+                    if response == 1 {
+                        let urls: *mut AnyObject = msg_send![panel, URLs];
+                        handler.call((urls,));
+                    } else {
+                        handler.call((std::ptr::null_mut(),));
+                    }
+                }
+            }
         }
     );
 
     /// The shared, app-lifetime delegate instance. `WKWebView.UIDelegate` is a
     /// weak reference, so the singleton is deliberately leaked to keep it alive.
-    fn close_delegate() -> *mut AnyObject {
+    fn popup_ui_delegate() -> *mut AnyObject {
         static DELEGATE: OnceLock<usize> = OnceLock::new();
         *DELEGATE.get_or_init(|| {
-            let d: Id<PopupCloseDelegate> =
-                unsafe { msg_send_id![PopupCloseDelegate::alloc(), init] };
+            let d: Id<PopupUiDelegate> = unsafe { msg_send_id![PopupUiDelegate::alloc(), init] };
             let ptr = Id::as_ptr(&d) as usize;
             std::mem::forget(d);
             ptr
@@ -295,7 +336,7 @@ mod imp {
             live += 1;
             let ui_delegate: *mut AnyObject = msg_send![content, UIDelegate];
             if ui_delegate.is_null() {
-                let _: () = msg_send![content, setUIDelegate: close_delegate()];
+                let _: () = msg_send![content, setUIDelegate: popup_ui_delegate()];
             }
             if view_with_tag(win, URL_FIELD_TAG).is_null() {
                 build_bar(win, content);
