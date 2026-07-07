@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use wis_core::{WisResult, WorkspaceId};
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 use wis_core::WisError;
 
 use crate::state::AppState;
@@ -58,7 +58,21 @@ pub async fn list_site_data(
             .collect())
     }
 
-    #[cfg(not(target_os = "macos"))]
+    // WebView2 has no by-domain site-data enumeration like `WKWebsiteDataStore`,
+    // so Windows lists the cookie domains; cache/storage are wiped wholesale by
+    // `clear_site_data`.
+    #[cfg(windows)]
+    {
+        let domains = imp_win::list(&app, workspace_id)
+            .await
+            .map_err(|message| WisError::InvalidInput { message })?;
+        Ok(domains
+            .into_iter()
+            .map(|domain| SiteDataEntry { domain })
+            .collect())
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = (app, workspace_id);
         Ok(Vec::new())
@@ -81,7 +95,14 @@ pub async fn delete_site_data(
             .map_err(|message| WisError::InvalidInput { message })?;
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        imp_win::delete(&app, workspace_id, domain)
+            .await
+            .map_err(|message| WisError::InvalidInput { message })?;
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     let _ = (app, workspace_id, domain);
 
     Ok(())
@@ -100,7 +121,14 @@ pub async fn clear_site_data(app: AppHandle, workspace_id: WorkspaceId) -> WisRe
             .map_err(|message| WisError::InvalidInput { message })?;
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        imp_win::clear(&app, workspace_id)
+            .await
+            .map_err(|message| WisError::InvalidInput { message })?;
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     let _ = (app, workspace_id);
 
     Ok(())
@@ -610,4 +638,203 @@ async fn restore_session_cookies_mac(
 
     rx.await
         .map_err(|_| "session-cookie restore completion dropped".to_string())
+}
+
+/// Windows site-data via WebView2. All of a workspace's tabs share one profile;
+/// cookies are enumerated through the `ICoreWebView2CookieManager`, and a full
+/// clear goes through the profile's `ClearBrowsingDataAll`. Each COM call runs
+/// on the UI thread via `with_core_webview2`, bridging its async completion
+/// handler back to the awaiting command over a channel.
+#[cfg(windows)]
+mod imp_win {
+    use super::AppState;
+
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use tauri::{AppHandle, Manager};
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2Cookie, ICoreWebView2CookieList, ICoreWebView2CookieManager,
+        ICoreWebView2Profile2, ICoreWebView2_13, ICoreWebView2_2,
+    };
+    use webview2_com::{
+        ClearBrowsingDataCompletedHandler, CoTaskMemPWSTR, GetCookiesCompletedHandler,
+    };
+    use windows::core::{Interface, PCWSTR, PWSTR};
+    use wis_core::WorkspaceId;
+
+    /// A live tab webview of `workspace_id`, or `None` when the workspace
+    /// has no live webview.
+    async fn workspace_webview(
+        app: &AppHandle,
+        workspace_id: WorkspaceId,
+    ) -> Option<tauri::webview::Webview<tauri::Wry>> {
+        let labels: Vec<String> = {
+            let browser = app.state::<AppState>().browser.lock().await;
+            let ws = browser.workspaces.iter().find(|w| w.id == workspace_id)?;
+            ws.tab_order
+                .iter()
+                .map(|id| format!("tab-{}", id.as_uuid()))
+                .collect()
+        };
+
+        labels
+            .iter()
+            .find_map(|label| app.webviews().get(label).cloned())
+    }
+
+    /// Await a UI-thread completion sent over `rx`, off the async runtime.
+    async fn recv<T: Send + 'static>(rx: mpsc::Receiver<T>, timeout: Duration) -> Option<T> {
+        tokio::task::spawn_blocking(move || rx.recv_timeout(timeout).ok())
+            .await
+            .ok()
+            .flatten()
+    }
+
+    /// A cookie's domain, normalized (leading dot stripped, lowercased).
+    fn read_domain(cookie: &ICoreWebView2Cookie) -> Option<String> {
+        let mut d = PWSTR::null();
+        // SAFETY: `Domain` writes a COM-allocated string that `CoTaskMemPWSTR`
+        // then owns and frees; runs on the UI thread inside the handler.
+        if unsafe { cookie.Domain(&mut d) }.is_err() {
+            return None;
+        }
+
+        let s = CoTaskMemPWSTR::from(d).to_string();
+        let s = s.trim_start_matches('.').trim().to_ascii_lowercase();
+
+        (!s.is_empty()).then_some(s)
+    }
+
+    pub(super) async fn list(
+        app: &AppHandle,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<String>, String> {
+        let Some(webview) = workspace_webview(app, workspace_id).await else {
+            return Ok(Vec::new());
+        };
+        let (tx, rx) = mpsc::channel::<Vec<String>>();
+        crate::win_webview2::with_core_webview2(&webview, move |core| {
+            let started = (|| -> windows::core::Result<()> {
+                let core2: ICoreWebView2_2 = core.cast()?;
+                // SAFETY: on the UI thread via `with_core_webview2`.
+                let manager: ICoreWebView2CookieManager = unsafe { core2.CookieManager() }?;
+                let tx_ok = tx.clone();
+                let handler = GetCookiesCompletedHandler::create(Box::new(move |hr, list| {
+                    let mut domains: Vec<String> = Vec::new();
+                    if hr.is_ok() {
+                        if let Some(list) = list {
+                            let mut count: u32 = 0;
+                            let _ = unsafe { list.Count(&mut count) };
+
+                            for i in 0..count {
+                                if let Ok(cookie) = unsafe { list.GetValueAtIndex(i) } {
+                                    if let Some(d) = read_domain(&cookie) {
+                                        domains.push(d);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let _ = tx_ok.send(domains);
+                    Ok(())
+                }));
+
+                unsafe { manager.GetCookies(PCWSTR::null(), &handler) }
+            })();
+
+            if started.is_err() {
+                let _ = tx.send(Vec::new());
+            }
+        });
+
+        let mut domains = recv(rx, Duration::from_secs(10)).await.unwrap_or_default();
+        domains.sort();
+        domains.dedup();
+
+        Ok(domains)
+    }
+
+    pub(super) async fn delete(
+        app: &AppHandle,
+        workspace_id: WorkspaceId,
+        domain: String,
+    ) -> Result<(), String> {
+        let Some(webview) = workspace_webview(app, workspace_id).await else {
+            return Ok(());
+        };
+
+        let target = domain.trim_start_matches('.').trim().to_ascii_lowercase();
+        let (tx, rx) = mpsc::channel::<()>();
+        crate::win_webview2::with_core_webview2(&webview, move |core| {
+            let started = (|| -> windows::core::Result<()> {
+                let core2: ICoreWebView2_2 = core.cast()?;
+                let manager: ICoreWebView2CookieManager = unsafe { core2.CookieManager() }?;
+                let manager_del = manager.clone();
+                let tx_done = tx.clone();
+                let handler = GetCookiesCompletedHandler::create(Box::new(move |hr, list| {
+                    if hr.is_ok() {
+                        if let Some(list) = list {
+                            let mut count: u32 = 0;
+                            let _ = unsafe { list.Count(&mut count) };
+
+                            for i in 0..count {
+                                if let Ok(cookie) = unsafe { list.GetValueAtIndex(i) } {
+                                    if read_domain(&cookie).as_deref() == Some(target.as_str()) {
+                                        // SAFETY: UI thread; cookie is from this list.
+                                        let _ = unsafe { manager_del.DeleteCookie(&cookie) };
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let _ = tx_done.send(());
+                    Ok(())
+                }));
+
+                unsafe { manager.GetCookies(PCWSTR::null(), &handler) }
+            })();
+
+            if started.is_err() {
+                let _ = tx.send(());
+            }
+        });
+
+        let _ = recv(rx, Duration::from_secs(10)).await;
+        Ok(())
+    }
+
+    pub(super) async fn clear(app: &AppHandle, workspace_id: WorkspaceId) -> Result<(), String> {
+        let Some(webview) = workspace_webview(app, workspace_id).await else {
+            return Err("open a tab in this workspace to clear its data".to_string());
+        };
+
+        let (tx, rx) = mpsc::channel::<bool>();
+        crate::win_webview2::with_core_webview2(&webview, move |core| {
+            let started = (|| -> windows::core::Result<()> {
+                let core13: ICoreWebView2_13 = core.cast()?;
+                // SAFETY: on the UI thread via `with_core_webview2`.
+                let profile = unsafe { core13.Profile() }?;
+                let profile2: ICoreWebView2Profile2 = profile.cast()?;
+                let tx_ok = tx.clone();
+                let handler = ClearBrowsingDataCompletedHandler::create(Box::new(move |hr| {
+                    let _ = tx_ok.send(hr.is_ok());
+                    Ok(())
+                }));
+
+                unsafe { profile2.ClearBrowsingDataAll(&handler) }
+            })();
+
+            if started.is_err() {
+                let _ = tx.send(false);
+            }
+        });
+
+        match recv(rx, Duration::from_secs(15)).await {
+            Some(true) => Ok(()),
+            _ => Err("clearing site data failed".to_string()),
+        }
+    }
 }
