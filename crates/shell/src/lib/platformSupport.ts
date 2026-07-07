@@ -36,8 +36,9 @@ const FEATURES: Readonly<Record<string, FeatureSupport>> = {
   capture_region: { label: 'Capture region', unavailableOn: ['windows', 'linux'] },
   // Windows degrades a window capture to a page-only shot; Linux has none.
   capture_window: { label: 'Capture window', unavailableOn: ['linux'] },
-  // Reparenting a live webview into a floating window (macOS-only).
-  pop_out_video: { label: 'Video pop-out', unavailableOn: ['windows', 'linux'] },
+  // macOS reparents the webview into a floating window; Windows uses the
+  // engine's native Picture-in-Picture. Linux (WebKitGTK) has neither yet.
+  pop_out_video: { label: 'Video pop-out', unavailableOn: ['linux'] },
   // The element picker's zapper posts the picked selector over the page->chrome
   // message channel, which macOS and Windows have but Linux does not yet.
   element_picker: { label: 'Element picker', unavailableOn: ['linux'] },

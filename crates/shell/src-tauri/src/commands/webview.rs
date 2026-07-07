@@ -111,7 +111,8 @@ pub async fn create_tab_webview(
         builder = builder.scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
         builder = builder
             .initialization_script(crate::win_dispatch::SHIM_SCRIPT)
-            .initialization_script(crate::permissions::gate_script());
+            .initialization_script(crate::permissions::gate_script())
+            .initialization_script(crate::video_popout::pip_flag_script());
         if !ephemeral {
             builder = builder.initialization_script(crate::capture::capture_script());
         }

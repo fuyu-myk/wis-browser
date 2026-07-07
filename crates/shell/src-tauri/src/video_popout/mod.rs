@@ -41,6 +41,8 @@ pub(crate) use geometry::MAX_DELTA;
 #[cfg(target_os = "macos")]
 pub use geometry::*;
 pub use script::page_script;
+#[cfg(windows)]
+pub use script::pip_flag_script;
 
 static APP: OnceLock<AppHandle> = OnceLock::new();
 
@@ -167,7 +169,16 @@ pub async fn open_video_popout(
             })?;
     }
 
-    #[cfg(not(target_os = "macos"))]
+    // WebView2: enter the engine's native Picture-in-Picture.
+    #[cfg(windows)]
+    {
+        let _ = (state, x, y);
+        if let Some(webview) = app.webviews().get(&label).cloned() {
+            let _ = webview.eval("window.__wisEnterPip && window.__wisEnterPip();");
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     let _ = (app, state, label, x, y);
 
     Ok(())
@@ -207,7 +218,16 @@ pub async fn close_video_popout(
         imp::close_and_notify(&app, &label, true);
     }
 
-    #[cfg(not(target_os = "macos"))]
+    // WebView2: leave the engine's native Picture-in-Picture window.
+    #[cfg(windows)]
+    {
+        let _ = state;
+        if let Some(webview) = app.webviews().get(&label).cloned() {
+            let _ = webview.eval("window.__wisExitPip && window.__wisExitPip();");
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     let _ = (app, state, label);
 
     Ok(())

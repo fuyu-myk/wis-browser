@@ -3,6 +3,8 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { TabId } from '@/bindings/types'
+import { currentPlatform } from '@/lib/platform'
+import { guardFeatureUnavailable, isFeatureUnavailableHere } from '@/lib/platformSupport'
 import {
   loadPopoutGeometry,
   POPOUT_CLOSED_EVENT,
@@ -108,6 +110,17 @@ export function useVideoPopout({ enabled }: { enabled: boolean }): VideoPopoutHa
 
   const open = useCallback(
     (id: TabId, mode: PopoutMode) => {
+      if (isFeatureUnavailableHere('pop_out_video')) {
+        if (mode === 'manual') guardFeatureUnavailable('pop_out_video')
+        return
+      }
+      // Windows uses the engine's native Picture-in-Picture.
+      if (currentPlatform() === 'windows') {
+        if (mode === 'manual') {
+          void commands.openVideoPopout(labelFor(id), loadPopoutGeometry()).catch(() => undefined)
+        }
+        return
+      }
       setSession({ tabId: id, phase: 'pending', mode })
       pendingTimerRef.current = window.setTimeout(() => {
         pendingTimerRef.current = null
@@ -172,7 +185,13 @@ export function useVideoPopout({ enabled }: { enabled: boolean }): VideoPopoutHa
         if (session.tabId === id) release(id)
         return
       }
-      if (!presentRef.current.has(id) && !playingRef.current.has(id)) return
+      // Windows posts no media reports.
+      if (
+        currentPlatform() !== 'windows' &&
+        !presentRef.current.has(id) &&
+        !playingRef.current.has(id)
+      )
+        return
       open(id, 'manual')
     },
     [open, release],

@@ -11,6 +11,13 @@ pub fn page_script() -> &'static str {
     POPOUT_JS
 }
 
+/// Document-start flag that switches [`page_script`] onto the native
+/// Picture-in-Picture path (WebView2/Chromium). Injected only on Windows.
+#[cfg(windows)]
+pub fn pip_flag_script() -> &'static str {
+    "window.__wisPopoutPip = true;"
+}
+
 /// Injected page script (main frame, document end). Tracks the page's
 /// dominant video and reports media-state changes (`playing` for the
 /// automatic trigger, `present` for the manual ones); shows a small pop-out
@@ -70,6 +77,10 @@ const POPOUT_JS: &str = r#"(function () {
       reportTimer = null;
       var v = bestVideo();
       if (v) current = v;
+      if (window.__wisPopoutPip) {
+        if (v) armAutoPip(v);
+        return;
+      }
       var playing = !!v;
       var present = playing || !!anyVideo();
       if (playing !== lastPlaying || present !== lastPresent) {
@@ -126,11 +137,17 @@ const POPOUT_JS: &str = r#"(function () {
     b.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
-      if (hoverFor) {
-        manualTarget = hoverFor;
+      var target = hoverFor;
+      hideHover();
+      if (window.__wisPopoutPip) {
+        // WebView2/Chromium: use native Picture-in-Picture.
+        enterPip(target);
+        return;
+      }
+      if (target) {
+        manualTarget = target;
         manualAt = Date.now();
       }
-      hideHover();
       post({ kind: 'request' });
     });
     document.documentElement.appendChild(b);
@@ -223,7 +240,49 @@ const POPOUT_JS: &str = r#"(function () {
 
   var active = null;
 
+  // Native Picture-in-Picture path (WebView2/Chromium, `window.__wisPopoutPip`).
+  function pickPip() {
+    var v = null;
+    if (manualTarget && manualTarget.isConnected && manualTarget.videoWidth && Date.now() - manualAt < 6000) v = manualTarget;
+    manualTarget = null;
+    if (!v) v = bestVideo();
+    if (!v && current && current.isConnected && current.videoWidth) v = current;
+    if (!v) v = anyVideo();
+    return v;
+  }
+  function enterPip(v) {
+    if (!v) v = pickPip();
+    if (!v || v.disablePictureInPicture) return;
+    try {
+      if (document.pictureInPictureElement === v) return;
+      var p = v.requestPictureInPicture();
+      if (p && p.catch) p.catch(function () {});
+    } catch (e) {}
+  }
+  function exitPip() {
+    try {
+      if (document.pictureInPictureElement) {
+        var p = document.exitPictureInPicture();
+        if (p && p.catch) p.catch(function () {});
+      }
+    } catch (e) {}
+  }
+  // Best-effort automatic PiP when the tab is hidden.
+  function armAutoPip(v) {
+    if (!v || v.__wisAutoPip) return;
+    try {
+      v.__wisAutoPip = true;
+      v.autoPictureInPicture = true;
+      if (navigator.mediaSession && navigator.mediaSession.setActionHandler) {
+        navigator.mediaSession.setActionHandler('enterpictureinpicture', function () { enterPip(v); });
+      }
+    } catch (e) {}
+  }
+  window.__wisEnterPip = function () { enterPip(null); };
+  window.__wisExitPip = exitPip;
+
   window.__wisPopoutEnter = function () {
+    if (window.__wisPopoutPip) return;
     if (active) return;
     hideHover();
     var v = null;
