@@ -13,6 +13,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { TabId } from '@/bindings/types'
+import { currentPlatform } from '@/lib/platform'
 import { useOverlay } from '@/hooks/useOverlay'
 import {
   SCREENSHOT_CAPTURED_EVENT,
@@ -81,8 +82,13 @@ export function useScreenshotRegionOverlay(): void {
         const rect = e.payload.rect
         const tabId = tabIdRef.current
         if (!rect || !tabId) return
+        let cropRect: RegionRect | null = rect
+        if (currentPlatform() === 'windows') {
+          cropRect = toViewportFraction(rect, tabId)
+          if (!cropRect) return
+        }
         try {
-          const captured = await commands.captureToClipboard(tabId, 'region', rect)
+          const captured = await commands.captureToClipboard(tabId, 'region', cropRect)
           if (captured) window.dispatchEvent(new CustomEvent(SCREENSHOT_CAPTURED_EVENT))
         } catch (err) {
           // eslint-disable-next-line no-console
@@ -106,4 +112,31 @@ export function useScreenshotRegionOverlay(): void {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [overlay])
+}
+
+/**
+ * Map a window-space selection to [0,1] fractions of the tab's viewport (the
+ * `[data-pane-leaf]` element the webview is sized to). Returns null when the
+ * selection does not overlap the viewport. Fractions keep the Rust-side crop
+ * DPI-independent.
+ */
+function toViewportFraction(rect: RegionRect, tabId: TabId): RegionRect | null {
+  const el = document.querySelector<HTMLElement>(`[data-pane-leaf="${tabId}"]`)
+  const host = el?.getBoundingClientRect()
+  if (!host || host.width <= 0 || host.height <= 0) return null
+
+  const left = Math.max(rect.x, host.left)
+  const top = Math.max(rect.y, host.top)
+  const right = Math.min(rect.x + rect.width, host.right)
+  const bottom = Math.min(rect.y + rect.height, host.bottom)
+  const iw = right - left
+  const ih = bottom - top
+  if (iw <= 0 || ih <= 0) return null
+
+  return {
+    x: (left - host.left) / host.width,
+    y: (top - host.top) / host.height,
+    width: iw / host.width,
+    height: ih / host.height,
+  }
 }

@@ -42,8 +42,14 @@ pub enum ScreenshotMode {
     Window,
 }
 
-/// A crop rectangle in the window's content-area coordinates (top-left origin,
-/// logical px), supplied by the region-selection overlay for `Region` capture.
+/// A crop rectangle for `Region` capture, supplied by the region-selection
+/// overlay.
+///
+/// On macOS these are the window's content-area coordinates (top-left
+/// origin, logical px), cropped from the whole-window composite.
+///
+/// On Windows, where only the tab viewport is captured, the frontend instead sends
+/// them as [0,1] fractions of that viewport (see `crop_png`), keeping the crop DPI-free.
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 pub struct CropRect {
     pub x: f64,
@@ -105,28 +111,31 @@ pub async fn capture_to_clipboard(
     }
 
     // Windows: WebView2's CapturePreview grabs the tab content. Window falls
-    // back to that visible-page capture.
+    // back to that visible-page capture; Region crops it to the selection.
     #[cfg(windows)]
     {
-        let _ = (&chrome, &rect);
-        let png =
-            match mode {
-                ScreenshotMode::Visible | ScreenshotMode::Window => {
-                    let label = format!("tab-{}", id.as_uuid());
-                    let webview = app.webviews().get(&label).cloned().ok_or_else(|| {
-                        WisError::InvalidInput {
-                            message: format!("no webview labelled {label}"),
-                        }
-                    })?;
-
-                    imp_win::capture_visible(&webview).await?
-                }
-                ScreenshotMode::Region => {
-                    return Err(WisError::InvalidInput {
-                        message: "region capture is not available on Windows yet".to_string(),
-                    });
-                }
-            };
+        let _ = &chrome;
+        let label = format!("tab-{}", id.as_uuid());
+        let webview =
+            app.webviews()
+                .get(&label)
+                .cloned()
+                .ok_or_else(|| WisError::InvalidInput {
+                    message: format!("no webview labelled {label}"),
+                })?;
+        let full = imp_win::capture_visible(&webview).await?;
+        let png = match mode {
+            ScreenshotMode::Visible | ScreenshotMode::Window => full,
+            ScreenshotMode::Region => {
+                // `rect` carries the selection as fractions of the tab viewport.
+                let frac = rect.ok_or_else(|| WisError::InvalidInput {
+                    message: "region capture needs a selection".to_string(),
+                })?;
+                crop_png(&full, frac).ok_or_else(|| WisError::InvalidInput {
+                    message: "the selected region is off the page".to_string(),
+                })?
+            }
+        };
 
         let copied = copy_png_to_clipboard(&png);
         *state
@@ -828,6 +837,57 @@ fn copy_png_to_clipboard(png: &[u8]) -> bool {
             .is_ok(),
         Err(_) => false,
     }
+}
+
+/// Crop a PNG to `frac` (a rectangle in [0,1] fractions of the image), for the
+/// Windows region capture. Fractions keep the crop DPI-independent: the caller
+/// normalizes the window-space selection against the tab viewport, so no scale
+/// factor is needed here. Returns `None` on a decode failure or an empty crop.
+#[cfg(windows)]
+fn crop_png(png: &[u8], frac: CropRect) -> Option<Vec<u8>> {
+    let mut reader = png::Decoder::new(png).read_info().ok()?;
+    let mut buf = vec![0u8; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buf).ok()?;
+    if info.bit_depth != png::BitDepth::Eight {
+        return None;
+    }
+
+    let (w, h) = (info.width as usize, info.height as usize);
+    let rgba: Vec<u8> = match info.color_type {
+        png::ColorType::Rgba => buf[..info.buffer_size()].to_vec(),
+        png::ColorType::Rgb => buf[..info.buffer_size()]
+            .chunks_exact(3)
+            .flat_map(|p| [p[0], p[1], p[2], 255])
+            .collect(),
+        _ => return None,
+    };
+
+    let clamp01 = |v: f64| v.clamp(0.0, 1.0);
+    let x0 = ((clamp01(frac.x) * w as f64).round() as usize).min(w);
+    let y0 = ((clamp01(frac.y) * h as f64).round() as usize).min(h);
+    let x1 = ((clamp01(frac.x + frac.width) * w as f64).round() as usize).min(w);
+    let y1 = ((clamp01(frac.y + frac.height) * h as f64).round() as usize).min(h);
+    let (cw, ch) = (x1.saturating_sub(x0), y1.saturating_sub(y0));
+    if cw == 0 || ch == 0 {
+        return None;
+    }
+
+    let mut cropped = Vec::with_capacity(cw * ch * 4);
+    for row in y0..y1 {
+        let start = (row * w + x0) * 4;
+        cropped.extend_from_slice(&rgba[start..start + cw * 4]);
+    }
+
+    let mut out = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut out, cw as u32, ch as u32);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().ok()?;
+        writer.write_image_data(&cropped).ok()?;
+    }
+
+    Some(out)
 }
 
 /// Windows page capture via WebView2's `CapturePreview`.

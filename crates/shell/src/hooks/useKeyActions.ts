@@ -27,6 +27,7 @@ import { HISTORY_URL, NEW_TAB_URL, SETTINGS_URL, isChromeUrl, resolveNewTabUrl }
 import { SCREENSHOT_CAPTURED_EVENT, SCREENSHOT_REGION_OPEN_EVENT } from '@/lib/screenshot'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { usePendingRename } from '@/hooks/usePendingRename'
+import { currentPlatform } from '@/lib/platform'
 import { guardFeatureUnavailable } from '@/lib/platformSupport'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -382,6 +383,9 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       // Window-region: open the full-window selection overlay (inclusive of
       // the chrome). The overlay hook performs the crop capture on a result.
       if (!ctx.activeTab) return
+      // Windows crops the page viewport, which chrome pages lack; skip like
+      // capture_visible.
+      if (currentPlatform() === 'windows' && isChromeUrl(ctx.activeTab.url)) return
       window.dispatchEvent(
         new CustomEvent(SCREENSHOT_REGION_OPEN_EVENT, { detail: { tabId: ctx.activeTab.id } }),
       )

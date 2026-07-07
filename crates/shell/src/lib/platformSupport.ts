@@ -32,8 +32,9 @@ interface FeatureSupport {
  */
 const FEATURES: Readonly<Record<string, FeatureSupport>> = {
   capture_visible: { label: 'Capture visible page', unavailableOn: ['linux'] },
-  // Region needs a compositor/crop the non-macOS backends do not provide yet.
-  capture_region: { label: 'Capture region', unavailableOn: ['windows', 'linux'] },
+  // Windows crops its visible-viewport capture to the selection; Linux has no
+  // page capture yet.
+  capture_region: { label: 'Capture region', unavailableOn: ['linux'] },
   // Windows degrades a window capture to a page-only shot; Linux has none.
   capture_window: { label: 'Capture window', unavailableOn: ['linux'] },
   // macOS reparents the webview into a floating window; Windows uses the
