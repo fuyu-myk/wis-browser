@@ -351,11 +351,26 @@ pub async fn open_widget_panel(
     let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(blank))
         .focused(true)
         .proxy_url(proxy_url);
+
+    // Fluent overlay scrollbars; WebView2 only.
+    #[cfg(windows)]
+    {
+        builder = builder.scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
+    }
+
     if let Some(ua) = &user_agent {
         builder = builder.user_agent(ua);
     }
     if ephemeral {
         builder = builder.incognito(true);
+
+        #[cfg(windows)]
+        {
+            builder = builder.data_directory(crate::commands::ephemeral_webview_data_dir(
+                &app,
+                workspace_id,
+            ));
+        }
     } else {
         builder = builder.data_store_identifier(crate::commands::workspace_id_to_data_store_bytes(
             workspace_id,
@@ -449,8 +464,13 @@ pub async fn open_widget_panel(
         }
     }
 
-    // Restore the stack: tabs < panels < overlays.
+    // Restore the stack: tabs < panels < overlays. Raise this panel last so it
+    // is topmost among the panels (see `show_widget_panel`); Windows only.
     promote_panels_to_front(&app, window.label());
+
+    #[cfg(windows)]
+    crate::win_webview2::promote_to_front(&child);
+
     crate::overlay::promote_overlays_to_front(&app, window.label());
     notify_panels_changed(&app);
 
@@ -496,6 +516,10 @@ pub async fn show_widget_panel(
     set_media_suspended(&wv, false);
 
     promote_panels_to_front(app, window.label());
+
+    #[cfg(windows)]
+    crate::win_webview2::promote_to_front(&wv);
+
     crate::overlay::promote_overlays_to_front(app, window.label());
     set_widget_panel_bounds(window, id, x, y, width, height).await?;
 
