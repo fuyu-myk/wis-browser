@@ -654,8 +654,8 @@ mod imp_win {
 
     use tauri::{AppHandle, Manager};
     use webview2_com::Microsoft::Web::WebView2::Win32::{
-        ICoreWebView2Cookie, ICoreWebView2CookieList, ICoreWebView2CookieManager,
-        ICoreWebView2Profile2, ICoreWebView2_13, ICoreWebView2_2,
+        ICoreWebView2Cookie, ICoreWebView2CookieManager, ICoreWebView2Profile2, ICoreWebView2_13,
+        ICoreWebView2_2,
     };
     use webview2_com::{
         ClearBrowsingDataCompletedHandler, CoTaskMemPWSTR, GetCookiesCompletedHandler,
@@ -669,8 +669,9 @@ mod imp_win {
         app: &AppHandle,
         workspace_id: WorkspaceId,
     ) -> Option<tauri::webview::Webview<tauri::Wry>> {
+        let state = app.state::<AppState>();
         let labels: Vec<String> = {
-            let browser = app.state::<AppState>().browser.lock().await;
+            let browser = state.browser.lock().await;
             let ws = browser.workspaces.iter().find(|w| w.id == workspace_id)?;
             ws.tab_order
                 .iter()
