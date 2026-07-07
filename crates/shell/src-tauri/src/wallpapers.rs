@@ -217,7 +217,10 @@ fn ask_image() -> Option<PathBuf> {
     }
 }
 
+// Windows/Linux: `rfd` shows the native picker, called directly.
 #[cfg(not(target_os = "macos"))]
 fn ask_image() -> Option<PathBuf> {
-    None
+    rfd::FileDialog::new()
+        .add_filter("Images", &["png", "jpg", "jpeg", "gif", "webp"])
+        .pick_file()
 }
