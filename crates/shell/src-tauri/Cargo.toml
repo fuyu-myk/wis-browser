@@ -67,9 +67,17 @@ windows-future = "0.2"
 webview2-com = "0.38"
 # Decode WebView2's CapturePreview PNG to RGBA for the clipboard (screenshot).
 png = "0.17"
+# Strip the `\\?\` verbatim prefix `fs::canonicalize` adds on Windows.
+dunce = "1"
 
 # Cross-platform clipboard + native file dialogs (the macOS path uses NSPasteboard
 # / NSSave-OpenPanel directly; these cover the Windows/Linux equivalents).
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 rfd = "0.16"
+
+# Reach the WebKitGTK webview behind a Tauri webview (zoom, mute, print) via
+# `PlatformWebview::inner()`.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "2.0", features = ["v2_30"] }
+gtk = "0.18"
