@@ -18,6 +18,7 @@ import type {
   UserSettingsPatch,
 } from '@/bindings/types'
 import { localizeAccelerator, prettyAccelerator } from '@/lib/keybindings'
+import { currentPlatform } from '@/lib/platform'
 import { normaliseUrl } from '@/lib/url'
 
 export type PaletteSection = 'tabs' | 'actions' | 'settings' | 'open'
@@ -338,6 +339,13 @@ interface ActionsSourceArgs {
   onDispatch: (action: KeyAction) => void | Promise<void>
 }
 
+const UNSUPPORTED_CAPTURE_ACTIONS: readonly KeyAction[] =
+  currentPlatform() === 'macos'
+    ? []
+    : currentPlatform() === 'windows'
+      ? ['capture_region']
+      : ['capture_visible', 'capture_region', 'capture_window']
+
 /**
  * Positional switch-to-tab actions (Cmd+1..8/9) are excluded from the palette:
  * nine near-identical "Switch to tab N" rows flood the Actions section on any
@@ -354,6 +362,7 @@ const PALETTE_HIDDEN_ACTIONS: ReadonlySet<KeyAction> = new Set<KeyAction>([
   'switch_to_tab7',
   'switch_to_tab8',
   'switch_to_tab9',
+  ...UNSUPPORTED_CAPTURE_ACTIONS,
 ])
 
 const PALETTE_ACTIONS = ALL_ACTIONS.filter((a) => !PALETTE_HIDDEN_ACTIONS.has(a))

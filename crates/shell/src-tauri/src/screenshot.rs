@@ -104,15 +104,14 @@ pub async fn capture_to_clipboard(
         Ok(true)
     }
 
-    // Windows: only the visible page is capturable. WebView2's CapturePreview
-    // grabs the tab content; window/region composites (chrome + overlays) have
-    // no WebView2 equivalent and stay macOS-only.
+    // Windows: WebView2's CapturePreview grabs the tab content. Window falls
+    // back to that visible-page capture.
     #[cfg(windows)]
     {
         let _ = (&chrome, &rect);
         let png =
             match mode {
-                ScreenshotMode::Visible => {
+                ScreenshotMode::Visible | ScreenshotMode::Window => {
                     let label = format!("tab-{}", id.as_uuid());
                     let webview = app.webviews().get(&label).cloned().ok_or_else(|| {
                         WisError::InvalidInput {
@@ -122,9 +121,9 @@ pub async fn capture_to_clipboard(
 
                     imp_win::capture_visible(&webview).await?
                 }
-                ScreenshotMode::Window | ScreenshotMode::Region => {
+                ScreenshotMode::Region => {
                     return Err(WisError::InvalidInput {
-                        message: "only the visible page can be captured on Windows yet".to_string(),
+                        message: "region capture is not available on Windows yet".to_string(),
                     });
                 }
             };
@@ -135,7 +134,9 @@ pub async fn capture_to_clipboard(
             .lock()
             .expect("last_screenshot poisoned") = Some(png);
         if !copied {
-            log::warn!("copying the screenshot to the clipboard failed");
+            return Err(WisError::InvalidInput {
+                message: "copying the screenshot to the clipboard failed".to_string(),
+            });
         }
 
         Ok(true)
@@ -862,6 +863,7 @@ mod imp_win {
                         let bytes = if hr.is_ok() {
                             read_stream(&stream_read).ok()
                         } else {
+                            log::warn!("screenshot: CapturePreview reported failure: {hr:?}");
                             None
                         };
                         let _ = tx_done.send(bytes);
@@ -876,16 +878,27 @@ mod imp_win {
                     )
                 }
             })();
-            if started.is_err() {
+            if let Err(err) = started {
+                log::warn!("screenshot: CapturePreview call failed: {err}");
                 let _ = tx.send(None);
             }
         });
 
         match recv_blocking(rx, Duration::from_secs(10)).await.flatten() {
             Some(bytes) if !bytes.is_empty() => Ok(bytes),
-            _ => Err(WisError::InvalidInput {
-                message: "capturing the page failed".to_string(),
-            }),
+            other => {
+                log::warn!(
+                    "screenshot: capture_visible failed ({})",
+                    match other {
+                        Some(_) => "empty PNG",
+                        None => "no CoreWebView2 or capture timed out",
+                    }
+                );
+
+                Err(WisError::InvalidInput {
+                    message: "capturing the page failed".to_string(),
+                })
+            }
         }
     }
 
