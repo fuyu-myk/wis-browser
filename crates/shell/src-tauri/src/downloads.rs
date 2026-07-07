@@ -184,7 +184,7 @@ pub async fn open_download(state: State<'_, AppState>, id: DownloadId) -> WisRes
     let Some(valid) = validate_on_disk(&path)? else {
         return Ok(false);
     };
-    spawn_open(std::process::Command::new("open"), &valid)?;
+    spawn_open(open_path_command(&valid))?;
 
     Ok(true)
 }
@@ -199,11 +199,59 @@ pub async fn reveal_download(state: State<'_, AppState>, id: DownloadId) -> WisR
     let Some(valid) = validate_on_disk(&path)? else {
         return Ok(false);
     };
-    let mut cmd = std::process::Command::new("open");
-    cmd.arg("-R");
-    spawn_open(cmd, &valid)?;
+    spawn_open(reveal_path_command(&valid))?;
 
     Ok(true)
+}
+
+/// Open a file with its default application, per OS.
+#[cfg(target_os = "macos")]
+fn open_path_command(path: &Path) -> std::process::Command {
+    let mut cmd = std::process::Command::new("open");
+    cmd.arg(path);
+    cmd
+}
+
+#[cfg(target_os = "linux")]
+fn open_path_command(path: &Path) -> std::process::Command {
+    let mut cmd = std::process::Command::new("xdg-open");
+    cmd.arg(path);
+    cmd
+}
+
+#[cfg(windows)]
+fn open_path_command(path: &Path) -> std::process::Command {
+    // Simplify the canonicalized (verbatim `\\?\`) `path`.
+    let path = dunce::simplified(path);
+    let mut cmd = std::process::Command::new("cmd");
+    cmd.args(["/C", "start", ""]).arg(path);
+    cmd
+}
+
+/// Reveal a file in the OS file manager, selecting it where the platform can.
+#[cfg(target_os = "macos")]
+fn reveal_path_command(path: &Path) -> std::process::Command {
+    let mut cmd = std::process::Command::new("open");
+    cmd.arg("-R").arg(path);
+    cmd
+}
+
+#[cfg(target_os = "linux")]
+fn reveal_path_command(path: &Path) -> std::process::Command {
+    let mut cmd = std::process::Command::new("xdg-open");
+    cmd.arg(path.parent().unwrap_or(path));
+    cmd
+}
+
+#[cfg(windows)]
+fn reveal_path_command(path: &Path) -> std::process::Command {
+    // Simplify the canonicalized `path`.
+    let path = dunce::simplified(path);
+    let mut cmd = std::process::Command::new("explorer");
+    let mut arg = std::ffi::OsString::from("/select,");
+    arg.push(path);
+    cmd.arg(arg);
+    cmd
 }
 
 /// The recorded path of a *completed* download, from the session list or
@@ -269,8 +317,7 @@ fn validate_on_disk(path: &Path) -> WisResult<Option<PathBuf>> {
     Ok(Some(canonical))
 }
 
-fn spawn_open(mut cmd: std::process::Command, path: &Path) -> WisResult<()> {
-    cmd.arg(path);
+fn spawn_open(mut cmd: std::process::Command) -> WisResult<()> {
     cmd.spawn()
         .map(|_| ())
         .map_err(|err| WisError::InvalidInput {
@@ -480,8 +527,13 @@ fn ask_destination(suggested: &str, start_dir: &Path) -> Option<PathBuf> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn ask_destination(_suggested: &str, _start_dir: &Path) -> Option<PathBuf> {
-    None
+fn ask_destination(suggested: &str, start_dir: &Path) -> Option<PathBuf> {
+    let mut dialog = rfd::FileDialog::new().set_file_name(suggested);
+    if start_dir.is_dir() {
+        dialog = dialog.set_directory(start_dir);
+    }
+
+    dialog.save_file()
 }
 
 impl DownloadItem {
