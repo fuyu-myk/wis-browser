@@ -392,7 +392,16 @@ pub(crate) fn apply_tab_zoom(app: &AppHandle, id: TabId, factor: f64) {
         let _ = unsafe { controller.SetZoomFactor(factor) };
     });
 
-    #[cfg(not(any(target_os = "macos", windows)))]
+    // WebKitGTK's zoom-level is the same user-facing page zoom.
+    #[cfg(target_os = "linux")]
+    {
+        use webkit2gtk::WebViewExt;
+        let _ = webview.with_webview(move |w| {
+            w.inner().set_zoom_level(factor);
+        });
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         let _ = (webview, factor);
     }
