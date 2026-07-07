@@ -63,17 +63,13 @@ fn write_pasteboard(text: &str) -> bool {
     }
 }
 
-// Windows has no menu-handler-gesture restriction, but the chrome webview's
-// async web clipboard is still awkward from an accelerator, so write natively.
-#[cfg(windows)]
+// Windows and Linux have no menu-handler-gesture restriction, but the chrome
+// webview's async web clipboard is still awkward from an accelerator, so write
+// natively via arboard.
+#[cfg(not(target_os = "macos"))]
 fn write_pasteboard(text: &str) -> bool {
     match arboard::Clipboard::new() {
         Ok(mut clipboard) => clipboard.set_text(text.to_string()).is_ok(),
         Err(_) => false,
     }
-}
-
-#[cfg(not(any(target_os = "macos", windows)))]
-fn write_pasteboard(_text: &str) -> bool {
-    false
 }
