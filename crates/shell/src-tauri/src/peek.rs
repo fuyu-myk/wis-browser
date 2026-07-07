@@ -143,6 +143,13 @@ pub async fn open_peek(
         .focused(true)
         .incognito(true)
         .proxy_url(proxy_url);
+
+    // Fluent overlay scrollbars; WebView2 only.
+    #[cfg(windows)]
+    {
+        builder = builder.scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
+    }
+
     if let Some(ua) = &user_agent {
         builder = builder.user_agent(ua);
     }

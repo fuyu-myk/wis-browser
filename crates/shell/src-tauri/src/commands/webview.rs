@@ -107,6 +107,8 @@ pub async fn create_tab_webview(
     // here instead. The gate applies on every tab; capture skips private ones.
     #[cfg(windows)]
     {
+        // Fluent overlay scrollbars. WebView2 only.
+        builder = builder.scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
         builder = builder
             .initialization_script(crate::win_dispatch::SHIM_SCRIPT)
             .initialization_script(crate::permissions::gate_script());
