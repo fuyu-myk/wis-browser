@@ -77,7 +77,22 @@ pub async fn print_active_tab(app: AppHandle, id: TabId) -> WisResult<()> {
         }
     });
 
-    #[cfg(not(any(target_os = "macos", windows)))]
+    // WebKitGTK's print dialog; its "Print to File" destination covers PDF
+    // export, mirroring the other engines.
+    #[cfg(target_os = "linux")]
+    {
+        use webkit2gtk::{PrintOperation, PrintOperationExt};
+        webview
+            .with_webview(move |w| {
+                let wv = w.inner();
+                let _ = PrintOperation::new(&wv).run_dialog(gtk::Window::NONE);
+            })
+            .map_err(|err| WisError::InvalidInput {
+                message: format!("with_webview failed: {err}"),
+            })?;
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         let _ = webview;
     }
