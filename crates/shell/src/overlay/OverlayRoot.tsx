@@ -21,6 +21,7 @@ import { PeekSurface } from '@/overlay/surfaces/PeekSurface'
 import { PermissionSurface } from '@/overlay/surfaces/PermissionSurface'
 import { ScreenshotRegionSurface } from '@/overlay/surfaces/ScreenshotRegionSurface'
 import { ScreenshotToastSurface } from '@/overlay/surfaces/ScreenshotToastSurface'
+import { ToastSurface } from '@/overlay/surfaces/ToastSurface'
 import { UrlbarSuggestSurface } from '@/overlay/surfaces/UrlbarSuggestSurface'
 import { VaultMenuSurface } from '@/overlay/surfaces/VaultMenuSurface'
 import { WidgetHeaderSurface } from '@/overlay/surfaces/WidgetHeaderSurface'
@@ -54,6 +55,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'windowpicker') return <WindowPickerSurface />
   if (surface === 'screenshot-toast') return <ScreenshotToastSurface />
   if (surface === 'screenshot-region') return <ScreenshotRegionSurface />
+  if (surface === 'toast') return <ToastSurface />
   // eslint-disable-next-line no-console
   console.warn(`Unknown overlay surface: ${surface}`)
   return null

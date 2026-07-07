@@ -27,6 +27,7 @@ import { HISTORY_URL, NEW_TAB_URL, SETTINGS_URL, isChromeUrl, resolveNewTabUrl }
 import { SCREENSHOT_CAPTURED_EVENT, SCREENSHOT_REGION_OPEN_EVENT } from '@/lib/screenshot'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { usePendingRename } from '@/hooks/usePendingRename'
+import { guardFeatureUnavailable } from '@/lib/platformSupport'
 import { useQueryClient } from '@tanstack/react-query'
 
 const KEYACTION_EVENT = 'wis-keyaction'
@@ -148,6 +149,9 @@ interface DispatchContext {
 }
 
 async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
+  // A feature with no working backend on this platform raises a
+  // "not available on {target}" toast.
+  if (action !== 'pop_out_video' && guardFeatureUnavailable(action)) return
   switch (action) {
     case 'new_tab': {
       if (!ctx.activeWorkspace) return

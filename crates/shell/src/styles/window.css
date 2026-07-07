@@ -6168,6 +6168,63 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   to { opacity: 0; transform: translateY(-130%); }
 }
 
+/* General message toast (overlay-toast): a short transient notice dropped in at
+   the window's top-right, e.g. a feature unavailable on the running platform.
+   Shares the screenshot toast's drop-in/reverse-out animation. */
+.kb-toast-wrap {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  pointer-events: none;
+}
+.kb-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 440px;
+  padding: 9px 8px 9px 14px;
+  background: var(--chrome-bg, #fff);
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: calc(12px * var(--radius-scale));
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+  animation: kb-shot-toast-in var(--dur-med) var(--ease-standard);
+}
+[data-mode="dark"] .kb-toast { border-color: rgba(255, 255, 255, 0.10); }
+.kb-toast-wrap.glass-menus .kb-toast {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(255, 255, 255, 0.30);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+}
+[data-mode="dark"] .kb-toast-wrap.glass-menus .kb-toast {
+  background: rgba(52, 52, 64, 0.66);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.kb-toast.is-closing {
+  animation: kb-shot-toast-out 220ms var(--ease-exit) forwards;
+}
+.kb-toast-msg {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+.kb-toast-x {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: calc(7px * var(--radius-scale));
+  color: var(--text-secondary);
+  transition: background var(--dur-med) var(--ease-standard);
+}
+.kb-toast-x:hover { background: rgba(0, 0, 0, 0.06); color: var(--text-primary); }
+[data-mode="dark"] .kb-toast-x:hover { background: rgba(255, 255, 255, 0.10); }
+.kb-toast-x svg { width: 15px; height: 15px; }
+
 /* Window-region selection overlay (overlay-screenshot-region): a full-window
    dim with a theme-tinted drag rectangle. Covers the chrome so a selection can
    span toolbar/sidebar and page. */

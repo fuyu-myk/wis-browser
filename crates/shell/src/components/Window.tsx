@@ -15,6 +15,7 @@ import { useOpenInTab } from '@/hooks/useOpenInTab'
 import { usePeekOverlay } from '@/hooks/usePeekOverlay'
 import { useScreenshotToastOverlay } from '@/hooks/useScreenshotToastOverlay'
 import { useScreenshotRegionOverlay } from '@/hooks/useScreenshotRegionOverlay'
+import { useToastOverlay } from '@/hooks/useToastOverlay'
 import { useKeyActions } from '@/hooks/useKeyActions'
 import { useKeybindCapture } from '@/hooks/useKeybindCapture'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
@@ -54,6 +55,7 @@ export function Window({ state, settings }: WindowProps) {
   useDownloadsOverlay()
   useScreenshotToastOverlay()
   useScreenshotRegionOverlay()
+  useToastOverlay()
 
   const layoutClass = `layout-${settings.layout.replace('_', '-')}`
   const isSidebar = settings.layout !== 'top_tabs'
