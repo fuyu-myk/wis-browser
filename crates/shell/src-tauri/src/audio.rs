@@ -71,7 +71,17 @@ pub fn apply_page_muted<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>,
         }
     });
 
-    #[cfg(not(any(target_os = "macos", windows)))]
+    // Engine-side mute via WebKitGTK (`webkit_web_view_set_is_muted`);
+    // covers media elements, iframes and Web Audio like the other engines.
+    #[cfg(target_os = "linux")]
+    {
+        use webkit2gtk::WebViewExt;
+        let _ = webview.with_webview(move |w| {
+            w.inner().set_is_muted(muted);
+        });
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     let _ = (webview, muted);
 }
 
