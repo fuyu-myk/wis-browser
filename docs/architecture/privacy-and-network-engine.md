@@ -1,0 +1,58 @@
+# Privacy & Network Engine
+
+This guide elaborates on WIS.md. If anything here conflicts, WIS.md wins.
+
+`wis-network` is the privacy decision engine that sits between `wis-storage` and the Tauri shell. It owns no I/O policy of its own; it turns a workspace's `PrivacyMode` plus the compiled filter engine into a per-request verdict, and exposes that verdict through a loopback proxy the webviews are pointed at. The shell layers the page-side privacy features (cosmetic hiding, scriptlets, user scripts, the fraud warning) on top.
+
+## The decision engine
+
+- `RequestPolicy` (`crates/network/src/policy.rs:36`) is the pure core: it holds a `PrivacyMode`, an `Arc<TrackerBlocker>`, an `HttpsUpgrader`, per-site overrides (`Vec<PerSitePolicy>`), and an optional `UpstreamProxy`. `RequestPolicy::decide` (`policy.rs:81`) returns a `Decision` (`policy.rs:27`): `Allow`, `Rewrite { url }` (an HTTPS-First upgrade), or `Block { reason }` (the matched rule text or policy name). No network happens inside `decide`; it is a function of the request plus loaded rules, so it is unit-testable in isolation.
+- `TrackerBlocker` (`blocker.rs`) wraps the `adblock` crate and parses EasyList/EasyPrivacy once. The compiled engine is memoized to disk as `engine-<hash>.bin` beside the filter-list cache, keyed by a hash of the input texts; a warm launch deserializes instead of re-parsing. The DAT format is self-versioned, so a crate upgrade or corruption falls back to a fresh parse rather than loading a stale engine. Both the startup build and the runtime EasyPrivacy refresh route through this cache.
+- `DohResolver` / `StubResolver` (`resolver.rs`) implement the `Resolver` trait (`resolver.rs:18`): DNS-over-HTTPS via `hickory-resolver`, with the stub as the no-endpoint fallback. `DohResolver::from_settings_url` (`resolver.rs:53`) builds one from the user's configured DoH endpoint; `cloudflare()`/`quad9()` are the presets.
+- `HttpsUpgrader` (`upgrader.rs`) enforces HTTPS-First: it produces the `Rewrite` target that `decide` returns for an eligible plaintext request.
+
+## The per-workspace proxy
+
+- Each workspace gets its own loopback HTTP proxy (`ProxyServer`, `crates/network/src/proxy/mod.rs:35`), built on hyper. It forwards plain HTTP, tunnels HTTPS via `CONNECT`, applies HTTPS-First redirects, and drops trackers, all by consulting the current `RequestPolicy` per request.
+- Policy is **hot-swappable**. `ProxyServer` carries a `policy_tx: watch::Sender<Arc<RequestPolicy>>` (`mod.rs:39`) read per request, so a privacy-mode change or a filter-list rebuild pushes a new policy without rebinding the port (which would drop live connections). A separate `shutdown_tx: watch::Sender<bool>` (`mod.rs:37`) signals the accept loop; `Drop for ProxyServer` (`mod.rs:111`) fires it so tearing down the value stops the listener and its spawned tasks.
+- The direct connect path (`proxy/connect.rs`) DoH-resolves the host, then dials **every** returned address in turn, each under a per-address connect timeout (and the lookup itself under a resolve timeout). An unreachable answer (for example an AAAA record on a network with no IPv6 route) falls through to the next address instead of stalling the `CONNECT` tunnel forever.
+- An optional `upstream` (`proxy/upstream.rs`) routes through SOCKS5 or Tor instead of dialing directly.
+
+## Idle teardown
+
+- Proxies are lazy and per-workspace: `AppState::ensure_proxy_for` (`crates/shell/src-tauri/src/state.rs:448`) spawns one on the first webview creation for a workspace and is idempotent thereafter. A 60s sweep in `lib.rs` (near `crates/shell/src-tauri/src/lib.rs:408`) drops a workspace's `ProxyServer` once it has had no live tab webviews for `PROXY_IDLE_SECS` (10 minutes). The active workspace is exempt, since Peek and widget panels always attach to it and would otherwise race a teardown. Dropping the server frees its sockets and tasks; the next webview creation respawns it.
+
+## Tor
+
+- `TorProxy` (`crates/network/src/tor.rs:21`) runs a built-in Tor client (`arti-client`) and exposes it as a loopback SOCKS5 endpoint (`TorProxy::port`, `tor.rs:73`). It is behind the `tor` cargo feature, which is **on by default**; build `--no-default-features` to omit it. The shell holds a single lazy `tor_proxy` on `AppState`; the sidebar/top-tabs VPN toggle flips a workspace's `UpstreamProxy` to `Tor` and reloads its tabs to re-route. The toggle icon lights only when connected and shows a connecting state.
+
+## Tracker blocking layers
+
+Blocking is defense in depth across three layers, each catching what the others cannot:
+
+- **Proxy-level** request blocking through `RequestPolicy::decide`, which drops tracker requests and applies HTTPS-First before they leave the machine.
+- **Engine-level** `WKContentRuleList` blocking (`content_filter.rs`). Filter rules compile once to a `WKContentRuleList` spec; the `WKContentRuleListStore` persists compiled lists by identifier, and the identifier hashes the rule JSON, so a refreshed list misses naturally and a version's expensive compile runs once (not per tab or launch). Startup prunes stale `wis-cb-*` store entries from older versions. A per-`PrivacyMode` compiled cache lives on `AppState.content_rules`.
+- **Cosmetic** hiding of what the network layer leaves behind, covered next.
+
+## Cosmetic filtering, element picker, zapper
+
+- Cosmetic filtering (`crates/shell/src-tauri/src/cosmetic.rs`) hides empty ad slots, placeholders, and overlay nags that network blocking cannot remove. A document-end user script collects the page's classes/ids (initial scan plus mutation-batched deltas, capped per message) and posts them with the URL to the narrow `wisCosmetic` handler. Rust answers from the adblock engine and evaluates two style slots into the sender's frame: a `host` slot (host rules plus zapped selectors) the page **replaces** so it can be re-asserted cheaply, and a `generic` slot (`cosmetic_generic_css`) the page **appends**, honoring per-host exceptions and `generichide`.
+- Host rules include **procedural selectors expressible in plain CSS**, chiefly `:has(...)` (WebKit-native), so containers like sponsored feed cards are caught where class/id hiding misses them; JS-only operators (`:has-text`, `:upward`) are dropped. `build_cosmetic_apply` (`cosmetic.rs:185`) builds the CSS shared across platforms. Cosmetic filtering is skipped for Permissive workspaces.
+- On **SPA navigation** (History API pushState/replaceState/popstate) the injected script re-asserts the host slot on real URL changes (debounced), so host and zapper rules survive a framework that clears the injected style, without re-scanning every class.
+- **Element picker / zapper** (Cmd+Shift+X, or View -> Hide Element): an on-demand overlay highlights the element under the cursor and, on click, computes a stable-ish selector (id, else tag plus stable classes, else an `:nth-of-type` path), hides it locally, and posts it to `wisZap`. Rust appends it to `UserSettings.user_cosmetic_rules` keyed by exact host; a sync read-cache on `AppState` lets the cosmetic handler re-apply per-host rules on every future load. Managed in Settings -> Privacy -> Filter lists (Hidden elements list). The zapped host is read from the webview URL, never from page data.
+
+## Scriptlets and user scripts
+
+- **Scriptlets**: Brave's prebuilt uBO resource library (`resources.json`, 7-day TTL) loads into the engine (`load_resources`), expanding `+js(...)` rules into injectable JS. Each tab webview's `on_navigation` hook (inside WebKit's decide-policy, before page scripts) swaps a marker-prefixed document-start user script with `scriptlets_for_page(url)` for the upcoming main-frame document. WebKit only offers `removeAllUserScripts`, so the swap re-adds every unmarked script. The first URL is seeded at webview creation, so a direct fresh-tab load does not miss its scriptlets before the first `on_navigation`. This is what makes YouTube ad blocking work: `json-prune`-style scriptlets strip ad entries from player responses.
+- **User scripts** (`wis_core::userscript`, `UserSettings.userscripts`): Tampermonkey-style scripts imported from a `.user.js` file (`import_userscript`), each parsed for its `==UserScript==` metadata (`@name`/`@match`/`@include`/`@exclude`/`@run-at`). Matching is glob-based (`Userscript::matches_url`, `crates/core/src/userscript.rs:110`, a pragmatic stand-in for Chrome match patterns). Injection rides the same per-navigation `swap_scriptlets` path (`cosmetic.rs:35`) as adblock scriptlets, gated to non-Permissive workspaces via a sync `AppState.userscripts` cache: document-start scripts bundle after the adblock scriptlets, document-end/idle scripts inject as a separate end script, both under a shared `/*wis-inject` marker the swap strips. Scripts run in the **page world with no GM_* APIs** (DOM/CSS tweaks and self-contained logic only), wrapped in try/catch IIFEs. Toggled/removed in Settings -> Privacy -> User scripts.
+- The scriptlet/user-script swap is macOS-only for now: it needs WebView2's `AddScriptToExecuteOnDocumentCreated` document-start timing. Proxy-level network blocking is unaffected on other platforms.
+
+## Filter lists and subscriptions
+
+- **EasyPrivacy** ships bundled as a fallback (`filter_lists/bundled.rs`) with a background `fetch` of a fresh copy (`filter_lists/fetch.rs`), cache-staleness gated.
+- **EasyList** feeds the engine (`refresh_easylist`, 24h TTL, engine cache keyed over all texts) but is deliberately kept out of the `WKContentRuleList` compiler, whose rule cap it would exceed. The engine gains EasyList's cosmetic rules plus proxy-level ad blocking.
+- **User filter-list subscriptions** (`UserSettings.filter_subscriptions`, https-only, defaulting to uBO filters plus quick-fixes which carry the YouTube rules): fetched/cached per URL hash (`sub-<hash>.txt`), engine-only like EasyList. Managed in Settings -> Privacy -> Filter lists (built-in rows plus add/remove; adds trigger a fetch and rebuild). `refresh_filter_lists` force-refreshes every source, rebuilds the engine, and re-attaches the `WKContentRuleList` rules to live tabs.
+
+## Fraudulent website warning
+
+- `webview_prefs.rs` enables WebKit's `fraudulentWebsiteWarningEnabled` (Apple-proxied Safe Browsing, off by default in WKWebView) on every remote webview (tabs, Peek, widget panels), showing a full-page warning before a suspected phishing/malware site. It complements `wis_core::link_safety`'s structural heuristics with a real threat database. A Settings -> Privacy toggle (default on, since the check performs network lookups) re-applies to all live remote webviews without reloads. Local chrome/overlay webviews are never touched.
