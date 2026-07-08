@@ -47,7 +47,7 @@ pub fn set_app_handle(app: AppHandle) {
 /// Emit the peek-open event from a parsed `{ href, text, x, y }` payload (the
 /// Windows dispatcher's entry; macOS reaches the same emit through its `wisPeek`
 /// script-message handler).
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub(crate) fn dispatch_message(href: String, text: String, x: f64, y: f64) {
     use tauri::Emitter;
 

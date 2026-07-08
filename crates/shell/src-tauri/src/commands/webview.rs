@@ -135,6 +135,18 @@ pub async fn create_tab_webview(
         }
     }
 
+    // Linux (WebKitGTK): inject the page-side scripts for the channels
+    // `gtk_dispatch` receives (peek/link_open already ride the builder above).
+    #[cfg(target_os = "linux")]
+    {
+        builder = builder
+            .initialization_script(crate::permissions::gate_script())
+            .initialization_script(crate::navguard::page_script());
+        if !ephemeral {
+            builder = builder.initialization_script(crate::capture::capture_script());
+        }
+    }
+
     // Per-page scriptlet swap (uBO `+js` rules) before each main-frame
     // navigation commits; Permissive workspaces opt out of blocking.
     if nav_privacy_mode != wis_core::PrivacyMode::Permissive {
@@ -475,7 +487,7 @@ pub async fn create_tab_webview(
     // Linux: register the same page->chrome channels natively on the WebKitGTK
     // UserContentManager.
     #[cfg(target_os = "linux")]
-    crate::gtk_dispatch::install(&child);
+    crate::gtk_dispatch::install(&child, ephemeral);
 
     // Windows click-to-focus is per-controller (no app-wide mouse monitor like
     // macOS); a no-op elsewhere.

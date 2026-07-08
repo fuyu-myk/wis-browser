@@ -34,7 +34,7 @@ pub fn set_app_handle(app: AppHandle) {
 
 /// The getUserMedia consent gate, exposed so the Windows tab builder can inject
 /// it as a document-start init script.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub fn gate_script() -> &'static str {
     GATE_JS
 }
@@ -44,7 +44,7 @@ pub fn gate_script() -> &'static str {
 /// `wisMediaPermission` script-message handler). A remembered decision resolves
 /// in the page immediately; an unknown one is deferred to the prompt overlay
 /// (which `handle` raises), then answered by `resolve_media_permission`.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub(crate) fn dispatch_message(label: &str, page_id: &str, origin: &str, kind: &str) {
     // `id` splices into the resolve-callback string, so restrict it to digits.
     if page_id.is_empty() || !page_id.bytes().all(|b| b.is_ascii_digit()) {
@@ -63,6 +63,24 @@ pub(crate) fn dispatch_message(label: &str, page_id: &str, origin: &str, kind: &
             let _ = wv.eval(&js);
         }
     }
+}
+
+/// Allow the WebKitGTK media permission request that follows a user-consented
+/// `getUserMedia`. The JS gate only calls the real API after  handler grants,
+/// so the native request is always post-consent.
+#[cfg(target_os = "linux")]
+pub(crate) fn install_media_bridge(webview: &webkit2gtk::WebView) {
+    use webkit2gtk::glib::prelude::Cast;
+    use webkit2gtk::{PermissionRequestExt, UserMediaPermissionRequest, WebViewExt};
+
+    webview.connect_permission_request(|_, request| {
+        if let Some(media) = request.downcast_ref::<UserMediaPermissionRequest>() {
+            media.allow();
+            return true;
+        }
+
+        false
+    });
 }
 
 /// A request awaiting the user's decision: how to reach the page that asked.
@@ -85,7 +103,7 @@ struct PermissionRequest {
 /// `MediaDevices.prototype.getUserMedia` so the camera/microphone is reachable
 /// only after the `wisMediaPermission` handler resolves the request; the
 /// original is captured in `realGUM`, which the page cannot reach.
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(any(target_os = "macos", windows, target_os = "linux"))]
 const GATE_JS: &str = r#"(function () {
   var proto = window.MediaDevices && window.MediaDevices.prototype;
   if (!proto || typeof proto.getUserMedia !== 'function' || window.__wisMediaGate) return;

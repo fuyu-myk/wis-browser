@@ -65,7 +65,7 @@ pub fn set_app_handle(app: AppHandle) {
 /// script-message handler). The **host is read from the webview's own URL**,
 /// never the page, so a page can only ever offer to save a login for its own
 /// origin. The dispatcher gates this to non-ephemeral tabs.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub(crate) fn dispatch_message(label: &str, username: String, password: String) {
     if password.is_empty() {
         return;
@@ -200,7 +200,7 @@ fn locked() -> WisError {
 /// the shadow host otherwise). The last typed password/username are remembered as a
 /// fallback. A per-page dedup avoids re-posting the same credentials. No-ops when
 /// the handler isn't present (private tabs).
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(any(target_os = "macos", windows, target_os = "linux"))]
 const CAPTURE_JS: &str = r#"(function () {
   if (window.__wisCaptureInstalled) return;
   window.__wisCaptureInstalled = true;
@@ -360,7 +360,7 @@ const CAPTURE_JS: &str = r#"(function () {
 
 /// The capture page script, exposed so the Windows tab builder can inject it as
 /// a document-start init script.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub fn capture_script() -> &'static str {
     CAPTURE_JS
 }

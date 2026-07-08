@@ -35,7 +35,7 @@ pub fn set_app_handle(app: AppHandle) {
 /// Drive a nav-guard request from a parsed `{ href, text }` payload (the Windows
 /// dispatcher's entry; macOS reaches `intake` through its `wisNavGuard`
 /// script-message handler).
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub(crate) fn dispatch_message(href: String, text: String) {
     if href.is_empty() {
         return;
@@ -423,7 +423,7 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
 /// The click-interceptor script, exposed so the Windows tab builder can inject
 /// it as an init script (macOS injects it via `imp::install`); it posts risky
 /// links to `wisNavGuard`, routed by `win_dispatch` to [`dispatch_message`].
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub fn page_script() -> &'static str {
     navguard_js()
 }
