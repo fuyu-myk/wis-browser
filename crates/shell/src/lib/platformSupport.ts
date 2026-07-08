@@ -40,9 +40,6 @@ const FEATURES: Readonly<Record<string, FeatureSupport>> = {
   // macOS reparents the webview into a floating window; Windows uses the
   // engine's native Picture-in-Picture. Linux (WebKitGTK) has neither yet.
   pop_out_video: { label: 'Video pop-out', unavailableOn: ['linux'] },
-  // The element picker's zapper posts the picked selector over the page->chrome
-  // message channel, which macOS and Windows have but Linux does not yet.
-  element_picker: { label: 'Element picker', unavailableOn: ['linux'] },
 }
 
 /** True when `featureId` is not available on the running platform. */

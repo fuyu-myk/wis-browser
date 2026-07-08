@@ -75,7 +75,7 @@ pub fn swap_scriptlets(app: &tauri::AppHandle, label: &str, url: &str) {
 }
 
 /// Injected page script: collects classes/ids and applies returned CSS.
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(any(target_os = "macos", windows, target_os = "linux"))]
 const COSMETIC_JS: &str = r#"(function () {
   if (window.__wisCosmeticInstalled) return;
   window.__wisCosmeticInstalled = true;
@@ -181,7 +181,7 @@ const COSMETIC_JS: &str = r#"(function () {
 /// generic selectors). The platform-agnostic core of the cosmetic handler,
 /// shared by the macOS `wisCosmetic` handler and the Windows dispatcher; only
 /// the eval-back (frame-aware on macOS, main-frame on Windows) differs.
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(any(target_os = "macos", windows, target_os = "linux"))]
 fn build_cosmetic_apply(
     href: &str,
     initial: bool,
@@ -599,7 +599,7 @@ mod imp {
 /// under the cursor, and on click computes a stable-ish CSS selector, hides
 /// it locally, and posts `{href, selector}` to the `wisZap` handler. Esc
 /// (or right-click) cancels. Self-removing.
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(any(target_os = "macos", windows, target_os = "linux"))]
 const PICKER_JS: &str = r#"(function () {
   if (window.__wisPickerActive) {
     if (window.__wisPickerCancel) window.__wisPickerCancel();
@@ -706,7 +706,12 @@ pub fn start_picker<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
     #[cfg(windows)]
     let _ = webview.eval(PICKER_JS);
 
-    #[cfg(not(any(target_os = "macos", windows)))]
+    // Linux: main-frame eval as on Windows; PICKER_JS posts to `wisZap` over the
+    // native message handler.
+    #[cfg(target_os = "linux")]
+    let _ = webview.eval(PICKER_JS);
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     let _ = webview;
 }
 
@@ -762,7 +767,7 @@ pub async fn persist_zap(app: &tauri::AppHandle, href: &str, selector: &str) {
 /// only eval the reply into the main frame, so an iframe running the collector
 /// would have its host CSS land in (and overwrite) the main document. macOS
 /// replies into the sender's frame, so it injects in all frames instead.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub fn page_script() -> String {
     let mut s = String::from("if (window.top === window.self) {\n");
     s.push_str(COSMETIC_JS);
@@ -771,7 +776,7 @@ pub fn page_script() -> String {
 }
 
 /// Read a JSON string-array field, capped to match the macOS handler's 2000 cap.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 fn json_str_array(body: &serde_json::Value, key: &str) -> Vec<String> {
     body.get(key)
         .and_then(|v| v.as_array())
@@ -789,7 +794,7 @@ fn json_str_array(body: &serde_json::Value, key: &str) -> Vec<String> {
 /// macOS reaches the same logic through its `wisCosmetic` script-message handler,
 /// which can target the sender's iframe; this eval lands in the main frame, so
 /// cross-origin-iframe cosmetic is the one piece not mirrored on Windows.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub(crate) fn dispatch_cosmetic(label: &str, body: &serde_json::Value) {
     use tauri::Manager;
 
@@ -820,7 +825,7 @@ pub(crate) fn dispatch_cosmetic(label: &str, body: &serde_json::Value) {
 /// page-supplied href, so a page cannot persist a hide-rule for another origin
 /// (stricter than macOS, and identical for the in-page picker, whose
 /// `location.href` is the main-frame URL).
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub(crate) fn dispatch_zap(label: &str, selector: String) {
     use tauri::Manager;
 

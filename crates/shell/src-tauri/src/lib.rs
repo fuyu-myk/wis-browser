@@ -20,7 +20,7 @@ mod find;
 mod gtk_dispatch;
 mod hover_guard;
 mod interaction_state;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 mod keybind;
 mod link_open;
 mod memory;
@@ -366,7 +366,7 @@ pub fn run() {
             find::set_app_handle(app.handle().clone());
 
             // App handle for the page-side keyboard-shortcut forwarder.
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "linux"))]
             keybind::set_app_handle(app.handle().clone());
 
             // Per-tab audibility poll (tab audio icons + click-to-mute).

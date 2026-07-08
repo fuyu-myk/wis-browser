@@ -145,6 +145,18 @@ pub async fn create_tab_webview(
         if !ephemeral {
             builder = builder.initialization_script(crate::capture::capture_script());
         }
+
+        // Cosmetic element-hiding page script; Permissive workspaces opt out.
+        if nav_privacy_mode != wis_core::PrivacyMode::Permissive {
+            builder = builder.initialization_script(crate::cosmetic::page_script());
+        }
+
+        // Page-side keyboard shortcuts.
+        {
+            let keybindings = state.browser.lock().await.settings.keybindings.clone();
+            let effective = wis_core::effective_keymap(&keybindings);
+            builder = builder.initialization_script(crate::keybind::page_script(&effective));
+        }
     }
 
     // Per-page scriptlet swap (uBO `+js` rules) before each main-frame
@@ -487,7 +499,11 @@ pub async fn create_tab_webview(
     // Linux: register the same page->chrome channels natively on the WebKitGTK
     // UserContentManager.
     #[cfg(target_os = "linux")]
-    crate::gtk_dispatch::install(&child, ephemeral);
+    crate::gtk_dispatch::install(
+        &child,
+        ephemeral,
+        privacy_mode != wis_core::PrivacyMode::Permissive,
+    );
 
     // Windows click-to-focus is per-controller (no app-wide mouse monitor like
     // macOS); a no-op elsewhere.

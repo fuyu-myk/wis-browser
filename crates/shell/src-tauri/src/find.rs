@@ -58,6 +58,30 @@ fn emit_result(label: &str, query: &str, found: bool, total: i64, index: i64) {
     }
 }
 
+/// Connect the WebKitGTK `FindController` result signals for a tab webview so
+/// match counts reach the FindBar. Connected once per webview. WebKitGTK has
+/// no current-match index, so the index is always emitted as -1.
+#[cfg(target_os = "linux")]
+pub(crate) fn install_linux(webview: &webkit2gtk::WebView, label: &str) {
+    use webkit2gtk::{FindControllerExt, WebViewExt};
+
+    let Some(controller) = webview.find_controller() else {
+        return;
+    };
+
+    let found_label = label.to_string();
+    controller.connect_found_text(move |fc, count| {
+        let query = fc.search_text().map(|s| s.to_string()).unwrap_or_default();
+        emit_result(&found_label, &query, true, count as i64, -1);
+    });
+
+    let failed_label = label.to_string();
+    controller.connect_failed_to_find_text(move |fc| {
+        let query = fc.search_text().map(|s| s.to_string()).unwrap_or_default();
+        emit_result(&failed_label, &query, false, 0, -1);
+    });
+}
+
 #[tauri::command]
 pub async fn tab_find_string(
     app: AppHandle,
@@ -111,7 +135,43 @@ pub async fn tab_find_string(
         let _ = webview.eval(&js);
     }
 
-    #[cfg(not(any(target_os = "macos", windows)))]
+    // Linux: drive WebKitGTK's native FindController. Result counts arrive
+    // over the signals wired in `install_linux`.
+    #[cfg(target_os = "linux")]
+    {
+        webview
+            .with_webview(move |w| {
+                use webkit2gtk::{FindControllerExt, FindOptions, WebViewExt};
+                let Some(fc) = w.inner().find_controller() else {
+                    return;
+                };
+
+                let mut options = FindOptions::WRAP_AROUND;
+                if !case_sensitive {
+                    options |= FindOptions::CASE_INSENSITIVE;
+                }
+                if backwards {
+                    options |= FindOptions::BACKWARDS;
+                }
+
+                let same = fc
+                    .search_text()
+                    .map(|s| s.as_str() == query.as_str())
+                    .unwrap_or(false);
+                if same && backwards {
+                    fc.search_previous();
+                } else if same {
+                    fc.search_next();
+                } else {
+                    fc.search(&query, options.bits(), u32::MAX);
+                }
+            })
+            .map_err(|err| WisError::InvalidInput {
+                message: format!("with_webview failed: {err}"),
+            })?;
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         let _ = (webview, query, backwards, case_sensitive, label);
     }
@@ -152,7 +212,21 @@ pub async fn tab_find_clear(app: AppHandle, id: TabId) -> WisResult<()> {
         let _ = webview.eval("window.__wisFindClear && window.__wisFindClear();");
     }
 
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(target_os = "linux")]
+    {
+        webview
+            .with_webview(|w| {
+                use webkit2gtk::{FindControllerExt, WebViewExt};
+                if let Some(fc) = w.inner().find_controller() {
+                    fc.search_finish();
+                }
+            })
+            .map_err(|err| WisError::InvalidInput {
+                message: format!("with_webview failed: {err}"),
+            })?;
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         let _ = (webview, label);
     }

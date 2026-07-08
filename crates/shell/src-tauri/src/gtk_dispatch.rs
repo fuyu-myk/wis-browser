@@ -14,7 +14,11 @@ use webkit2gtk::{JavascriptResult, UserContentManager, UserContentManagerExt, We
 
 /// Register the page->chrome message handlers on a tab webview and route each
 /// received message to its feature. Runs on the GTK main thread via `with_webview`.
-pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, ephemeral: bool) {
+pub fn install<R: tauri::Runtime>(
+    webview: &tauri::webview::Webview<R>,
+    ephemeral: bool,
+    cosmetic_enabled: bool,
+) {
     let label = webview.label().to_string();
     let _ = webview.with_webview(move |w| {
         let wv = w.inner();
@@ -23,6 +27,7 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, ephemera
         // request that follows is post-consent, so allow it or WebKitGTK denies
         // camera/mic by default.
         crate::permissions::install_media_bridge(&wv);
+        crate::find::install_linux(&wv, &label);
 
         let Some(ucm) = wv.user_content_manager() else {
             log::warn!("gtk_dispatch: webview has no user content manager");
@@ -33,6 +38,13 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, ephemera
         register(&ucm, "wisNavGuard", &label);
         register(&ucm, "wisPeek", &label);
         register(&ucm, "wisMediaPermission", &label);
+        register(&ucm, "wisKeybind", &label);
+
+        // Cosmetic filtering + the element-picker zapper.
+        if cosmetic_enabled {
+            register(&ucm, "wisCosmetic", &label);
+            register(&ucm, "wisZap", &label);
+        }
 
         if !ephemeral {
             register(&ucm, "wisCapture", &label);
@@ -107,6 +119,9 @@ fn route(name: &str, label: &str, body: &serde_json::Value) {
         "wisCapture" => {
             crate::capture::dispatch_message(label, str_field("username"), str_field("password"));
         }
+        "wisKeybind" => crate::keybind::dispatch_action(label, body),
+        "wisCosmetic" => crate::cosmetic::dispatch_cosmetic(label, body),
+        "wisZap" => crate::cosmetic::dispatch_zap(label, str_field("selector")),
         other => log::debug!("gtk_dispatch: handler {other} not yet wired"),
     }
 }
