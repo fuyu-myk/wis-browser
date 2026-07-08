@@ -81,3 +81,5 @@ rfd = "0.16"
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = { version = "2.0", features = ["v2_30"] }
 gtk = "0.18"
+# Read a page->chrome message body off a WebKitGTK `JavascriptResult`.
+javascriptcore-rs = "1.1"

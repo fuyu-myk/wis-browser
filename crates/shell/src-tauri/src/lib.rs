@@ -16,6 +16,8 @@ mod error_compat;
 mod external;
 mod favicons;
 mod find;
+#[cfg(target_os = "linux")]
+mod gtk_dispatch;
 mod hover_guard;
 mod interaction_state;
 #[cfg(windows)]

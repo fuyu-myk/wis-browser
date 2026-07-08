@@ -8999,6 +8999,7 @@ dependencies = [
  "chrono",
  "dunce",
  "gtk",
+ "javascriptcore-rs",
  "libc",
  "log",
  "objc2 0.5.2",

@@ -472,6 +472,11 @@ pub async fn create_tab_webview(
         privacy_mode != wis_core::PrivacyMode::Permissive,
     );
 
+    // Linux: register the same page->chrome channels natively on the WebKitGTK
+    // UserContentManager.
+    #[cfg(target_os = "linux")]
+    crate::gtk_dispatch::install(&child);
+
     // Windows click-to-focus is per-controller (no app-wide mouse monitor like
     // macOS); a no-op elsewhere.
     crate::pane_focus::install_controller(&child);

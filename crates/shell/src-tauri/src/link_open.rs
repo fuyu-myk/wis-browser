@@ -27,9 +27,10 @@ pub fn set_app_handle(app: AppHandle) {
     let _ = APP.set(app);
 }
 
-/// Emit the open-in-tab event for a parsed href (the Windows dispatcher's entry;
-/// macOS reaches the same emit through its `wisOpenInTab` script-message handler).
-#[cfg(windows)]
+/// Emit the open-in-tab event for a parsed href (the Windows/Linux dispatchers'
+/// entry; macOS reaches the same emit through its `wisOpenInTab` script-message
+/// handler).
+#[cfg(any(windows, target_os = "linux"))]
 pub(crate) fn dispatch_message(href: &str) {
     use tauri::Emitter;
 
