@@ -17,6 +17,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+#[cfg(any(target_os = "macos", windows, target_os = "linux"))]
 use tauri::Manager;
 use tauri::{AppHandle, State};
 use wis_core::{TabId, WisError, WisResult};
@@ -151,6 +152,48 @@ pub async fn capture_to_clipboard(
         Ok(true)
     }
 
+    // Linux: WebKitGTK's snapshot grabs the visible tab viewport. Window falls
+    // back to that page-only capture; Region crops it to the selection.
+    #[cfg(target_os = "linux")]
+    {
+        let _ = &chrome;
+        let label = format!("tab-{}", id.as_uuid());
+        let webview =
+            app.webviews()
+                .get(&label)
+                .cloned()
+                .ok_or_else(|| WisError::InvalidInput {
+                    message: format!("no webview labelled {label}"),
+                })?;
+        let full = imp_linux::capture_visible(&webview).await?;
+        let png = match mode {
+            ScreenshotMode::Visible | ScreenshotMode::Window => full,
+            ScreenshotMode::Region => {
+                // `rect` carries the selection as fractions of the tab viewport.
+                let frac = rect.ok_or_else(|| WisError::InvalidInput {
+                    message: "region capture needs a selection".to_string(),
+                })?;
+                crop_png(&full, frac).ok_or_else(|| WisError::InvalidInput {
+                    message: "the selected region is off the page".to_string(),
+                })?
+            }
+        };
+
+        let copied = copy_png_to_clipboard(&png);
+        *state
+            .last_screenshot
+            .lock()
+            .expect("last_screenshot poisoned") = Some(png);
+        if !copied {
+            return Err(WisError::InvalidInput {
+                message: "copying the screenshot to the clipboard failed".to_string(),
+            });
+        }
+
+        Ok(true)
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     // Linux: WebKitGTK's snapshot grabs the visible tab viewport. Window falls
     // back to that page-only capture; Region crops it to the selection.
     #[cfg(target_os = "linux")]
@@ -844,6 +887,7 @@ mod imp {
 /// pasteboard (`imp::copy_image_to_pasteboard`); Windows decodes the PNG to
 /// RGBA and hands it to arboard's image clipboard.
 #[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux"))]
 fn copy_png_to_clipboard(png: &[u8]) -> bool {
     let Ok(mut reader) = png::Decoder::new(png).read_info() else {
         return false;
@@ -884,6 +928,7 @@ fn copy_png_to_clipboard(png: &[u8]) -> bool {
 /// Windows region capture. Fractions keep the crop DPI-independent: the caller
 /// normalizes the window-space selection against the tab viewport, so no scale
 /// factor is needed here. Returns `None` on a decode failure or an empty crop.
+#[cfg(any(windows, target_os = "linux"))]
 #[cfg(any(windows, target_os = "linux"))]
 fn crop_png(png: &[u8], frac: CropRect) -> Option<Vec<u8>> {
     let mut reader = png::Decoder::new(png).read_info().ok()?;
@@ -1100,6 +1145,7 @@ mod imp_linux {
             );
             return None;
         }
+
         let width = image.width();
         let height = image.height();
         let stride = image.stride();
@@ -1126,6 +1172,7 @@ mod imp_linux {
                             straighten(px & 0xff),
                         )
                     };
+
                     rgba.extend_from_slice(&[r as u8, g as u8, b as u8, a as u8]);
                 }
             }
@@ -1139,6 +1186,7 @@ mod imp_linux {
             let mut writer = encoder.write_header().ok()?;
             writer.write_image_data(&rgba).ok()?;
         }
+
         Some(out)
     }
 
