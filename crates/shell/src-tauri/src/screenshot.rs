@@ -16,7 +16,7 @@ use std::sync::mpsc;
 #[cfg(target_os = "macos")]
 use std::time::Duration;
 
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(any(target_os = "macos", windows, target_os = "linux"))]
 use tauri::Manager;
 use tauri::{AppHandle, State};
 use wis_core::{TabId, WisError, WisResult};
@@ -151,7 +151,48 @@ pub async fn capture_to_clipboard(
         Ok(true)
     }
 
-    #[cfg(not(any(target_os = "macos", windows)))]
+    // Linux: WebKitGTK's snapshot grabs the visible tab viewport. Window falls
+    // back to that page-only capture; Region crops it to the selection.
+    #[cfg(target_os = "linux")]
+    {
+        let _ = &chrome;
+        let label = format!("tab-{}", id.as_uuid());
+        let webview =
+            app.webviews()
+                .get(&label)
+                .cloned()
+                .ok_or_else(|| WisError::InvalidInput {
+                    message: format!("no webview labelled {label}"),
+                })?;
+        let full = imp_linux::capture_visible(&webview).await?;
+        let png = match mode {
+            ScreenshotMode::Visible | ScreenshotMode::Window => full,
+            ScreenshotMode::Region => {
+                // `rect` carries the selection as fractions of the tab viewport.
+                let frac = rect.ok_or_else(|| WisError::InvalidInput {
+                    message: "region capture needs a selection".to_string(),
+                })?;
+                crop_png(&full, frac).ok_or_else(|| WisError::InvalidInput {
+                    message: "the selected region is off the page".to_string(),
+                })?
+            }
+        };
+
+        let copied = copy_png_to_clipboard(&png);
+        *state
+            .last_screenshot
+            .lock()
+            .expect("last_screenshot poisoned") = Some(png);
+        if !copied {
+            return Err(WisError::InvalidInput {
+                message: "copying the screenshot to the clipboard failed".to_string(),
+            });
+        }
+
+        Ok(true)
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         let _ = (&app, &chrome, id, mode, rect, &state);
         Err(WisError::InvalidInput {
@@ -802,7 +843,7 @@ mod imp {
 /// Copy a captured PNG to the clipboard as an image. macOS uses the native
 /// pasteboard (`imp::copy_image_to_pasteboard`); Windows decodes the PNG to
 /// RGBA and hands it to arboard's image clipboard.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 fn copy_png_to_clipboard(png: &[u8]) -> bool {
     let Ok(mut reader) = png::Decoder::new(png).read_info() else {
         return false;
@@ -843,7 +884,7 @@ fn copy_png_to_clipboard(png: &[u8]) -> bool {
 /// Windows region capture. Fractions keep the crop DPI-independent: the caller
 /// normalizes the window-space selection against the tab viewport, so no scale
 /// factor is needed here. Returns `None` on a decode failure or an empty crop.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 fn crop_png(png: &[u8], frac: CropRect) -> Option<Vec<u8>> {
     let mut reader = png::Decoder::new(png).read_info().ok()?;
     let mut buf = vec![0u8; reader.output_buffer_size()];
@@ -988,6 +1029,117 @@ mod imp_win {
         }
 
         Ok(out)
+    }
+
+    /// Await a channel value off the async runtime so the worker isn't blocked.
+    async fn recv_blocking<T: Send + 'static>(
+        rx: mpsc::Receiver<T>,
+        timeout: Duration,
+    ) -> Option<T> {
+        tokio::task::spawn_blocking(move || rx.recv_timeout(timeout).ok())
+            .await
+            .ok()
+            .flatten()
+    }
+}
+
+/// Linux page capture via WebKitGTK's `WebView::snapshot`.
+#[cfg(target_os = "linux")]
+mod imp_linux {
+    use super::*;
+
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use gtk::cairo;
+    use webkit2gtk::{gio, SnapshotOptions, SnapshotRegion, WebViewExt};
+
+    /// Capture the visible viewport of a tab webview as PNG bytes. `snapshot` is
+    /// async; its callback runs on the GTK main thread with a `cairo::Surface`
+    /// (which is `!Send`), so the PNG is encoded there and only the bytes cross
+    /// back over the channel.
+    pub(super) async fn capture_visible<R: tauri::Runtime>(
+        webview: &tauri::webview::Webview<R>,
+    ) -> WisResult<Vec<u8>> {
+        let (tx, rx) = mpsc::channel::<Option<Vec<u8>>>();
+        let _ = webview.with_webview(move |w| {
+            w.inner().snapshot(
+                SnapshotRegion::Visible,
+                SnapshotOptions::NONE,
+                gio::Cancellable::NONE,
+                move |result| {
+                    let png = match result {
+                        Ok(surface) => surface_to_png(surface),
+                        Err(err) => {
+                            log::warn!("screenshot: snapshot failed: {err}");
+                            None
+                        }
+                    };
+                    let _ = tx.send(png);
+                },
+            );
+        });
+
+        match recv_blocking(rx, Duration::from_secs(10)).await.flatten() {
+            Some(bytes) if !bytes.is_empty() => Ok(bytes),
+            _ => Err(WisError::InvalidInput {
+                message: "capturing the page failed".to_string(),
+            }),
+        }
+    }
+
+    /// Convert a cairo snapshot surface to PNG bytes. Cairo stores ARGB32 pixels
+    /// premultiplied in native-endian 32-bit words with rows padded to `stride`;
+    /// PNG wants tightly-packed, straight (non-premultiplied) RGBA.
+    fn surface_to_png(surface: cairo::Surface) -> Option<Vec<u8>> {
+        let mut image = cairo::ImageSurface::try_from(surface).ok()?;
+        if image.format() != cairo::Format::ARgb32 {
+            log::warn!(
+                "screenshot: unexpected snapshot format {:?}",
+                image.format()
+            );
+            return None;
+        }
+        let width = image.width();
+        let height = image.height();
+        let stride = image.stride();
+        if width <= 0 || height <= 0 {
+            return None;
+        }
+
+        let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
+        {
+            let data = image.data().ok()?;
+            for y in 0..height as usize {
+                let row = y * stride as usize;
+                for x in 0..width as usize {
+                    let i = row + x * 4;
+                    let px = u32::from_ne_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]);
+                    let a = (px >> 24) & 0xff;
+                    let (r, g, b) = if a == 0 {
+                        (0, 0, 0)
+                    } else {
+                        let straighten = |c: u32| ((c * 255 + a / 2) / a).min(255);
+                        (
+                            straighten((px >> 16) & 0xff),
+                            straighten((px >> 8) & 0xff),
+                            straighten(px & 0xff),
+                        )
+                    };
+                    rgba.extend_from_slice(&[r as u8, g as u8, b as u8, a as u8]);
+                }
+            }
+        }
+
+        let mut out = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut out, width as u32, height as u32);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().ok()?;
+            writer.write_image_data(&rgba).ok()?;
+        }
+        Some(out)
     }
 
     /// Await a channel value off the async runtime so the worker isn't blocked.

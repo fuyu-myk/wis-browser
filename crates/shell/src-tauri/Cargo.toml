@@ -65,8 +65,6 @@ windows = { version = "0.61", features = [
 ] }
 windows-future = "0.2"
 webview2-com = "0.38"
-# Decode WebView2's CapturePreview PNG to RGBA for the clipboard (screenshot).
-png = "0.17"
 # Strip the `\\?\` verbatim prefix `fs::canonicalize` adds on Windows.
 dunce = "1"
 
@@ -75,6 +73,9 @@ dunce = "1"
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 rfd = "0.16"
+# Decode/encode PNG for the capture clipboard and region crop (Windows
+# CapturePreview, Linux cairo snapshot).
+png = "0.17"
 
 # Reach the WebKitGTK webview behind a Tauri webview (zoom, mute, print) via
 # `PlatformWebview::inner()`.
