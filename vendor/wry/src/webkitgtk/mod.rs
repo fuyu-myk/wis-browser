@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
-#[cfg(feature = "x11")]
-use dpi::LogicalPosition;
-use dpi::LogicalSize;
+use dpi::{LogicalPosition, LogicalSize};
 use ffi::CookieManageExt;
 #[cfg(feature = "x11")]
 use gdkx11::{
@@ -844,8 +842,15 @@ impl InnerWebView {
       return Ok(bounds);
     }
 
-    let (size, _) = self.webview.allocated_size();
-    bounds.size = LogicalSize::new(size.width(), size.height()).into();
+    // On the non-X11 (`gtk::Fixed`) path the webview is a child widget whose
+    // allocation carries both its position (set via `set_bounds` /
+    // `gtk::Fixed::move_`) and its size. Upstream reads only the size, leaving
+    // the position at (0,0); any caller that rebuilds a `Rect` from `bounds()`
+    // (tauri's `SetSize` handler does) then resets the webview to the window's
+    // top-left. Read both from the allocation.
+    let allocation = self.webview.allocation();
+    bounds.position = LogicalPosition::new(allocation.x(), allocation.y()).into();
+    bounds.size = LogicalSize::new(allocation.width(), allocation.height()).into();
 
     Ok(bounds)
   }
@@ -866,6 +871,17 @@ impl InnerWebView {
     }
 
     if self.is_in_fixed_parent {
+      // Position the webview via its parent `gtk::Fixed`'s `move_` (which persists
+      // across layout passes) and `set_size_request`, in addition to the
+      // immediate `size_allocate`.
+      if let Some(fixed) = self
+        .webview
+        .parent()
+        .and_then(|p| p.downcast::<gtk::Fixed>().ok())
+      {
+        fixed.move_(&self.webview, x, y);
+      }
+      self.webview.set_size_request(width, height);
       self
         .webview
         .size_allocate(&gtk::Allocation::new(x, y, width, height));

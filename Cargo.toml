@@ -75,12 +75,20 @@ wis-storage = { path = "crates/storage" }
 wis-network = { path = "crates/network" }
 wis-secrets = { path = "crates/secrets" }
 
-# Vendored wry 0.55.1 with one fix: `url_from_webview` no longer unwraps a
-# nil `WKWebView.URL` (panicked + aborted inside the navigation delegate when
-# leaving WebKit's fraud-warning interstitial via "go back" on an empty back
-# stack). Drop this patch once upstream ships the fix (see vendor/wry/README).
+# Vendored Tauri-stack crates: each a verbatim registry copy plus a small,
+# documented patch (see each crate's WIS-PATCH.md). Drop a patch once its
+# upstream PR ships, then `cargo update`.
+#   wry 0.55.1               nil-URL panic (wry#1729) + webview2 container leak;
+#                            Linux gtk::Fixed set_bounds persistence (wry#1745)
+#   tao 0.35.2               Linux `content_fixed` overlay layer (tao#1232)
+#   tauri-runtime-wry 2.11.2 route Linux child webviews into `content_fixed`
+#                            (tauri#15463); requires the tao + wry patches
+# The tao + tauri-runtime-wry + wry#1745 trio fixes positioned multi-webview on
+# Linux (tauri#10420): child webviews overlay-position instead of stacking.
 [patch.crates-io]
 wry = { path = "vendor/wry" }
+tao = { path = "vendor/tao" }
+tauri-runtime-wry = { path = "vendor/tauri-runtime-wry" }
 
 [profile.release]
 opt-level = 3
