@@ -1,5 +1,5 @@
 /* ============================================================
-   Window shell — sidebar / top-tabs layouts + content surface.
+   Window shell: sidebar / top-tabs layouts + content surface.
    ============================================================ */
 
 /* ─── URL bar input ────────────────────────────────────────────
@@ -1470,7 +1470,7 @@ body:not(.glass-chrome) .kb-content { box-shadow: var(--shadow-soft), 0 0 0 100v
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-pinned-grid { display: none; }
 .kb-window.collapsible .kb-side:not(.is-expanded) .kb-pinned-glyph { display: inline-flex; }
 
-/* Thin invisible edge zone at the very window border — only hovering this
+/* Thin invisible edge zone at the very window border: only hovering this
    triggers sidebar expand on collapsible layouts. */
 .kb-side-edge {
   position: absolute;
@@ -2141,9 +2141,9 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   background: var(--chrome-bar-glass);
   border-bottom: 0;
 }
-/* Top-tabs chrome — two-row stacked layout.
-   Row 1 → traffic-light reserve | nav circles | URL pill | +
-   Row 2 → centered compact tab strip */
+/* Top-tabs chrome: two-row stacked layout.
+   Row 1: traffic-light reserve | nav circles | URL pill | +
+   Row 2: centered compact tab strip */
 .kb-topbar {
   height: auto;
   flex-direction: column;
@@ -2176,7 +2176,7 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   min-width: 0;
 }
 
-/* Bubble tab — pill that fills its computed share of the row. Layout:
+/* Bubble tab: pill that fills its computed share of the row. Layout:
    [favicon · title] centered as a group. */
 .kb-topbar .h-tab {
   position: relative;
@@ -2703,7 +2703,7 @@ body.glass-chrome .kb-content {
   text-overflow: ellipsis;
 }
 
-/* Glass mode — same pill styling family as .kb-circle-btn (per Safari
+/* Glass mode: same pill styling family as .kb-circle-btn (per Safari
    light reference: URL bar and chrome buttons read at the same
    contrast). Light mode uses dark text on a light glass; dark mode
    uses light text on a darker translucent fill. */
@@ -3082,7 +3082,7 @@ body.glass-chrome .kb-content {
   border-radius: var(--radius-md);
 }
 .kb-history-row:hover { background: var(--overlay); }
-/* Table layout: time | url | title — fixed columns align across rows. */
+/* Table layout: time | url | title: fixed columns align across rows. */
 .kb-history-link {
   flex: 1;
   min-width: 0;
@@ -5382,6 +5382,9 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 /* The sliding thumb is the only active-pill paint (see the motion section). */
 .kb-segmented button.on { color: var(--text-primary); }
 .kb-segmented button svg { width: 12px; height: 12px; }
+/* Locked (a platform pins the value, e.g. Corners on Linux). */
+.kb-segmented.is-disabled { opacity: 0.55; }
+.kb-segmented.is-disabled button { cursor: default; }
 
 .glass-on .kb-segmented {
   background: rgba(0,0,0,0.08);
@@ -5473,7 +5476,7 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 }
 .fav.fav-wis svg { width: 100%; height: 100%; display: block; }
 
-/* about:settings cog / about:history clock — periwinkle, sized to the slot. */
+/* about:settings cog / about:history clock: periwinkle, sized to the slot. */
 .fav.fav-settings,
 .fav.fav-history,
 .kb-tab .fav.fav-settings,

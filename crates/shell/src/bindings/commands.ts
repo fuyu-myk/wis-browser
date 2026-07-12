@@ -1122,7 +1122,7 @@ export const commands = {
   /**
    * Return a `data:` URL for the cached favicon, or `null` when the
    * hash isn't in the cache. The hash is the SHA-256 prefix of the
-   * page's canonical origin — same algorithm as
+   * page's canonical origin, same algorithm as
    * `favicons::favicon_origin_hash`.
    */
   async getFaviconDataUrl(hash: string): Promise<string | null> {

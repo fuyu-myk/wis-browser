@@ -69,7 +69,7 @@ export interface TabReorder {
 interface UseTabSplitReturn {
   /** Begin a pointer-drag of `tabId` (drop on a pane to split, or reorder). */
   startTabDrag: (e: ReactPointerEvent, tabId: TabId, reorder?: TabReorder) => void
-  /** True when the last press became a drag — check it to suppress the click. */
+  /** True when the last press became a drag: check it to suppress the click. */
   draggedRef: MutableRefObject<boolean>
   /** Open the directional split popup for `tabId` (the active tab included). */
   openSplitMenu: (e: ReactMouseEvent, tabId: TabId) => void

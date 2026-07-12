@@ -7,9 +7,9 @@
  *     blink/loading.
  *
  * Variants:
- *   - 'solid-open' / 'solid-closed' / 'line-open' / 'line-closed' — static
- *   - 'blink' — natural ~3.4s blink, for ambient/at-rest brand surfaces
- *   - 'loading' — 1.4s rapid blink, replaces the tab spinner
+ *   - 'solid-open' / 'solid-closed' / 'line-open' / 'line-closed': static
+ *   - 'blink': natural ~3.4s blink, for ambient/at-rest brand surfaces
+ *   - 'loading': 1.4s rapid blink, replaces the tab spinner
  */
 
 export type WisMarkVariant =

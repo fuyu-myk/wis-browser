@@ -48,6 +48,8 @@ interface SegmentedProps<T extends string> {
   onChange: (next: T) => void
   options: ReadonlyArray<SegmentedOption<T>>
   ariaLabel?: string
+  /** Shown but locked (e.g. a platform pins one value). */
+  disabled?: boolean
 }
 
 export function Segmented<T extends string>({
@@ -55,6 +57,7 @@ export function Segmented<T extends string>({
   onChange,
   options,
   ariaLabel,
+  disabled = false,
 }: SegmentedProps<T>) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [thumb, setThumb] = useState<{ left: number; width: number } | null>(null)
@@ -82,7 +85,13 @@ export function Segmented<T extends string>({
   }, [measure])
 
   return (
-    <div role="radiogroup" aria-label={ariaLabel} className="kb-segmented" ref={rootRef}>
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      aria-disabled={disabled || undefined}
+      className={`kb-segmented${disabled ? ' is-disabled' : ''}`}
+      ref={rootRef}
+    >
       {thumb && (
         <span
           className="kb-segmented-thumb"
@@ -96,6 +105,7 @@ export function Segmented<T extends string>({
           type="button"
           role="radio"
           aria-checked={value === opt.value}
+          disabled={disabled}
           className={cx({ on: value === opt.value })}
           onClick={() => onChange(opt.value)}
         >

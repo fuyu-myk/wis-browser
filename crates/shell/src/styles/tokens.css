@@ -69,6 +69,12 @@
 [data-corners="soft"]  { --radius-scale: 0.55; }
 [data-corners="sharp"] { --radius-scale: 0; }
 
+/* Linux child webviews render with square corners (WebKitGTK has no native
+   webview corner rounding). This pins the `sharp` state regardless of the
+   stored Corners value (Design > Corners is locked to Sharp on Linux);
+   pills and circles stay round. */
+body[data-platform="linux"] { --radius-scale: 0; }
+
 /* ─── GLASS INTENSITY (Design > Liquid glass) ──────────────────── */
 /* Every backdrop blur is multiplied by this scale, so the intensity control
    retunes all glass at once. Medium = 1, Light = 0.6, Heavy = 1.4.

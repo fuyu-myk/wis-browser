@@ -344,7 +344,7 @@ mod tests {
         let a = tab();
         let b = tab();
         let c = tab();
-        // (a | (b / c)) — root split's second child is the b/c split.
+        // (a | (b / c)): root split's second child is the b/c split.
         let node = PaneNode::leaf(a)
             .with_split(a, SplitDir::Horizontal, b, false)
             .with_split(b, SplitDir::Vertical, c, false);

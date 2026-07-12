@@ -26,6 +26,7 @@ import type {
   UserSettingsPatch,
 } from '@/bindings/types'
 import { Segmented, Switch } from '@/components/controls'
+import { currentPlatform } from '@/lib/platform'
 import { ThemesSection } from '@/components/ThemesSection'
 import {
   SIDEBAR_WIDTH_DEFAULT,
@@ -85,6 +86,9 @@ interface DesignSectionProps {
 export function DesignSection({ settings, onUpdate }: DesignSectionProps) {
   const qc = useQueryClient()
   const design = settings.design
+  // Linux webviews render square (WebKitGTK can't round them), corners are
+  // pinned to Sharp there (see tokens.css).
+  const isLinux = currentPlatform() === 'linux'
 
   const patchSettings = (partial: Partial<UserSettings>) => {
     qc.setQueryData<BrowserState>([...BROWSER_STATE_KEY], (old) =>
@@ -138,12 +142,17 @@ export function DesignSection({ settings, onUpdate }: DesignSectionProps) {
       <div className="row">
         <div className="l">
           <span>Corners</span>
-          <span>Rounding of chrome surfaces. Sharp squares the UI; pills and circles stay round.</span>
+          <span>
+            {isLinux
+              ? 'Linux native webviews render square corners, so the chrome is squared to match. Pills and circles stay round.'
+              : 'Rounding of chrome surfaces. Sharp squares the UI; pills and circles stay round.'}
+          </span>
         </div>
         <Segmented
-          value={design.corners}
+          value={isLinux ? 'sharp' : design.corners}
           onChange={(corners) => setDesign({ corners })}
           options={CORNER_OPTIONS}
+          disabled={isLinux}
           ariaLabel="Corner rounding"
         />
       </div>
