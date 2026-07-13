@@ -5,7 +5,7 @@ import { Window, getCurrentWindow } from '@tauri-apps/api/window'
 import { commands } from '@/bindings/commands'
 import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { isChromeUrl } from '@/lib/url'
-import { currentPlatform } from '@/lib/platform'
+import { canParkOffscreen, currentPlatform } from '@/lib/platform'
 import type { VideoPopoutController } from '@/hooks/useVideoPopout'
 
 const PARK_HIDDEN_OFFSCREEN = currentPlatform() === 'windows'
@@ -95,20 +95,21 @@ async function createWebviewFor(
   window: Window,
   tab: Tab,
   workspaceId: WorkspaceId,
-  initialSize: { width: number; height: number } | null,
+  rect: Bounds | null,
   restoreState: string | null,
 ): Promise<Webview> {
   const label = labelFor(tab.id)
-  const width = initialSize?.width ?? PLACEHOLDER_BOUNDS.width
-  const height = initialSize?.height ?? PLACEHOLDER_BOUNDS.height
+  const width = rect?.width ?? PLACEHOLDER_BOUNDS.width
+  const height = rect?.height ?? PLACEHOLDER_BOUNDS.height
+  const park = canParkOffscreen()
   await commands.createTabWebview({
     windowLabel: window.label,
     label,
     url: tab.url,
     workspaceId,
     tabId: tab.id,
-    x: PLACEHOLDER_BOUNDS.x,
-    y: PLACEHOLDER_BOUNDS.y,
+    x: park ? PLACEHOLDER_BOUNDS.x : (rect?.x ?? 0),
+    y: park ? PLACEHOLDER_BOUNDS.y : (rect?.y ?? 0),
     width,
     height,
     restoreState,
@@ -294,12 +295,11 @@ export function useTabWebviews({
       if (!tab) return
 
       map.set(tabId, PENDING as unknown as Webview)
-      const rect = layoutRef.current.get(tabId)
-      const initialSize = rect ? { width: rect.width, height: rect.height } : null
+      const rect = layoutRef.current.get(tabId) ?? null
       const restoreState = sleepStatesRef.current.get(tabId) ?? null
       sleepStatesRef.current.delete(tabId)
 
-      void createWebviewFor(window, tab, wsId, initialSize, restoreState).then(
+      void createWebviewFor(window, tab, wsId, rect, restoreState).then(
         (wv) => {
           const stillLive = allTabsRef.current.some(
             (t) => t.id === tabId && !isChromeUrl(t.url),

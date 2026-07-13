@@ -34,3 +34,14 @@ export function currentPlatform(): Platform {
 export function isMacOS(): boolean {
   return PLATFORM === 'macos'
 }
+
+/**
+ * Whether a hidden or pending webview may be parked at an off-screen coordinate.
+ * Linux composites every child webview into one shared gtk::Fixed, so parking a
+ * child at a huge coordinate balloons the Fixed and breaks the window layout;
+ * on Linux, hide via visibility instead. macOS (separate NSViews) and Windows
+ * (separate HWNDs) can park off-screen safely.
+ */
+export function canParkOffscreen(): boolean {
+  return PLATFORM !== 'linux'
+}

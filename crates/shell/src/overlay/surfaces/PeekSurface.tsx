@@ -15,6 +15,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { commands } from '@/bindings/commands'
 import type { LinkAssessment, WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
+import { canParkOffscreen } from '@/lib/platform'
 import { XIcon } from '@/lib/icons'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
@@ -210,7 +211,8 @@ export function PeekSurface() {
   useEffect(() => {
     if (!open || !grown) return
     if (confirmOpen) {
-      void commands.setPeekBounds(100000, 100000, 320, 240).catch(() => undefined)
+      const [x, y, w, h] = canParkOffscreen() ? [100000, 100000, 320, 240] : [0, 0, 1, 1]
+      void commands.setPeekBounds(x, y, w, h).catch(() => undefined)
     } else {
       syncPeek()
     }

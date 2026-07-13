@@ -90,7 +90,7 @@ pub async fn spawn_window(
         .min_inner_size(800.0, 600.0)
         .resizable(true)
         .transparent(true)
-        .decorations(true)
+        .decorations(cfg!(target_os = "macos"))
         .accept_first_mouse(true)
         .disable_drag_drop_handler()
         .effects(chrome_window_effects());
