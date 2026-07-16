@@ -1,5 +1,5 @@
 /**
- * Windows-only chrome-focus keybinding handler.
+ * Chrome-focus keybinding handler for Windows and Linux.
  *
  * On Windows the native menu accelerators never fire: a focused WebView2
  * processes input out-of-process, so the keystroke never reaches the frame
@@ -10,10 +10,14 @@
  * the native menu would, so every existing listener (`useKeyActions`, the find
  * and palette overlay surfaces) works unchanged.
  *
+ * On Linux no native menu is attached at all (a GTK menu bar packs into the
+ * window content box and breaks the webview compositing; see
+ * `menu::apply_menu`), so there is no GTK accel-group either and chrome-focused
+ * shortcuts need the same JS capture as Windows.
+ *
  * Scope:
- * - Windows only. macOS dispatches via the global menu bar and Linux via GTK's
- *   window accel-group (which fires through webview focus and survives the
- *   menu-bar hide), so running this there would double-fire each action.
+ * - Not macOS, which dispatches via the global menu bar; running this there
+ *   would double-fire each action.
  * - This webview's focus only. When a tab webview has focus its own keydown
  *   fires in the page, covered by the injected forwarder (`keybind.rs`).
  *
@@ -57,12 +61,12 @@ export function useKeybindCapture(
   }, [keybindings])
 
   useEffect(() => {
-    if (currentPlatform() !== 'windows' || !takeFocusOnMount) return
+    if (currentPlatform() === 'macos' || !takeFocusOnMount) return
     void commands.focusSelf().catch(() => undefined)
   }, [takeFocusOnMount])
 
   useEffect(() => {
-    if (currentPlatform() !== 'windows') return
+    if (currentPlatform() === 'macos') return
 
     const onKeyDown = (e: KeyboardEvent): void => {
       if (
