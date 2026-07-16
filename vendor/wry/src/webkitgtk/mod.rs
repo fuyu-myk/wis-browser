@@ -945,6 +945,24 @@ impl InnerWebView {
       self.webview.show_all();
 
       if self.is_in_fixed_parent {
+        // Stale allocation fix for hidden webviews.
+        let (width, height) = self.webview.size_request();
+        if width >= 0 && height >= 0 {
+          if let Some(fixed) = self
+            .webview
+            .parent()
+            .and_then(|p| p.downcast::<gtk::Fixed>().ok())
+          {
+            let x = fixed.child_property::<i32>(&self.webview, "x");
+            let y = fixed.child_property::<i32>(&self.webview, "y");
+            self
+              .webview
+              .size_allocate(&gtk::Allocation::new(x, y, width, height));
+          }
+        }
+
+        // Siblings in a shared `gtk::Fixed` stack by add order; raising on
+        // show keeps a just-opened overlay above the page webviews.
         if let Some(window) = self.webview.window() {
           window.raise();
         }
