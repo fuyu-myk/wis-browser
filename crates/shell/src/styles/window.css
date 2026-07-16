@@ -2767,6 +2767,14 @@ body.glass-chrome .kb-content {
 .kb-circle-btn svg { width: 16px; height: 16px; }
 .kb-nav-row.is-circular { gap: 6px; }
 
+/* Window controls (minimize / maximize / close): Windows + Linux borderless chrome. */
+.kb-window-controls { display: inline-flex; gap: 4px; margin-left: 4px; }
+.kb-window-controls .kb-circle-btn svg { width: 14px; height: 14px; }
+.kb-window-controls .kb-circle-btn.is-close:hover {
+  background: var(--danger);
+  color: var(--text-on-accent);
+}
+
 .kb-window-top {
   position: absolute;
   top: 6px;

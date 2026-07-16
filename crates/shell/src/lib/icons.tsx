@@ -94,6 +94,25 @@ export const XIcon = (p: Props) => (
   </Icon>
 )
 
+export const MinimizeIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="M5 12h14" />
+  </Icon>
+)
+
+export const MaximizeIcon = (p: Props) => (
+  <Icon {...p}>
+    <rect width="14" height="14" x="5" y="5" rx="2" />
+  </Icon>
+)
+
+export const RestoreIcon = (p: Props) => (
+  <Icon {...p}>
+    <rect width="11" height="11" x="4" y="9" rx="2" />
+    <path d="M9 5h9a2 2 0 0 1 2 2v9" />
+  </Icon>
+)
+
 export const VolumeOnIcon = (p: Props) => (
   <Icon {...p}>
     <path d="M11 4.7 6.6 8.2H3v7.6h3.6L11 19.3z" />

@@ -30,6 +30,7 @@ import { TopBar } from '@/components/TopBar'
 import { TopTabsRail } from '@/components/TopTabsRail'
 import { FloatingUrlBar } from '@/components/UrlBar'
 import { prefetchWidgetFavicons } from '@/components/WidgetFavicon'
+import { WindowControls } from '@/components/WindowControls'
 
 interface WindowProps {
   state: BrowserState
@@ -111,6 +112,7 @@ export function Window({ state, settings }: WindowProps) {
               inline
             />
           </div>
+          <WindowControls />
         </div>
       )}
 

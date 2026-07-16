@@ -9,6 +9,7 @@ import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { HorizontalTabs } from '@/components/HorizontalTabs'
 import { NavRow } from '@/components/NavRow'
 import { FloatingUrlBar } from '@/components/UrlBar'
+import { WindowControls } from '@/components/WindowControls'
 
 interface TopBarProps {
   state: BrowserState
@@ -90,6 +91,7 @@ export function TopBar({ state }: TopBarProps) {
         >
           <FolderPlusIcon />
         </button>
+        <WindowControls />
       </div>
       <div className="kb-topbar-row tabs">
         <HorizontalTabs
