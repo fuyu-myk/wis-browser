@@ -842,15 +842,36 @@ impl InnerWebView {
       return Ok(bounds);
     }
 
-    // On the non-X11 (`gtk::Fixed`) path the webview is a child widget whose
-    // allocation carries both its position (set via `set_bounds` /
-    // `gtk::Fixed::move_`) and its size. Upstream reads only the size, leaving
-    // the position at (0,0); any caller that rebuilds a `Rect` from `bounds()`
-    // (tauri's `SetSize` handler does) then resets the webview to the window's
-    // top-left. Read both from the allocation.
+    // On the non-X11 (`gtk::Fixed`) path, upstream read only the widget's
+    // allocated size and left the returned position at (0,0); any caller that
+    // rebuilds a `Rect` from `bounds()` (tauri's `SetSize` handler does) then
+    // reset the webview to the window's top-left. The live allocation is also
+    // stale for a hidden widget.
     let allocation = self.webview.allocation();
-    bounds.position = LogicalPosition::new(allocation.x(), allocation.y()).into();
-    bounds.size = LogicalSize::new(allocation.width(), allocation.height()).into();
+    let (mut x, mut y) = (allocation.x(), allocation.y());
+    if let Some(fixed) = self
+      .webview
+      .parent()
+      .and_then(|p| p.downcast::<gtk::Fixed>().ok())
+    {
+      x = fixed.child_property::<i32>(&self.webview, "x");
+      y = fixed.child_property::<i32>(&self.webview, "y");
+    }
+
+    let (request_width, request_height) = self.webview.size_request();
+    let width = if request_width >= 0 {
+      request_width
+    } else {
+      allocation.width()
+    };
+    let height = if request_height >= 0 {
+      request_height
+    } else {
+      allocation.height()
+    };
+
+    bounds.position = LogicalPosition::new(x, y).into();
+    bounds.size = LogicalSize::new(width, height).into();
 
     Ok(bounds)
   }

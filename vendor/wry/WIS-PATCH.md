@@ -74,17 +74,19 @@ so this one is **Wis-original**.
   then calls `set_bounds`, so every child webview was re-planted at the window
   top-left whenever it was resized (and drifted there again on window resize via
   the poisoned auto-resize rates). With the third patch making `set_bounds`
-  actually stick, this reset became visible. The patch reads position **and**
-  size from `self.webview.allocation()` (the widget's post-layout allocation
-  carries the `gtk::Fixed::move_` position). The `use dpi::LogicalPosition`
-  import is made unconditional because it is now used in this always-compiled
-  fallback, not just the `#[cfg(feature = "x11")]` branch.
-- Caveat: `allocation()` x/y are only meaningful after the first size-allocate
-  (pre-realize they read `(-1,-1)`), which is fine for runtime `SetSize`/resize
-  (post-layout); exactly where the reset bit. One latent GTK-visibility edge
-  (resizing while a background/hidden tab exists, since GTK skips `size_allocate`
-  for non-visible widgets) is worth a runtime check but is not a regression
-  (upstream forced `(0,0)` for the visible case too).
+  actually stick, this reset became visible.
+- The patch reads position and size from the durable sources `set_bounds`
+  writes rather than the live allocation: position from the `gtk::Fixed` child
+  properties (`fixed.child_property::<i32>("x"/"y")`, valid whether or not the
+  widget has ever been allocated) and size from `size_request()` (falling back
+  to the allocation when unset). The live allocation alone is not enough: GTK
+  skips `size_allocate` for hidden widgets, so a webview positioned while
+  hidden (overlay popups are positioned before being shown) read back a stale
+  `(-1,-1)` allocation and the SetSize round-trip re-planted it at the window
+  top-left on show (observed: the URL-suggestions dropdown rendering at the
+  browser's top-left corner). The `use dpi::LogicalPosition` import is made
+  unconditional because it is now used in this always-compiled fallback, not
+  just the `#[cfg(feature = "x11")]` branch.
 
 Removal: fold into the wry#1745 drop — once a wry release reports the child's
 position on this path (this follow-up or an equivalent), delete along with the
