@@ -91,3 +91,18 @@ so this one is **Wis-original**.
 Removal: fold into the wry#1745 drop — once a wry release reports the child's
 position on this path (this follow-up or an equivalent), delete along with the
 third patch.
+
+## Fifth patch: Linux show() raises a fixed-parent webview (Wis-original)
+
+- `src/webkitgtk/mod.rs`, `set_visible(true)`: siblings in a shared `gtk::Fixed`
+  stack by add order, and GTK has no implicit raise-on-show. Wis creates its
+  overlay webviews (find bar, palette, downloads) once at startup and lazily
+  creates tab webviews later, so an overlay brought up over a page displayed
+  BEHIND the tab webview (observed: Ctrl+F opening an invisible find bar).
+  The patch raises the webview's GdkWindow above its siblings after
+  `show_all()` when the webview is in a fixed parent, making show mean
+  "bring to front", matching the macOS/Windows overlay semantics. Scoped to
+  `is_in_fixed_parent`; the X11-reparent and box-packed paths are untouched.
+  Tab switching is unaffected in practice: the app only calls show on a
+  visibility transition, and transient overlays are re-shown (re-raised) when
+  brought up. Not yet upstreamed; belongs with the wry#1745 family.

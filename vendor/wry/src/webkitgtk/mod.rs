@@ -943,6 +943,12 @@ impl InnerWebView {
 
     if visible {
       self.webview.show_all();
+
+      if self.is_in_fixed_parent {
+        if let Some(window) = self.webview.window() {
+          window.raise();
+        }
+      }
     } else {
       self.webview.hide();
     }
