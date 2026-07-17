@@ -17,7 +17,7 @@ pub const PANE_FOCUS_EVENT: &str = "wis-pane-focus";
 
 /// The `accessibilityIdentifier` stamped on each tab `WKWebView`. Mirrors the
 /// webview label `tab-<uuid>`; `install` strips the prefix before emitting.
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(any(target_os = "macos", windows, target_os = "linux"))]
 const LABEL_PREFIX: &str = "tab-";
 
 /// Mirror of Cocoa's `NSPoint` (a `CGPoint`), with the objc2 encoding so it can
@@ -161,5 +161,30 @@ fn left_button_down() -> bool {
     (unsafe { GetKeyState(VK_LBUTTON.0 as i32) } as u16 & 0x8000) != 0
 }
 
-#[cfg(not(windows))]
+/// Linux click-to-focus: a button press inside the WebKitGTK view emits
+/// [`PANE_FOCUS_EVENT`] before the page swallows the event. Called per tab
+/// webview from `create_tab_webview`, mirroring the Windows shape.
+#[cfg(target_os = "linux")]
+pub fn install_controller<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    use tauri::{Emitter, Manager};
+
+    let Some(uuid) = webview
+        .label()
+        .strip_prefix(LABEL_PREFIX)
+        .map(str::to_string)
+    else {
+        return;
+    };
+
+    let app = webview.app_handle().clone();
+    let _ = webview.with_webview(move |w| {
+        use gtk::prelude::WidgetExt;
+        w.inner().connect_button_press_event(move |_, _| {
+            let _ = app.emit(PANE_FOCUS_EVENT, uuid.clone());
+            gtk::glib::Propagation::Proceed
+        });
+    });
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn install_controller<R: tauri::Runtime>(_webview: &tauri::webview::Webview<R>) {}
