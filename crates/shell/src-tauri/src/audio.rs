@@ -128,10 +128,10 @@ pub fn stop_all_media<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
     }
 
     // Pre-emptive mute.
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     apply_page_muted(webview, true);
 
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     let _ = webview;
 }
 
@@ -327,6 +327,36 @@ fn poll_once(app: &AppHandle) {
                         .map(|()| b.as_bool())
                 })
                 .unwrap_or(false);
+
+            let state = app.state::<AppState>();
+            let changed = {
+                let mut audible = state.audible_tabs.lock().expect("audible_tabs poisoned");
+                if playing {
+                    audible.insert(uuid.clone())
+                } else {
+                    audible.remove(&uuid)
+                }
+            };
+
+            if changed {
+                log::debug!("audio: tab {uuid} audible={playing}");
+                emit_snapshot(&app);
+            }
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    for label in labels {
+        let Some(webview) = app.webviews().get(&label).cloned() else {
+            continue;
+        };
+
+        let uuid = label[TAB_LABEL_PREFIX.len()..].to_string();
+        let app = app.clone();
+        let _ = webview.with_webview(move |w| {
+            use webkit2gtk::WebViewExt;
+
+            let playing = w.inner().is_playing_audio();
 
             let state = app.state::<AppState>();
             let changed = {
