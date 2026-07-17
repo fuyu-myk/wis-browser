@@ -383,9 +383,9 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       // Window-region: open the full-window selection overlay (inclusive of
       // the chrome). The overlay hook performs the crop capture on a result.
       if (!ctx.activeTab) return
-      // Windows crops the page viewport, which chrome pages lack; skip like
-      // capture_visible.
-      if (currentPlatform() === 'windows' && isChromeUrl(ctx.activeTab.url)) return
+      // Windows and Linux crop the page viewport, which chrome pages lack;
+      // skip like capture_visible.
+      if (currentPlatform() !== 'macos' && isChromeUrl(ctx.activeTab.url)) return
       window.dispatchEvent(
         new CustomEvent(SCREENSHOT_REGION_OPEN_EVENT, { detail: { tabId: ctx.activeTab.id } }),
       )
@@ -394,9 +394,16 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
     case 'capture_visible':
     case 'capture_window': {
       if (!ctx.activeTab) return
-      // Visible snapshots a `tab-*` webview, which chrome pages don't have;
-      // window capture grabs the whole frame, so it works anywhere.
+      // Visible snapshots a `tab-*` webview, which chrome pages don't have.
+      // Window capture grabs the whole frame only on macOS; Windows and Linux
+      // fall back to the same tab snapshot, so they skip chrome pages there too.
       if (action === 'capture_visible' && isChromeUrl(ctx.activeTab.url)) return
+      if (
+        action === 'capture_window' &&
+        currentPlatform() !== 'macos' &&
+        isChromeUrl(ctx.activeTab.url)
+      )
+        return
       const mode = action === 'capture_window' ? 'window' : 'visible'
       try {
         const captured = await commands.captureToClipboard(ctx.activeTab.id, mode)

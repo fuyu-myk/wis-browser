@@ -83,7 +83,7 @@ export function useScreenshotRegionOverlay(): void {
         const tabId = tabIdRef.current
         if (!rect || !tabId) return
         let cropRect: RegionRect | null = rect
-        if (currentPlatform() === 'windows') {
+        if (currentPlatform() !== 'macos') {
           cropRect = toViewportFraction(rect, tabId)
           if (!cropRect) return
         }

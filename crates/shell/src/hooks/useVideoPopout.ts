@@ -185,9 +185,9 @@ export function useVideoPopout({ enabled }: { enabled: boolean }): VideoPopoutHa
         if (session.tabId === id) release(id)
         return
       }
-      // Windows posts no media reports.
+      // Only macOS posts media reports.
       if (
-        currentPlatform() !== 'windows' &&
+        currentPlatform() === 'macos' &&
         !presentRef.current.has(id) &&
         !playingRef.current.has(id)
       )

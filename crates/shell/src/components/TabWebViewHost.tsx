@@ -289,7 +289,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     activeTab && !isChromeUrl(activeTab.url) ? activeTab.id : null
 
   useEffect(() => {
-    if (currentPlatform() !== 'windows' || focusWebviewId !== null) return
+    if (currentPlatform() === 'macos' || focusWebviewId !== null) return
     if (findOpenRef.current || document.hasFocus()) return
     void commands.focusSelf().catch(() => undefined)
   }, [focusWebviewId])
@@ -372,7 +372,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     const closeFind = async () => {
       findOpenRef.current = false
       await findOverlay.hide()
-      if (currentPlatform() === 'windows') {
+      if (currentPlatform() !== 'macos') {
         const id = focusableTabRef.current
         if (id) void commands.focusWebview(`tab-${id}`).catch(() => undefined)
         else void commands.focusSelf().catch(() => undefined)

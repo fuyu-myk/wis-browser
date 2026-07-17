@@ -12,7 +12,7 @@ import { commands } from '@/bindings/commands'
 import type { BrowserState, TabId, WebviewMemory } from '@/bindings/types'
 import { closeTabAnimated } from '@/lib/tabClose'
 import { XIcon } from '@/lib/icons'
-import { isMacOS } from '@/lib/platform'
+import { currentPlatform, isMacOS } from '@/lib/platform'
 import { tabDisplayName } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 
@@ -92,8 +92,9 @@ export function TaskManagerSection() {
         <div className="l">
           <span>Memory by webview</span>
           <span>
-            Per-tab memory is available on macOS only: WebView2 shares one
-            process across tabs and exposes no per-tab figure.
+            {currentPlatform() === 'windows'
+              ? 'Per-tab memory is available on macOS only: WebView2 shares one process across tabs and exposes no per-tab figure.'
+              : 'Per-tab memory is available on macOS only: WebKitGTK exposes no per-webview memory figure.'}
           </span>
         </div>
       </div>
