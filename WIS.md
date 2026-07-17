@@ -6,7 +6,7 @@ Wis loads `WIS.md` from the workspace root as agent memory (similar to AGENTS.md
 
 ## Project
 
-**Wis**: open-source, fast, safe and lightweight browser that draws inspiration from browsers like Zen and Firefox. macOS-first; Windows is a growing tier-1 port (vault via DPAPI + Windows Hello, Mica glass, and a widening set of webview features reached through the `win_webview2` WebView2 helper, see Cross-platform conventions). Linux (WebKitGTK) is the next port: its page -> chrome layer (`gtk_dispatch`) plus a widening set of features (cosmetic filtering + element picker, find-in-page, keyboard shortcuts, camera/mic consent, peek, nav-guard, save-password capture) are now wired and compile on CI (ubuntu-22.04), but are **runtime-unverified**. A few native pieces (session/history restore, session-cookie persistence, per-tab memory) remain macOS-only today.
+**Wis**: open-source, fast, safe and lightweight browser that draws inspiration from browsers like Zen and Firefox. macOS-first; Windows is a growing tier-1 port (vault via DPAPI + Windows Hello, Mica glass, and a widening set of webview features reached through the `win_webview2` WebView2 helper, see Cross-platform conventions). Linux (WebKitGTK) is the next port: its page -> chrome layer (`gtk_dispatch`), a widening set of features (cosmetic filtering + element picker, find-in-page, keyboard shortcuts, camera/mic consent, peek, nav-guard, save-password capture), and the multi-webview compositing/overlay/focus stack (vendored `tao`/`tauri-runtime-wry`/`wry` patches) are wired, compile on CI (ubuntu-22.04), and the **core flows are runtime-verified in an X11 VM**; glass/transparency rendering fidelity and a few per-feature checks await real hardware (`docs/contributing/linux-vm-testing.md`). A few native pieces (session/history restore, session-cookie persistence, per-tab memory) remain macOS-only today.
 
 - Bundle id: `app.myk.wis`
 - Package manager: **pnpm**
@@ -80,11 +80,11 @@ wis-browser-app  (crates/shell/src-tauri)  - Tauri shell, IPC commands, AppState
 
 ### Window styling
 
-**Chrome surfaces use layered background tiers and a frame `box-shadow` for contrast; glass is OS vibrancy (macOS), Mica (Windows 11), none elsewhere.** Split panes are transparent rounded cut-outs with an accent ring (square off macOS); chrome scrollbars invert vs the theme; macOS uses `titleBarStyle: Overlay`, Linux `decorations:false` + `transparent`. Detail: `docs/architecture/webviews-windows-and-overlays.md`.
+**Chrome surfaces use layered background tiers and a frame `box-shadow` for contrast; glass is OS vibrancy (macOS), Mica (Windows 11), none elsewhere.** Split panes are transparent rounded cut-outs with an accent ring (square off macOS); chrome scrollbars invert vs the theme; macOS uses `titleBarStyle: Overlay`, Linux `decorations:false` + `transparent`. Linux pins corners to square (`--radius-scale: 0`, the Design > Corners control locked to Sharp) because its child webviews render with square corners; it also builds no native menu bar (keybinds are JS-dispatched). Detail: `docs/architecture/webviews-windows-and-overlays.md`.
 
 ### Cross-platform layer
 
-**A per-feature seam ports each macOS-AppKit capability to Windows/Linux, verified per platform.** The page -> chrome channel is `WKScriptMessageHandler` (macOS) / a single `win_dispatch` receiver behind a shim (Windows) / native `gtk_dispatch` handlers (Linux); keyboard shortcuts are native menu accelerators on macOS but JS-dispatched on Windows (native accels never fire) and on focused Linux tab webviews. Native UX ports cover clipboard, file panels (`rfd`), downloads shell-out, click-to-focus, find, and capture; a **feature-availability toast** replaces silent no-ops. Linux (WebKitGTK, incl. `gtk_dispatch`, find, cosmetic/zap, keybinds, media mute/consent, wallpaper) is **compile-verified on CI (ubuntu-22.04), runtime-unverified**. Detail: `docs/architecture/cross-platform-and-page-channel.md`.
+**A per-feature seam ports each macOS-AppKit capability to Windows/Linux, verified per platform.** The page -> chrome channel is `WKScriptMessageHandler` (macOS) / a single `win_dispatch` receiver behind a shim (Windows) / native `gtk_dispatch` handlers (Linux); keyboard shortcuts are native menu accelerators on macOS but JS-dispatched on Windows and Linux (native accels never fire behind a focused webview; Linux attaches no native menu at all, chrome-side capture + the in-page forwarder cover both focus states). Native UX ports cover clipboard, file panels (`rfd`), downloads shell-out, click-to-focus (`focus_self`/`focus_webview` per platform), find, and capture; a **feature-availability toast** replaces silent no-ops. On Linux, positioned child webviews (tabs, overlays, peek) required a vendored `tao`/`tauri-runtime-wry`/`wry` patch set: a full-window `gtk::Fixed` overlay for compositing (upstream tauri#10420) plus show/map lifecycle fixes (WebKitGTK neither repaints a resize applied while unmapped nor raises on show). Linux is **compile-verified on CI (ubuntu-22.04) and core-flow runtime-verified in an X11 VM**; rendering fidelity pends real hardware. Detail: `docs/architecture/cross-platform-and-page-channel.md`.
 
 ## Features
 
@@ -93,19 +93,19 @@ Each group maps to a `docs/architecture/` doc that carries the mechanism details
 ### Privacy & network (`docs/architecture/privacy-and-network-engine.md`)
 
 - **Network privacy**: per-request DoH, HTTPS-First, host-level + `WKContentRuleList` tracker blocking, and a per-workspace upstream proxy (SOCKS5 / Tor).
-- **Cosmetic filtering + element picker / zapper**: hides empty ad slots / nags beyond network blocking (`wisCosmetic`/`wisZap`), `:has(...)` procedural rules included; per-host user rules persist. Runs on macOS/Windows/Linux (Linux via `gtk_dispatch`, runtime-unverified).
+- **Cosmetic filtering + element picker / zapper**: hides empty ad slots / nags beyond network blocking (`wisCosmetic`/`wisZap`), `:has(...)` procedural rules included; per-host user rules persist. Runs on macOS/Windows/Linux (Linux via `gtk_dispatch`).
 - **Scriptlets & user scripts**: uBO `+js` (Brave resource library) and Tampermonkey `.user.js` injected per-navigation (page world, no `GM_*`); the scriptlet/user-script swap is macOS-only for now.
 - **Filter lists**: EasyList/EasyPrivacy plus user subscriptions feed the engine (YouTube ad blocking via uBO scriptlets); managed in Settings -> Privacy.
 - **Tor VPN**: built-in Arti with a simple on/off toggle; re-routes by reloading workspace tabs.
-- **Fraudulent website warning**: WebKit Safe Browsing enabled on every remote webview (Settings toggle).
+- **Fraudulent website warning**: WebKit Safe Browsing enabled on every remote webview (Settings toggle; macOS-only, the other engines expose no equivalent and their settings row says so; navguard covers risky links everywhere).
 
 ### Security & data protection (`docs/architecture/security-vault-and-permissions.md`)
 
 - **Password vault**: ChaCha20-Poly1305 at rest, master key in the OS key store gated by a biometric (Touch ID / Windows Hello); save-capture, saved-account picker, origin-matched autofill (app -> page eval only).
 - **Stay logged in across restarts**: encrypted session-cookie snapshot restored before first load, fixed 14-day TTL, gated by the `persist_sessions` setting; never for ephemeral workspaces.
-- **Camera & microphone consent**: app-side `getUserMedia` gate + in-browser prompt with remembered decisions (macOS/Windows/Linux; Linux runtime-unverified).
+- **Camera & microphone consent**: app-side `getUserMedia` gate + in-browser prompt with remembered decisions (macOS/Windows/Linux; the Linux prompt is wired but not yet exercised in the VM).
 - **Navigation safety interstitial**: `navguard` re-assesses risky links (click-time and page-load fallback) and interrupts High/Medium threats; shares `link_safety` heuristics with Peek.
-- **Strict CSP** on local surfaces and the local-vs-remote **capability isolation** above; the vendored wry patch stays a clean verbatim drop (features never patch it).
+- **Strict CSP** on local surfaces and the local-vs-remote **capability isolation** above; the vendored Tauri-stack patches (`wry`/`tao`/`tauri-runtime-wry`) stay clean verbatim drops of upstream PRs, dropped when those merge; feature code never patches them.
 
 ### State & storage (`docs/architecture/data-model-and-state.md`)
 
@@ -129,7 +129,7 @@ Each group maps to a `docs/architecture/` doc that carries the mechanism details
 - **Peek**: Opt+click isolated incognito link preview with a safety banner and reader toggle.
 - **Reader mode**: in-place clean-article transform shared with Peek.
 - **Video popout**: always-on-top mini player (the tab's own reparented webview on macOS; native Picture-in-Picture on Windows; toasts on Linux), automatic on tab-hide and manual.
-- **Tab audio**: per-tab audibility indicator + engine-level mute (macOS/Windows; Linux mutes, indicator not yet lit).
+- **Tab audio**: per-tab audibility indicator + engine-level mute (macOS/Windows/Linux).
 - **Page capture**: clipboard-default screenshots (visible / region / whole-window composite) with a Save toast; window composite is macOS-only (page-only fallback elsewhere).
 - **Downloads**: safety-first `~/Downloads` handling (sanitized names, quarantine xattr, no overwrite), persisted history (`M0014`), ask-where option, popup + full page.
 - **Sidebar quick-launch widgets**: per-widget floating panels sharing the workspace store/proxy, with LRU count + memory caps, keep-loaded/idle-sleep, and a header bar.
@@ -139,7 +139,7 @@ Each group maps to a `docs/architecture/` doc that carries the mechanism details
 
 ### Cross-platform & page channel (`docs/architecture/cross-platform-and-page-channel.md`)
 
-- **Page -> chrome channels**, **keyboard dispatch** per platform, **WebView2 environment** gotchas, native **stacking/rounding/input** guards, native **UX ports**, the **feature-availability toast**, and the current **platform-status matrix** (Linux compile-verified, runtime-unverified).
+- **Page -> chrome channels**, **keyboard dispatch** per platform, **WebView2 environment** gotchas, native **stacking/rounding/input** guards, native **UX ports**, the **feature-availability toast**, and the current **platform-status matrix** (Linux compile-verified on CI, core flows VM-verified).
 
 ## Known limitations / engine tradeoffs
 
@@ -148,7 +148,7 @@ Wis renders with the OS system WebView (WKWebView on macOS) via Tauri/wry, the s
 - **Premium DRM video (Widevine)**: WKWebView's only CDM is Apple FairPlay, not Google Widevine, and there is no API to inject a Widevine CDM (the CDM hooks the engine's media pipeline, which WKWebView does not expose). FairPlay itself is not licensed for general third-party-app playback, and services like Netflix gate on the Safari app. Result: premium DRM streaming (Netflix/Disney+/etc., especially 1080p/4K) is degraded or blocked. Mitigation is the **Open in default browser** action, not an in-app fix. Adding native Widevine would require switching to a Chromium engine (CEF) plus a Widevine license, which would forfeit the bundle/RAM/battery wins; explicitly not pursued. Note: even Firefox forks like Zen punt DRM to Firefox for the same licensing reason. **MSE + EME/FairPlay**: Wis does enable WebKit's Media Source + Encrypted Media Extensions on remote webviews (`webview_prefs::apply_media_extensions`, guarded SPI `_setMediaSourceEnabled:`/`_setEncryptedMediaAPIEnabled:`/`_setLegacyEncryptedMediaAPIEnabled:`; `UserSettings.media_extensions_enabled`, default on, toggle in Settings -> Privacy). MSE alone (off by default in embedded WKWebView) restores adaptive streaming on many non-DRM video sites; EME exposes the FairPlay key system to services that request it. This does not unlock Widevine-gated services, and Safari-app-gated FairPlay services (Netflix) still refuse, those remain the Open-in-Safari handoff.
 - **Browser extensions**: an embedded WKWebView cannot load Safari Web Extensions (reserved for Safari). Wis substitutes a native blocking stack (`WKContentRuleList` + the `adblock` crate, with cosmetic filtering, scriptlets and an element picker) plus a Tampermonkey-style user-script runner, rather than a WebExtensions runtime.
 - **Site isolation**: WebKit's site isolation is weaker than Chrome's (still rolling out upstream), offset by strong OS sandboxing and out-of-process rendering.
-- **Other**: no cross-device sync, no mobile companion, and some newer web APIs (WebUSB/WebBluetooth/web push/PWA install) are partial or absent under WebKit. Some native parity still lags off macOS: session/history + session-cookie restore, per-tab task-manager memory, the vault biometric gate and default-browser registration remain macOS-only (Windows adds most of the rest; Linux is the newest tier, with clipboard/zoom/mute/print/downloads/wallpaper wired; find, capture, the element picker, Peek and the page->chrome message channel are planned).
+- **Other**: no cross-device sync, no mobile companion, and some newer web APIs (WebUSB/WebBluetooth/web push/PWA install) are partial or absent under WebKit. Some native parity still lags off macOS: session/history + session-cookie restore, per-tab task-manager memory, the vault biometric gate and default-browser registration remain macOS-only. Linux's remaining gaps beyond those: per-site data management (list/delete/clear render an honest "not available yet"), uBO `+js` scriptlet injection, the theme -> page color-scheme push, and the media-consent gate on widget panels and Peek (tabs are gated); each degrades visibly or deny-safe, never silently.
 
 ## Build & release
 
@@ -166,6 +166,7 @@ These `docs/architecture/` files elaborate on the sections above. They are not a
 - `docs/architecture/cross-platform-and-page-channel.md`: the page->chrome channel per platform, keyboard dispatch, WebView2/GTK gotchas, native UX ports, the availability toast, and platform status.
 - `docs/architecture/chrome-shell-and-layouts.md`: the React frontend structure, sidebar vs top-tabs layouts, workspaces/panes/pins/folders, theming, backgrounds, and the motion system.
 - `docs/architecture/tabs-panels-and-media.md`: tab memory/sessions, quick features, Peek, reader, video popout, tab audio, page capture, downloads, widgets, bookmarks, history, and browser identity.
+- `docs/contributing/linux-vm-testing.md`: contributor runbook for running and runtime-verifying the Linux (WebKitGTK) port in a macOS-hosted UTM/QEMU VM, with a per-feature verification checklist.
 
 ## Maintenance
 
