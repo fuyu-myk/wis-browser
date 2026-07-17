@@ -92,28 +92,36 @@ Removal: fold into the wry#1745 drop — once a wry release reports the child's
 position on this path (this follow-up or an equivalent), delete along with the
 third patch.
 
-## Fifth patch: Linux show() raises and re-allocates a fixed-parent webview (Wis-original)
+## Fifth patch: Linux map finishes a fixed-parent webview's show (Wis-original)
 
-- `src/webkitgtk/mod.rs`, `set_visible(true)`: two first-show defects for a
-  webview in a shared `gtk::Fixed`, fixed together because both are "show must
-  finish the job" semantics.
-- Raise: siblings in a `gtk::Fixed` stack by add order, and GTK has no
-  implicit raise-on-show. Wis creates its overlay webviews (find bar, palette,
-  downloads) once at startup and lazily creates tab webviews later, so an
-  overlay brought up over a page displayed behind the tab webview (observed:
-  Ctrl+F opening an invisible find bar). The patch raises the webview's
-  GdkWindow above its siblings after `show_all()`, making show mean "bring to
-  front", matching the macOS/Windows overlay semantics. Tab switching is
-  unaffected in practice: the app only calls show on a visibility transition,
-  and transient overlays are re-shown (re-raised) when brought up.
-- Re-allocate: a webview positioned while hidden has a stale allocation (GTK
-  skips `size_allocate` for non-visible widgets, and mapping does not
+Two first-show defects for a webview in a shared `gtk::Fixed`, fixed together
+in a `connect_map` handler installed in `add_to_container` (plus a small
+`set_visible` companion), because both are "show must finish the job"
+semantics:
+
+- Stale geometry: a webview positioned while hidden keeps a stale allocation
+  (GTK skips `size_allocate` for non-visible widgets, and mapping does not
   re-allocate), so on first show it stayed invisible until an external
   relayout, e.g. a window resize, re-ran the fixed's layout (observed: the
   find bar and the Ctrl+L overlay appearing only after resizing the window).
-  After `show_all()` the patch re-asserts the durable geometry, the
-  `gtk::Fixed` child position plus the size request (the same sources the
-  fourth patch reads), via an immediate `size_allocate`; skipped when no
-  bounds were ever applied.
-- Scoped to `is_in_fixed_parent`; the X11-reparent and box-packed paths are
-  untouched. Not yet upstreamed; belongs with the wry#1745 family.
+- Back-of-stack: siblings in a `gtk::Fixed` stack by add order and GTK has no
+  implicit raise-on-show; Wis creates its overlay webviews once at startup and
+  lazily creates tab webviews later, so an opened overlay displayed behind the
+  tab webview (observed: Ctrl+F opening an invisible find bar).
+
+Doing this work at `show()` time is not enough; GTK defers map/realize to the
+next layout pass, so at show the widget can be unrealized (no GdkWindow: the
+allocation does not reach the window and `window()` is `None` for the raise),
+which is why a first `set_visible`-based version still needed a window resize.
+The map signal fires exactly when the GdkWindow exists, so the handler
+re-asserts the durable geometry there (`gtk::Fixed` child position + size
+request, the fourth patch's sources; skipped when bounds were never applied),
+raises the GdkWindow above its siblings, and queues a draw. It runs on every
+map, so each re-show of a hidden overlay is finished the same way.
+`set_visible(true)` additionally raises an already-mapped webview (no map
+signal fires, but show still means "bring to front", matching macOS/Windows
+overlay semantics); tab switching is unaffected in practice because the app
+only calls show on a visibility transition.
+
+Scoped to fixed-parented webviews; the X11-reparent and box-packed paths are
+untouched. Not yet upstreamed; belongs with the wry#1745 family.

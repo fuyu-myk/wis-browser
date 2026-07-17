@@ -118,7 +118,17 @@ pub async fn focus_self(webview: tauri::Webview) -> WisResult<()> {
     #[cfg(windows)]
     crate::win_webview2::move_focus(&webview);
 
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(target_os = "linux")]
+    webview
+        .with_webview(|w| {
+            use gtk::prelude::WidgetExt;
+            w.inner().grab_focus();
+        })
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("with_webview failed: {err}"),
+        })?;
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         let _ = webview;
     }
@@ -175,7 +185,26 @@ pub async fn focus_webview(app: AppHandle, label: String) -> WisResult<()> {
         crate::win_webview2::move_focus(&wv);
     }
 
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(target_os = "linux")]
+    {
+        let grab = |w: tauri::webview::PlatformWebview| {
+            use gtk::prelude::WidgetExt;
+            w.inner().grab_focus();
+        };
+        let outcome = if let Some(wv) = app.webviews().get(&label).cloned() {
+            wv.with_webview(grab)
+        } else if let Some(win) = app.get_webview_window(&label) {
+            win.with_webview(grab)
+        } else {
+            return Ok(());
+        };
+
+        outcome.map_err(|err| WisError::InvalidInput {
+            message: format!("with_webview failed: {err}"),
+        })?;
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         let _ = (app, label);
     }
@@ -232,14 +261,31 @@ pub async fn set_overlay_bounds(
             message: format!("overlay {label} not found; call ensure_overlay first"),
         });
     };
+
+    #[cfg(target_os = "linux")]
+    wv.show().map_err(|err| WisError::InvalidInput {
+        message: format!("show for {label}: {err}"),
+    })?;
     wv.set_position(tauri::LogicalPosition::new(x, y))
         .map_err(|err| WisError::InvalidInput {
             message: format!("set_position for {label}: {err}"),
         })?;
+
+    // Linux: the repaint only triggers on an actual size change.
+    #[cfg(target_os = "linux")]
+    wv.set_size(tauri::LogicalSize::new(
+        width.max(1.0) + 1.0,
+        height.max(1.0),
+    ))
+    .map_err(|err| WisError::InvalidInput {
+        message: format!("set_size for {label}: {err}"),
+    })?;
     wv.set_size(tauri::LogicalSize::new(width.max(1.0), height.max(1.0)))
         .map_err(|err| WisError::InvalidInput {
             message: format!("set_size for {label}: {err}"),
         })?;
+
+    #[cfg(not(target_os = "linux"))]
     wv.show().map_err(|err| WisError::InvalidInput {
         message: format!("show for {label}: {err}"),
     })?;
@@ -270,10 +316,15 @@ pub async fn size_overlay(
         .map_err(|err| WisError::InvalidInput {
             message: format!("set_position for {label}: {err}"),
         })?;
+
+    #[cfg(not(target_os = "linux"))]
     wv.set_size(tauri::LogicalSize::new(width.max(1.0), height.max(1.0)))
         .map_err(|err| WisError::InvalidInput {
             message: format!("set_size for {label}: {err}"),
         })?;
+
+    #[cfg(target_os = "linux")]
+    let _ = (width, height);
 
     Ok(())
 }
