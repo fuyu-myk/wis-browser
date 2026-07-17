@@ -181,11 +181,11 @@ pub async fn create_tab_webview(
         }
     } else {
         builder = builder.data_store_identifier(workspace_id_to_data_store_bytes(workspace_id));
-        // WKWebView honours `data_store_identifier`; WebView2 ignores it and
-        // keys cookie/storage isolation off the user-data folder instead, so
-        // each persistent workspace needs its own directory or they all collapse
-        // into one profile (and one shared cookie jar).
-        #[cfg(windows)]
+        // WKWebView honours `data_store_identifier`; WebView2 and WebKitGTK
+        // ignore it and key cookie/storage isolation off the user-data folder
+        // instead, so each persistent workspace needs its own directory or they
+        // all collapse into one profile (and one shared cookie jar).
+        #[cfg(any(windows, target_os = "linux"))]
         {
             builder = builder.data_directory(workspace_webview_data_dir(&app, workspace_id));
         }

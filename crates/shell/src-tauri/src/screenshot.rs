@@ -194,48 +194,6 @@ pub async fn capture_to_clipboard(
     }
 
     #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
-    // Linux: WebKitGTK's snapshot grabs the visible tab viewport. Window falls
-    // back to that page-only capture; Region crops it to the selection.
-    #[cfg(target_os = "linux")]
-    {
-        let _ = &chrome;
-        let label = format!("tab-{}", id.as_uuid());
-        let webview =
-            app.webviews()
-                .get(&label)
-                .cloned()
-                .ok_or_else(|| WisError::InvalidInput {
-                    message: format!("no webview labelled {label}"),
-                })?;
-        let full = imp_linux::capture_visible(&webview).await?;
-        let png = match mode {
-            ScreenshotMode::Visible | ScreenshotMode::Window => full,
-            ScreenshotMode::Region => {
-                // `rect` carries the selection as fractions of the tab viewport.
-                let frac = rect.ok_or_else(|| WisError::InvalidInput {
-                    message: "region capture needs a selection".to_string(),
-                })?;
-                crop_png(&full, frac).ok_or_else(|| WisError::InvalidInput {
-                    message: "the selected region is off the page".to_string(),
-                })?
-            }
-        };
-
-        let copied = copy_png_to_clipboard(&png);
-        *state
-            .last_screenshot
-            .lock()
-            .expect("last_screenshot poisoned") = Some(png);
-        if !copied {
-            return Err(WisError::InvalidInput {
-                message: "copying the screenshot to the clipboard failed".to_string(),
-            });
-        }
-
-        Ok(true)
-    }
-
-    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         let _ = (&app, &chrome, id, mode, rect, &state);
         Err(WisError::InvalidInput {

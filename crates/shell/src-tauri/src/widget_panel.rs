@@ -103,7 +103,29 @@ pub fn promote_panels_to_front(app: &AppHandle, window_label: &str) {
         }
     }
 
-    #[cfg(not(any(target_os = "macos", windows)))]
+    // Re-raise each panel's GdkWindow.
+    #[cfg(target_os = "linux")]
+    {
+        let prefix = panel_prefix(window_label);
+        let panels: Vec<_> = app
+            .webviews()
+            .iter()
+            .filter(|(label, _)| label.starts_with(&prefix))
+            .map(|(_, wv)| wv.clone())
+            .collect();
+
+        for wv in panels {
+            let _ = wv.with_webview(|w| {
+                use gtk::prelude::WidgetExt;
+
+                if let Some(window) = w.inner().window() {
+                    window.raise();
+                }
+            });
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         let _ = (app, window_label);
     }
@@ -375,8 +397,9 @@ pub async fn open_widget_panel(
         builder = builder.data_store_identifier(crate::commands::workspace_id_to_data_store_bytes(
             workspace_id,
         ));
-        // WebView2 isolates by user-data folder, not `data_store_identifier`.
-        #[cfg(windows)]
+        // WebView2 and WebKitGTK isolate by user-data folder, not
+        // `data_store_identifier`.
+        #[cfg(any(windows, target_os = "linux"))]
         {
             builder = builder.data_directory(crate::commands::workspace_webview_data_dir(
                 &app,
