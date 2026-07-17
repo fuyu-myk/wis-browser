@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands } from '@/bindings/commands'
 import type { WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
+import { currentPlatform } from '@/lib/platform'
 import { SearchIcon, XIcon } from '@/lib/icons'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
@@ -51,6 +52,17 @@ export function SiteDataSection({ workspaceId, workspaceName }: SiteDataSectionP
     if (!q) return entries
     return entries.filter((e) => e.domain.toLowerCase().includes(q))
   }, [entries, search])
+
+  if (currentPlatform() === 'linux') {
+    return (
+      <section id="sitedata" className="sec">
+        <div className="sec-h">Site data</div>
+        <p className="kb-vault-msg">
+          Per-site data management is not available on Linux yet.
+        </p>
+      </section>
+    )
+  }
 
   return (
     <section id="sitedata" className="sec">

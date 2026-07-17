@@ -3283,6 +3283,8 @@ body.glass-chrome .kb-content {
   text-align: left;
 }
 .kb-cbd-row:hover { background: var(--overlay); }
+.kb-cbd-row:disabled { opacity: 0.55; cursor: default; }
+.kb-cbd-row:disabled:hover { background: transparent; }
 .kb-cbd-check {
   flex-shrink: 0;
   width: 18px;

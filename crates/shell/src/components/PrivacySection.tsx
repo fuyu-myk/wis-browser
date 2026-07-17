@@ -10,6 +10,7 @@ import type {
   WorkspaceId,
 } from '@/bindings/types'
 import { Segmented, Switch } from '@/components/controls'
+import { isMacOS } from '@/lib/platform'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { FilterListsSection } from '@/components/FilterListsSection'
 import { UserscriptsSection } from '@/components/UserscriptsSection'
@@ -113,30 +114,35 @@ export function PrivacySection({ settings, activeWorkspace, onUpdate }: PrivacyS
           <div className="l">
             <span>Fraudulent website warning</span>
             <span>
-              Warn before suspected phishing or malware sites (WebKit's
-              Apple-proxied Safe Browsing check; performs network lookups).
+              {isMacOS()
+                ? "Warn before suspected phishing or malware sites (WebKit's Apple-proxied Safe Browsing check; performs network lookups)."
+                : "WebKit's Safe Browsing interstitial is macOS-only; the navigation guard still assesses risky links on this platform."}
             </span>
           </div>
-          <Switch
-            checked={settings.fraud_warning_enabled}
-            onChange={(fraud_warning_enabled) => onUpdate({ fraud_warning_enabled })}
-            label="Fraudulent website warning"
-          />
+          {isMacOS() && (
+            <Switch
+              checked={settings.fraud_warning_enabled}
+              onChange={(fraud_warning_enabled) => onUpdate({ fraud_warning_enabled })}
+              label="Fraudulent website warning"
+            />
+          )}
         </div>
         <div className="row">
           <div className="l">
             <span>Streaming media support</span>
             <span>
-              Enable Media Source + Encrypted Media Extensions (adaptive
-              video and the FairPlay DRM key system). On by default; turning
-              it off may break video on some streaming sites.
+              {isMacOS()
+                ? 'Enable Media Source + Encrypted Media Extensions (adaptive video and the FairPlay DRM key system). On by default; turning it off may break video on some streaming sites.'
+                : 'Media Source is always on here; the FairPlay toggle is macOS-only.'}
             </span>
           </div>
-          <Switch
-            checked={settings.media_extensions_enabled}
-            onChange={(media_extensions_enabled) => onUpdate({ media_extensions_enabled })}
-            label="Streaming media support"
-          />
+          {isMacOS() && (
+            <Switch
+              checked={settings.media_extensions_enabled}
+              onChange={(media_extensions_enabled) => onUpdate({ media_extensions_enabled })}
+              label="Streaming media support"
+            />
+          )}
         </div>
         <div className="row">
           <div className="l">

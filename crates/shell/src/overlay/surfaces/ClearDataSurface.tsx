@@ -13,6 +13,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import { cx } from '@/lib/cx'
+import { currentPlatform } from '@/lib/platform'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
@@ -29,9 +30,11 @@ export function ClearDataSurface() {
   useBrowserStateEvents()
   useThemeApply(state?.settings)
 
+  const siteDataUnavailable = currentPlatform() === 'linux'
+
   const [scope, setScope] = useState<Scope>('workspace')
   const [withHistory, setWithHistory] = useState(true)
-  const [withSiteData, setWithSiteData] = useState(true)
+  const [withSiteData, setWithSiteData] = useState(!siteDataUnavailable)
   const [busy, setBusy] = useState(false)
 
   const activeWorkspaceId = state?.active_workspace_id ?? null
@@ -145,8 +148,13 @@ export function ClearDataSurface() {
         />
         <CheckRow
           label="Cookies and site data"
-          hint="Cookies, cache and local storage"
+          hint={
+            siteDataUnavailable
+              ? 'Not available on Linux yet'
+              : 'Cookies, cache and local storage'
+          }
           checked={withSiteData}
+          disabled={siteDataUnavailable}
           onToggle={() => setWithSiteData((v) => !v)}
         />
 
@@ -172,12 +180,19 @@ interface CheckRowProps {
   label: string
   hint?: string
   checked: boolean
+  disabled?: boolean
   onToggle: () => void
 }
 
-function CheckRow({ label, hint, checked, onToggle }: CheckRowProps) {
+function CheckRow({ label, hint, checked, disabled = false, onToggle }: CheckRowProps) {
   return (
-    <button type="button" className="kb-cbd-row" onClick={onToggle} aria-pressed={checked}>
+    <button
+      type="button"
+      className="kb-cbd-row"
+      onClick={onToggle}
+      aria-pressed={checked}
+      disabled={disabled}
+    >
       <span className={cx('kb-cbd-check', { 'is-on': checked })} aria-hidden>
         {checked ? '✓' : ''}
       </span>
