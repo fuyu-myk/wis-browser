@@ -314,7 +314,20 @@ pub fn push_nav_state<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
         }
     }
 
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(target_os = "linux")]
+    {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<(bool, bool)>(1);
+        let _ = webview.with_webview(move |w| {
+            use webkit2gtk::WebViewExt;
+            let wv = w.inner();
+            let _ = tx.send((wv.can_go_back(), wv.can_go_forward()));
+        });
+        if let Ok((back, fwd)) = rx.recv_timeout(std::time::Duration::from_millis(100)) {
+            let _ = webview.eval(nav_state_script(back, fwd));
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     let _ = webview;
 }
 

@@ -375,7 +375,19 @@ pub async fn tab_hard_reload(app: AppHandle, id: TabId) -> WisResult<()> {
             })?;
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        webview
+            .with_webview(|w| {
+                use webkit2gtk::WebViewExt;
+                w.inner().reload_bypass_cache();
+            })
+            .map_err(|err| WisError::InvalidInput {
+                message: format!("hard reload failed: {err}"),
+            })?;
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = webview.eval("window.location.reload()");
     }
