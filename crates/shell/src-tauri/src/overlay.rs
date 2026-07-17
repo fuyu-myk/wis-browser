@@ -81,7 +81,30 @@ pub fn promote_overlays_to_front(app: &AppHandle, window_label: &str) {
         }
     }
 
-    #[cfg(not(any(target_os = "macos", windows)))]
+    // The wry patch raises a webview on show, but a lower-tier webview shown
+    // after an overlay is visible (a new tab, a widget panel) lands above it;
+    // re-raising each overlay's GdkWindow restores tabs < panels < overlays.
+    #[cfg(target_os = "linux")]
+    {
+        let prefix = format!("{OVERLAY_PREFIX}{window_label}-");
+        let overlays: Vec<_> = app
+            .webviews()
+            .iter()
+            .filter(|(label, _)| label.starts_with(&prefix))
+            .map(|(_, wv)| wv.clone())
+            .collect();
+
+        for wv in overlays {
+            let _ = wv.with_webview(|w| {
+                use gtk::prelude::WidgetExt;
+                if let Some(window) = w.inner().window() {
+                    window.raise();
+                }
+            });
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         let _ = (app, window_label);
     }
