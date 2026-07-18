@@ -132,7 +132,7 @@ Each group maps to a `docs/architecture/` doc that carries the mechanism details
 - **Tab audio**: per-tab audibility indicator + engine-level mute (macOS/Windows/Linux).
 - **Page capture**: clipboard-default screenshots (visible / region / whole-window composite) with a Save toast; window composite is macOS-only (page-only fallback elsewhere).
 - **Downloads**: safety-first `~/Downloads` handling (sanitized names, quarantine xattr, no overwrite), persisted history (`M0014`), ask-where option, popup + full page.
-- **Sidebar quick-launch widgets**: per-widget floating panels sharing the workspace store/proxy, with LRU count + memory caps, keep-loaded/idle-sleep, and a header bar.
+- **Sidebar quick-launch widgets**: per-widget floating panels sharing the workspace store/proxy, with LRU count + memory caps, keep-loaded/idle-sleep, and a header bar. Every remote-webview destroy path (widgets, tabs, peek, window close) tears the WebContent process down via `webview_close` (wry's macOS `Drop` leaks the `WKWebView`, stranding the process otherwise); panel creation is serialized against a WebView2 message-pump deadlock.
 - **Bookmarks**: per-workspace foldered + independently pinnable quick-access, star flow, drag organize (SQLite, never in `BrowserState`).
 - **History & cookies**: per-workspace deduped history with search; native site-data listing + per-domain/full clear.
 - **Browser identity**: modern Safari-class UA by default with per-host overrides (`wis_core::user_agent`), OS-following platform token; **open in default browser** exit hatch.
