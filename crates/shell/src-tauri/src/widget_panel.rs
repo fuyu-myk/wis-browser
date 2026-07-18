@@ -25,6 +25,10 @@ use crate::state::AppState;
 /// Label prefix of widget panel webviews; the suffix is the widget's id.
 const WIDGET_PANEL_PREFIX: &str = "widget-panel-";
 
+/// Serializes panel webview creation across all windows (see the guard in
+/// [`open_widget_panel`]).
+static PANEL_CREATE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Broadcast whenever a panel webview is created or destroyed (not on
 /// hide/show), so the settings page can refresh its live-panel readout.
 const WIDGET_PANELS_CHANGED_EVENT: &str = "widget-panels-changed";
@@ -328,6 +332,19 @@ pub async fn open_widget_panel(
     if app.webviews().contains_key(&label) {
         let shown = show_widget_panel(window.clone(), id, x, y, width, height).await?;
         debug_assert!(shown);
+        return Ok(());
+    }
+
+    // One native creation at a time: WebView2 environment creation pumps the
+    // Win32 message queue while the runtime holds a non-reentrant web-context
+    // lock, so overlapping creations from rapid opens can deadlock silently.
+    let _create_guard = PANEL_CREATE_LOCK.lock().await;
+    // Re-check: a queued concurrent open may have created this panel already.
+    if app.webviews().contains_key(&label) {
+        if !show_widget_panel(window.clone(), id, x, y, width, height).await? {
+            log::warn!("widget panel {label} closed while a queued open waited");
+        }
+
         return Ok(());
     }
 
@@ -699,6 +716,7 @@ pub async fn close_widget_panel(window: tauri::Window, id: String) -> WisResult<
     let label = panel_label(window.label(), &id)?;
     let app = window.app_handle();
     if let Some(wv) = app.webviews().get(&label).cloned() {
+        crate::webview_close::terminate_page(&wv);
         wv.close().map_err(|err| WisError::InvalidInput {
             message: format!("widget panel close: {err}"),
         })?;
@@ -724,6 +742,7 @@ pub async fn close_all_widget_panels(window: tauri::Window) -> WisResult<()> {
         .collect();
     let any = !panels.is_empty();
     for wv in panels {
+        crate::webview_close::terminate_page(&wv);
         if let Err(err) = wv.close() {
             log::warn!("widget panel close: {err}");
         }

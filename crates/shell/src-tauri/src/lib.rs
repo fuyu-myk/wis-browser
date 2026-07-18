@@ -44,6 +44,7 @@ mod themes;
 mod vault;
 mod video_popout;
 mod wallpapers;
+mod webview_close;
 mod webview_prefs;
 mod widget_panel;
 #[cfg(windows)]
@@ -217,11 +218,15 @@ pub fn run() {
                 let app_handle = app.handle().clone();
 
                 main.on_window_event(move |event| {
-                    if matches!(
-                        event,
-                        tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
-                    ) {
-                        windows::record_window_geometry(&app_handle, "main");
+                    match event {
+                        // Same page teardown as secondary windows (windows.rs).
+                        tauri::WindowEvent::CloseRequested { .. } => {
+                            webview_close::terminate_window_pages(&app_handle, "main");
+                        }
+                        tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+                            windows::record_window_geometry(&app_handle, "main");
+                        }
+                        _ => {}
                     }
                 });
 
@@ -546,6 +551,7 @@ pub fn run() {
             commands::navigate_tab,
             commands::set_webview_corner_radius,
             commands::create_tab_webview,
+            commands::close_tab_webview,
             commands::set_tab_webview_bounds,
             commands::webview_url,
             commands::sync_tab_url,

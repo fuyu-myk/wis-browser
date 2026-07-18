@@ -584,6 +584,30 @@ pub(crate) fn sweep_ephemeral_webview_data(app: &AppHandle) {
     });
 }
 
+/// Destroy a tab's native webview, closing its WebKit page first so the
+/// content process exits (see `webview_close`); the JS `Webview.close` alone
+/// leaks it on macOS. Tab labels only: widget panels and peek tear down
+/// through their own commands. A missing webview is a silent no-op.
+#[tauri::command]
+pub async fn close_tab_webview(app: AppHandle, label: String) -> WisResult<()> {
+    if !label.starts_with("tab-") {
+        return Err(WisError::InvalidInput {
+            message: "close_tab_webview expects a tab webview label".into(),
+        });
+    }
+
+    let Some(webview) = app.webviews().get(&label).cloned() else {
+        return Ok(());
+    };
+
+    crate::webview_close::terminate_page(&webview);
+    webview.close().map_err(|err| WisError::InvalidInput {
+        message: format!("close webview failed: {err}"),
+    })?;
+
+    Ok(())
+}
+
 /// Set a tab webview's position and size in a single IPC round-trip, applying
 /// both atomically. Resolving the webview is best-effort: a not-yet-created webview is
 /// a silent no-op.

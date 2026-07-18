@@ -101,6 +101,7 @@ pub async fn open_peek(
 
     // Replace any existing preview in this window.
     if let Some(existing) = app.webviews().get(&label).cloned() {
+        crate::webview_close::terminate_page(&existing);
         let _ = existing.close();
     }
 
@@ -247,6 +248,7 @@ pub async fn set_peek_bounds(
 pub async fn close_peek(window: tauri::Window) -> WisResult<()> {
     let label = peek_label(window.label());
     if let Some(wv) = window.app_handle().webviews().get(&label).cloned() {
+        crate::webview_close::terminate_page(&wv);
         wv.close().map_err(|err| WisError::InvalidInput {
             message: format!("peek close: {err}"),
         })?;

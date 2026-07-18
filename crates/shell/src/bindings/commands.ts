@@ -505,6 +505,14 @@ export const commands = {
   },
 
   /**
+   * Destroy a tab's native webview, tearing down its WebKit content process
+   * first. Use for every tab webview destroy.
+   */
+  async closeTabWebview(label: string): Promise<void> {
+    return invoke('close_tab_webview', { label })
+  },
+
+  /**
    * Read a tab webview's serialized session (WKWebView `interactionState`,
    * base64) for restoring after sleep. Null when unavailable.
    */

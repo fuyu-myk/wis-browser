@@ -143,6 +143,12 @@ export function useWidgetPanel(): {
   }, [activeWidgetId, pushHeaderState])
   /** Live panel webviews by widget id -> last-used timestamp (for LRU). */
   const liveRef = useRef<Map<WidgetId, number>>(new Map())
+  /**
+   * Serializes open/show sequences: rapid toggles must not overlap native
+   * webview creation (racy on WebView2), and the stale() checks assume runs
+   * settle in click order.
+   */
+  const runChainRef = useRef<Promise<void>>(Promise.resolve())
   /** Idle-destroy timers for hidden panels. */
   const timersRef = useRef<Map<WidgetId, number>>(new Map())
   const widthRef = useRef(storedWidth())
@@ -508,7 +514,7 @@ export function useWidgetPanel(): {
           hideGrip()
         }
       }
-      void run().catch(fail)
+      runChainRef.current = runChainRef.current.then(run).catch(fail)
     },
     [
       dismiss,

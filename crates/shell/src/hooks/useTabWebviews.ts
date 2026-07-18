@@ -233,8 +233,8 @@ export function useTabWebviews({
         })
         .catch(() => undefined)
         .finally(() => {
-          void wv
-            .close()
+          void commands
+            .closeTabWebview(wv.label)
             .catch((err: unknown) => {
               // eslint-disable-next-line no-console
               console.error(`sleep close ${id}`, err)
@@ -306,7 +306,7 @@ export function useTabWebviews({
           )
           if (!stillLive) {
             map.delete(tabId)
-            void wv.close().catch(() => undefined)
+            void commands.closeTabWebview(wv.label).catch(() => undefined)
             return
           }
           map.set(tabId, wv)
@@ -344,7 +344,7 @@ export function useTabWebviews({
         if (!wv.label.startsWith(LABEL_PREFIX)) continue
         if (wv.window.label !== myWindow) continue
         if (liveLabels.has(wv.label)) continue
-        await wv.close().catch(() => undefined)
+        await commands.closeTabWebview(wv.label).catch(() => undefined)
       }
     })
     return () => {
@@ -366,7 +366,7 @@ export function useTabWebviews({
       // A popped-out tab folds back natively before its webview dies.
       popoutRef.current?.noteClosed(id)
       if ((wv as unknown) !== PENDING) {
-        void wv.close().catch((err: unknown) => {
+        void commands.closeTabWebview(labelFor(id)).catch((err: unknown) => {
           // eslint-disable-next-line no-console
           console.error(`close webview ${id}`, err)
         })

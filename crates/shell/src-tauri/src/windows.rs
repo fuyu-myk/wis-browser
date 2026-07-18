@@ -126,6 +126,12 @@ pub async fn spawn_window(
                 let app_for_event = app_for_build.clone();
                 let label_for_event = label_for_build.clone();
                 window.on_window_event(move |event| match event {
+                    tauri::WindowEvent::CloseRequested { .. } => {
+                        crate::webview_close::terminate_window_pages(
+                            &app_for_event,
+                            &label_for_event,
+                        );
+                    }
                     tauri::WindowEvent::Destroyed => {
                         app_for_event
                             .state::<AppState>()

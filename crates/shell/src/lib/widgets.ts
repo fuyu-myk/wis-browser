@@ -25,7 +25,7 @@ export interface WidgetCatalogEntry {
 export const WIDGET_CATALOG: ReadonlyArray<WidgetCatalogEntry> = [
   // Social / messaging.
   { kind: 'whats_app', label: 'WhatsApp', url: 'https://web.whatsapp.com', category: 'social' },
-  { kind: 'telegram', label: 'Telegram', url: 'https://web.telegram.org', category: 'social' },
+  { kind: 'telegram', label: 'Telegram', url: 'https://web.telegram.org/a/', category: 'social' },
   { kind: 'messenger', label: 'Messenger', url: 'https://www.messenger.com', category: 'social' },
   { kind: 'line', label: 'LINE', url: 'https://line.me', category: 'social' },
   { kind: 'discord', label: 'Discord', url: 'https://discord.com/app', category: 'social' },
@@ -60,6 +60,18 @@ export function widgetCategory(widget: Widget): WidgetCategory {
  * the URL; every other widget loads its catalog URL unchanged.
  */
 export function effectiveWidgetUrl(widget: Widget, dark: boolean): string {
+  if (widget.kind === 'telegram') {
+    try {
+      const u = new URL(widget.url)
+      const legacyPath = u.pathname === '/' || u.pathname.startsWith('/k')
+      if (u.hostname === 'web.telegram.org' && legacyPath) {
+        return 'https://web.telegram.org/a/'
+      }
+    } catch {
+      return widget.url
+    }
+    return widget.url
+  }
   if (widget.kind !== 'instagram') return widget.url
   try {
     const u = new URL(widget.url)
