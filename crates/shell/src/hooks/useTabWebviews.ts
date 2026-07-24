@@ -393,8 +393,6 @@ export function useTabWebviews({
         if (id === activeTabIdRef.current) continue
         if (popoutRef.current?.isPopout(id)) continue // floating mini player
         if (audibleRef.current.has(id)) continue // audibly playing
-        const tab = allTabsRef.current.find((t) => t.id === id)
-        if (tab?.pinned) continue
         // Collapsed-folder tabs skip the idle delay.
         if (!forceSleepRef.current.has(id)) {
           const since = hiddenSinceRef.current.get(id)

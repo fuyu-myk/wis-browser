@@ -21,7 +21,7 @@ export function PerformanceSection({ settings, onUpdate }: PerformanceSectionPro
             <span>Sleep inactive tabs</span>
             <span>
               Discard background tabs after a while to free memory. They reload
-              when you switch back. The active tab and pinned tabs never sleep.
+              when you switch back. The active tab never sleeps.
             </span>
           </div>
           <Switch
