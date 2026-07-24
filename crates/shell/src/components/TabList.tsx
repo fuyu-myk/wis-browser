@@ -11,6 +11,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
 import { closeTabAnimated, onTabClosing, TAB_EXIT_MS } from '@/lib/tabClose'
+import { closeReturnTarget, noteTabClosed } from '@/lib/tabMru'
 import type {
   BrowserState,
   TabFolder,
@@ -133,7 +134,11 @@ export function TabList({
     onSuccess: invalidate,
   })
   const close = useMutation({
-    mutationFn: (id: TabId) => commands.closeTab(id),
+    mutationFn: (id: TabId) => {
+      const returnTo = closeReturnTarget(id)
+      noteTabClosed(id)
+      return commands.closeTab(id, returnTo)
+    },
     onSuccess: invalidate,
   })
   const createTab = useMutation({

@@ -20,6 +20,7 @@ import { commands } from '@/bindings/commands'
 import { isWindowFocused } from '@/lib/windowFocus'
 import { nextAccent } from '@/lib/accents'
 import { closeTabAnimated } from '@/lib/tabClose'
+import { noteActiveTab, previousTab, pruneTabMru } from '@/lib/tabMru'
 import { DOWNLOADS_OPEN_EVENT } from '@/lib/downloads'
 import { BOOKMARK_PAGE_EVENT, BOOKMARKS_OPEN_EVENT } from '@/lib/bookmarkMenu'
 import type { BrowserState, KeyAction, PaneNode, Tab, TabId, Workspace, WorkspaceId } from '@/bindings/types'
@@ -59,18 +60,16 @@ export function useKeyActions(): void {
 
   const newWorkspaceInFlight = useRef(false)
 
-  // Track the *previous* active tab so Cmd+0 (Switch to last tab) jumps
-  // back to whichever tab was active before the current one, ping-pong
-  // style. Updated on every activation that wasn't itself a Cmd+0.
-  const previousTabRef = useRef<TabId | null>(null)
-  const lastSeenActiveTabRef = useRef<TabId | null>(null)
+  // Track the *previous* active tab (lib/tabMru) so Switch-to-last-tab jumps
+  // ping-pong style and closing the active tab returns to it (tabClose.ts).
   useEffect(() => {
-    const current = activeTab?.id ?? null
-    if (current && current !== lastSeenActiveTabRef.current) {
-      previousTabRef.current = lastSeenActiveTabRef.current
-      lastSeenActiveTabRef.current = current
-    }
-  }, [activeTab?.id])
+    noteActiveTab(activeTab?.id ?? null, activeWorkspace?.id ?? null)
+  }, [activeTab?.id, activeWorkspace?.id])
+  useEffect(() => {
+    if (!state) return
+    const live = new Set(state.tabs.map((t) => t.id))
+    pruneTabMru((id) => live.has(id))
+  }, [state])
 
   // Refs hold the latest dispatch context so the Tauri listener
   // always sees current state.
@@ -97,7 +96,7 @@ export function useKeyActions(): void {
       tabs: tabsRef.current,
       numberedTabs: numberedTabsRef.current,
       activeTab: activeTabRef.current,
-      previousTabId: previousTabRef.current,
+      previousTabId: previousTab(),
       invalidate: () =>
         qcRef.current.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
       requestRename: requestRenameRef.current,

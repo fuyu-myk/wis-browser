@@ -118,8 +118,17 @@ pub async fn set_pane_ratio(
     .await
 }
 
+/// Close a tab. `return_to` (the window's MRU previous tab) is activated in
+/// the same transition when this is a plain close of the active tab; split
+/// closes keep core's collapse + surviving-pane focus, and a stale or
+/// cross-workspace target falls back to core's tab_order neighbor pick.
 #[tauri::command]
-pub async fn close_tab(app: AppHandle, state: State<'_, AppState>, id: TabId) -> WisResult<()> {
+pub async fn close_tab(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: TabId,
+    return_to: Option<TabId>,
+) -> WisResult<()> {
     /// Newest-first cap on the reopen-closed-tab ring.
     const CLOSED_RING_CAP: usize = 25;
 
@@ -129,20 +138,23 @@ pub async fn close_tab(app: AppHandle, state: State<'_, AppState>, id: TabId) ->
             let browser = state.browser.lock().await;
             browser.tab(id).ok().and_then(|tab| {
                 let url = tab.url.to_string();
-                let ephemeral = browser
-                    .workspace(tab.workspace_id)
-                    .map(|w| w.ephemeral)
-                    .unwrap_or(true);
+                let workspace = browser.workspace(tab.workspace_id).ok();
+                let ephemeral = workspace.map(|w| w.ephemeral).unwrap_or(true);
+                let index = workspace
+                    .and_then(|w| w.tab_order.iter().position(|t| *t == id))
+                    .unwrap_or(usize::MAX);
 
                 (!ephemeral && !url.starts_with("about:")).then_some((
                     tab.workspace_id,
                     url,
                     tab.folder_id,
+                    index,
+                    tab.pinned,
                 ))
             })
         };
 
-        if let Some((workspace_id, url, folder_id)) = recorded {
+        if let Some((workspace_id, url, folder_id, index, pinned)) = recorded {
             // Capture the live session (history/scroll/forms) while the
             // webview still exists, so reopen restores instead of cold-loads.
             let interaction_state = app
@@ -155,6 +167,8 @@ pub async fn close_tab(app: AppHandle, state: State<'_, AppState>, id: TabId) ->
                 workspace_id,
                 url,
                 folder_id,
+                index,
+                pinned,
                 interaction_state,
             });
 
@@ -167,7 +181,32 @@ pub async fn close_tab(app: AppHandle, state: State<'_, AppState>, id: TabId) ->
 
     crate::audio::forget_tab(&app, id);
 
-    mutate_unit_immediate(&app, &state, |s| s.with_tab_closed(id)).await
+    mutate_unit_immediate(&app, &state, move |s| {
+        let workspace_id = s.tab(id)?.workspace_id;
+        let plain_close = s
+            .workspace(workspace_id)
+            .map(|w| w.active_tab_id == Some(id) && w.pane_tree.is_none())
+            .unwrap_or(false);
+        let next = s.with_tab_closed(id)?;
+
+        let Some(target) = return_to else {
+            return Ok(next);
+        };
+        if !plain_close {
+            return Ok(next);
+        }
+
+        let target_alive = next
+            .tab(target)
+            .map(|t| t.workspace_id == workspace_id)
+            .unwrap_or(false);
+        if !target_alive {
+            return Ok(next);
+        }
+
+        next.with_active_tab(target)
+    })
+    .await
 }
 
 /// Reopen the most-recently-closed tab in its original workspace, activating it.
@@ -204,15 +243,29 @@ pub async fn restore_closed_tab(app: AppHandle, state: State<'_, AppState>) -> W
             let (next, tab) = s.with_new_loose_tab(entry.workspace_id, &entry.url)?;
             let tab_id = tab.id;
             let next = next.with_active_workspace(entry.workspace_id)?;
-            let original_folder_exists = entry.folder_id.is_some_and(|fid| {
-                next.workspace(entry.workspace_id)
-                    .map(|w| w.tab_folders.iter().any(|f| f.id == fid))
-                    .unwrap_or(false)
-            });
-            let next = if original_folder_exists {
-                next.with_tab_assigned_folder(tab_id, entry.folder_id)?
+
+            // Creation appended the tab; move it back to its recorded slot.
+            let order = reinsert_at(
+                next.workspace(entry.workspace_id)?.tab_order.clone(),
+                tab_id,
+                entry.index,
+            );
+            let next = next.with_tab_order(entry.workspace_id, order)?;
+
+            let next = if entry.pinned {
+                // Re-pin (pinning forces loose, so no folder branch applies).
+                next.with_tab_pinned(tab_id, true)?.0
             } else {
-                next
+                let original_folder_exists = entry.folder_id.is_some_and(|fid| {
+                    next.workspace(entry.workspace_id)
+                        .map(|w| w.tab_folders.iter().any(|f| f.id == fid))
+                        .unwrap_or(false)
+                });
+                if original_folder_exists {
+                    next.with_tab_assigned_folder(tab_id, entry.folder_id)?
+                } else {
+                    next
+                }
             };
 
             Ok((next, tab_id))
@@ -739,4 +792,46 @@ fn eval_history_step(app: &AppHandle, id: TabId, direction: &str) -> WisResult<(
         .map_err(|err| WisError::InvalidInput {
             message: format!("history.{direction}() eval failed: {err}"),
         })
+}
+
+/// Move `tab_id` (freshly appended by creation) to `index`, clamped to the
+/// list; the rest of the order is preserved.
+fn reinsert_at(mut order: Vec<TabId>, tab_id: TabId, index: usize) -> Vec<TabId> {
+    order.retain(|t| *t != tab_id);
+    let at = index.min(order.len());
+    order.insert(at, tab_id);
+    order
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reinsert_at;
+    use wis_core::TabId;
+
+    #[test]
+    fn reinserts_appended_tab_at_recorded_index() {
+        let (a, b, c) = (TabId::new(), TabId::new(), TabId::new());
+        let reopened = TabId::new();
+
+        let order = reinsert_at(vec![a, b, c, reopened], reopened, 1);
+        assert_eq!(order, vec![a, reopened, b, c]);
+    }
+
+    #[test]
+    fn clamps_index_beyond_len_to_append() {
+        let (a, b) = (TabId::new(), TabId::new());
+        let reopened = TabId::new();
+
+        let order = reinsert_at(vec![a, b, reopened], reopened, usize::MAX);
+        assert_eq!(order, vec![a, b, reopened]);
+    }
+
+    #[test]
+    fn index_zero_moves_to_front() {
+        let (a, b) = (TabId::new(), TabId::new());
+        let reopened = TabId::new();
+
+        let order = reinsert_at(vec![a, b, reopened], reopened, 0);
+        assert_eq!(order, vec![reopened, a, b]);
+    }
 }

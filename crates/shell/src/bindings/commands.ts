@@ -355,8 +355,14 @@ export const commands = {
     return invoke('replace_pane_leaf', { workspaceId, targetTab, movedTab })
   },
 
-  async closeTab(id: TabId): Promise<void> {
-    return invoke('close_tab', { id })
+  /**
+   * Close a tab. `returnTo` (the window's MRU previous tab, see lib/tabMru)
+   * is activated in the same transition when this is a plain close of the
+   * active tab; the backend ignores it for split-pane closes and stale or
+   * cross-workspace targets.
+   */
+  async closeTab(id: TabId, returnTo: TabId | null = null): Promise<void> {
+    return invoke('close_tab', { id, returnTo })
   },
 
   /** Reopen the most-recently-closed tab (in its original workspace). */

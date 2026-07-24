@@ -36,6 +36,11 @@ pub struct ClosedTab {
     pub url: String,
     /// The folder the tab lived in at close (`None` = loose).
     pub folder_id: Option<wis_core::TabFolderId>,
+    /// Position in the workspace's `tab_order` at close (clamped if the
+    /// workspace shrank; `usize::MAX` when unknown = append).
+    pub index: usize,
+    /// Pinned at close; reopen re-pins (pin-strip slot not preserved).
+    pub pinned: bool,
     /// Serialized WKWebView `interactionState` captured at close, so reopen
     /// restores history/scroll/forms instead of cold-loading. `None` when the
     /// webview was already discarded (slept) at close time.
