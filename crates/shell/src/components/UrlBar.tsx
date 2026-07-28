@@ -30,17 +30,9 @@ import {
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { WisMark } from '@/components/WisMark'
 import { FOCUS_URLBAR_EVENT } from '@/hooks/useKeyActions'
+import { useOpenTabActions } from '@/hooks/useOpenTabActions'
 import { useOverlay } from '@/hooks/useOverlay'
 import { useUrlbarSuggest } from '@/hooks/useUrlbarSuggest'
-
-/** Canonical form for matching a suggestion URL against an open tab's URL. */
-function canonUrl(url: string): string {
-  return url
-    .replace(/^https?:\/\//, '')
-    .replace(/^www\./, '')
-    .replace(/\/$/, '')
-    .toLowerCase()
-}
 
 /** Hide the http(s):// prefix in the address bar. */
 function displayUrl(url: string): string {
@@ -280,30 +272,7 @@ function useUrlBarForm(
     [activeTab, workspaceId, navigate, create, engine],
   )
 
-  /** Resolve a suggestion URL to an already-open tab id, or null. */
-  const findOpenTab = useCallback(
-    (url: string): TabId | null => {
-      const target = canonUrl(url)
-      return state?.tabs.find((t) => canonUrl(t.url) === target)?.id ?? null
-    },
-    [state?.tabs],
-  )
-
-  const switchToTab = useCallback(
-    (id: TabId) => {
-      const tab = state?.tabs.find((t) => t.id === id)
-      if (!tab) return
-      const run = async () => {
-        if (tab.workspace_id !== state?.active_workspace_id) {
-          await commands.setActiveWorkspace(tab.workspace_id).catch(() => undefined)
-        }
-        await commands.setActiveTab(id).catch(() => undefined)
-        void qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
-      }
-      void run()
-    },
-    [state?.tabs, state?.active_workspace_id, qc],
-  )
+  const { findOpenTab, switchToTab } = useOpenTabActions()
 
   const suggest = useUrlbarSuggest({
     inputRef,

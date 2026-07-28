@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
@@ -7,11 +7,13 @@ import type { ShortcutTile, Tab } from '@/bindings/types'
 const FAVICON_CACHED_EVENT = 'favicon-cached'
 import { SearchIcon } from '@/lib/icons'
 import { cx } from '@/lib/cx'
-import { normaliseUrl } from '@/lib/url'
+import { isSearchQuery, normaliseUrl, SEARCH_ENGINES } from '@/lib/url'
 import { reorderByKeys } from '@/lib/shortcuts'
 import { useBrowserState, useUpdateSettings } from '@/hooks/useBrowserState'
 import { useActivePrivacyMode } from '@/hooks/useActivePrivacyMode'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
+import { useOpenTabActions } from '@/hooks/useOpenTabActions'
+import { useUrlbarSuggest } from '@/hooks/useUrlbarSuggest'
 import { usePointerReorder } from '@/hooks/usePointerReorder'
 import { useWindowIconSwap } from '@/hooks/useWindowIcon'
 import { useWorkspaceSlide } from '@/hooks/useWorkspaceSlide'
@@ -68,6 +70,35 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
 
   const navigate = useNavigateOrCreateTab(activeWorkspaceId, activeTab)
 
+  // Same suggestion source + commit semantics as the top URL bar.
+  const engine = state?.settings.search_engine ?? 'duckduckgo'
+  const engineLabel = SEARCH_ENGINES[engine].label
+  const { findOpenTab, switchToTab } = useOpenTabActions()
+
+  const commit = useCallback(
+    (raw: string) => {
+      const url = normaliseUrl(raw, engine)
+      if (!url) return
+      if (isSearchQuery(raw)) void commands.recordSearch(raw.trim()).catch(() => undefined)
+      navigate(url)
+      setQuery('')
+    },
+    [engine, navigate],
+  )
+
+  const suggest = useUrlbarSuggest({
+    inputRef,
+    workspaceId: activeWorkspaceId,
+    tabId: activeTab?.id ?? null,
+    commit,
+    setValue: setQuery,
+    switchToTab,
+    findOpenTab,
+    engineLabel,
+  })
+  const suggestRef = useRef(suggest)
+  suggestRef.current = suggest
+
   // Launchpad tiles are drag-reorderable; the new order persists to settings.
   const update = useUpdateSettings()
   const shortcuts = state?.settings.shortcuts ?? []
@@ -81,10 +112,8 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
-    const url = normaliseUrl(query)
-    if (!url) return
-    navigate(url)
-    setQuery('')
+    suggest.reset()
+    commit(query)
   }
 
   useEffect(() => {
@@ -93,6 +122,7 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
       if (!el) return
       el.focus()
       el.select()
+      suggestRef.current.onFocus()
     }
     window.addEventListener(FOCUS_LAUNCHPAD_SEARCH_EVENT, onFocus)
     return () => window.removeEventListener(FOCUS_LAUNCHPAD_SEARCH_EVENT, onFocus)
@@ -177,7 +207,10 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
             type="text"
             placeholder="Enter search or web address"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => suggest.onInput(e.target.value)}
+            onClick={() => suggest.onFocus()}
+            onBlur={suggest.onBlur}
+            onKeyDown={(e) => suggest.onKeyDown(e)}
             autoFocus
             spellCheck={false}
           />

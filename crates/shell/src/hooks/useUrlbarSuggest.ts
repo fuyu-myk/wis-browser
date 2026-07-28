@@ -39,6 +39,25 @@ const GAP = 8
 /** Delay before a blur closes the dropdown, so an overlay click can cancel it. */
 const BLUR_CLOSE_MS = 200
 
+// The overlay-urlbar webview is a per-window singleton shared by every hook
+// instance (top bar, launchpad). Exactly one instance owns it at a time.
+let overlayOwner: symbol | null = null
+const overlayDeactivators = new Map<symbol, () => void>()
+
+function claimOverlay(id: symbol): void {
+  if (overlayOwner !== null && overlayOwner !== id) {
+    overlayDeactivators.get(overlayOwner)?.()
+  }
+  overlayOwner = id
+}
+
+/** True when `id` owned the overlay (caller may hide it). */
+function releaseOverlay(id: symbol): boolean {
+  if (overlayOwner !== id) return false
+  overlayOwner = null
+  return true
+}
+
 // Per-section caps.
 const EMPTY_SITES = 5
 const EMPTY_SEARCHES = 4
@@ -76,6 +95,9 @@ export interface UrlbarSuggestApi {
 export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
   const { inputRef, workspaceId, tabId } = args
   const overlay = useOverlay('urlbar')
+
+  const idRef = useRef<symbol | null>(null)
+  if (idRef.current === null) idRef.current = Symbol('urlbar-suggest')
 
   const argsRef = useRef(args)
   argsRef.current = args
@@ -119,7 +141,9 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
     openRef.current = false
     highlightRef.current = -1
     rowsRef.current = []
-    void overlay.hide().catch(() => undefined)
+    if (releaseOverlay(idRef.current as symbol)) {
+      void overlay.hide().catch(() => undefined)
+    }
   }, [overlay])
 
   /** Close and forget the in-progress typed text (after a commit / tab switch). */
@@ -131,6 +155,7 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
   const showUnderBar = useCallback(async () => {
     const el = inputRef.current
     if (!el) return
+    claimOverlay(idRef.current as symbol)
     const pill = (el.closest('form') as HTMLElement | null) ?? el
     const r = pill.getBoundingClientRect()
     await overlay
@@ -246,7 +271,11 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
       await showUnderBar()
       if (reqId !== reqIdRef.current) {
         openRef.current = false
-        void overlay.hide().catch(() => undefined)
+        highlightRef.current = -1
+        rowsRef.current = []
+        if (releaseOverlay(idRef.current as symbol)) {
+          void overlay.hide().catch(() => undefined)
+        }
         return
       }
       pushRender()
@@ -304,6 +333,24 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
     },
     [inputRef, refresh],
   )
+
+  // Register this instance's silent deactivator: when another instance
+  // claims the overlay, drop all open state here without hiding (the winner
+  // is about to re-show it) so pick broadcasts and delayed closes no-op.
+  useEffect(() => {
+    const id = idRef.current as symbol
+    overlayDeactivators.set(id, () => {
+      reqIdRef.current += 1
+      openRef.current = false
+      highlightRef.current = -1
+      rowsRef.current = []
+      cancelBlur()
+    })
+    return () => {
+      overlayDeactivators.delete(id)
+      releaseOverlay(id)
+    }
+  }, [cancelBlur])
 
   // Overlay → chrome: row click / ✕ click.
   useEffect(() => {
@@ -367,6 +414,27 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
     if (pendingTypedRef.current) argsRef.current.setValue(pendingTypedRef.current)
     blurTimerRef.current = window.setTimeout(() => close(), BLUR_CLOSE_MS)
   }, [cancelBlur, close])
+
+  // Click-away fallbacks.
+  useEffect(() => {
+    const onWindowBlur = () => {
+      if (openRef.current) onBlur()
+    }
+    const onPointerDown = (e: PointerEvent) => {
+      if (!openRef.current) return
+      const el = inputRef.current
+      const pill = (el?.closest('form') as HTMLElement | null) ?? el
+      if (pill && e.target instanceof Node && pill.contains(e.target)) return
+      if (pendingTypedRef.current) argsRef.current.setValue(pendingTypedRef.current)
+      close()
+    }
+    window.addEventListener('blur', onWindowBlur)
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => {
+      window.removeEventListener('blur', onWindowBlur)
+      document.removeEventListener('pointerdown', onPointerDown, true)
+    }
+  }, [onBlur, close, inputRef])
 
   const onKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>): boolean => {
