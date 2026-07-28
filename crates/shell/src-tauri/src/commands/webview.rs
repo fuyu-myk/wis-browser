@@ -96,6 +96,8 @@ pub async fn create_tab_webview(
     #[cfg(target_os = "macos")]
     {
         builder = builder.initialization_script(crate::swipe_nav::phase_flag_script());
+        // Unconsumed page-first editing combos replay natively (wisEditKey).
+        builder = builder.initialization_script(crate::edit_keys::page_script());
     }
     builder = builder.initialization_script(crate::swipe_nav::page_script());
 
@@ -466,6 +468,9 @@ pub async fn create_tab_webview(
 
     // Cmd/middle-click -> open link in a new background tab.
     crate::link_open::install(&child);
+
+    // Native fallback for page-first editing keys (undo/redo/select-all).
+    crate::edit_keys::install(&child);
 
     // Video popout channel (playing-state tracking + floating mini player).
     crate::video_popout::install(&child);

@@ -125,3 +125,47 @@ only calls show on a visibility transition.
 
 Scoped to fixed-parented webviews; the X11-reparent and box-packed paths are
 untouched. Not yet upstreamed; belongs with the wry#1745 family.
+
+## Patch: focused child webviews get Cmd-key events (macOS)
+
+- `src/wkwebview/class/wry_web_view.rs`, `performKeyEquivalent:`: upstream's
+  workaround for tauri#9426 returns `NO` for every child webview, so the
+  main-menu accelerator always wins and the page never sees Cmd-key events in
+  JavaScript. In a multi-webview browser that breaks web apps with their own
+  shortcut handling: Google Docs / Slides Cmd+Z, Cmd+A, Cmd+Shift+V do
+  nothing, because the menu's `undo:` / `selectAll:` selectors drive native
+  editing commands a canvas editor ignores. The patch refines the guard: a
+  child that is (or contains) the window's first responder calls `super`, so
+  WKWebView forwards the event to its page first (Safari behavior) and
+  WebKit's own re-dispatch delivers page-declined events onward to the menu;
+  unfocused children keep returning `NO`, preserving the #9426 fix (only one
+  webview may claim an event, the menu never starves).
+
+This is a Wis-authored refinement, not an upstream PR drop. If wry lands a
+proper fix for tauri#9426 (focused-webview key routing), re-evaluate against
+it. Removal checklist: with the patch dropped, in Google Docs on a tab
+webview press Cmd+Z / Cmd+A / Cmd+Shift+V (must reach the page) and Cmd+T /
+Cmd+W on an ordinary page (menu must still fire).
+
+Reserved-combo carve-out (required in practice): runtime testing showed
+WebKit's page-declined resend does NOT reach the menu in this embedding, so
+forwarding menu-bound combos to the page killed Cmd+W / Cmd+T / Cmd+L
+whenever a page held focus. `menu_reserves_event` therefore walks the live
+main menu per key event: a combo bound to a menu item is menu-first
+(returns NO so the accelerator fires), EXCEPT items whose action is
+`undo:` / `redo:` / `selectAll:`, which stay page-first. Walking the live
+menu keeps the reserved set correct under Wis's rebindable shortcuts.
+
+Why exactly those three: their selectors produce no DOM event a canvas-style
+web app can observe, so Google Docs-class apps need the raw keydown in JS.
+Clipboard selectors (`cut:` / `copy:` / `paste:`) DO fire DOM clipboard
+events such apps handle, so those combos stay menu-first; making them
+page-first broke Cmd+C/V on ordinary pages (no resend = no native
+fallback). The three page-first combos get their native fallback from the
+embedder instead: Wis's `edit_keys` module injects a watcher that posts
+unconsumed combos to `wisEditKey`, and the handler replays the selector via
+`sendAction` down the responder chain.
+
+Known edge: Cmd+Shift+digit combos are not matched by the walk
+(`charactersIgnoringModifiers` applies Shift to digits) and so fall
+page-first; none of the default bindings use that shape.

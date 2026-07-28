@@ -12,6 +12,7 @@ mod content_filter;
 mod cookies;
 mod cosmetic;
 mod downloads;
+mod edit_keys;
 mod error_compat;
 mod external;
 mod favicons;

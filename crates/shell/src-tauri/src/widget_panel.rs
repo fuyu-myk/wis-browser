@@ -391,6 +391,13 @@ pub async fn open_widget_panel(
         .focused(true)
         .proxy_url(proxy_url);
 
+    // Unconsumed page-first editing combos (undo/redo/select-all) replay natively
+    // via wisEditKey.
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.initialization_script(crate::edit_keys::page_script());
+    }
+
     // Fluent overlay scrollbars; WebView2 only.
     #[cfg(windows)]
     {
@@ -488,6 +495,9 @@ pub async fn open_widget_panel(
 
     // Per-site camera/microphone consent gate.
     crate::permissions::install(&child);
+
+    // Native replay channel for unconsumed page-first editing combos.
+    crate::edit_keys::install(&child);
 
     // While the cursor is over the panel, suppress hover on the tabs it covers.
     crate::hover_guard::install_panel_hover_guard(&child, window.label());
