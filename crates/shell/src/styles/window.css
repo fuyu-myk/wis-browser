@@ -1337,6 +1337,19 @@ body.glass-chrome .kb-window {
 [data-mode="dark"].glass-chrome .kb-window {
   background: rgba(28,28,36,0.68);
 }
+/* Both Linux and Windows need a much more opaque tint. */
+body[data-platform="windows"].glass-chrome .kb-window {
+  background: color-mix(in oklab, var(--chrome-bg) 78%, transparent);
+}
+[data-mode="dark"][data-platform="windows"].glass-chrome .kb-window {
+  background: rgba(28,28,36,0.86);
+}
+body[data-platform="linux"].glass-chrome .kb-window {
+  background: color-mix(in oklab, var(--chrome-bg) 92%, transparent);
+}
+[data-mode="dark"][data-platform="linux"].glass-chrome .kb-window {
+  background: rgba(28,28,36,0.95);
+}
 
 /* Glass-mode text override.
    - Light glass: hudWindow vibrancy reads dark, so secondary/tertiary
