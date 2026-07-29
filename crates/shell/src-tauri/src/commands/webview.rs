@@ -535,11 +535,12 @@ pub(crate) fn workspace_id_to_data_store_bytes(workspace_id: WorkspaceId) -> [u8
     *workspace_id.as_uuid().as_bytes()
 }
 
-/// The WebView2 user-data folder for a persistent workspace (Windows). Derived
-/// from the workspace uuid so it is stable across restarts (cookies/storage
-/// persist); WebView2 creates the folder if it is missing. The macOS analogue is
+/// The engine user-data folder for a persistent workspace (Windows WebView2 /
+/// Linux WebKitGTK, both of which isolate by folder). Derived from the
+/// workspace uuid so it is stable across restarts (cookies/storage persist);
+/// the engine creates the folder if it is missing. The macOS analogue is
 /// [`workspace_id_to_data_store_bytes`] via `data_store_identifier`.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub(crate) fn workspace_webview_data_dir(
     app: &AppHandle,
     workspace_id: WorkspaceId,
