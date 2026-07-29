@@ -154,8 +154,9 @@ pub async fn maybe_guard(app: AppHandle, tab_id: TabId, url: Url) {
     );
 }
 
-/// Halt an in-flight load so the page can't keep running before the user decides.
-fn stop_tab_load(app: &AppHandle, tab_id: TabId) {
+/// Halt an in-flight load so the page can't keep running before the user
+/// decides. Also backs the chrome's stop button (`tab_stop`).
+pub(crate) fn stop_tab_load(app: &AppHandle, tab_id: TabId) {
     let label = format!("tab-{}", tab_id.as_uuid());
     let Some(wv) = app.webviews().get(&label).cloned() else {
         return;
@@ -173,7 +174,26 @@ fn stop_tab_load(app: &AppHandle, tab_id: TabId) {
             let _: () = msg_send![wk, stopLoading];
         });
     }
-    #[cfg(not(target_os = "macos"))]
+
+    #[cfg(windows)]
+    {
+        crate::win_webview2::with_core_webview2(&wv, |core| {
+            // SAFETY: runs on the UI thread via `with_core_webview2`.
+            if let Err(err) = unsafe { core.Stop() } {
+                log::warn!("webview2 Stop failed: {err}");
+            }
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let _ = wv.with_webview(|w| {
+            use webkit2gtk::WebViewExt;
+            w.inner().stop_loading();
+        });
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         let _ = wv;
     }

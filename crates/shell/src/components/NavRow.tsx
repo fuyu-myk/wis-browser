@@ -5,7 +5,7 @@ import { useMutation } from '@tanstack/react-query'
 import { commands } from '@/bindings/commands'
 import type { Tab } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { ArrowLeftIcon, ArrowRightIcon, ReaderIcon, RefreshIcon } from '@/lib/icons'
+import { ArrowLeftIcon, ArrowRightIcon, ReaderIcon, RefreshIcon, XIcon } from '@/lib/icons'
 import { isChromeUrl } from '@/lib/url'
 
 interface NavRowProps {
@@ -39,6 +39,9 @@ export function NavRow({ activeTab, circular = false }: NavRowProps) {
   const reload = useMutation({
     mutationFn: (id: Tab['id']) => commands.tabReload(id),
   })
+  const stop = useMutation({
+    mutationFn: (id: Tab['id']) => commands.tabStop(id),
+  })
   const reader = useMutation({
     mutationFn: ({ id, enabled }: { id: Tab['id']; enabled: boolean }) =>
       commands.tabSetReader(id, enabled),
@@ -71,21 +74,29 @@ export function NavRow({ activeTab, circular = false }: NavRowProps) {
       <button
         type="button"
         className={btnClass}
-        aria-label="Refresh"
+        aria-label={activeTab?.loading ? 'Stop loading' : 'Refresh'}
         disabled={!navigable}
         onClick={() => {
           if (!activeTab) return
+          if (activeTab.loading) {
+            stop.mutate(activeTab.id)
+            return
+          }
           reload.mutate(activeTab.id)
           setSpinNonce((n) => n + 1)
         }}
       >
-        <span
-          key={spinNonce}
-          className={cx('kb-reload-spin', { 'is-spinning': spinNonce > 0 })}
-          aria-hidden
-        >
-          <RefreshIcon />
-        </span>
+        {activeTab?.loading ? (
+          <XIcon />
+        ) : (
+          <span
+            key={spinNonce}
+            className={cx('kb-reload-spin', { 'is-spinning': spinNonce > 0 })}
+            aria-hidden
+          >
+            <RefreshIcon />
+          </span>
+        )}
       </button>
       <button
         type="button"

@@ -610,6 +610,11 @@ export const commands = {
     return invoke('tab_reload', { id })
   },
 
+  /** Stop the tab's in-flight page load. */
+  async tabStop(id: TabId): Promise<void> {
+    return invoke('tab_stop', { id })
+  },
+
   /** Toggle reader mode on a tab. Enter transforms the page; exit reloads it. */
   async tabSetReader(id: TabId, enabled: boolean): Promise<void> {
     return invoke('tab_set_reader', { id, enabled })

@@ -233,6 +233,7 @@ pub async fn create_tab_webview(
             // A popped-out tab navigating loses its pinned video.
             if matches!(event, PageLoadEvent::Started) {
                 crate::video_popout::handle_navigation(&app, &label_for_load);
+                crate::load_progress::start(&app, tab_id);
             }
 
             let nav = crate::swipe_nav::push_nav_state(&webview);

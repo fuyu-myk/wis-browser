@@ -24,6 +24,7 @@ mod interaction_state;
 #[cfg(any(windows, target_os = "linux"))]
 mod keybind;
 mod link_open;
+mod load_progress;
 mod memory;
 mod menu;
 mod navguard;
@@ -559,6 +560,7 @@ pub fn run() {
             commands::update_tab_title,
             commands::update_tab_loading,
             commands::tab_reload,
+            commands::tab_stop,
             commands::tab_set_reader,
             commands::tab_go_back,
             commands::tab_go_forward,

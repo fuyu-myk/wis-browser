@@ -15,6 +15,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
+import { LoadProgressBar } from '@/components/LoadProgressBar'
 import { cx } from '@/lib/cx'
 import { SearchIcon } from '@/lib/icons'
 import { isChromeUrl, isSearchQuery, normaliseUrl, NEW_TAB_URL, SEARCH_ENGINES } from '@/lib/url'
@@ -669,6 +670,7 @@ export function FloatingUrlBar({
       <AutofillKey activeTab={activeTab} />
       <OpenExternalButton activeTab={activeTab} />
       <BookmarkStar activeTab={activeTab} />
+      <LoadProgressBar activeTab={activeTab} />
     </form>
   )
 }

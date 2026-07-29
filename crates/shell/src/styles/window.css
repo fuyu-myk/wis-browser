@@ -2679,6 +2679,7 @@ body.glass-chrome .kb-content {
 }
 
 .kb-urlpill-inline {
+  position: relative;
   width: 100%;
   max-width: 620px;
   min-width: 0;
@@ -2691,6 +2692,30 @@ body.glass-chrome .kb-content {
   background: var(--surface-raised);
   font-size: 13px;
   color: var(--text-primary);
+}
+/* Load progress strip: inset from the pill's rounded ends, accent-filled. */
+.kb-urlpill-progress {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 2px;
+  height: 2px;
+  border-radius: 1px;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+.kb-urlpill-progress.is-visible {
+  opacity: 1;
+}
+.kb-urlpill-progress-fill {
+  height: 100%;
+  border-radius: 1px;
+  background: var(--primary-500);
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 0.2s ease-out;
 }
 .kb-urlpill-inline svg { width: 14px; height: 14px; opacity: 0.7; flex-shrink: 0; }
 /* Security indicator: padlock for HTTPS, warning for HTTP. */

@@ -725,11 +725,18 @@ pub async fn tab_reload(app: AppHandle, id: TabId) -> WisResult<()> {
         })?;
     log::info!("tab_reload: {label}");
 
-    webview
-        .eval("window.location.reload()")
-        .map_err(|err| WisError::InvalidInput {
-            message: format!("reload eval failed: {err}"),
-        })
+    // Native reload useful for hung pages.
+    webview.reload().map_err(|err| WisError::InvalidInput {
+        message: format!("reload failed: {err}"),
+    })
+}
+
+/// Stop a tab's in-flight page load. Clears `loading` directly so the
+/// stop/reload toggle flips back even if the engine skips a finish event.
+#[tauri::command]
+pub async fn tab_stop(app: AppHandle, state: State<'_, AppState>, id: TabId) -> WisResult<()> {
+    crate::navguard::stop_tab_load(&app, id);
+    mutate_unit(&app, &state, |s| s.with_tab_loading(id, false)).await
 }
 
 /// Toggle reader mode on a tab: transform the live page into a clean article
