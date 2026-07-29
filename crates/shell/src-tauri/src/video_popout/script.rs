@@ -220,13 +220,17 @@ const POPOUT_JS: &str = r#"(function () {
     '#__wis-popout-x{position:absolute;top:10px;right:10px;width:28px;height:28px;border:0;border-radius:50%;background:rgba(15,15,20,0.62);color:#fff;font-size:17px;line-height:28px;text-align:center;padding:0;cursor:pointer;opacity:0;transition:opacity 0.18s ease,background 0.18s ease;z-index:3;}' +
     '#__wis-popout-overlay:hover #__wis-popout-x,#__wis-popout-overlay.is-hover #__wis-popout-x,#__wis-popout-overlay.is-fresh #__wis-popout-x{opacity:1;}' +
     '#__wis-popout-x:hover{background:rgba(15,15,20,0.85);}' +
-    '#__wis-popout-vol{position:absolute;left:10px;bottom:10px;display:flex;align-items:center;gap:6px;height:28px;padding:0 10px 0 3px;border-radius:14px;background:rgba(15,15,20,0.62);opacity:0;transition:opacity 0.18s ease;z-index:3;}' +
-    '#__wis-popout-overlay:hover #__wis-popout-vol,#__wis-popout-overlay.is-hover #__wis-popout-vol,#__wis-popout-overlay.is-fresh #__wis-popout-vol{opacity:1;}' +
+    '#__wis-popout-vol{position:absolute;left:10px;bottom:10px;display:flex;align-items:center;gap:6px;height:28px;padding:0 10px 0 3px;border-radius:14px;background:rgba(15,15,20,0.62);opacity:0;pointer-events:none;transition:opacity 0.18s ease;z-index:3;}' +
+    '#__wis-popout-overlay:hover #__wis-popout-vol,#__wis-popout-overlay.is-hover #__wis-popout-vol,#__wis-popout-overlay.is-fresh #__wis-popout-vol{opacity:1;pointer-events:auto;}' +
     '#__wis-popout-vol button{width:24px;height:24px;border:0;border-radius:50%;background:transparent;color:#fff;cursor:pointer;padding:0;display:grid;place-items:center;}' +
     '#__wis-popout-vol button:hover{background:rgba(255,255,255,0.18);}' +
     '#__wis-popout-vol button svg{width:15px;height:15px;display:block;}' +
     '#__wis-popout-vol input{-webkit-appearance:none;appearance:none;width:72px;height:3px;border-radius:2px;background:rgba(255,255,255,0.35);outline:none;cursor:pointer;margin:0;}' +
     '#__wis-popout-vol input::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:11px;height:11px;border-radius:50%;background:#fff;border:0;}' +
+    '#__wis-popout-seek{position:absolute;left:131px;right:10px;bottom:10px;display:flex;align-items:center;height:28px;padding:0 12px;border-radius:14px;background:rgba(15,15,20,0.62);opacity:0;pointer-events:none;transition:opacity 0.18s ease;z-index:3;}' +
+    '#__wis-popout-overlay:hover #__wis-popout-seek,#__wis-popout-overlay.is-hover #__wis-popout-seek,#__wis-popout-overlay.is-fresh #__wis-popout-seek{opacity:1;pointer-events:auto;}' +
+    '#__wis-popout-seek input{-webkit-appearance:none;appearance:none;flex:1;width:100%;height:3px;border-radius:2px;background:rgba(255,255,255,0.35);outline:none;cursor:pointer;margin:0;}' +
+    '#__wis-popout-seek input::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:11px;height:11px;border-radius:50%;background:#fff;border:0;}' +
     '.__wis-popout-corner{position:absolute;width:18px;height:18px;z-index:2;}' +
     '.__wis-popout-corner[data-corner=nw]{top:0;left:0;cursor:nwse-resize;}' +
     '.__wis-popout-corner[data-corner=se]{bottom:0;right:0;cursor:nwse-resize;}' +
@@ -334,10 +338,20 @@ const POPOUT_JS: &str = r#"(function () {
     volSlider.setAttribute('aria-label', 'Volume');
     vol.appendChild(volBtn);
     vol.appendChild(volSlider);
+    var seekWrap = document.createElement('div');
+    seekWrap.id = '__wis-popout-seek';
+    var seekSlider = document.createElement('input');
+    seekSlider.type = 'range';
+    seekSlider.min = '0';
+    seekSlider.max = '1';
+    seekSlider.step = '0.001';
+    seekSlider.setAttribute('aria-label', 'Seek');
+    seekWrap.appendChild(seekSlider);
     overlay.appendChild(x);
     overlay.appendChild(paused);
     overlay.appendChild(badge);
     overlay.appendChild(vol);
+    overlay.appendChild(seekWrap);
 
     // Reparent the video to <html> while popped.
     // The original slot is restored on exit.
@@ -353,21 +367,36 @@ const POPOUT_JS: &str = r#"(function () {
       x: x, paused: paused, badge: badge,
       vol: vol, volBtn: volBtn, volOn: volOn, volOff: volOff,
       volSlider: volSlider, volDragging: false,
+      seek: seekWrap, seekSlider: seekSlider, seekDragging: false,
+      seekPending: null, seekTimer: 0, seekLastAt: 0,
       watch: 0, freshTimer: 0, clickTimer: 0, lastClick: 0, down: null,
       aspectTimer: 0
     };
 
     syncPaused();
     syncVolume();
+    onSeekMeta();
     v.addEventListener('play', syncPaused);
     v.addEventListener('pause', syncPaused);
     v.addEventListener('resize', onAspect);
     v.addEventListener('volumechange', syncVolume);
+    v.addEventListener('timeupdate', syncSeek);
+    v.addEventListener('seeked', onSeeked);
+    v.addEventListener('error', onMediaError);
+    v.addEventListener('durationchange', onSeekMeta);
+    v.addEventListener('loadedmetadata', onSeekMeta);
+    v.addEventListener('emptied', onSeekMeta);
     volBtn.addEventListener('click', onVolButton);
     volSlider.addEventListener('input', onVolSlider);
     volSlider.addEventListener('pointerdown', function () { if (active) active.volDragging = true; });
     volSlider.addEventListener('pointerup', function () { if (active) active.volDragging = false; });
     volSlider.addEventListener('pointercancel', function () { if (active) active.volDragging = false; });
+    seekSlider.addEventListener('input', onSeekSlider);
+    seekSlider.addEventListener('pointerdown', function () { if (active) active.seekDragging = true; });
+    // Release re-queues the slider position with dragging off, so the final
+    // landed seek is always exact (drag issues may have used fastSeek).
+    seekSlider.addEventListener('pointerup', function () { if (active) { active.seekDragging = false; onSeekSlider(); syncSeek(); } });
+    seekSlider.addEventListener('pointercancel', function () { if (active) { active.seekDragging = false; onSeekSlider(); syncSeek(); } });
     overlay.addEventListener('pointerdown', onDown);
     overlay.addEventListener('pointermove', onMove);
     overlay.addEventListener('pointerup', onUp);
@@ -428,6 +457,13 @@ const POPOUT_JS: &str = r#"(function () {
     a.video.removeEventListener('pause', syncPaused);
     a.video.removeEventListener('resize', onAspect);
     a.video.removeEventListener('volumechange', syncVolume);
+    a.video.removeEventListener('timeupdate', syncSeek);
+    a.video.removeEventListener('seeked', onSeeked);
+    a.video.removeEventListener('error', onMediaError);
+    a.video.removeEventListener('durationchange', onSeekMeta);
+    a.video.removeEventListener('loadedmetadata', onSeekMeta);
+    a.video.removeEventListener('emptied', onSeekMeta);
+    clearTimeout(a.seekTimer);
     window.removeEventListener('pagehide', onPagehide);
     try {
       var r = a.restore;
@@ -521,6 +557,80 @@ const POPOUT_JS: &str = r#"(function () {
     v.volume = Math.min(1, Math.max(0, value));
     if (v.volume > 0 && v.muted) v.muted = false;
   }
+  // Live streams report duration Infinity (or 0 before metadata): no scrubber.
+  function onSeekMeta(e) {
+    if (!active) return;
+    // A source swap invalidates any queued target.
+    if (e && (e.type === 'emptied' || e.type === 'loadedmetadata')) {
+      active.seekPending = null;
+      clearTimeout(active.seekTimer);
+      active.seekTimer = 0;
+    }
+    var d = active.video.duration;
+    var seekable = isFinite(d) && d > 0;
+    active.seek.style.display = seekable ? 'flex' : 'none';
+    syncSeek();
+  }
+  function syncSeek() {
+    if (!active || active.seekDragging) return;
+    var v = active.video;
+    if (active.seekPending != null || v.seeking) return;
+    if (isFinite(v.duration) && v.duration > 0) {
+      active.seekSlider.value = String(v.currentTime / v.duration);
+    }
+  }
+  function onSeekSlider() {
+    if (!active) return;
+    var v = active.video;
+    if (!isFinite(v.duration) || v.duration <= 0) return;
+    var f = parseFloat(active.seekSlider.value);
+    if (!isFinite(f)) return;
+    var t = Math.min(1, Math.max(0, f)) * v.duration;
+    // Landing exactly on the end mid-drag bounces through `ended`; keep a
+    // small margin (scaled down for short clips) until release.
+    if (active.seekDragging) {
+      t = Math.min(t, Math.max(0, v.duration - Math.min(0.25, v.duration * 0.1)));
+    }
+    active.seekPending = t;
+    pumpSeek();
+  }
+  // Keep at most one seek in flight and space issues out; only the newest
+  // target survives.
+  function pumpSeek() {
+    if (!active || active.seekPending == null) return;
+    var v = active.video;
+    var since = Date.now() - active.seekLastAt;
+    var wait = 0;
+    if (v.seeking && since < 800) wait = 60;
+    else if (since < 180) wait = 180 - since;
+    if (wait > 0) {
+      if (!active.seekTimer) active.seekTimer = setTimeout(seekTick, wait);
+      return;
+    }
+    var t = active.seekPending;
+    active.seekPending = null;
+    try {
+      if (active.seekDragging && typeof v.fastSeek === 'function') v.fastSeek(t);
+      else v.currentTime = t;
+      active.seekLastAt = Date.now();
+    } catch (e) {}
+  }
+  function seekTick() {
+    if (!active) return;
+    active.seekTimer = 0;
+    pumpSeek();
+  }
+  function onSeeked() {
+    if (!active) return;
+    pumpSeek();
+    syncSeek();
+  }
+  // A fatal media error mid-popout (rapid seeks can corrupt the decoder):
+  // fold back to the tab so the page player can recover in view.
+  function onMediaError() {
+    if (!active) return;
+    if (active.video.error) teardown('lost');
+  }
   function onWheel(e) {
     e.preventDefault();
     if (!active || !active.vol.contains(e.target)) return;
@@ -540,7 +650,7 @@ const POPOUT_JS: &str = r#"(function () {
   }
   function onDown(e) {
     if (!active || e.button !== 0) return;
-    if (active.x.contains(e.target) || active.vol.contains(e.target)) return;
+    if (active.x.contains(e.target) || active.vol.contains(e.target) || active.seek.contains(e.target)) return;
     var corner = e.target && e.target.getAttribute ? e.target.getAttribute('data-corner') : null;
     active.down = { sx: e.screenX, sy: e.screenY, corner: corner, moved: false, ax: 0, ay: 0, raf: 0 };
     try { active.overlay.setPointerCapture(e.pointerId); } catch (err) {}

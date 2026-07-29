@@ -11,7 +11,8 @@
 //! the whole `<body>` is visibility-hidden over a black root so nothing can
 //! paint above it or fade it out.
 //!
-//! An overlay provides the controls: an X (top right),
+//! An overlay provides the controls: an X (top right), a hover volume pill
+//! and seek scrubber along the bottom (the scrubber hides for live streams),
 //! click to pause/play, double-click left/right to seek -/+10s, drag
 //! anywhere to move the window (native `start_dragging`), and corner zones
 //! to resize aspect-locked. Returning to the tab (or X) reparents the
