@@ -273,16 +273,19 @@ fn nav_state_script(back: bool, fwd: bool) -> String {
     format!("window.__wisSwipeNavState&&window.__wisSwipeNavState({back},{fwd});")
 }
 
-/// Push the engine's `canGoBack`/`canGoForward` into a tab webview so the
-/// swipe gesture only engages toward a direction with history. Called after
-/// each page-load event and title change.
-pub fn push_nav_state<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+/// Read the engine's `canGoBack`/`canGoForward` for a webview. `None` when
+/// the platform read fails or times out (the closures hop to the UI thread;
+/// from the load/title callbacks that hop is synchronous).
+pub fn read_nav_state<R: tauri::Runtime>(
+    webview: &tauri::webview::Webview<R>,
+) -> Option<(bool, bool)> {
     #[cfg(target_os = "macos")]
     {
         use objc2::msg_send;
         use objc2::runtime::{AnyObject, Bool};
 
-        let _ = webview.with_webview(|w| unsafe {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<(bool, bool)>(1);
+        let _ = webview.with_webview(move |w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
             if wk.is_null() {
                 return;
@@ -290,10 +293,9 @@ pub fn push_nav_state<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
 
             let back: Bool = msg_send![wk, canGoBack];
             let fwd: Bool = msg_send![wk, canGoForward];
-            let js = ns_string(&nav_state_script(back.as_bool(), fwd.as_bool()));
-            let nil: *mut AnyObject = std::ptr::null_mut();
-            let _: () = msg_send![wk, evaluateJavaScript: js, completionHandler: nil];
+            let _ = tx.send((back.as_bool(), fwd.as_bool()));
         });
+        rx.recv_timeout(std::time::Duration::from_millis(100)).ok()
     }
 
     #[cfg(windows)]
@@ -309,9 +311,7 @@ pub fn push_nav_state<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
             }
             let _ = tx.send((back.as_bool(), fwd.as_bool()));
         });
-        if let Ok((back, fwd)) = rx.try_recv() {
-            let _ = webview.eval(nav_state_script(back, fwd));
-        }
+        rx.recv_timeout(std::time::Duration::from_millis(100)).ok()
     }
 
     #[cfg(target_os = "linux")]
@@ -322,20 +322,29 @@ pub fn push_nav_state<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
             let wv = w.inner();
             let _ = tx.send((wv.can_go_back(), wv.can_go_forward()));
         });
-        if let Ok((back, fwd)) = rx.recv_timeout(std::time::Duration::from_millis(100)) {
-            let _ = webview.eval(nav_state_script(back, fwd));
-        }
+        rx.recv_timeout(std::time::Duration::from_millis(100)).ok()
     }
 
     #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
-    let _ = webview;
+    {
+        let _ = webview;
+        None
+    }
 }
 
-#[cfg(target_os = "macos")]
-unsafe fn ns_string(s: &str) -> *mut objc2::runtime::AnyObject {
-    use objc2::msg_send;
-    let c = std::ffi::CString::new(s).unwrap_or_default();
-    msg_send![objc2::class!(NSString), stringWithUTF8String: c.as_ptr()]
+/// Push the engine's `canGoBack`/`canGoForward` into a tab webview so the
+/// swipe gesture only engages toward a direction with history. Called after
+/// each page-load event and title change. Returns the values pushed so
+/// callers can fold them into the tab model without a second engine read.
+pub fn push_nav_state<R: tauri::Runtime>(
+    webview: &tauri::webview::Webview<R>,
+) -> Option<(bool, bool)> {
+    let nav = read_nav_state(webview);
+    if let Some((back, fwd)) = nav {
+        let _ = webview.eval(nav_state_script(back, fwd));
+    }
+
+    nav
 }
 
 /// App-wide scroll-wheel phase monitor (macOS): forwards trackpad finger-down

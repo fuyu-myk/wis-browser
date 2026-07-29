@@ -426,6 +426,35 @@ fn with_tab_loading_is_idempotent_when_value_unchanged() {
 }
 
 #[test]
+fn with_tab_nav_state_updates_both_directions() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws_id = s0.workspaces[0].id;
+    let (s1, t1) = s0.with_new_tab(ws_id, "https://example.com").unwrap();
+    let tab = s1.tab(t1.id).unwrap();
+    assert!(!tab.can_go_back);
+    assert!(!tab.can_go_forward);
+
+    let s2 = s1.with_tab_nav_state(t1.id, true, false).unwrap();
+    let tab = s2.tab(t1.id).unwrap();
+    assert!(tab.can_go_back);
+    assert!(!tab.can_go_forward);
+
+    let s3 = s2.with_tab_nav_state(t1.id, false, true).unwrap();
+    let tab = s3.tab(t1.id).unwrap();
+    assert!(!tab.can_go_back);
+    assert!(tab.can_go_forward);
+}
+
+#[test]
+fn with_tab_nav_state_is_idempotent_when_value_unchanged() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws_id = s0.workspaces[0].id;
+    let (s1, t1) = s0.with_new_tab(ws_id, "https://example.com").unwrap();
+    let s2 = s1.with_tab_nav_state(t1.id, false, false).unwrap();
+    assert_eq!(s1, s2);
+}
+
+#[test]
 fn with_tab_url_synced_updates_url_but_preserves_title() {
     let s0 = BrowserState::new_with_defaults();
     let ws_id = s0.workspaces[0].id;

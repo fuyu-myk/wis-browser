@@ -791,7 +791,25 @@ fn eval_history_step(app: &AppHandle, id: TabId, direction: &str) -> WisResult<(
         .eval(format!("window.history.{direction}()"))
         .map_err(|err| WisError::InvalidInput {
             message: format!("history.{direction}() eval failed: {err}"),
-        })
+        })?;
+
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let Some(webview) = app.webviews().get(&label).cloned() else {
+            return;
+        };
+
+        if let Some((back, fwd)) = crate::swipe_nav::push_nav_state(&webview) {
+            let state = app.state::<AppState>();
+            let result = mutate_unit(&app, &state, |s| s.with_tab_nav_state(id, back, fwd)).await;
+            if let Err(err) = result {
+                log::warn!("nav-state refresh for {id} failed: {err}");
+            }
+        }
+    });
+
+    Ok(())
 }
 
 /// Move `tab_id` (freshly appended by creation) to `index`, clamped to the

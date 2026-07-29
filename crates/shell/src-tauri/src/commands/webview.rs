@@ -198,13 +198,19 @@ pub async fn create_tab_webview(
     {
         let app = app.clone();
         builder = builder.on_document_title_changed(move |webview, title: String| {
-            crate::swipe_nav::push_nav_state(&webview);
+            let nav = crate::swipe_nav::push_nav_state(&webview);
             let app = app.clone();
             let live_url = webview.url().ok();
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<AppState>();
-                let result =
-                    mutate_unit(&app, &state, |s| s.with_tab_title(tab_id, title.clone())).await;
+                let result = mutate_unit(&app, &state, |s| {
+                    s.with_tab_title(tab_id, title.clone())
+                        .and_then(|next| match nav {
+                            Some((back, fwd)) => next.with_tab_nav_state(tab_id, back, fwd),
+                            None => Ok(next),
+                        })
+                })
+                .await;
                 if let Err(err) = result {
                     log::warn!("title update for {tab_id} failed: {err}");
                 }
@@ -229,7 +235,7 @@ pub async fn create_tab_webview(
                 crate::video_popout::handle_navigation(&app, &label_for_load);
             }
 
-            crate::swipe_nav::push_nav_state(&webview);
+            let nav = crate::swipe_nav::push_nav_state(&webview);
 
             let app_for_state = app.clone();
             tauri::async_runtime::spawn(async move {
@@ -243,6 +249,10 @@ pub async fn create_tab_webview(
                             } else {
                                 Ok(next)
                             }
+                        })
+                        .and_then(|next| match nav {
+                            Some((back, fwd)) => next.with_tab_nav_state(tab_id, back, fwd),
+                            None => Ok(next),
                         })
                 })
                 .await;

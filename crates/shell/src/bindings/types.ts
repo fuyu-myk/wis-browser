@@ -212,6 +212,10 @@ export interface Tab {
   loading: boolean
   /** Showing the in-page reader transform. In-memory only; reset on reload/launch. */
   reader: boolean
+  /** Whether the page has a previous/next history entry. In-memory only;
+   *  false on launch until the first load reports the real values. */
+  can_go_back: boolean
+  can_go_forward: boolean
   /** Page-zoom factor (1.0 = 100%); persisted per tab. */
   zoom: number
   created_at: string // ISO 8601 from chrono::DateTime<Utc>

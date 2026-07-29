@@ -20,9 +20,8 @@ interface NavRowProps {
  *
  * wry 0.55 doesn't expose native `go_back` / `go_forward` methods, so
  * fire `eval("window.history.back()")` via the `tab_go_back/forward`
- * commands. At start-of-history these are benign no-ops: matches the
- * convention every other browser uses (button always clickable, may
- * silently do nothing).
+ * commands. Back/Forward disable per direction from the tab's
+ * `can_go_back`/`can_go_forward` (engine-read on load and title change).
  *
  * The Refresh button calls wry's native `webview.reload()`.
  */
@@ -55,7 +54,7 @@ export function NavRow({ activeTab, circular = false }: NavRowProps) {
         type="button"
         className={btnClass}
         aria-label="Back"
-        disabled={!navigable}
+        disabled={!navigable || !activeTab.can_go_back}
         onClick={() => activeTab && back.mutate(activeTab.id)}
       >
         <ArrowLeftIcon />
@@ -64,7 +63,7 @@ export function NavRow({ activeTab, circular = false }: NavRowProps) {
         type="button"
         className={btnClass}
         aria-label="Forward"
-        disabled={!navigable}
+        disabled={!navigable || !activeTab.can_go_forward}
         onClick={() => activeTab && forward.mutate(activeTab.id)}
       >
         <ArrowRightIcon />

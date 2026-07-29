@@ -258,6 +258,18 @@ impl BrowserState {
         Ok(self.replace_tab(id, &updated))
     }
 
+    /// Update a tab's back/forward history availability. Idempotent when
+    /// neither direction changes.
+    pub fn with_tab_nav_state(&self, id: TabId, back: bool, forward: bool) -> WisResult<Self> {
+        let current = self.tab(id)?;
+        if current.can_go_back == back && current.can_go_forward == forward {
+            return Ok(self.clone());
+        }
+        let updated = current.with_nav_state(back, forward);
+
+        Ok(self.replace_tab(id, &updated))
+    }
+
     /// Toggle a tab's `reader` flag. Idempotent when the value doesn't change.
     pub fn with_tab_reader(&self, id: TabId, reader: bool) -> WisResult<Self> {
         let current = self.tab(id)?;

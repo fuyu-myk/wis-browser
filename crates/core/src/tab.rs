@@ -36,6 +36,13 @@ pub struct Tab {
     /// is lost on reload/restart, so the storage layer reconstructs `false`.
     #[serde(default)]
     pub reader: bool,
+    /// Whether the page has a previous/next history entry. In-memory only:
+    /// history lives in the live webview, so both reconstruct `false` until
+    /// the restored page's first load reports the real values.
+    #[serde(default)]
+    pub can_go_back: bool,
+    #[serde(default)]
+    pub can_go_forward: bool,
     /// Persisted page-zoom factor (1.0 = 100%).
     #[serde(default = "default_zoom")]
     pub zoom: f64,
@@ -72,6 +79,8 @@ impl Tab {
             muted: false,
             loading: false,
             reader: false,
+            can_go_back: false,
+            can_go_forward: false,
             zoom: default_zoom(),
             created_at: now,
             last_active_at: now,
@@ -137,6 +146,14 @@ impl Tab {
     pub fn with_reader(&self, reader: bool) -> Self {
         Self {
             reader,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_nav_state(&self, can_go_back: bool, can_go_forward: bool) -> Self {
+        Self {
+            can_go_back,
+            can_go_forward,
             ..self.clone()
         }
     }
