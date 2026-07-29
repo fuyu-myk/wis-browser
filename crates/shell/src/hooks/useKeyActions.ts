@@ -17,6 +17,7 @@ import { useEffect, useRef } from 'react'
 import { listen } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
+import { isPeekOpen } from '@/lib/peekState'
 import { isWindowFocused } from '@/lib/windowFocus'
 import { nextAccent } from '@/lib/accents'
 import { closeTabAnimated } from '@/lib/tabClose'
@@ -227,10 +228,12 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       return
     case 'go_back':
     case 'go_back_alt':
+      if (isPeekOpen()) return
       if (ctx.activeTab) await commands.tabGoBack(ctx.activeTab.id)
       return
     case 'go_forward':
     case 'go_forward_alt':
+      if (isPeekOpen()) return
       if (ctx.activeTab) await commands.tabGoForward(ctx.activeTab.id)
       return
     case 'switch_to_tab1':

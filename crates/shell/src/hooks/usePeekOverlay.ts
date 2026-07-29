@@ -11,6 +11,7 @@ import { useEffect, useRef } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { useOverlay } from '@/hooks/useOverlay'
+import { setPeekOpen } from '@/lib/peekState'
 import { isWindowFocused } from '@/lib/windowFocus'
 
 const PEEK_OPEN_EVENT = 'wis-peek-open'
@@ -62,6 +63,7 @@ export function usePeekOverlay(): void {
       pendingRef.current = shown
       await overlay.show(fullRect())
       openRef.current = true
+      setPeekOpen(true)
       void emit(PEEK_SHOW_EVENT, shown)
     }
 
@@ -82,7 +84,11 @@ export function usePeekOverlay(): void {
     })
 
     void listen<void>(PEEK_CLOSE_EVENT, () => {
+      // Broadcast event: without the focus gate, closing a peek in one
+      // window would desync every other window's peek state.
+      if (!isWindowFocused()) return
       openRef.current = false
+      setPeekOpen(false)
       pendingRef.current = null
       void overlay.hide().catch(() => undefined)
     }).then((fn) => {
