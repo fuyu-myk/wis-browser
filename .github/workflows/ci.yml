@@ -6,7 +6,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  # Manual run (Actions tab or `gh workflow run`), so this branch can be compiled
+  # Manual run (Actions tab or `gh workflow run`), so a branch can be compiled
   # on all three OSes without opening a PR to main.
   workflow_dispatch:
 
