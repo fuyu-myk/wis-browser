@@ -80,7 +80,7 @@ wis-browser-app  (crates/shell/src-tauri)  - Tauri shell, IPC commands, AppState
 
 ### Window styling
 
-**Chrome surfaces use layered background tiers and a frame `box-shadow` for contrast; glass is OS vibrancy (macOS), Mica (Windows 11), none elsewhere.** Split panes are transparent rounded cut-outs with an accent ring (square off macOS); chrome scrollbars invert vs the theme; macOS uses `titleBarStyle: Overlay`, Linux `decorations:false` + `transparent`. Linux pins corners to square (`--radius-scale: 0`, the Design > Corners control locked to Sharp) because its child webviews render with square corners; it also builds no native menu bar (keybinds are JS-dispatched). Detail: `docs/architecture/webviews-windows-and-overlays.md`.
+**Chrome surfaces use layered background tiers and a frame `box-shadow` for contrast; glass is OS vibrancy (macOS), Mica (Windows 11), none elsewhere; the glass tint is opacity-compensated per platform (`body[data-platform]` overrides) since Mica and the bare Linux desktop show through far more than macOS vibrancy.** The native tab webview's corner radius follows the Corners design setting (`--radius-scale`, re-applied live on change). Split panes are transparent rounded cut-outs with an accent ring (square off macOS); chrome scrollbars invert vs the theme; macOS uses `titleBarStyle: Overlay`, Linux `decorations:false` + `transparent`. Linux pins corners to square (`--radius-scale: 0`, the Design > Corners control locked to Sharp) because its child webviews render with square corners; it also builds no native menu bar (keybinds are JS-dispatched). Detail: `docs/architecture/webviews-windows-and-overlays.md`.
 
 ### Cross-platform layer
 
