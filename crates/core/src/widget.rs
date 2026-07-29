@@ -28,6 +28,7 @@ pub enum WidgetKind {
     Grok,
     DeepSeek,
     Qwen,
+    Perplexity,
     // User-defined.
     Custom,
 }

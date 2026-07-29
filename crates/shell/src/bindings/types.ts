@@ -187,6 +187,7 @@ export type WidgetKind =
   | 'grok'
   | 'deep_seek'
   | 'qwen'
+  | 'perplexity'
   | 'custom'
 
 // ---------------------------------------------------------------------------

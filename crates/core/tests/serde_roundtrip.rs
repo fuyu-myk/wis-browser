@@ -55,6 +55,14 @@ fn layout_mode_roundtrips_as_snake_case() {
 }
 
 #[test]
+fn widget_kind_roundtrips_as_snake_case() {
+    let json = serde_json::to_string(&wis_core::WidgetKind::Perplexity).unwrap();
+    assert_eq!(json, "\"perplexity\"");
+    let parsed: wis_core::WidgetKind = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed, wis_core::WidgetKind::Perplexity);
+}
+
+#[test]
 fn privacy_mode_roundtrips_as_snake_case() {
     for mode in [
         PrivacyMode::Strict,

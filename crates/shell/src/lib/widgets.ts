@@ -40,6 +40,7 @@ export const WIDGET_CATALOG: ReadonlyArray<WidgetCatalogEntry> = [
   { kind: 'grok', label: 'Grok', url: 'https://grok.com', category: 'ai' },
   { kind: 'deep_seek', label: 'DeepSeek', url: 'https://chat.deepseek.com', category: 'ai' },
   { kind: 'qwen', label: 'Qwen', url: 'https://chat.qwen.ai', category: 'ai' },
+  { kind: 'perplexity', label: 'Perplexity', url: 'https://www.perplexity.ai', category: 'ai' },
 ]
 
 const CATALOG_INDEX = new Map(WIDGET_CATALOG.map((entry) => [entry.kind, entry]))
