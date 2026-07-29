@@ -661,9 +661,9 @@ pub async fn webview_url(app: AppHandle, label: String) -> WisResult<Option<Stri
     }
 }
 
-/// Sync a tab's stored URL to match where the user actually navigated inside
-/// the webview (in-page link clicks, history hops). Unlike `navigate_tab`
-/// Apply a CSS-style corner radius to a tab's native webview surface, macOS only.
+/// Apply a CSS-style corner radius to a tab's native webview surface
+/// (macOS CALayer / Windows WebView2 region; no-op elsewhere). The chrome
+/// derives the radius from the Corners design setting via `--radius-scale`.
 #[tauri::command]
 pub async fn set_webview_corner_radius(
     app: AppHandle,

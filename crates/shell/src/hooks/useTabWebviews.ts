@@ -10,7 +10,17 @@ import type { VideoPopoutController } from '@/hooks/useVideoPopout'
 
 const PARK_HIDDEN_OFFSCREEN = currentPlatform() === 'windows'
 
+/** Native tab-surface corner radius at the Round setting; the Corners design
+ *  control scales it through the same `--radius-scale` the chrome CSS uses
+ *  (Soft 0.55, Sharp 0, Linux pinned 0). */
 const WEBVIEW_CORNER_RADIUS = 12
+
+function currentWebviewRadius(): number {
+  const scale = Number.parseFloat(
+    getComputedStyle(document.body).getPropertyValue('--radius-scale'),
+  )
+  return Number.isFinite(scale) ? WEBVIEW_CORNER_RADIUS * scale : WEBVIEW_CORNER_RADIUS
+}
 
 const LABEL_PREFIX = 'tab-'
 const PENDING = Symbol('pending-webview')
@@ -312,7 +322,7 @@ export function useTabWebviews({
           map.set(tabId, wv)
           recomputeDiscarded()
           void commands
-            .setWebviewCornerRadius(labelFor(tabId), WEBVIEW_CORNER_RADIUS)
+            .setWebviewCornerRadius(labelFor(tabId), currentWebviewRadius())
             .catch(() => undefined)
           reconcileOne(tabId, wv)
           if (tabId === focusedRef.current) {
@@ -330,6 +340,21 @@ export function useTabWebviews({
     [reconcileOne, recomputeDiscarded],
   )
   ensureWebviewRef.current = ensureWebview
+
+  // The Corners design setting scales the native tab surface radius too;
+  // re-apply to every live webview when it changes.
+  useEffect(() => {
+    const apply = () => {
+      const radius = currentWebviewRadius()
+      for (const [id, wv] of webviewsRef.current.entries()) {
+        if ((wv as unknown) === PENDING) continue
+        void commands.setWebviewCornerRadius(labelFor(id), radius).catch(() => undefined)
+      }
+    }
+    const mo = new MutationObserver(apply)
+    mo.observe(document.body, { attributes: true, attributeFilter: ['data-corners'] })
+    return () => mo.disconnect()
+  }, [])
 
   // Close any leftover webviews from a previous run on first mount.
   useEffect(() => {
