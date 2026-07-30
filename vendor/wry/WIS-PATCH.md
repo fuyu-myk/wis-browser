@@ -169,3 +169,46 @@ unconsumed combos to `wisEditKey`, and the handler replays the selector via
 Known edge: Cmd+Shift+digit combos are not matched by the walk
 (`charactersIgnoringModifiers` applies Shift to digits) and so fall
 page-first; none of the default bindings use that shape.
+
+## Fourth patch: expose download expected size (macOS)
+
+- `src/wkwebview/download.rs`, `download_policy`: the delegate receives the
+  `NSURLResponse` whose `expectedContentLength` is the download's total byte
+  count, and upstream discards it (the `DownloadEvent::Requested` signature
+  carries only url + destination, and changing it would mean vendoring
+  `tauri-runtime` + `tauri` too). The patch stashes the value in a
+  thread_local (`src/wkwebview/mod.rs`) immediately before invoking the
+  started handler; `wry::last_download_expected_bytes()` reads it back.
+  Sound because tauri-runtime-wry invokes the tauri `Requested` handler
+  synchronously in the same main-thread call stack as `download_policy`
+  (verify on every wry/tauri-runtime-wry bump: `downloads.rs::on_requested`
+  must run inside the started callback, not deferred). -1 means the server
+  sent no Content-Length (chunked); the shell maps that to an indeterminate
+  spinner. Not upstreamable as-is (upstream would extend the event type);
+  re-apply when bumping wry.
+
+Removal checklist: wry ships download progress or a richer Requested event
+-> drop the thread_local + `download.rs` line + the `lib.rs` re-export, move
+`downloads.rs::on_requested` onto the upstream API, and delete the direct
+`wry` dependency from `crates/shell/src-tauri/Cargo.toml` if nothing else
+uses it.
+
+## Fifth patch: cancel in-flight downloads (macOS)
+
+- `src/wkwebview/download.rs`: WKDownload exposes `cancel:` but wry never
+  hands the download object out, so an embedder cannot stop a download.
+  The patch keeps a main-thread registry of live downloads keyed by their
+  destination path (registered when `download_policy` accepts, removed in
+  `download_did_finish`/`download_did_fail`), and exposes
+  `wry::cancel_download_to(path) -> bool`. An explicit cancel does NOT
+  reach the fail delegate (WebKit's `DownloadManager::cancelDownload`
+  passes `IgnoreDidFailCallback::Yes`, suppressing the DidFail IPC), so
+  `cancel_download_to` unregisters the entry itself, before making the
+  ObjC call (also keeps the registry borrow from spanning reentry).
+  Bounded leak note: a download whose finish/fail callback never fires
+  (e.g. delegate torn down mid-flight at app exit) leaves its registry
+  entry until process end; entries are two pointers + a path.
+
+Removal checklist: wry ships a download handle/cancel API -> drop the
+registry + `cancel_download_to` + both re-exports, and move
+`downloads.rs::cancel_download` onto the upstream API.

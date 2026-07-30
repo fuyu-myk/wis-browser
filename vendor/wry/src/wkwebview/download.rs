@@ -1,6 +1,6 @@
-use std::{env::current_dir, ptr::null_mut};
+use std::{cell::RefCell, env::current_dir, ptr::null_mut};
 
-use objc2::{rc::Retained, runtime::ProtocolObject, DeclaredClass};
+use objc2::{rc::Retained, runtime::ProtocolObject, DeclaredClass, Message};
 use objc2_foundation::{NSData, NSError, NSString, NSURLResponse, NSURL};
 use objc2_web_kit::{WKDownload, WKNavigationAction, WKNavigationResponse};
 
@@ -12,6 +12,45 @@ use objc2_web_kit::WKWebView;
 use super::class::{
   wry_download_delegate::WryDownloadDelegate, wry_navigation_delegate::WryNavigationDelegate,
 };
+
+// WIS patch: live downloads keyed by destination path, so the embedder can
+// cancel one (`cancel_download_to`). Main-thread only, like every WKDownload
+// delegate callback. Registered when a download is accepted; unregistered on
+// finish/fail. See WIS-PATCH.md.
+thread_local! {
+  static ACTIVE_DOWNLOADS: RefCell<Vec<(String, Retained<WKDownload>)>> =
+    const { RefCell::new(Vec::new()) };
+}
+
+fn unregister_download(download: &WKDownload) {
+  let ptr: *const WKDownload = download;
+  ACTIVE_DOWNLOADS.with(|list| {
+    list
+      .borrow_mut()
+      .retain(|(_, d)| Retained::as_ptr(d) != ptr)
+  });
+}
+
+/// WIS patch: cancel the in-flight download writing to `path`. Main thread
+/// only. Returns whether a live download matched. Unregisters the entry
+/// itself: WebKit suppresses the fail delegate for explicit cancels
+/// (`DownloadManager::cancelDownload` passes `IgnoreDidFailCallback::Yes`),
+/// so no delegate callback will do it. The entry is removed before the
+/// ObjC call so the registry borrow never spans potential reentry.
+pub fn cancel_download_to(path: &str) -> bool {
+  let download = ACTIVE_DOWNLOADS.with(|list| {
+    let mut list = list.borrow_mut();
+    let pos = list.iter().position(|(p, _)| p == path)?;
+    Some(list.remove(pos).1)
+  });
+  match download {
+    Some(download) => {
+      unsafe { download.cancel(None) };
+      true
+    }
+    None => false,
+  }
+}
 
 // Download action handler
 pub(crate) fn navigation_download_action(
@@ -46,11 +85,14 @@ pub(crate) fn navigation_download_response(
 pub(crate) fn download_policy(
   this: &WryDownloadDelegate,
   download: &WKDownload,
-  _response: &NSURLResponse,
+  response: &NSURLResponse,
   suggested_filename: &NSString,
   completion_handler: &block2::Block<dyn Fn(*const NSURL)>,
 ) {
   unsafe {
+    // WIS patch: stash the response's expected size so the started handler's
+    // call stack can read it (`last_download_expected_bytes`).
+    super::set_last_download_expected_bytes(response.expectedContentLength());
     let request = download.originalRequest().unwrap();
     let url = request.URL().unwrap().absoluteString().unwrap();
     let suggested_filename = suggested_filename.to_string();
@@ -76,6 +118,13 @@ pub(crate) fn download_policy(
       let mut started_fn = started_fn.borrow_mut();
       match started_fn(url.to_string(), &mut download_destination) {
         true => {
+          // WIS patch: track the accepted download for cancel-by-path.
+          ACTIVE_DOWNLOADS.with(|list| {
+            list.borrow_mut().push((
+              download_destination.display().to_string(),
+              download.retain(),
+            ))
+          });
           let path = NSString::from_str(&download_destination.display().to_string());
           let ns_url = NSURL::fileURLWithPath_isDirectory(&path, false);
           (*completion_handler).call((Retained::as_ptr(&ns_url),))
@@ -91,6 +140,7 @@ pub(crate) fn download_policy(
 }
 
 pub(crate) fn download_did_finish(this: &WryDownloadDelegate, download: &WKDownload) {
+  unregister_download(download);
   unsafe {
     let original_request = download.originalRequest().unwrap();
     let url = original_request.URL().unwrap().absoluteString().unwrap();
@@ -106,6 +156,7 @@ pub(crate) fn download_did_fail(
   error: &NSError,
   _resume_data: &NSData,
 ) {
+  unregister_download(download);
   unsafe {
     #[cfg(debug_assertions)]
     {

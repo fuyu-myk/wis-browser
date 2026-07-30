@@ -9024,6 +9024,7 @@ dependencies = [
  "wis-network",
  "wis-secrets",
  "wis-storage",
+ "wry",
  "zeroize",
 ]
 

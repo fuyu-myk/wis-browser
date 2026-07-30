@@ -390,7 +390,9 @@ pub(crate) mod wkwebview;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use wkwebview::*;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-pub use wkwebview::{PrintMargin, PrintOptions, WryWebView};
+pub use wkwebview::{
+  cancel_download_to, last_download_expected_bytes, PrintMargin, PrintOptions, WryWebView,
+};
 
 #[cfg(target_os = "windows")]
 pub(crate) mod webview2;

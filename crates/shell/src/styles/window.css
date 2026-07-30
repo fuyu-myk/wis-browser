@@ -6091,6 +6091,15 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   background: var(--surface-raised);
   animation: kb-spin 0.9s linear infinite;
 }
+/* Determinate progress: a theme-colored pie filling clockwise, on a faint
+   track of the same hue. --dl-frac is 0..1 from the aggregate byte ratio. */
+.kb-dl-badge.is-pie {
+  background: conic-gradient(
+    var(--primary-500) calc(var(--dl-frac, 0) * 1turn),
+    color-mix(in oklab, var(--primary-500) 25%, transparent) 0
+  );
+  box-shadow: 0 0 0 2px var(--surface-raised);
+}
 .kb-dl-badge.is-done {
   background: #2f9e63;
   color: #fff;
@@ -6099,6 +6108,20 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .kb-dl-badge.is-done svg {
   width: 9px;
   height: 9px;
+}
+/* Check draws in stroke-first after the badge pops. */
+.kb-dl-badge.is-done svg path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: kb-dl-check-draw 0.35s ease-out 0.12s forwards;
+}
+@keyframes kb-dl-check-draw {
+  to { stroke-dashoffset: 0; }
+}
+/* Completed-but-unviewed: the glyph holds a green-turquoise tint after the
+   check flash until the downloads popup is opened. */
+.kb-rail-dl.is-unseen svg {
+  color: #2fae8f;
 }
 .kb-dl-badge.is-failed {
   background: #d9a13b;

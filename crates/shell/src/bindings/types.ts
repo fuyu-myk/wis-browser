@@ -640,6 +640,8 @@ export interface DownloadItem {
   filename: string
   path: string
   receivedBytes: number
+  /** Content-Length total, or null when unknown (chunked, or non-macOS). */
+  totalBytes: number | null
   status: DownloadStatus
   /** From a private context; saved to disk but never in persistent history. */
   private: boolean

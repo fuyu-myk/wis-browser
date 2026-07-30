@@ -548,6 +548,11 @@ export const commands = {
     return invoke('remove_download', { id })
   },
 
+  /** Cancel an in-flight download and discard its partial file (macOS). */
+  async cancelDownload(id: DownloadId): Promise<void> {
+    return invoke('cancel_download', { id })
+  },
+
   /** Remove several downloads from the list and history (files untouched). */
   async removeDownloads(ids: DownloadId[]): Promise<void> {
     return invoke('remove_downloads', { ids })

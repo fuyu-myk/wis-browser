@@ -14,6 +14,7 @@ import { commands } from '@/bindings/commands'
 import type { DownloadId, DownloadItem } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { FileIcon, XIcon } from '@/lib/icons'
+import { currentPlatform } from '@/lib/platform'
 import { isChromeUrl, DOWNLOADS_URL } from '@/lib/url'
 import {
   downloadHost,
@@ -116,6 +117,11 @@ export function DownloadsMenuSurface() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: DOWNLOADS_KEY }),
   })
 
+  const cancelOne = useMutation({
+    mutationFn: (id: DownloadId) => commands.cancelDownload(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: DOWNLOADS_KEY }),
+  })
+
   const openFile = (item: DownloadItem) => {
     if (item.status !== 'completed') return
     void commands
@@ -169,6 +175,11 @@ export function DownloadsMenuSurface() {
                   missing={missing.has(item.id)}
                   onOpen={() => openFile(item)}
                   onRemove={() => setConfirmRemove(item)}
+                  onCancel={
+                    currentPlatform() === 'macos'
+                      ? () => cancelOne.mutate(item.id)
+                      : undefined
+                  }
                 />
               ))}
             </ul>
@@ -206,9 +217,11 @@ interface DownloadRowProps {
   missing: boolean
   onOpen: () => void
   onRemove: () => void
+  /** Cancel the in-flight engine download; absent where unsupported. */
+  onCancel?: () => void
 }
 
-function DownloadRow({ item, index, missing, onOpen, onRemove }: DownloadRowProps) {
+function DownloadRow({ item, index, missing, onOpen, onRemove, onCancel }: DownloadRowProps) {
   const inFlight = isInProgress(item)
   return (
     <li
@@ -234,7 +247,19 @@ function DownloadRow({ item, index, missing, onOpen, onRemove }: DownloadRowProp
           {inFlight ? <span className="kb-dl-bar" aria-hidden /> : null}
         </span>
       </button>
-      {inFlight ? null : (
+      {inFlight ? (
+        onCancel ? (
+          <button
+            type="button"
+            className="kb-dlmenu-del"
+            aria-label="Cancel download"
+            title="Cancel download"
+            onClick={onCancel}
+          >
+            <XIcon />
+          </button>
+        ) : null
+      ) : (
         <button
           type="button"
           className="kb-dlmenu-del"

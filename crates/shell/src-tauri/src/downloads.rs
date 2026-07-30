@@ -73,6 +73,10 @@ pub struct DownloadItem {
     pub filename: String,
     pub path: PathBuf,
     pub received_bytes: u64,
+    /// Expected total from the response's Content-Length; `None` when the
+    /// server sent no length (chunked) or off macOS. Drives the determinate
+    /// pie in the chrome.
+    pub total_bytes: Option<u64>,
     pub status: DownloadStatus,
     /// Requested from an ephemeral (private) context: still saved to disk at
     /// the user's request, but never recorded in persistent history.
@@ -125,9 +129,60 @@ pub async fn list_downloads(state: State<'_, AppState>) -> WisResult<Vec<Downloa
     Ok(merged)
 }
 
+/// Cancel an in-flight download: stop the engine's WKDownload (macOS, via
+/// the vendored wry's fifth patch), mark the item cancelled, and best-effort
+/// remove the partial file. The cancel affordance is macOS-only until the
+/// other engines expose a cancel path.
+#[tauri::command]
+pub async fn cancel_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: DownloadId,
+) -> WisResult<()> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, state, id);
+        Err(WisError::InvalidInput {
+            message: "download cancel is not available on this platform".to_string(),
+        })
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let path = {
+            let mut items = state.downloads.lock().expect("downloads poisoned");
+            let Some(item) = items
+                .iter_mut()
+                .find(|item| item.id == id && item.status == DownloadStatus::InProgress)
+            else {
+                return Ok(());
+            };
+            item.status = DownloadStatus::Cancelled;
+            item.path.clone()
+        };
+
+        let path_str = path.display().to_string();
+        let result = app.run_on_main_thread(move || {
+            if !wry::cancel_download_to(&path_str) {
+                log::warn!("cancel_download: no live engine download for {path_str}");
+            }
+            // POSIX unlink: removal completes once the engine closes its
+            // handle. May already be gone if nothing was written yet.
+            if let Err(err) = std::fs::remove_file(&path_str) {
+                log::debug!("cancel_download: partial file remove: {err}");
+            }
+        });
+        if let Err(err) = result {
+            log::warn!("cancel_download: main-thread hop failed: {err}");
+        }
+
+        emit_changed(&app);
+        Ok(())
+    }
+}
+
 /// Remove a download from the list and persisted history (the file itself is
-/// untouched). In-flight items are kept (there is no cancel API to stop the
-/// underlying WKDownload).
+/// untouched). In-flight items are kept for cancel, not removal.
 #[tauri::command]
 pub async fn remove_download(
     app: AppHandle,
@@ -376,6 +431,17 @@ fn on_requested(app: &AppHandle, url: &Url, destination: &mut PathBuf, private: 
         path
     };
 
+    // Read within the started callback's call stack, where the patched wry
+    // stashed the response's expected size (-1 = unknown).
+    #[cfg(target_os = "macos")]
+    let total_bytes = {
+        let expected = wry::last_download_expected_bytes();
+        (expected > 0).then_some(expected as u64)
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    let total_bytes = None;
+
     let id = {
         let mut items = state.downloads.lock().expect("downloads poisoned");
         let item = DownloadItem {
@@ -387,6 +453,7 @@ fn on_requested(app: &AppHandle, url: &Url, destination: &mut PathBuf, private: 
                 .unwrap_or_else(|| wis_core::FALLBACK_FILENAME.to_string()),
             path: path.clone(),
             received_bytes: 0,
+            total_bytes,
             status: DownloadStatus::InProgress,
             private,
             started_at_ms: now_ms(),
@@ -545,6 +612,7 @@ impl DownloadItem {
             filename: record.filename,
             path: PathBuf::from(record.path),
             received_bytes: record.bytes.max(0) as u64,
+            total_bytes: None,
             status: DownloadStatus::Completed,
             private: false,
             started_at_ms: record.completed_at.timestamp_millis().max(0) as u64,

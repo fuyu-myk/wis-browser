@@ -577,6 +577,7 @@ pub fn run() {
             commands::start_element_picker,
             commands::import_userscript,
             downloads::list_downloads,
+            downloads::cancel_download,
             downloads::remove_download,
             downloads::remove_downloads,
             downloads::open_download,

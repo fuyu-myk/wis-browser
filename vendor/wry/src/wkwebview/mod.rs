@@ -17,6 +17,28 @@ mod ios;
 
 mod class;
 pub use class::wry_web_view::WryWebView;
+
+// WIS patch: cancel-by-path for in-flight downloads (see WIS-PATCH.md).
+pub use download::cancel_download_to;
+
+// WIS patch: side channel exposing the expected byte count of the download
+// whose `started` handler is currently executing on this thread (the handler
+// runs synchronously inside `download_policy`'s call stack). See WIS-PATCH.md.
+thread_local! {
+  static LAST_DOWNLOAD_EXPECTED_BYTES: std::cell::Cell<i64> = const { std::cell::Cell::new(-1) };
+}
+
+pub(crate) fn set_last_download_expected_bytes(bytes: i64) {
+  LAST_DOWNLOAD_EXPECTED_BYTES.with(|cell| cell.set(bytes));
+}
+
+/// WIS patch: `NSURLResponse.expectedContentLength` of the download whose
+/// `started` handler is currently executing on this thread; -1
+/// (`NSURLResponseUnknownLength`) when the server sent no length. Only
+/// meaningful inside the started callback's call stack.
+pub fn last_download_expected_bytes() -> i64 {
+  LAST_DOWNLOAD_EXPECTED_BYTES.with(|cell| cell.get())
+}
 #[cfg(target_os = "macos")]
 use class::wry_web_view_parent::WryWebViewParent;
 use class::{
