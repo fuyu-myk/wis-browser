@@ -337,6 +337,7 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
   // Register this instance's silent deactivator: when another instance
   // claims the overlay, drop all open state here without hiding (the winner
   // is about to re-show it) so pick broadcasts and delayed closes no-op.
+  const hideOverlay = overlay.hide
   useEffect(() => {
     const id = idRef.current as symbol
     overlayDeactivators.set(id, () => {
@@ -348,9 +349,12 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
     })
     return () => {
       overlayDeactivators.delete(id)
-      releaseOverlay(id)
+      // Unmounting while owning the overlay must hide it.
+      if (releaseOverlay(id)) {
+        void hideOverlay().catch(() => undefined)
+      }
     }
-  }, [cancelBlur])
+  }, [cancelBlur, hideOverlay])
 
   // Overlay → chrome: row click / ✕ click.
   useEffect(() => {
