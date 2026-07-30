@@ -308,11 +308,89 @@ pub async fn set_overlay_bounds(
             message: format!("set_size for {label}: {err}"),
         })?;
 
+    raise_above_siblings(&wv, true);
+
     #[cfg(not(target_os = "linux"))]
     wv.show().map_err(|err| WisError::InvalidInput {
         message: format!("show for {label}: {err}"),
     })?;
+
     Ok(())
+}
+
+/// Raise an already-visible overlay above its siblings. The one legitimate
+/// re-promote: summoning UI over a shown overlay stack, where the reveal-
+/// transition restack cannot fire.
+#[tauri::command]
+pub async fn promote_overlay(window: tauri::Window, name: String) -> WisResult<()> {
+    let label = overlay_label(window.label(), &name);
+    let Some(wv) = window.app_handle().webviews().get(&label).cloned() else {
+        return Ok(());
+    };
+
+    raise_above_siblings(&wv, false);
+    Ok(())
+}
+
+/// Re-add the overlay's native view atop its sibling stack. `only_if_hidden`
+/// restricts the restack to the hidden -> visible reveal.
+fn raise_above_siblings(wv: &tauri::webview::Webview, only_if_hidden: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::msg_send;
+        use objc2::runtime::{AnyObject, Bool};
+
+        // SAFETY: the closure runs on the main thread via `with_webview`; the
+        // view is retained by wry's InnerWebView, so the re-add (AppKit's
+        // retain-remove-add) cannot drop it.
+        let _ = wv.with_webview(move |w| unsafe {
+            let view: *mut AnyObject = w.inner() as *mut AnyObject;
+            if view.is_null() {
+                return;
+            }
+
+            if only_if_hidden {
+                let hidden: Bool = msg_send![view, isHidden];
+                if !hidden.as_bool() {
+                    return;
+                }
+            }
+
+            let superview: *mut AnyObject = msg_send![view, superview];
+            if superview.is_null() {
+                return;
+            }
+
+            let _: () = msg_send![superview, addSubview: view];
+        });
+    }
+
+    #[cfg(windows)]
+    {
+        if only_if_hidden {
+            crate::win_webview2::promote_to_front_when_hidden(wv);
+        } else {
+            crate::win_webview2::promote_to_front(wv);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Only the explicit promote needs a raise here.
+        if only_if_hidden {
+            return;
+        }
+
+        let _ = wv.with_webview(|w| {
+            use gtk::prelude::WidgetExt;
+            if let Some(window) = w.inner().window() {
+                window.raise();
+            }
+        });
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
+    let _ = (wv, only_if_hidden);
 }
 
 /// Position + size an overlay **without showing it**. Lets the chrome

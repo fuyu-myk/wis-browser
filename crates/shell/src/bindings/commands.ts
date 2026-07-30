@@ -1011,6 +1011,11 @@ export const commands = {
     return invoke('hide_overlay', { name })
   },
 
+  /** Raise an already-visible overlay above its siblings (summon-over-peek). */
+  async promoteOverlay(name: string): Promise<void> {
+    return invoke('promote_overlay', { name })
+  },
+
   // -- peek (Opt+click link preview) ----------------------------------------
 
   /**
@@ -1044,6 +1049,21 @@ export const commands = {
   /** Destroy the preview webview. */
   async closePeek(): Promise<void> {
     return invoke('close_peek')
+  },
+
+  /** History back in the peek preview. No-op without a live preview. */
+  async peekGoBack(): Promise<void> {
+    return invoke('peek_go_back')
+  },
+
+  /** History forward in the peek preview. No-op without a live preview. */
+  async peekGoForward(): Promise<void> {
+    return invoke('peek_go_forward')
+  },
+
+  /** Reload the peek preview. No-op without a live preview. */
+  async peekReload(): Promise<void> {
+    return invoke('peek_reload')
   },
 
   /** Toggle reader mode inside the isolated preview. */

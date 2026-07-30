@@ -82,15 +82,23 @@ pub(crate) fn install_linux(webview: &webkit2gtk::WebView, label: &str) {
     });
 }
 
+/// While a peek preview is up in the calling window, find acts on it instead
+/// of the tab hidden behind it. Results then carry the peek label as their
+/// `tab_id`; the FindBar accepts both.
+fn find_target_label(window: &tauri::Window, id: TabId) -> String {
+    crate::peek::live_peek_label(window).unwrap_or_else(|| format!("tab-{}", id.as_uuid()))
+}
+
 #[tauri::command]
 pub async fn tab_find_string(
     app: AppHandle,
+    window: tauri::Window,
     id: TabId,
     query: String,
     backwards: bool,
     case_sensitive: bool,
 ) -> WisResult<()> {
-    let label = format!("tab-{}", id.as_uuid());
+    let label = find_target_label(&window, id);
     let webview = app
         .webviews()
         .get(&label)
@@ -180,16 +188,23 @@ pub async fn tab_find_string(
 }
 
 #[tauri::command]
-pub async fn tab_find_clear(app: AppHandle, id: TabId) -> WisResult<()> {
-    let label = format!("tab-{}", id.as_uuid());
-    let webview = app
-        .webviews()
-        .get(&label)
-        .cloned()
-        .ok_or_else(|| WisError::InvalidInput {
-            message: format!("no webview labelled {label}"),
-        })?;
+pub async fn tab_find_clear(app: AppHandle, window: tauri::Window, id: TabId) -> WisResult<()> {
+    let mut labels = vec![format!("tab-{}", id.as_uuid())];
+    if let Some(peek) = crate::peek::live_peek_label(&window) {
+        labels.push(peek);
+    }
 
+    for label in labels {
+        let Some(webview) = app.webviews().get(&label).cloned() else {
+            continue;
+        };
+        clear_webview(&webview)?;
+    }
+
+    Ok(())
+}
+
+fn clear_webview(webview: &tauri::webview::Webview) -> WisResult<()> {
     #[cfg(target_os = "macos")]
     {
         webview
@@ -208,7 +223,6 @@ pub async fn tab_find_clear(app: AppHandle, id: TabId) -> WisResult<()> {
 
     #[cfg(windows)]
     {
-        let _ = label;
         let _ = webview.eval("window.__wisFindClear && window.__wisFindClear();");
     }
 
@@ -228,7 +242,7 @@ pub async fn tab_find_clear(app: AppHandle, id: TabId) -> WisResult<()> {
 
     #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
-        let _ = (webview, label);
+        let _ = webview;
     }
 
     Ok(())

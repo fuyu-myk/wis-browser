@@ -380,7 +380,7 @@ pub fn install_phase_monitor(app: &tauri::AppHandle) {
         };
         if let Some(js) = js {
             for (label, webview) in app.webviews() {
-                if label.starts_with("tab-") {
+                if swipe_target(&label) {
                     let _ = webview.eval(js);
                 }
             }
@@ -422,10 +422,15 @@ pub async fn set_swipe_accent(
 
     let js = accent_script(&color);
     for (label, webview) in app.webviews() {
-        if label.starts_with("tab-") {
+        if swipe_target(&label) {
             let _ = webview.eval(&js);
         }
     }
 
     Ok(())
+}
+
+/// Webviews that carry the swipe gesture.
+pub(crate) fn swipe_target(label: &str) -> bool {
+    label.starts_with("tab-") || label.starts_with("peek-page-")
 }

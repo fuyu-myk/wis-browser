@@ -196,6 +196,7 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       return
     }
     case 'close_tab': {
+      if (isPeekOpen()) return
       if (!ctx.activeTab) return
       closeTabAnimated(ctx.activeTab.id)
       ctx.invalidate()
@@ -218,12 +219,14 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
     }
     case 'focus_url_bar':
     case 'focus_url_bar_alt': {
+      if (isPeekOpen()) return
       // The URL bar lives in the chrome, so a DOM CustomEvent reaches it.
       await commands.focusSelf()
       window.dispatchEvent(new CustomEvent(FOCUS_URLBAR_EVENT, { detail: { select: true } }))
       return
     }
     case 'reload':
+      if (isPeekOpen()) return
       if (ctx.activeTab) await commands.tabReload(ctx.activeTab.id)
       return
     case 'go_back':
@@ -272,6 +275,7 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       // `TabWebViewHost` owns the video-popout controller and handles this.
       return
     case 'open_command_palette':
+      if (isPeekOpen()) return
       window.dispatchEvent(new CustomEvent(COMMAND_PALETTE_OPEN_EVENT))
       return
     case 'new_private_window': {
@@ -461,6 +465,7 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       return
     }
     case 'hard_reload':
+      if (isPeekOpen()) return
       if (ctx.activeTab) await commands.tabHardReload(ctx.activeTab.id)
       return
     case 'toggle_reader': {

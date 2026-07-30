@@ -33,8 +33,52 @@ fn peek_label(window_label: &str) -> String {
     format!("{PEEK_LABEL}-{window_label}")
 }
 
+/// Label of this window's live preview webview, when one exists.
+pub fn live_peek_label(window: &tauri::Window) -> Option<String> {
+    let label = peek_label(window.label());
+    window
+        .app_handle()
+        .webviews()
+        .contains_key(&label)
+        .then_some(label)
+}
+
 /// Event emitted to the chrome when a link is Opt+clicked.
 const PEEK_OPEN_EVENT: &str = "wis-peek-open";
+
+/// Event carrying the preview's history availability and current URL to the
+/// peek surface (per navigation and after shell-driven history steps).
+const PEEK_NAV_EVENT: &str = "wis-peek-nav-state";
+
+#[derive(Debug, Serialize, Clone)]
+struct PeekNavEvent {
+    /// OS-window label the preview belongs to; the surface filters on its own.
+    window: String,
+    back: bool,
+    fwd: bool,
+    url: Option<String>,
+    /// Fresh assessment of `url`, so the warning banner and the high-risk
+    /// "Open as tab" gate follow in-peek navigation.
+    assessment: Option<LinkAssessment>,
+}
+
+fn emit_nav_state(app: &AppHandle, window_label: &str, webview: &tauri::webview::Webview) {
+    if let Some((back, fwd)) = crate::swipe_nav::push_nav_state(webview) {
+        let url = webview.url().ok().map(|u| u.to_string());
+        let assessment = url.as_deref().map(|u| wis_core::assess_link(u, None));
+        let event = PeekNavEvent {
+            window: window_label.to_string(),
+            back,
+            fwd,
+            url,
+            assessment,
+        };
+
+        if let Err(err) = tauri::Emitter::emit(app, PEEK_NAV_EVENT, event) {
+            log::warn!("emit {PEEK_NAV_EVENT} failed: {err}");
+        }
+    }
+}
 
 /// App handle for the native message handler to reach the async runtime.
 static APP: OnceLock<AppHandle> = OnceLock::new();
@@ -145,10 +189,38 @@ pub async fn open_peek(
         .incognito(true)
         .proxy_url(proxy_url);
 
-    // Fluent overlay scrollbars; WebView2 only.
+    // Swipe back/forward inside the preview.
+    let swipe_accent = state
+        .swipe_accent
+        .lock()
+        .expect("swipe_accent poisoned")
+        .clone();
+    builder = builder.initialization_script(crate::swipe_nav::accent_script(&swipe_accent));
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.initialization_script(crate::swipe_nav::phase_flag_script());
+    }
+    builder = builder.initialization_script(crate::swipe_nav::page_script());
+
+    // Feed the gesture's direction gating and the surface's arrow dulling on
+    // every navigation (also re-fires after the reader toggle's reload).
+    {
+        let app = app.clone();
+        let window_label = window.label().to_string();
+        builder = builder.on_page_load(move |webview, _payload| {
+            emit_nav_state(&app, &window_label, &webview);
+        });
+    }
+
+    // Fluent overlay scrollbars; WebView2 only. The message shim and the JS
+    // find engine ride the builder so find-in-peek can search and highlight.
     #[cfg(windows)]
     {
         builder = builder.scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
+        builder = builder
+            .initialization_script(crate::win_dispatch::SHIM_SCRIPT)
+            .initialization_script(crate::find::engine_script());
     }
 
     if let Some(ua) = &user_agent {
@@ -187,6 +259,16 @@ pub async fn open_peek(
     // Per-site camera/microphone consent gate.
     crate::permissions::install(&child);
 
+    // Find-in-peek match counts (WebKitGTK FindController signals).
+    #[cfg(target_os = "linux")]
+    {
+        let label_for_find = label.clone();
+        let _ = child.with_webview(move |w| {
+            let wv = w.inner();
+            crate::find::install_linux(&wv, &label_for_find);
+        });
+    }
+
     // Round the preview's corners so it sits cleanly inside the card.
     #[cfg(target_os = "macos")]
     {
@@ -209,7 +291,10 @@ pub async fn open_peek(
     }
 
     #[cfg(windows)]
-    crate::win_webview2::set_corner_radius(&child, 12.0);
+    {
+        crate::win_webview2::set_corner_radius(&child, 12.0);
+        crate::win_dispatch::install_find_only(&child);
+    }
 
     Ok(assessment)
 }
@@ -258,6 +343,61 @@ pub async fn close_peek(window: tauri::Window) -> WisResult<()> {
         crate::win_webview2::forget_corner_radius(&label);
         crate::win_focus::restore_webview_focus(window.app_handle(), window.label());
     }
+
+    Ok(())
+}
+
+/// Reload the preview. No-op without a live preview. Native reload rather
+/// than an eval, so a hung preview still responds.
+#[tauri::command]
+pub async fn peek_reload(window: tauri::Window) -> WisResult<()> {
+    let Some(label) = live_peek_label(&window) else {
+        return Ok(());
+    };
+    let Some(wv) = window.app_handle().webviews().get(&label).cloned() else {
+        return Ok(());
+    };
+
+    wv.reload().map_err(|err| WisError::InvalidInput {
+        message: format!("peek reload failed: {err}"),
+    })
+}
+
+/// Navigate the preview back in its history. No-op without a live preview.
+#[tauri::command]
+pub async fn peek_go_back(window: tauri::Window) -> WisResult<()> {
+    peek_history_step(&window, "back")
+}
+
+/// Counterpart to [`peek_go_back`].
+#[tauri::command]
+pub async fn peek_go_forward(window: tauri::Window) -> WisResult<()> {
+    peek_history_step(&window, "forward")
+}
+
+fn peek_history_step(window: &tauri::Window, direction: &str) -> WisResult<()> {
+    let label = peek_label(window.label());
+    let app = window.app_handle().clone();
+    let Some(wv) = app.webviews().get(&label).cloned() else {
+        return Ok(());
+    };
+
+    wv.eval(format!("window.history.{direction}()"))
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("peek history.{direction}() eval failed: {err}"),
+        })?;
+
+    // A same-document step fires no load event; re-read once it settles so
+    // the arrows and gesture gating stay fresh.
+    let window_label = window.label().to_string();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let Some(wv) = app.webviews().get(&label).cloned() else {
+            return;
+        };
+
+        emit_nav_state(&app, &window_label, &wv);
+    });
 
     Ok(())
 }

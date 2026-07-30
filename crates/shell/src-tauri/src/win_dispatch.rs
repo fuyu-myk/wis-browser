@@ -92,6 +92,41 @@ pub fn install<R: tauri::Runtime>(
     });
 }
 
+/// Install a find-scoped web-message receiver on the peek preview webview.
+/// The preview is untrusted, so only the `wisFindResult` channel is routed:
+/// the page gains none of the tab-only channels (`wisOpenInTab`, `wisPeek`,
+/// `wisKeybind`, ...) the full dispatcher would expose.
+pub fn install_find_only<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    let label = webview.label().to_string();
+    crate::win_webview2::with_core_webview2(webview, move |core| {
+        let handler = WebMessageReceivedEventHandler::create(Box::new(
+            move |_sender: Option<ICoreWebView2>,
+                  args: Option<ICoreWebView2WebMessageReceivedEventArgs>|
+                  -> windows::core::Result<()> {
+                if let Some(args) = args {
+                    let mut msg = windows::core::PWSTR::null();
+                    // SAFETY: `args` is live for the callback; `CoTaskMemPWSTR`
+                    // takes ownership of the returned buffer and frees it.
+                    if unsafe { args.TryGetWebMessageAsString(&mut msg) }.is_ok() {
+                        let raw = CoTaskMemPWSTR::from(msg).to_string();
+                        if let Ok(env) = serde_json::from_str::<Envelope>(&raw) {
+                            if env.handler == "wisFindResult" {
+                                crate::find::dispatch_message(&label, &env.body);
+                            }
+                        }
+                    }
+                }
+
+                Ok(())
+            },
+        ));
+
+        let mut token = 0_i64;
+        // SAFETY: runs on the UI thread via `with_core_webview2`.
+        let _ = unsafe { core.add_WebMessageReceived(&handler, &mut token) };
+    });
+}
+
 /// True when the message came from the top-level document, i.e. its source URI
 /// equals the webview's top-level URI. WebView2 runs the page scripts in every
 /// subframe (wry can't restrict to the main frame), so cosmetic/zap messages

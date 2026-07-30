@@ -11,12 +11,14 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { commands } from '@/bindings/commands'
-import type { LinkAssessment, WorkspaceId } from '@/bindings/types'
+import type { KeyAction, LinkAssessment, WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { canParkOffscreen } from '@/lib/platform'
-import { XIcon } from '@/lib/icons'
+import { isWindowFocused } from '@/lib/windowFocus'
+import { ArrowLeftIcon, ArrowRightIcon, XIcon } from '@/lib/icons'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
@@ -25,6 +27,8 @@ import { menusGlass } from '@/lib/glass'
 const PEEK_SHOW_EVENT = 'wis-peek-show'
 const PEEK_CLOSE_EVENT = 'wis-peek-close'
 const PEEK_READY_EVENT = 'wis-peek-ready'
+const PEEK_NAV_EVENT = 'wis-peek-nav-state'
+const KEYACTION_EVENT = 'wis-keyaction'
 
 interface PeekPayload {
   href: string
@@ -32,6 +36,15 @@ interface PeekPayload {
   /** Click point in window coords (set by the chrome) for the grow origin. */
   originX?: number
   originY?: number
+}
+
+interface PeekNavPayload {
+  /** OS-window label the preview belongs to. */
+  window: string
+  back: boolean
+  fwd: boolean
+  url: string | null
+  assessment: LinkAssessment | null
 }
 
 const RISK_LABEL: Record<LinkAssessment['risk'], string> = {
@@ -61,14 +74,24 @@ export function PeekSurface() {
   const [reader, setReader] = useState(false)
   // Extra friction before opening a high-risk link in a real tab.
   const [confirmOpen, setConfirmOpen] = useState(false)
+  // History availability of the preview, pushed by the peek nav-state event.
+  const [nav, setNav] = useState({ back: false, fwd: false })
+  // Where the preview actually is after in-peek navigation; this drives
+  // the host label and "Open as tab".
+  const [currentUrl, setCurrentUrl] = useState('')
 
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const hrefRef = useRef('')
   const textRef = useRef('')
+  const currentUrlRef = useRef('')
+  // True once a nav-state assessment replaced the creation-time one; blocks
+  // the openPeek promise from overwriting fresher data if it resolves late.
+  const navAssessedRef = useRef(false)
   const openedHrefRef = useRef<string | null>(null)
   const confirmOpenRef = useRef(false)
   const openRef = useRef(false)
   hrefRef.current = href
+  currentUrlRef.current = currentUrl
   confirmOpenRef.current = confirmOpen
   openRef.current = open
 
@@ -92,7 +115,9 @@ export function PeekSurface() {
           width: r.width,
           height: r.height,
         })
-        .then(setAssessment)
+        .then((a) => {
+          if (!navAssessedRef.current) setAssessment(a)
+        })
         .catch((err: unknown) => {
           console.error('open peek', err)
         })
@@ -108,6 +133,9 @@ export function PeekSurface() {
     setAssessment(null)
     setReader(false)
     setConfirmOpen(false)
+    setNav({ back: false, fwd: false })
+    setCurrentUrl('')
+    navAssessedRef.current = false
     void commands.closePeek().catch(() => undefined)
     void emit(PEEK_CLOSE_EVENT)
     void commands.hideOverlay('peek').catch(() => undefined)
@@ -128,6 +156,9 @@ export function PeekSurface() {
       openedHrefRef.current = null
       setAssessment(null)
       setReader(false)
+      setNav({ back: false, fwd: false })
+      setCurrentUrl('')
+      navAssessedRef.current = false
       setGrown(false)
       setHref(p.href)
       setOpen(true)
@@ -171,6 +202,62 @@ export function PeekSurface() {
     anim.addEventListener('finish', () => setGrown(true))
     return () => anim.cancel()
   }, [open, href])
+
+  // History availability + live URL from the preview's navigations, scoped
+  // to this OS window (the event is an app-wide broadcast).
+  useEffect(() => {
+    let cancelled = false
+    let unlisten: UnlistenFn | null = null
+    void listen<PeekNavPayload>(PEEK_NAV_EVENT, (e) => {
+      if (e.payload.window !== getCurrentWindow().label) return
+      if (!openRef.current) return
+      setNav({ back: e.payload.back, fwd: e.payload.fwd })
+      if (e.payload.url) {
+        setCurrentUrl(e.payload.url)
+        // While still on the peeked link, keep the creation assessment.
+        if (e.payload.assessment && e.payload.url !== hrefRef.current) {
+          navAssessedRef.current = true
+          setAssessment(e.payload.assessment)
+        }
+      }
+    }).then((fn) => {
+      if (cancelled) fn()
+      else unlisten = fn
+    })
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [])
+
+  // Page shortcuts act on the preview while it is up: navigation, reload,
+  // and close-tab dismisses the peek instead of invisibly closing the tab
+  // behind it.
+  useEffect(() => {
+    let cancelled = false
+    let unlisten: UnlistenFn | null = null
+    void listen<{ action: KeyAction }>(KEYACTION_EVENT, (e) => {
+      if (!openRef.current || !isWindowFocused()) return
+      const a = e.payload.action
+      if (a === 'go_back' || a === 'go_back_alt') {
+        void commands.peekGoBack().catch(() => undefined)
+      } else if (a === 'go_forward' || a === 'go_forward_alt') {
+        void commands.peekGoForward().catch(() => undefined)
+      } else if (a === 'reload' || a === 'hard_reload') {
+        setReader(false)
+        void commands.peekReload().catch(() => undefined)
+      } else if (a === 'close_tab') {
+        close()
+      }
+    }).then((fn) => {
+      if (cancelled) fn()
+      else unlisten = fn
+    })
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [close])
 
   // Esc dismisses (the confirm dialog first, then the peek itself).
   useEffect(() => {
@@ -225,8 +312,10 @@ export function PeekSurface() {
   }, [reader])
 
   const doOpenAsTab = useCallback(() => {
-    if (activeWorkspaceId && hrefRef.current) {
-      void commands.createTab(activeWorkspaceId, hrefRef.current).catch(() => undefined)
+    // Open where the preview actually is, not the originally-peeked link.
+    const target = currentUrlRef.current || hrefRef.current
+    if (activeWorkspaceId && target) {
+      void commands.createTab(activeWorkspaceId, target).catch(() => undefined)
     }
     close()
   }, [activeWorkspaceId, close])
@@ -254,9 +343,27 @@ export function PeekSurface() {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="kb-peek-header">
+          <button
+            type="button"
+            className="kb-peek-btn kb-peek-icon"
+            aria-label="Back"
+            disabled={!nav.back}
+            onClick={() => void commands.peekGoBack().catch(() => undefined)}
+          >
+            <ArrowLeftIcon />
+          </button>
+          <button
+            type="button"
+            className="kb-peek-btn kb-peek-icon"
+            aria-label="Forward"
+            disabled={!nav.fwd}
+            onClick={() => void commands.peekGoForward().catch(() => undefined)}
+          >
+            <ArrowRightIcon />
+          </button>
           <span className="kb-peek-badge">Peek</span>
-          <span className="kb-peek-host" title={href}>
-            {hostOf(href)}
+          <span className="kb-peek-host" title={currentUrl || href}>
+            {hostOf(currentUrl || href)}
           </span>
           <button
             type="button"
@@ -313,7 +420,7 @@ export function PeekSurface() {
             </div>
             <h2 className="kb-peek-confirm-title">Proceed to a high-risk site?</h2>
             <p className="kb-peek-confirm-text">
-              Wis flagged <strong>{hostOf(href)}</strong> as high risk. Opening it in a
+              Wis flagged <strong>{hostOf(currentUrl || href)}</strong> as high risk. Opening it in a
               normal tab leaves the protected preview: the site will load with full access
               to cookies and storage, like any other site. Only continue if you trust it.
             </p>

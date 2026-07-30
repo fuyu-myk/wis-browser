@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const SINK_MS = 220
 
@@ -47,6 +48,9 @@ interface FindResultPayload {
 }
 
 type Status = 'idle' | 'searching' | 'match' | 'no_match'
+
+/** Result key the backend uses when find targets this window's peek preview. */
+const PEEK_RESULT_ID = `peek-page-${getCurrentWindow().label}`
 
 /** The text shown beside the input: "3 of 17", "17 matches", or the miss. */
 function matchLabel(r: FindResultPayload): string {
@@ -164,7 +168,8 @@ export function FindSurface() {
     let unlisten: UnlistenFn | null = null
     let cancelled = false
     void listen<FindResultPayload>(FIND_RESULT_EVENT, (e) => {
-      if (e.payload.tab_id !== activeTabIdRef.current) return
+      if (e.payload.tab_id !== activeTabIdRef.current && e.payload.tab_id !== PEEK_RESULT_ID)
+        return
       // Ignore results for a query the user has already moved past.
       if (e.payload.query !== queryRef.current) return
       setStatus(e.payload.found ? 'match' : 'no_match')

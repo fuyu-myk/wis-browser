@@ -190,6 +190,33 @@ pub fn promote_to_front<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>)
     });
 }
 
+/// [`promote_to_front`], but only when the container is currently hidden
+/// (being revealed).
+pub fn promote_to_front_when_hidden<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    with_container_hwnd(webview, |hwnd| {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            IsWindowVisible, SetWindowPos, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        };
+
+        // SAFETY: runs on the UI thread; visibility read + z-order-only move.
+        unsafe {
+            if IsWindowVisible(hwnd).as_bool() {
+                return;
+            }
+
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_TOP),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+    });
+}
+
 /// Move Win32 keyboard focus into the webview's WebView2 controller.
 pub fn move_focus<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
     with_controller(webview, |controller| {

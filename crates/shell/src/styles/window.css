@@ -4172,6 +4172,7 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   transition: background var(--transition-speed) ease, border-color var(--transition-speed) ease;
 }
 .kb-peek-btn:hover { background: var(--overlay); border-color: var(--border-strong); }
+.kb-peek-btn:disabled { opacity: 0.35; pointer-events: none; }
 .kb-peek-btn.is-on { background: var(--primary-500); border-color: transparent; color: #fff; }
 .kb-peek-btn.kb-peek-icon {
   display: inline-flex;

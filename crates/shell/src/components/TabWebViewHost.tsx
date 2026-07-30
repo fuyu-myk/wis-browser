@@ -366,6 +366,9 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
       const rect = findRect()
       if (!rect) return
       await findOverlay.show(rect)
+      // Already-visible bar summoned again (Cmd+F after a peek opened over
+      // it): the reveal-transition restack can't fire, so promote explicitly.
+      await commands.promoteOverlay('find').catch(() => undefined)
       findOpenRef.current = true
       await emit(FIND_FOCUS_EVENT)
     }
