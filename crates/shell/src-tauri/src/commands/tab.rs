@@ -180,6 +180,7 @@ pub async fn close_tab(
     }
 
     crate::audio::forget_tab(&app, id);
+    crate::tab_preview::forget(&app, &state, id);
 
     mutate_unit_immediate(&app, &state, move |s| {
         let workspace_id = s.tab(id)?.workspace_id;

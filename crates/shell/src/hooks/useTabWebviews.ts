@@ -225,6 +225,7 @@ export function useTabWebviews({
     (id: TabId, wv: Webview) => {
       // Hold the slot with pending until the native close completes.
       webviewsRef.current.set(id, PENDING as unknown as Webview)
+      void commands.stashTabPreview(id).catch(() => undefined)
       void commands
         .tabInteractionState(id)
         .then((state) => {
@@ -285,6 +286,8 @@ export function useTabWebviews({
       }
       if (vis.get(id) !== false) {
         vis.set(id, false)
+        // Refresh the hover preview at switch-away.
+        void commands.stashTabPreview(id).catch(() => undefined)
         void wv.hide().catch(() => undefined)
         if (PARK_HIDDEN_OFFSCREEN) applyBounds(wv, OFFSCREEN_BOUNDS)
         if (!transientRef.current && id !== activeTabIdRef.current) {

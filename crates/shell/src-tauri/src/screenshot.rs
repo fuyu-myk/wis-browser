@@ -241,6 +241,15 @@ fn screenshot_filename() -> String {
     )
 }
 
+/// Downscaled viewport snapshot for the hover tab preview (macOS).
+#[cfg(target_os = "macos")]
+pub(crate) async fn preview_snapshot(
+    webview: &tauri::webview::Webview,
+    width: f64,
+) -> WisResult<Vec<u8>> {
+    imp::snapshot_scaled(webview, width).await
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
@@ -342,6 +351,48 @@ mod imp {
             })?;
 
         recv_blocking(rx, Duration::from_secs(30))
+            .await
+            .flatten()
+            .ok_or_else(|| WisError::InvalidInput {
+                message: "the page could not be captured".to_string(),
+            })
+    }
+
+    /// Snapshot the viewport scaled to `width` points, downsized by the engine.
+    pub(super) async fn snapshot_scaled<R: tauri::Runtime>(
+        webview: &tauri::webview::Webview<R>,
+        width: f64,
+    ) -> WisResult<Vec<u8>> {
+        let (tx, rx) = mpsc::channel::<Option<Vec<u8>>>();
+        // SAFETY: the closure runs on the main thread via `with_webview`; wry
+        // retains the WKWebView for its duration, and the config's `new` +1
+        // is balanced by the release after the snapshot call (the engine
+        // retains it while capturing).
+        webview
+            .with_webview(move |w| unsafe {
+                let wk: *mut AnyObject = w.inner() as *mut AnyObject;
+                if wk.is_null() {
+                    let _ = tx.send(None);
+                    return;
+                }
+
+                let cfg: *mut AnyObject = msg_send![class!(WKSnapshotConfiguration), new];
+                let num: *mut AnyObject = msg_send![class!(NSNumber), numberWithDouble: width];
+                let _: () = msg_send![cfg, setSnapshotWidth: num];
+                let _: () = msg_send![cfg, setAfterScreenUpdates: Bool::NO];
+
+                let block = RcBlock::new(move |image: *mut AnyObject, _err: *mut AnyObject| {
+                    let _ = tx.send(image_to_png(image));
+                });
+                let _: () =
+                    msg_send![wk, takeSnapshotWithConfiguration: cfg, completionHandler: &*block];
+                let _: () = msg_send![cfg, release];
+            })
+            .map_err(|err| WisError::InvalidInput {
+                message: format!("with_webview failed: {err}"),
+            })?;
+
+        recv_blocking(rx, Duration::from_secs(5))
             .await
             .flatten()
             .ok_or_else(|| WisError::InvalidInput {
@@ -882,11 +933,94 @@ fn copy_png_to_clipboard(png: &[u8]) -> bool {
     }
 }
 
+/// Downscaled viewport snapshot for the hover tab preview (Windows/Linux):
+/// a full capture then a box-filter resize.
+#[cfg(any(windows, target_os = "linux"))]
+pub(crate) async fn preview_snapshot(
+    webview: &tauri::webview::Webview,
+    width: f64,
+) -> WisResult<Vec<u8>> {
+    #[cfg(windows)]
+    let png = imp_win::capture_visible(webview).await?;
+
+    #[cfg(target_os = "linux")]
+    let png = imp_linux::capture_visible(webview).await?;
+
+    downscale_png(&png, width as usize).ok_or_else(|| WisError::InvalidInput {
+        message: "preview downscale failed".to_string(),
+    })
+}
+
+/// Box-filter downscale of an 8-bit PNG to `target_w` wide (aspect kept,
+/// RGBA out). `None` on decode failure or exotic formats; never upscales.
+#[cfg(any(windows, target_os = "linux"))]
+fn downscale_png(png_bytes: &[u8], target_w: usize) -> Option<Vec<u8>> {
+    let mut reader = png::Decoder::new(png_bytes).read_info().ok()?;
+    let mut buf = vec![0u8; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buf).ok()?;
+    if info.bit_depth != png::BitDepth::Eight {
+        return None;
+    }
+
+    let (w, h) = (info.width as usize, info.height as usize);
+    if w == 0 || h == 0 {
+        return None;
+    }
+
+    let rgba: Vec<u8> = match info.color_type {
+        png::ColorType::Rgba => buf[..info.buffer_size()].to_vec(),
+        png::ColorType::Rgb => buf[..info.buffer_size()]
+            .chunks_exact(3)
+            .flat_map(|p| [p[0], p[1], p[2], 255])
+            .collect(),
+        _ => return None,
+    };
+
+    let tw = target_w.clamp(1, w);
+    let th = ((h * tw + w / 2) / w).max(1);
+    let mut scaled = vec![0u8; tw * th * 4];
+    for ty in 0..th {
+        let sy0 = ty * h / th;
+        let sy1 = ((ty + 1) * h / th).clamp(sy0 + 1, h);
+        for tx in 0..tw {
+            let sx0 = tx * w / tw;
+            let sx1 = ((tx + 1) * w / tw).clamp(sx0 + 1, w);
+            let mut acc = [0usize; 4];
+            let mut count = 0usize;
+
+            for sy in sy0..sy1 {
+                for sx in sx0..sx1 {
+                    let at = (sy * w + sx) * 4;
+                    for (c, a) in acc.iter_mut().enumerate() {
+                        *a += rgba[at + c] as usize;
+                    }
+                    count += 1;
+                }
+            }
+
+            let at = (ty * tw + tx) * 4;
+            for (c, a) in acc.iter().enumerate() {
+                scaled[at + c] = (a / count) as u8;
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut out, tw as u32, th as u32);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().ok()?;
+        writer.write_image_data(&scaled).ok()?;
+    }
+
+    Some(out)
+}
+
 /// Crop a PNG to `frac` (a rectangle in [0,1] fractions of the image), for the
 /// Windows region capture. Fractions keep the crop DPI-independent: the caller
 /// normalizes the window-space selection against the tab viewport, so no scale
 /// factor is needed here. Returns `None` on a decode failure or an empty crop.
-#[cfg(any(windows, target_os = "linux"))]
 #[cfg(any(windows, target_os = "linux"))]
 fn crop_png(png: &[u8], frac: CropRect) -> Option<Vec<u8>> {
     let mut reader = png::Decoder::new(png).read_info().ok()?;

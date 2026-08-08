@@ -41,6 +41,7 @@ mod screenshot;
 mod state;
 mod suggest;
 mod swipe_nav;
+mod tab_preview;
 mod tab_session;
 mod themes;
 mod vault;
@@ -186,6 +187,9 @@ pub fn run() {
                 let state = app.state::<AppState>();
                 if let Err(err) = state.storage.purge_tab_sessions_except(&restored_tab_ids) {
                     log::warn!("purge orphaned tab sessions: {err}");
+                }
+                if let Some(dir) = tab_preview::previews_dir(app.handle()) {
+                    tab_preview::purge_except(&dir, &restored_tab_ids);
                 }
 
                 match state.storage.load_tab_sessions() {
@@ -564,6 +568,8 @@ pub fn run() {
             commands::tab_set_reader,
             commands::tab_go_back,
             commands::tab_go_forward,
+            tab_preview::stash_tab_preview,
+            tab_preview::capture_tab_preview,
             commands::update_settings,
             commands::apply_shortcuts,
             commands::check_url_policy,

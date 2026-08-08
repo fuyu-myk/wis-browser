@@ -630,6 +630,16 @@ export const commands = {
     return invoke('tab_go_back', { id })
   },
 
+  /** Capture a tab into the hover-preview cache. */
+  async stashTabPreview(id: TabId): Promise<void> {
+    return invoke('stash_tab_preview', { id })
+  },
+
+  /** The hover preview for a tab as a PNG data URL, or null (placeholder). */
+  async captureTabPreview(id: TabId): Promise<string | null> {
+    return invoke('capture_tab_preview', { id })
+  },
+
   /** History forward in the tab. No-ops at end of history. */
   async tabGoForward(id: TabId): Promise<void> {
     return invoke('tab_go_forward', { id })

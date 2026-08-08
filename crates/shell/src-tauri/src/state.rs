@@ -126,6 +126,9 @@ pub struct AppState {
     /// Workspaces whose saved session cookies have already been restored into
     /// their WebKit data store this run, these are only restored once per workspace.
     pub restored_cookies: Mutex<HashSet<WorkspaceId>>,
+    /// Hover-preview snapshots (downscaled PNGs), newest last; capped (see
+    /// [`crate::tab_preview`]). Captured on switch-away/sleep, served on hover.
+    pub tab_previews: std::sync::Mutex<Vec<(wis_core::TabId, Vec<u8>)>>,
     /// Tracked downloads, oldest first (see [`crate::downloads`]). A sync
     /// mutex because wry's download callbacks are synchronous main-thread
     /// code that cannot await.
@@ -219,6 +222,7 @@ impl AppState {
             pending_restore_states: Mutex::new(HashMap::new()),
             nav_guard_bypass: Mutex::new(HashSet::new()),
             restored_cookies: Mutex::new(HashSet::new()),
+            tab_previews: std::sync::Mutex::new(Vec::new()),
             downloads: std::sync::Mutex::new(Vec::new()),
             download_prefs: std::sync::Mutex::new(download_prefs),
             video_popout: std::sync::Mutex::new(Default::default()),

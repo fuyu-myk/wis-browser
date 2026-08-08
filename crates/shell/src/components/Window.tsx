@@ -13,6 +13,7 @@ import { useWindowPickerOverlay } from '@/hooks/useWindowPickerOverlay'
 import { useNavGuardOverlay } from '@/hooks/useNavGuardOverlay'
 import { useOpenInTab } from '@/hooks/useOpenInTab'
 import { usePeekOverlay } from '@/hooks/usePeekOverlay'
+import { useTabHoverPreview } from '@/hooks/useTabHoverPreview'
 import { useScreenshotToastOverlay } from '@/hooks/useScreenshotToastOverlay'
 import { useScreenshotRegionOverlay } from '@/hooks/useScreenshotRegionOverlay'
 import { useToastOverlay } from '@/hooks/useToastOverlay'
@@ -50,6 +51,7 @@ export function Window({ state, settings }: WindowProps) {
   useWindowPickerOverlay()
   useClearDataOverlay()
   usePeekOverlay()
+  useTabHoverPreview()
   useOpenInTab()
   useNavGuardOverlay()
   useBookmarksOverlay()
