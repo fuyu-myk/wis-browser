@@ -8987,7 +8987,7 @@ dependencies = [
 
 [[package]]
 name = "wis-browser"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -9030,7 +9030,7 @@ dependencies = [
 
 [[package]]
 name = "wis-core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "serde",
@@ -9042,7 +9042,7 @@ dependencies = [
 
 [[package]]
 name = "wis-network"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "adblock",
  "arti-client",
@@ -9066,7 +9066,7 @@ dependencies = [
 
 [[package]]
 name = "wis-secrets"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "argon2",
  "chacha20poly1305",
@@ -9080,7 +9080,7 @@ dependencies = [
 
 [[package]]
 name = "wis-storage"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "rusqlite",
