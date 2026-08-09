@@ -10,6 +10,7 @@ import { useDownloadsOverlay } from '@/hooks/useDownloadsOverlay'
 import { useCommandPaletteOverlay } from '@/hooks/useCommandPaletteOverlay'
 import { useDockIcon } from '@/hooks/useDockIcon'
 import { useWindowPickerOverlay } from '@/hooks/useWindowPickerOverlay'
+import { useExternalUrls } from '@/hooks/useExternalUrls'
 import { useNavGuardOverlay } from '@/hooks/useNavGuardOverlay'
 import { useOpenInTab } from '@/hooks/useOpenInTab'
 import { usePeekOverlay } from '@/hooks/usePeekOverlay'
@@ -53,6 +54,7 @@ export function Window({ state, settings }: WindowProps) {
   usePeekOverlay()
   useTabHoverPreview()
   useOpenInTab()
+  useExternalUrls()
   useNavGuardOverlay()
   useBookmarksOverlay()
   useDownloadsOverlay()

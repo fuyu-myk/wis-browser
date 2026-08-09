@@ -61,6 +61,7 @@ windows = { version = "0.61", features = [
     "Win32_Graphics_Gdi",
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
+    "Win32_System_Registry",
     "Win32_System_WinRT",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
@@ -70,6 +71,11 @@ windows-future = "0.2"
 webview2-com = "0.38"
 # Strip the `\\?\` verbatim prefix `fs::canonicalize` adds on Windows.
 dunce = "1"
+
+# Forward a second launch's argv (a link clicked in another app while Wis is
+# running) to the existing instance.
+[target.'cfg(any(windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = "2"
 
 # Cross-platform clipboard + native file dialogs (the macOS path uses NSPasteboard
 # / NSSave-OpenPanel directly; these cover the Windows/Linux equivalents).

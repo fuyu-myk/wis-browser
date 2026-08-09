@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
+import { commands } from '@/bindings/commands'
 import type { UaProfile, UserSettingsPatch } from '@/bindings/types'
 import { Segmented } from '@/components/controls'
+import { currentPlatform } from '@/lib/platform'
 
 type SimpleUa = 'safari' | 'chrome' | 'default'
 
@@ -33,6 +35,13 @@ function normalizeHostInput(raw: string): string {
   return s.replace(/^www\./, '')
 }
 
+function defaultBrowserHelp(isDefault: boolean | null): string {
+  if (isDefault === true) return 'Wis is your default browser. Links from other apps open here.'
+  if (currentPlatform() === 'windows')
+    return 'Registers Wis and opens Windows Settings, where you pick Wis as the default.'
+  return 'Links clicked in other apps will open in Wis.'
+}
+
 interface CompatibilitySectionProps {
   profile: UaProfile
   overrides: Record<string, UaProfile>
@@ -42,6 +51,33 @@ interface CompatibilitySectionProps {
 export function CompatibilitySection({ profile, overrides, onUpdate }: CompatibilitySectionProps) {
   const [host, setHost] = useState('')
   const [newProfile, setNewProfile] = useState<SimpleUa>('chrome')
+  const [isDefault, setIsDefault] = useState<boolean | null>(null)
+  const [settingDefault, setSettingDefault] = useState(false)
+
+  const refreshDefault = useCallback(() => {
+    commands
+      .defaultBrowserStatus()
+      .then(setIsDefault)
+      .catch(() => setIsDefault(null))
+  }, [])
+
+  useEffect(() => {
+    refreshDefault()
+    window.addEventListener('focus', refreshDefault)
+    return () => window.removeEventListener('focus', refreshDefault)
+  }, [refreshDefault])
+
+  const setAsDefault = async () => {
+    setSettingDefault(true)
+    try {
+      await commands.setDefaultBrowser()
+      refreshDefault()
+    } catch {
+      // Leave the row as-is; the button stays available to retry.
+    } finally {
+      setSettingDefault(false)
+    }
+  }
 
   const globalValue: SimpleUa = typeof profile === 'string' ? profile : 'safari'
   const entries = Object.entries(overrides).sort(([a], [b]) => a.localeCompare(b))
@@ -62,6 +98,20 @@ export function CompatibilitySection({ profile, overrides, onUpdate }: Compatibi
   return (
     <section id="compatibility" className="sec">
       <div className="sec-h">Compatibility</div>
+      <div className="row">
+        <div className="l">
+          <span>Default browser</span>
+          <span>{defaultBrowserHelp(isDefault)}</span>
+        </div>
+        <button
+          type="button"
+          className="kb-btn"
+          onClick={() => void setAsDefault()}
+          disabled={settingDefault || isDefault === true}
+        >
+          {isDefault === true ? 'Default' : 'Set as default'}
+        </button>
+      </div>
       <div className="row">
         <div className="l">
           <span>Browser identity</span>

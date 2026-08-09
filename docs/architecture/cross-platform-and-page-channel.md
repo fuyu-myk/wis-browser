@@ -55,6 +55,7 @@ Wis is macOS-first (WKWebView). Windows (WebView2) is tier-1; Linux (WebKitGTK) 
 - Find-in-page (`find.rs`): WebKit find SPI (`_WKFindDelegate`, retained as an associated object; reports total + index over `wis-find-result`) on macOS; a JS `CSS.highlights` engine over `wisFindResult` on Windows (top-document, ASCII-only case folding to keep offsets length-stable); WebKitGTK `FindController` on Linux, which exposes no current-match index so it reports the total count only.
 - Print / Save-as-PDF (`print.rs`): WKWebView `printOperationWithPrintInfo:` / `ICoreWebView2_16::ShowPrintUI` / WebKitGTK `webkit_print_operation_run_dialog`.
 - Open-in-default-browser (`external.rs`) is already cross-platform via the OS shell.
+- Default-browser registration + external link intake (`default_browser.rs`): macOS declares http(s) in `Info.plist` (`CFBundleURLTypes` + `CFBundleDocumentTypes`) and asks via `NSWorkspace setDefaultApplicationAtURL:` on the main thread (`LSSetDefaultHandlerForURLScheme` fallback for pre-12), links arriving as `RunEvent::Opened`; Windows writes the HKCU `StartMenuInternet` registration (`win_default_browser.rs`) and opens `ms-settings:defaultapps` since programmatic switching is not allowed, links arriving via argv with `tauri-plugin-single-instance` forwarding second launches; Linux ships a custom bundler desktop template (`wis.desktop`: `MimeType` + `Exec %U`, reused by deb and AppImage) and applies via `xdg-settings`, links via argv likewise. Incoming URLs pass a pure http(s)-only validator, queue in a module static (not `AppState`: the launch Apple Event can precede tauri's `setup`, when managed state does not exist yet and a `state()` call would panic-abort across the extern "C" delegate) until the main chrome's one-shot `drain_external_urls`, then stream as `wis-open-external` events (main-window handler, deliberately not focus-gated: an external open can precede app activation).
 
 ## Feature-availability toast
 
@@ -62,7 +63,7 @@ Wis is macOS-first (WKWebView). Windows (WebView2) is tier-1; Linux (WebKitGTK) 
 
 ## Deferred to a Windows runner
 
-**These have no compile-only path; each needs runtime validation on real hardware.** Session-cookie restore (Tauri's cookie API needs a live webview, but restore must precede the first load), uBO `+js` scriptlet swap (document-start registration inside the navigation event, re-entrant message-pump risk), full session/history restore (no `interactionState` equivalent), and the whole-window composite screenshot (needs the chrome+overlay compositor, so Window degrades to a page-only shot). Windows page capture (`CapturePreview`) is done, so Visible works, Window falls back to it, and Region crops it (`crop_png`); a failed clipboard copy is fatal (no false "Copied" toast). Per-tab task-manager memory is an honest empty on Windows (WebView2 shares one process group with no per-tab renderer pid).
+**These have no compile-only path; each needs runtime validation on real hardware.** Session-cookie restore (Tauri's cookie API needs a live webview, but restore must precede the first load), uBO `+js` scriptlet swap (document-start registration inside the navigation event, re-entrant message-pump risk), full session/history restore (no `interactionState` equivalent), and the whole-window composite screenshot (needs the chrome+overlay compositor, so Window degrades to a page-only shot). Windows page capture (`CapturePreview`) is done, so Visible works, Window falls back to it, and Region crops it (`crop_png`); a failed clipboard copy is fatal (no false "Copied" toast). Per-tab task-manager memory is an honest empty on Windows (WebView2 shares one process group with no per-tab renderer pid). Default-browser registration compiles on CI, but the Settings > Default apps listing and argv link forwarding need a real runner.
 
 ## Platform status
 
@@ -79,6 +80,6 @@ Wis is macOS-first (WKWebView). Windows (WebView2) is tier-1; Linux (WebKitGTK) 
 | Session + history restore | yes | deferred to runner | not yet |
 | Session-cookie persistence | yes | deferred to runner | not yet |
 | Per-tab task-manager memory | yes | empty (shared process) | not yet |
-| Default-browser registration | yes | not yet | not yet |
+| Default-browser registration + external links | yes | deferred to runner | CI-only |
 
 Linux rows marked CI-only compile on ubuntu-22.04 but have no hardware run yet. WIS.md carries the authoritative summary in its Cross-platform conventions and Known limitations sections.

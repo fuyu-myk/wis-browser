@@ -11,6 +11,7 @@ mod commands;
 mod content_filter;
 mod cookies;
 mod cosmetic;
+mod default_browser;
 mod downloads;
 mod edit_keys;
 mod error_compat;
@@ -51,6 +52,8 @@ mod webview_close;
 mod webview_prefs;
 mod widget_panel;
 #[cfg(windows)]
+mod win_default_browser;
+#[cfg(windows)]
 mod win_dispatch;
 #[cfg(windows)]
 mod win_focus;
@@ -79,8 +82,21 @@ pub fn run() {
         .finish();
     let _ = tracing::subscriber::set_global_default(subscriber);
 
-    #[allow(unused_mut)]
-    let mut builder = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(any(windows, target_os = "linux"))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            default_browser::handle_external_urls(app, argv.into_iter().skip(1));
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(err) = window.set_focus() {
+                    log::warn!("focus after second-instance launch failed: {err}");
+                }
+            }
+        }));
+    }
+
+    builder = builder
         .register_asynchronous_uri_scheme_protocol("wis-asset", wallpapers::handle_asset_request)
         .plugin(
             tauri_plugin_log::Builder::default()
@@ -358,6 +374,14 @@ pub fn run() {
             // App handle for the link-open handler.
             link_open::set_app_handle(app.handle().clone());
 
+            // A first launch's argv can itself carry a URL (Wis started by a
+            // link click); queued until the chrome drains it.
+            #[cfg(any(windows, target_os = "linux"))]
+            default_browser::handle_external_urls(
+                app.handle(),
+                std::env::args_os().skip(1).filter_map(|a| a.into_string().ok()),
+            );
+
             // App handle for the cosmetic-filtering handler.
             cosmetic::set_app_handle(app.handle().clone());
 
@@ -578,6 +602,9 @@ pub fn run() {
             commands::set_dock_icon,
             commands::refresh_filter_lists,
             external::open_in_external_browser,
+            default_browser::default_browser_status,
+            default_browser::set_default_browser,
+            default_browser::drain_external_urls,
             clipboard::copy_text,
             memory::list_webview_memory,
             commands::start_element_picker,
@@ -673,6 +700,16 @@ pub fn run() {
                 if label == "main" {
                     video_popout::close_popout_window(app_handle);
                 }
+            }
+
+            // Links opened from other apps (Wis as the default browser)
+            // arrive as Apple Events; queued until the chrome can open tabs.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &event {
+                default_browser::handle_external_urls(
+                    app_handle,
+                    urls.iter().map(|u| u.to_string()),
+                );
             }
         });
 }

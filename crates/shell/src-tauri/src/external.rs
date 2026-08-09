@@ -12,7 +12,7 @@ use wis_core::{WisError, WisResult};
 /// browser" would loop straight back into Wis, so the macOS path falls back to
 /// Safari in that case.
 #[cfg(target_os = "macos")]
-const WIS_BUNDLE_ID: &str = "app.myk.wis";
+pub(crate) const WIS_BUNDLE_ID: &str = "app.myk.wis";
 
 /// Open `url` in the user's default browser. Only `http(s)` is accepted so this
 /// can never be used to launch arbitrary apps or `file://` paths.
@@ -53,8 +53,9 @@ fn open_external(url: &str) -> WisResult<()> {
 
 /// True if the macOS default handler for `url` is Wis itself. Best-effort: any
 /// failure resolves to `false`, so the normal default-browser path is used.
+/// This is also the status probe for the default-browser settings row.
 #[cfg(target_os = "macos")]
-fn default_browser_is_wis(url: &str) -> bool {
+pub(crate) fn default_browser_is_wis(url: &str) -> bool {
     use objc2::msg_send;
     use objc2::runtime::AnyObject;
     use std::ffi::{CStr, CString};
@@ -64,7 +65,7 @@ fn default_browser_is_wis(url: &str) -> bool {
         return false;
     };
 
-    unsafe {
+    objc2::rc::autoreleasepool(|_| unsafe {
         let url_string: *mut AnyObject =
             msg_send![objc2::class!(NSString), stringWithUTF8String: c_url.as_ptr()];
         if url_string.is_null() {
@@ -97,7 +98,7 @@ fn default_browser_is_wis(url: &str) -> bool {
         CStr::from_ptr(utf8)
             .to_string_lossy()
             .eq_ignore_ascii_case(WIS_BUNDLE_ID)
-    }
+    })
 }
 
 #[cfg(target_os = "linux")]

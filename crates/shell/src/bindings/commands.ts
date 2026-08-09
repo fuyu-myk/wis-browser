@@ -680,6 +680,29 @@ export const commands = {
     return invoke('open_in_external_browser', { url })
   },
 
+  /** True when Wis is the OS default browser. Best-effort; unknown reads false. */
+  async defaultBrowserStatus(): Promise<boolean> {
+    return invoke('default_browser_status')
+  },
+
+  /**
+   * Ask the OS to make Wis the default browser. macOS shows the system
+   * confirmation dialog; Windows registers Wis and opens Settings > Default
+   * apps for the user to complete; Linux applies via xdg-settings.
+   */
+  async setDefaultBrowser(): Promise<void> {
+    return invoke('set_default_browser')
+  },
+
+  /**
+   * One-shot handover of URLs opened from other apps before the chrome
+   * mounted. Marks the external-open pipe live; later opens arrive as
+   * `wis-open-external` events.
+   */
+  async drainExternalUrls(): Promise<string[]> {
+    return invoke('drain_external_urls')
+  },
+
   /**
    * Open widget `id`'s quick-launch panel: a floating webview above the tab
    * webviews, sharing the active workspace's data store and proxy. Reveals
