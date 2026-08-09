@@ -13,6 +13,7 @@ import type {
   ImportSummary,
   Bookmark,
   BookmarkFolder,
+  BookmarkImportStats,
   BrowserState,
   CredentialSummary,
   CustomTheme,
@@ -1192,6 +1193,23 @@ export const commands = {
 
   async deleteBookmark(id: number): Promise<void> {
     return invoke('delete_bookmark', { id })
+  },
+
+  /**
+   * Export the workspace's bookmarks as a Netscape HTML file (the format
+   * every browser imports) via a save panel. Resolves false on cancel.
+   */
+  async exportBookmarksHtml(workspaceId: WorkspaceId): Promise<boolean> {
+    return invoke('export_bookmarks_html', { workspaceId })
+  },
+
+  /**
+   * Pick a bookmarks HTML file (any browser's export) and import it into the
+   * workspace: folders are reused or created, duplicates skipped. Null on
+   * cancel.
+   */
+  async importBookmarksHtml(workspaceId: WorkspaceId): Promise<BookmarkImportStats | null> {
+    return invoke('import_bookmarks_html', { workspaceId })
   },
 
   // -- favicons -------------------------------------------------------------

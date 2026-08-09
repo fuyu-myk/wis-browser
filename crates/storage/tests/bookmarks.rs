@@ -198,3 +198,86 @@ fn rename_folder_updates_name() {
     let folders = s.list_bookmark_folders(ws).expect("folders");
     assert_eq!(folders[0].name, "New");
 }
+
+fn import_entry(folder: Option<usize>, url: &str, title: &str) -> wis_storage::BookmarkImport {
+    wis_storage::BookmarkImport {
+        folder,
+        url: url.to_string(),
+        title: title.to_string(),
+    }
+}
+
+#[test]
+fn import_creates_folders_and_appends_after_existing_rows() {
+    let s = store();
+    let ws = WorkspaceId::new();
+    let existing = s
+        .add_bookmark(ws, None, "https://old/", "Old", None, false)
+        .expect("existing");
+
+    let stats = s
+        .import_bookmarks(
+            ws,
+            &["Work".to_string()],
+            &[
+                import_entry(None, "https://unfiled/", "Unfiled"),
+                import_entry(Some(0), "https://work/", "Work item"),
+            ],
+        )
+        .expect("import");
+
+    assert_eq!(stats.folders_added, 1);
+    assert_eq!(stats.bookmarks_added, 2);
+    assert_eq!(stats.bookmarks_skipped, 0);
+
+    let folders = s.list_bookmark_folders(ws).expect("folders");
+    assert_eq!(folders.len(), 1);
+    let all = s.list_bookmarks(ws).expect("list");
+    let unfiled = all.iter().find(|b| b.url == "https://unfiled/").unwrap();
+    assert_eq!(unfiled.folder_id, None);
+    assert_eq!(unfiled.position, existing.position + 1);
+    let work = all.iter().find(|b| b.url == "https://work/").unwrap();
+    assert_eq!(work.folder_id, Some(folders[0].id));
+    assert_eq!(work.position, 0);
+    assert!(!work.pinned);
+}
+
+#[test]
+fn import_reuses_folders_and_skips_duplicates() {
+    let s = store();
+    let ws = WorkspaceId::new();
+    let folder = s.create_bookmark_folder(ws, "Work").expect("folder");
+    s.add_bookmark(ws, Some(folder.id), "https://dup/", "Dup", None, false)
+        .expect("seed");
+
+    let stats = s
+        .import_bookmarks(
+            ws,
+            &["Work".to_string()],
+            &[
+                import_entry(Some(0), "https://dup/", "Dup"),
+                import_entry(Some(0), "https://new/", "New"),
+            ],
+        )
+        .expect("import");
+
+    assert_eq!(stats.folders_added, 0);
+    assert_eq!(stats.bookmarks_added, 1);
+    assert_eq!(stats.bookmarks_skipped, 1);
+    assert_eq!(s.list_bookmark_folders(ws).expect("folders").len(), 1);
+
+    // A second identical import is a no-op apart from the skip count.
+    let again = s
+        .import_bookmarks(
+            ws,
+            &["Work".to_string()],
+            &[
+                import_entry(Some(0), "https://dup/", "Dup"),
+                import_entry(Some(0), "https://new/", "New"),
+            ],
+        )
+        .expect("re-import");
+    assert_eq!(again.bookmarks_added, 0);
+    assert_eq!(again.bookmarks_skipped, 2);
+    assert_eq!(s.list_bookmarks(ws).expect("list").len(), 2);
+}

@@ -662,6 +662,8 @@ pub fn run() {
             bookmarks::reorder_pinned_bookmarks,
             bookmarks::reorder_bookmarks,
             bookmarks::delete_bookmark,
+            bookmarks::export_bookmarks_html,
+            bookmarks::import_bookmarks_html,
             overlay::focus_webview,
             overlay::focus_self,
             overlay::ensure_overlay,

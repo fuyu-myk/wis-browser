@@ -13,7 +13,7 @@ pub mod searches;
 pub mod sqlite;
 pub mod traits;
 
-pub use bookmarks::{Bookmark, BookmarkFolder};
+pub use bookmarks::{Bookmark, BookmarkFolder, BookmarkImport, BookmarkImportStats};
 pub use credentials::CredentialRecord;
 pub use downloads::DownloadRecord;
 pub use error::{StorageError, StorageResult};

@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::bookmarks::{Bookmark, BookmarkFolder};
+use crate::bookmarks::{Bookmark, BookmarkFolder, BookmarkImport, BookmarkImportStats};
 use crate::credentials::CredentialRecord;
 use crate::downloads::DownloadRecord;
 use crate::error::StorageResult;
@@ -166,6 +166,19 @@ pub trait Storage: Send + Sync {
         favicon_hash: Option<&str>,
         pinned: bool,
     ) -> StorageResult<Bookmark>;
+
+    /// Bulk-insert imported bookmarks in one transaction (HTML import).
+    /// Folder names are reused when the workspace already has a folder of
+    /// that name, created otherwise; each entry's `folder` indexes into
+    /// `folders` (an out-of-range index stores the entry unfiled). Entries
+    /// whose (folder, url, title) already exist in the workspace are
+    /// skipped. Imported rows append after existing ones, never pinned.
+    fn import_bookmarks(
+        &self,
+        workspace_id: WorkspaceId,
+        folders: &[String],
+        entries: &[BookmarkImport],
+    ) -> StorageResult<BookmarkImportStats>;
 
     /// Move a bookmark to a different folder (or unfiled). Keeps the pin flag.
     fn move_bookmark(&self, id: i64, folder_id: Option<i64>) -> StorageResult<()>;

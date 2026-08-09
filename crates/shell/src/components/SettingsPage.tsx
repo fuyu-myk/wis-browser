@@ -6,6 +6,7 @@ import { useBrowserState, useUpdateSettings } from '@/hooks/useBrowserState'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { DownloadIcon, GlobeIcon, LockIcon, MonitorIcon, PanelTopIcon, PlusIcon, SunIcon } from '@/lib/icons'
 import {
+  BookmarkIcon,
   DatabaseIcon,
   GridIcon,
   KeyboardIcon,
@@ -14,6 +15,7 @@ import {
   ShieldIcon,
   WifiIcon,
 } from '@/components/settingsIcons'
+import { BookmarksSection } from '@/components/BookmarksSection'
 import { AppearanceSection } from '@/components/AppearanceSection'
 import { DesignSection } from '@/components/DesignSection'
 import { LayoutSection } from '@/components/LayoutSection'
@@ -47,6 +49,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'network', label: 'Network', icon: <WifiIcon /> },
   { id: 'compatibility', label: 'Compatibility', icon: <GlobeIcon /> },
   { id: 'sitedata', label: 'Site data', icon: <DatabaseIcon /> },
+  { id: 'bookmarks', label: 'Bookmarks', icon: <BookmarkIcon /> },
   { id: 'passwords', label: 'Passwords', icon: <KeyIcon /> },
   { id: 'shortcuts', label: 'Shortcuts', icon: <KeyboardIcon /> },
   { id: 'backup', label: 'Backup & restore', icon: <LockIcon /> },
@@ -205,6 +208,10 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
         <SiteDataSection
           workspaceId={activeWorkspace?.id ?? null}
           workspaceName={activeWorkspace?.name ?? 'workspace'}
+        />
+        <BookmarksSection
+          workspaceId={activeWorkspace?.id ?? null}
+          ephemeral={activeWorkspace?.ephemeral ?? false}
         />
         <PasswordsSection />
         <KeyboardShortcutsSection

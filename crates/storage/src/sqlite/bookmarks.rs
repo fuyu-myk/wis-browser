@@ -3,11 +3,11 @@
 //! [`wis_core::BrowserState`]. Scoped per workspace; `folder_id` NULL = unfiled.
 
 use chrono::Utc;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use uuid::Uuid;
 use wis_core::WorkspaceId;
 
-use crate::bookmarks::{Bookmark, BookmarkFolder};
+use crate::bookmarks::{Bookmark, BookmarkFolder, BookmarkImport, BookmarkImportStats};
 use crate::error::{StorageError, StorageResult};
 
 fn parse_workspace_id(s: &str) -> Result<WorkspaceId, StorageError> {
@@ -201,6 +201,101 @@ pub fn add_bookmark(
         pin_position,
         created_at: now,
     })
+}
+
+/// Bulk-import parsed bookmarks in one transaction (HTML import). Same-named
+/// folders are reused, duplicate (folder, url, title) rows are skipped, and
+/// every insert appends after the destination's existing rows, unpinned.
+pub fn import(
+    conn: &mut Connection,
+    workspace_id: WorkspaceId,
+    folders: &[String],
+    entries: &[BookmarkImport],
+) -> StorageResult<BookmarkImportStats> {
+    let ws = workspace_id.as_uuid().to_string();
+    let now = Utc::now();
+    let tx = conn.transaction()?;
+    let mut stats = BookmarkImportStats {
+        folders_added: 0,
+        bookmarks_added: 0,
+        bookmarks_skipped: 0,
+    };
+
+    let mut folder_ids: Vec<i64> = Vec::with_capacity(folders.len());
+    for name in folders {
+        let existing: Option<i64> = tx
+            .query_row(
+                "SELECT id FROM bookmark_folders \
+                 WHERE workspace_id = ?1 AND name = ?2 \
+                 ORDER BY position ASC, id ASC LIMIT 1",
+                params![ws, name],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let id = match existing {
+            Some(id) => id,
+            None => {
+                let position: i64 = tx.query_row(
+                    "SELECT COALESCE(MAX(position), -1) + 1 FROM bookmark_folders \
+                     WHERE workspace_id = ?1",
+                    params![ws],
+                    |row| row.get(0),
+                )?;
+                tx.execute(
+                    "INSERT INTO bookmark_folders (workspace_id, name, position, created_at) \
+                     VALUES (?1, ?2, ?3, ?4)",
+                    params![ws, name, position, now],
+                )?;
+
+                stats.folders_added += 1;
+                tx.last_insert_rowid()
+            }
+        };
+
+        folder_ids.push(id);
+    }
+
+    // Append position per destination: queried once, then advanced in-loop.
+    let mut next_position: std::collections::HashMap<Option<i64>, i64> =
+        std::collections::HashMap::new();
+    for entry in entries {
+        let folder_id = entry.folder.and_then(|i| folder_ids.get(i).copied());
+        let duplicate: Option<i64> = tx
+            .query_row(
+                "SELECT 1 FROM bookmarks \
+                 WHERE workspace_id = ?1 AND folder_id IS ?2 AND url = ?3 AND title = ?4 \
+                 LIMIT 1",
+                params![ws, folder_id, entry.url, entry.title],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if duplicate.is_some() {
+            stats.bookmarks_skipped += 1;
+            continue;
+        }
+
+        let position = match next_position.get(&folder_id) {
+            Some(p) => *p,
+            None => tx.query_row(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM bookmarks \
+                 WHERE workspace_id = ?1 AND folder_id IS ?2",
+                params![ws, folder_id],
+                |row| row.get(0),
+            )?,
+        };
+        next_position.insert(folder_id, position + 1);
+
+        tx.execute(
+            "INSERT INTO bookmarks \
+             (workspace_id, folder_id, url, title, favicon_hash, position, pinned, pin_position, created_at) \
+             VALUES (?1, ?2, ?3, ?4, NULL, ?5, 0, 0, ?6)",
+            params![ws, folder_id, entry.url, entry.title, position, now],
+        )?;
+        stats.bookmarks_added += 1;
+    }
+
+    tx.commit()?;
+    Ok(stats)
 }
 
 /// Set the pinned flag (keeping the folder). Pinning places it at the front of

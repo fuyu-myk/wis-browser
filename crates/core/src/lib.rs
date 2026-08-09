@@ -14,6 +14,7 @@ pub mod ids;
 pub mod keybinding;
 pub mod layout;
 pub mod link_safety;
+pub mod netscape;
 pub mod new_tab;
 pub mod pane;
 pub mod privacy;
@@ -43,6 +44,7 @@ pub use ids::{DownloadId, TabFolderId, TabId, ThemeId, UserscriptId, WidgetId, W
 pub use keybinding::{default_keymap, effective_keymap, KeyAction};
 pub use layout::{LayoutMode, MotionLevel, RailSide, ThemeMode};
 pub use link_safety::{assess_link, LinkAssessment, LinkWarning, RiskLevel};
+pub use netscape::{parse_netscape, to_netscape, ParsedBookmark, ParsedBookmarks};
 pub use new_tab::{
     default_shortcuts, sanitize_homepage, sanitize_shortcuts, NewTabTarget, ShortcutTile,
     MAX_SHORTCUTS,

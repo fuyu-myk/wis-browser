@@ -8,7 +8,7 @@
 
 use tauri::{AppHandle, Emitter, State};
 use wis_core::{WisError, WisResult, WorkspaceId};
-use wis_storage::{Bookmark, BookmarkFolder};
+use wis_storage::{Bookmark, BookmarkFolder, BookmarkImport, BookmarkImportStats};
 
 use crate::state::AppState;
 
@@ -214,4 +214,113 @@ pub async fn delete_bookmark(app: AppHandle, state: State<'_, AppState>, id: i64
     notify(&app);
 
     Ok(())
+}
+
+fn suggested_export_name() -> String {
+    let stamp = chrono::Local::now().format("%Y-%m-%d");
+    format!(
+        "{}.html",
+        wis_core::sanitize_filename(&format!("Wis Bookmarks {stamp}"))
+    )
+}
+
+/// Export the workspace's bookmarks as a Netscape `bookmarks.html` (the
+/// interchange format every browser imports) via a save panel. Resolves
+/// `false` when the user cancels.
+#[tauri::command]
+pub async fn export_bookmarks_html(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+) -> WisResult<bool> {
+    let storage = state.storage.clone();
+    let (folders, bookmarks) = run(move || {
+        Ok((
+            storage.list_bookmark_folders(workspace_id)?,
+            storage.list_bookmarks(workspace_id)?,
+        ))
+    })
+    .await?;
+
+    let folder_index: std::collections::HashMap<i64, usize> = folders
+        .iter()
+        .enumerate()
+        .map(|(index, folder)| (folder.id, index))
+        .collect();
+    let export = wis_core::ParsedBookmarks {
+        folders: folders.into_iter().map(|f| f.name).collect(),
+        bookmarks: bookmarks
+            .into_iter()
+            .map(|b| wis_core::ParsedBookmark {
+                folder: b.folder_id.and_then(|id| folder_index.get(&id).copied()),
+                url: b.url,
+                title: b.title,
+                added_at: Some(b.created_at.timestamp()),
+            })
+            .collect(),
+    };
+    let html = wis_core::to_netscape(&export);
+
+    let Some(path) = crate::panels::run_save_panel(&app, &suggested_export_name())? else {
+        return Ok(false);
+    };
+    std::fs::write(&path, html).map_err(|err| WisError::InvalidInput {
+        message: format!("write {}: {err}", path.display()),
+    })?;
+
+    Ok(true)
+}
+
+/// Pick a bookmarks HTML file and import it into the workspace: folders are
+/// reused by name or created, duplicate rows skipped, everything appended
+/// unpinned. Resolves `None` when the user cancels.
+#[tauri::command]
+pub async fn import_bookmarks_html(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+) -> WisResult<Option<BookmarkImportStats>> {
+    ensure_persistable(&state, workspace_id).await?;
+
+    let Some(path) = crate::panels::run_open_panel(&app, &["html", "htm"])? else {
+        return Ok(None);
+    };
+
+    // Bound the read itself rather than pre-checking metadata (which bounds
+    // neither FIFOs nor a file grown after the check).
+    let parsed = tokio::task::spawn_blocking(move || -> WisResult<wis_core::ParsedBookmarks> {
+        use std::io::Read;
+
+        let mut source = String::new();
+        std::fs::File::open(&path)
+            .map_err(|err| WisError::InvalidInput {
+                message: format!("read {}: {err}", path.display()),
+            })?
+            .take(wis_core::netscape::MAX_BOOKMARKS_FILE_BYTES as u64 + 1)
+            .read_to_string(&mut source)
+            .map_err(|err| WisError::InvalidInput {
+                message: format!("read {}: {err}", path.display()),
+            })?;
+        wis_core::parse_netscape(&source)
+    })
+    .await
+    .map_err(|err| WisError::InvalidInput {
+        message: format!("import task failed: {err}"),
+    })??;
+
+    let folders = parsed.folders;
+    let entries: Vec<BookmarkImport> = parsed
+        .bookmarks
+        .into_iter()
+        .map(|b| BookmarkImport {
+            folder: b.folder,
+            url: b.url,
+            title: b.title,
+        })
+        .collect();
+    let storage = state.storage.clone();
+    let stats = run(move || storage.import_bookmarks(workspace_id, &folders, &entries)).await?;
+    notify(&app);
+
+    Ok(Some(stats))
 }

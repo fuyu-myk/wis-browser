@@ -18,6 +18,23 @@ pub struct BookmarkFolder {
     pub created_at: DateTime<Utc>,
 }
 
+/// One entry of an HTML bookmarks import. `folder` indexes into the import's
+/// folder-name list (`None` = unfiled); storage ids never cross this boundary.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookmarkImport {
+    pub folder: Option<usize>,
+    pub url: String,
+    pub title: String,
+}
+
+/// Outcome of a bulk bookmark import.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookmarkImportStats {
+    pub folders_added: usize,
+    pub bookmarks_added: usize,
+    pub bookmarks_skipped: usize,
+}
+
 /// A saved bookmark. `favicon_hash` mirrors the favicon-cache key so the UI can
 /// render the icon without re-fetching.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

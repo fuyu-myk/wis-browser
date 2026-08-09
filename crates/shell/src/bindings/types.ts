@@ -676,6 +676,13 @@ export interface Bookmark {
   created_at: string
 }
 
+/** Outcome of a bookmarks HTML import (mirror of `BookmarkImportStats`). */
+export interface BookmarkImportStats {
+  folders_added: number
+  bookmarks_added: number
+  bookmarks_skipped: number
+}
+
 // ---------------------------------------------------------------------------
 // Password vault (mirror of `vault.rs`).
 // ---------------------------------------------------------------------------

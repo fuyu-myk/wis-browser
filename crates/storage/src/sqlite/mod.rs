@@ -312,6 +312,16 @@ impl Storage for SqliteStorage {
         )
     }
 
+    fn import_bookmarks(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+        folders: &[String],
+        entries: &[crate::bookmarks::BookmarkImport],
+    ) -> StorageResult<crate::bookmarks::BookmarkImportStats> {
+        let mut conn = self.conn.lock().expect("storage mutex poisoned");
+        bookmarks::import(&mut conn, workspace_id, folders, entries)
+    }
+
     fn move_bookmark(&self, id: i64, folder_id: Option<i64>) -> StorageResult<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         bookmarks::move_bookmark(&conn, id, folder_id)
