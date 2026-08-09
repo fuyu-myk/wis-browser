@@ -17,6 +17,7 @@ pub mod link_safety;
 pub mod netscape;
 pub mod new_tab;
 pub mod pane;
+pub mod password_csv;
 pub mod privacy;
 pub mod proxy;
 pub mod search;
@@ -50,6 +51,7 @@ pub use new_tab::{
     MAX_SHORTCUTS,
 };
 pub use pane::{PaneBranch, PaneNode, SplitDir};
+pub use password_csv::{parse_password_csv, to_password_csv, ParsedCredential, ParsedCredentials};
 pub use privacy::{PerSitePolicy, PrivacyMode};
 pub use proxy::UpstreamProxy;
 pub use search::SearchEngine;

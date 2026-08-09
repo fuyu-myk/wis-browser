@@ -80,11 +80,23 @@ pub struct ProfileBackup {
 /// (Argon2id + ChaCha20-Poly1305). On import each is re-encrypted under the
 /// device's vault master key. `(host, username)` is the identity, so an import
 /// upserts rather than duplicates.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CredentialBackup {
     pub host: String,
     pub username: String,
     pub password: String,
+}
+
+// Hand-written so a Debug print of a backup credential can never leak the
+// password into logs or error output.
+impl std::fmt::Debug for CredentialBackup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CredentialBackup")
+            .field("host", &self.host)
+            .field("username", &self.username)
+            .field("password", &"<redacted>")
+            .finish()
+    }
 }
 
 /// The decrypted, validated contents of a backup. Each field is `Some` only

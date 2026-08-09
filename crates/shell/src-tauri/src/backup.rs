@@ -95,7 +95,13 @@ pub async fn export_backup(
             None
         },
         credentials: if options.vault {
-            Some(crate::vault::export_credentials(&state).await?)
+            Some(
+                crate::vault::export_credentials(
+                    &state,
+                    "Include your saved passwords in this backup",
+                )
+                .await?,
+            )
         } else {
             None
         },
@@ -207,7 +213,8 @@ pub async fn import_backup(
     };
 
     if let Some(creds) = payload.credentials {
-        summary.passwords_added = crate::vault::import_credentials(&state, creds).await?;
+        summary.passwords_added =
+            crate::vault::import_credentials(&state, creds, "Restore your saved passwords").await?;
     }
 
     if let Some(profile) = payload.profile {

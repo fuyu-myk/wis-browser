@@ -286,21 +286,10 @@ pub async fn import_bookmarks_html(
         return Ok(None);
     };
 
-    // Bound the read itself rather than pre-checking metadata (which bounds
-    // neither FIFOs nor a file grown after the check).
+    // Bounded read + parse off the async runtime; the file is untrusted.
     let parsed = tokio::task::spawn_blocking(move || -> WisResult<wis_core::ParsedBookmarks> {
-        use std::io::Read;
-
-        let mut source = String::new();
-        std::fs::File::open(&path)
-            .map_err(|err| WisError::InvalidInput {
-                message: format!("read {}: {err}", path.display()),
-            })?
-            .take(wis_core::netscape::MAX_BOOKMARKS_FILE_BYTES as u64 + 1)
-            .read_to_string(&mut source)
-            .map_err(|err| WisError::InvalidInput {
-                message: format!("read {}: {err}", path.display()),
-            })?;
+        let source =
+            crate::file_io::read_capped(&path, wis_core::netscape::MAX_BOOKMARKS_FILE_BYTES)?;
         wis_core::parse_netscape(&source)
     })
     .await

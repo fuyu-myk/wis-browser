@@ -17,6 +17,7 @@ mod edit_keys;
 mod error_compat;
 mod external;
 mod favicons;
+mod file_io;
 mod find;
 #[cfg(target_os = "linux")]
 mod gtk_dispatch;
@@ -535,6 +536,8 @@ pub fn run() {
             vault::vault_reveal,
             vault::vault_delete,
             vault::vault_has_credentials,
+            vault::vault_import_csv,
+            vault::vault_export_csv,
             vault::autofill_candidates,
             vault::autofill_fill,
             suggest::get_url_suggestions,

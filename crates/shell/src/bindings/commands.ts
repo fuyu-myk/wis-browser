@@ -14,6 +14,7 @@ import type {
   Bookmark,
   BookmarkFolder,
   BookmarkImportStats,
+  CsvImportStats,
   BrowserState,
   CredentialSummary,
   CustomTheme,
@@ -140,6 +141,23 @@ export const commands = {
   /** Whether a login is saved for `host`. */
   async vaultHasCredentials(host: string): Promise<boolean> {
     return invoke('vault_has_credentials', { host })
+  },
+
+  /**
+   * Pick a password CSV (Chrome/Firefox/Safari export) and merge it into the
+   * vault after a biometric confirm; upserts by site + username. Null on
+   * cancel.
+   */
+  async vaultImportCsv(): Promise<CsvImportStats | null> {
+    return invoke('vault_import_csv')
+  },
+
+  /**
+   * Write every saved login to a plaintext CSV at a chosen path, after a
+   * biometric confirm. Resolves false on cancel.
+   */
+  async vaultExportCsv(): Promise<boolean> {
+    return invoke('vault_export_csv')
   },
 
   /** Saved logins for `host` (id + username only, no unlock) for the picker. */

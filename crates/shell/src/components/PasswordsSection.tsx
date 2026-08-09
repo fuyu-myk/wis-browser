@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { cx } from '@/lib/cx'
 import { LockIcon, SearchIcon, XIcon } from '@/lib/icons'
 import { isMacOS } from '@/lib/platform'
@@ -12,6 +13,20 @@ const VAULT_LIST_KEY = ['vault-list'] as const
 // The OS biometric the vault gate uses on this platform.
 const BIOMETRIC_NAME = isMacOS() ? 'Touch ID' : 'Windows Hello'
 
+interface Status {
+  kind: 'ok' | 'err'
+  text: string
+}
+
+function errorMessage(error: unknown): string {
+  if (typeof error === 'string') return error
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string') return message
+  }
+  return 'unknown error'
+}
+
 /**
  * Settings → Passwords: a biometric-gated vault (Touch ID / Windows Hello).
  * Locked by default; once unlocked, lists saved logins with reveal/copy/delete
@@ -21,6 +36,9 @@ const BIOMETRIC_NAME = isMacOS() ? 'Touch ID' : 'Windows Hello'
 export function PasswordsSection() {
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
+  const [csvBusy, setCsvBusy] = useState(false)
+  const [csvStatus, setCsvStatus] = useState<Status | null>(null)
+  const [confirmExport, setConfirmExport] = useState(false)
 
   const { data: status } = useQuery({
     queryKey: VAULT_STATUS_KEY,
@@ -50,6 +68,50 @@ export function PasswordsSection() {
     mutationFn: (id: number) => commands.vaultDelete(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: VAULT_LIST_KEY }),
   })
+
+  const importCsv = async () => {
+    setCsvStatus(null)
+    setCsvBusy(true)
+    try {
+      const stats = await commands.vaultImportCsv()
+      if (!stats) return
+      refreshAll()
+      const skipped =
+        stats.skipped > 0
+          ? ` (${stats.skipped} row${stats.skipped === 1 ? '' : 's'} skipped)`
+          : ''
+      setCsvStatus({
+        kind: 'ok',
+        text:
+          stats.imported > 0
+            ? `Imported ${stats.imported} password${stats.imported === 1 ? '' : 's'}${skipped}.`
+            : `No usable passwords found in that file${skipped}.`,
+      })
+    } catch (error: unknown) {
+      setCsvStatus({ kind: 'err', text: errorMessage(error) })
+    } finally {
+      setCsvBusy(false)
+    }
+  }
+
+  const exportCsv = async () => {
+    setCsvStatus(null)
+    setCsvBusy(true)
+    try {
+      const written = await commands.vaultExportCsv()
+      refreshAll()
+      if (written) {
+        setCsvStatus({
+          kind: 'ok',
+          text: 'Passwords exported. Delete the file once you are done with it.',
+        })
+      }
+    } catch (error: unknown) {
+      setCsvStatus({ kind: 'err', text: errorMessage(error) })
+    } finally {
+      setCsvBusy(false)
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -97,6 +159,46 @@ export function PasswordsSection() {
             </button>
           </div>
 
+          <div className="row">
+            <div className="l">
+              <span>Import from CSV</span>
+              <span>
+                Bring passwords from another browser or password manager (a
+                Chrome, Firefox or Safari CSV export). Existing entries for the
+                same site and username are updated.
+              </span>
+            </div>
+            <button
+              type="button"
+              className="kb-btn"
+              onClick={() => void importCsv()}
+              disabled={csvBusy}
+            >
+              Import…
+            </button>
+          </div>
+
+          <div className="row">
+            <div className="l">
+              <span>Export to CSV</span>
+              <span>Save every password as a plain, unencrypted CSV file.</span>
+            </div>
+            <button
+              type="button"
+              className="kb-btn"
+              onClick={() => setConfirmExport(true)}
+              disabled={csvBusy}
+            >
+              Export…
+            </button>
+          </div>
+
+          {csvStatus && (
+            <p className={cx('kb-backup-status', { 'is-error': csvStatus.kind === 'err' })}>
+              {csvStatus.text}
+            </p>
+          )}
+
           <AddPasswordForm
             onSaved={() => qc.invalidateQueries({ queryKey: VAULT_LIST_KEY })}
           />
@@ -126,6 +228,19 @@ export function PasswordsSection() {
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={confirmExport}
+        title="Export passwords as a plain CSV file?"
+        message="The file is not encrypted: anyone who opens it can read every saved password. Import it into its destination app directly rather than opening it in a spreadsheet, and delete it once you are done."
+        confirmLabel="Export anyway"
+        danger
+        onConfirm={() => {
+          setConfirmExport(false)
+          void exportCsv()
+        }}
+        onCancel={() => setConfirmExport(false)}
+      />
     </section>
   )
 }

@@ -695,6 +695,12 @@ export interface VaultStatus {
 }
 
 /** A saved credential without its password (safe to list). */
+/** Outcome of a password CSV import (mirror of `CsvImportStats`). */
+export interface CsvImportStats {
+  imported: number
+  skipped: number
+}
+
 export interface CredentialSummary {
   id: number
   host: string

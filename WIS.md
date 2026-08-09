@@ -56,7 +56,7 @@ wis-browser-app  (crates/shell/src-tauri)  - Tauri shell, IPC commands, AppState
    (pure data model, no I/O)
 ```
 
-- **`wis-core`**: pure, dependency-light data model. `BrowserState` root aggregate, `Workspace`, `Tab`, `UserSettings`, typed IDs, and pure `with_*` builders. Modules include `state`, `workspace`, `tab`, `tab_folder`, `settings`, `layout`, `pane`, `privacy`, `proxy`, `search`, `keybinding`, `link_safety`, `netscape`, `new_tab`, `user_agent`, `download`, `background`, `icon`, `theme`, `backup`, `design`, `widget`, `userscript`. Detail: `docs/architecture/data-model-and-state.md`.
+- **`wis-core`**: pure, dependency-light data model. `BrowserState` root aggregate, `Workspace`, `Tab`, `UserSettings`, typed IDs, and pure `with_*` builders. Modules include `state`, `workspace`, `tab`, `tab_folder`, `settings`, `layout`, `pane`, `privacy`, `proxy`, `search`, `keybinding`, `link_safety`, `netscape`, `new_tab`, `password_csv`, `user_agent`, `download`, `background`, `icon`, `theme`, `backup`, `design`, `widget`, `userscript`. Detail: `docs/architecture/data-model-and-state.md`.
 - **`wis-secrets`**: vault cryptography and master-key storage, isolated. ChaCha20-Poly1305 AEAD under a CSPRNG master key held in the OS secure store (macOS Keychain / Windows DPAPI blob), released after a biometric check and zeroized on drop. Detail: `docs/architecture/security-vault-and-permissions.md`.
 - **`wis-storage`**: persistence. `Storage` trait + sole `SqliteStorage` impl (bundled SQLite, WAL, `synchronous=NORMAL`); normalized tables (not a JSON blob), append-only migrations `M0001`..`M0018`, `VACUUM INTO` backup + resilient open. Detail: `docs/architecture/data-model-and-state.md`.
 - **`wis-network`**: privacy decision engine. `TrackerBlocker` (adblock crate, disk-memoized engine), `content_filter` (`WKContentRuleList`), `HttpsUpgrader`, `DohResolver`, `RequestPolicy`, per-workspace loopback proxy (SOCKS5 / built-in Tor via `arti-client`, `tor` feature default-on). Detail: `docs/architecture/privacy-and-network-engine.md`.
@@ -101,7 +101,7 @@ Each group maps to a `docs/architecture/` doc that carries the mechanism details
 
 ### Security & data protection (`docs/architecture/security-vault-and-permissions.md`)
 
-- **Password vault**: ChaCha20-Poly1305 at rest, master key in the OS key store gated by a biometric (Touch ID / Windows Hello); save-capture, saved-account picker, origin-matched autofill (app -> page eval only).
+- **Password vault**: ChaCha20-Poly1305 at rest, master key in the OS key store gated by a biometric (Touch ID / Windows Hello); save-capture, saved-account picker, origin-matched autofill (app -> page eval only); CSV import/export (`wis_core::password_csv`, biometric-confirmed both ways, plaintext-export warning).
 - **Stay logged in across restarts**: encrypted session-cookie snapshot restored before first load, fixed 14-day TTL, gated by the `persist_sessions` setting; never for ephemeral workspaces.
 - **Camera & microphone consent**: app-side `getUserMedia` gate + in-browser prompt with remembered decisions (macOS/Windows/Linux; the Linux prompt is wired but not yet exercised in the VM).
 - **Navigation safety interstitial**: `navguard` re-assesses risky links (click-time and page-load fallback) and interrupts High/Medium threats; shares `link_safety` heuristics with Peek.
