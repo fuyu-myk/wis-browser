@@ -258,6 +258,20 @@ impl BrowserState {
         Ok(self.replace_tab(id, &updated))
     }
 
+    /// Set (or clear) a tab's load failure. Idempotent when unchanged.
+    pub fn with_tab_load_error(
+        &self,
+        id: TabId,
+        load_error: Option<crate::load_error::LoadError>,
+    ) -> WisResult<Self> {
+        let current = self.tab(id)?;
+        if current.load_error == load_error {
+            return Ok(self.clone());
+        }
+
+        Ok(self.replace_tab(id, &current.with_load_error(load_error)))
+    }
+
     /// Update a tab's back/forward history availability. Idempotent when
     /// neither direction changes.
     pub fn with_tab_nav_state(&self, id: TabId, back: bool, forward: bool) -> WisResult<Self> {

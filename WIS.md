@@ -127,6 +127,7 @@ Each group maps to a `docs/architecture/` doc that carries the mechanism details
 
 - **Tab memory & sessions**: idle-sleep + lazy restore with `interactionState` wake, full session restore across restart (`tab_sessions`, `M0018`), and a per-webview **task manager** (macOS; empty off macOS).
 - **Quick browser features**: per-tab zoom, find-in-page with match count (Linux count-only), numbered/next/prev tab switching, reopen-closed-tab, hard reload, print/Save-as-PDF, and configurable rebindable shortcuts.
+- **Load-failure error pages**: a failed navigation (DNS, connection refused, timeout, TLS) renders a chrome-side error page with retry in the tab's place (webview hidden but alive); `wis_core::LoadError` normalizes each engine's native code. macOS surfaces the failure via a vendored-wry side channel (a sixth patch, since `PageLoadEvent` cannot gain a Failed variant without vendoring tauri too), Windows via `add_NavigationCompleted`, Linux via WebKitGTK `load-failed` (kind is coarse there).
 - **Peek**: Opt+click isolated incognito link preview with a safety banner and reader toggle.
 - **Reader mode**: in-place clean-article transform shared with Peek.
 - **Video popout**: always-on-top mini player (the tab's own reparented webview on macOS; native Picture-in-Picture on Windows; toasts on Linux), automatic on tab-hide and manual.

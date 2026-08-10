@@ -1,5 +1,5 @@
 use objc2::DeclaredClass;
-use objc2_foundation::{NSObjectProtocol, NSString};
+use objc2_foundation::{NSError, NSObjectProtocol, NSString};
 use objc2_web_kit::{
   WKNavigation, WKNavigationAction, WKNavigationActionPolicy, WKNavigationResponse,
   WKNavigationResponsePolicy,
@@ -44,6 +44,23 @@ pub(crate) fn did_finish_navigation(
   if let Some(on_page_load) = &this.ivars().on_page_load_handler {
     on_page_load(PageLoadEvent::Finished);
   }
+}
+
+// WIS patch: a provisional navigation failure (DNS, connection refused,
+// timeout, TLS) produces no page-load event upstream, so the tab spins until
+// the shell's progress poller times out. Stash the NSError's code + domain in
+// the thread-local side channel and re-use the Finished event to deliver it.
+// See WIS-PATCH.md.
+pub(crate) fn did_fail_provisional_navigation(
+  this: &WryNavigationDelegate,
+  _webview: &WKWebView,
+  error: &NSError,
+) {
+  super::set_last_page_load_error(error.code() as i64, error.domain().to_string());
+  if let Some(on_page_load) = &this.ivars().on_page_load_handler {
+    on_page_load(PageLoadEvent::Finished);
+  }
+  super::take_last_page_load_error();
 }
 
 // Navigation handler

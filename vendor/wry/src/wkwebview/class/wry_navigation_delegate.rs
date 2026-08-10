@@ -5,7 +5,7 @@
 use std::sync::{Arc, Mutex};
 
 use objc2::{define_class, msg_send, rc::Retained, runtime::NSObject, MainThreadOnly};
-use objc2_foundation::{MainThreadMarker, NSObjectProtocol};
+use objc2_foundation::{MainThreadMarker, NSError, NSObjectProtocol};
 use objc2_web_kit::{
   WKDownload, WKNavigation, WKNavigationAction, WKNavigationActionPolicy, WKNavigationDelegate,
   WKNavigationResponse, WKNavigationResponsePolicy,
@@ -21,8 +21,8 @@ use crate::{
   wkwebview::{
     download::{navigation_download_action, navigation_download_response},
     navigation::{
-      did_commit_navigation, did_finish_navigation, navigation_policy, navigation_policy_response,
-      web_content_process_did_terminate,
+      did_commit_navigation, did_fail_provisional_navigation, did_finish_navigation,
+      navigation_policy, navigation_policy_response, web_content_process_did_terminate,
     },
   },
   PageLoadEvent, WryWebView,
@@ -71,6 +71,17 @@ define_class!(
     #[unsafe(method(webView:didFinishNavigation:))]
     fn did_finish_navigation(&self, webview: &WKWebView, navigation: &WKNavigation) {
       did_finish_navigation(self, webview, navigation);
+    }
+
+    // WIS patch: surface provisional navigation failures. See WIS-PATCH.md.
+    #[unsafe(method(webView:didFailProvisionalNavigation:withError:))]
+    fn did_fail_provisional_navigation(
+      &self,
+      webview: &WKWebView,
+      _navigation: Option<&WKNavigation>,
+      error: &NSError,
+    ) {
+      did_fail_provisional_navigation(self, webview, error);
     }
 
     #[unsafe(method(webView:didCommitNavigation:))]
@@ -125,7 +136,15 @@ impl WryNavigationDelegate {
 
     let on_page_load_handler = if let Some(handler) = on_page_load_handler {
       let custom_handler = Box::new(move |event| {
-        handler(event, url_from_webview(&webview).unwrap_or_default());
+        let mut url = url_from_webview(&webview).unwrap_or_default();
+        // WIS patch: a provisional failure leaves `WKWebView.URL` nil; supply
+        // a parseable placeholder so `tauri-runtime-wry` still delivers the
+        // Finished event (the shell reads the real failure from
+        // `take_last_page_load_error` and the failing URL from tab state).
+        if url.is_empty() && crate::wkwebview::page_load_error_pending() {
+          url = String::from("about:blank");
+        }
+        handler(event, url);
       }) as Box<dyn Fn(PageLoadEvent)>;
       Some(custom_handler)
     } else {

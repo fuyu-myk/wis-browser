@@ -43,6 +43,12 @@ pub struct Tab {
     pub can_go_back: bool,
     #[serde(default)]
     pub can_go_forward: bool,
+    /// The page's load failure when the last navigation failed (DNS, refused,
+    /// timeout, TLS). In-memory only: the chrome shows an error page in the
+    /// tab's place, cleared on the next load. The storage layer reconstructs
+    /// `None`.
+    #[serde(default)]
+    pub load_error: Option<crate::load_error::LoadError>,
     /// Persisted page-zoom factor (1.0 = 100%).
     #[serde(default = "default_zoom")]
     pub zoom: f64,
@@ -79,6 +85,7 @@ impl Tab {
             muted: false,
             loading: false,
             reader: false,
+            load_error: None,
             can_go_back: false,
             can_go_forward: false,
             zoom: default_zoom(),
@@ -139,6 +146,13 @@ impl Tab {
     pub fn with_loading(&self, loading: bool) -> Self {
         Self {
             loading,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_load_error(&self, load_error: Option<crate::load_error::LoadError>) -> Self {
+        Self {
+            load_error,
             ..self.clone()
         }
     }

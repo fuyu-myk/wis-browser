@@ -150,17 +150,21 @@ pub async fn close_tab(
                     tab.folder_id,
                     index,
                     tab.pinned,
+                    tab.load_error.is_some(),
                 ))
             })
         };
 
-        if let Some((workspace_id, url, folder_id, index, pinned)) = recorded {
+        if let Some((workspace_id, url, folder_id, index, pinned, load_failed)) = recorded {
             // Capture the live session (history/scroll/forms) while the
             // webview still exists, so reopen restores instead of cold-loads.
-            let interaction_state = app
-                .webviews()
-                .get(&format!("tab-{}", id.as_uuid()))
-                .and_then(crate::interaction_state::read);
+            let interaction_state = (!load_failed)
+                .then(|| {
+                    app.webviews()
+                        .get(&format!("tab-{}", id.as_uuid()))
+                        .and_then(crate::interaction_state::read)
+                })
+                .flatten();
 
             let mut ring = state.closed_tabs.lock().await;
             ring.push(crate::state::ClosedTab {

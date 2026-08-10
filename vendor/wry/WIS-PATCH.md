@@ -212,3 +212,51 @@ uses it.
 Removal checklist: wry ships a download handle/cancel API -> drop the
 registry + `cancel_download_to` + both re-exports, and move
 `downloads.rs::cancel_download` onto the upstream API.
+
+## Sixth patch: surface provisional navigation failures (macOS) (Wis-original)
+
+- The `WKNavigationDelegate` (`src/wkwebview/class/wry_navigation_delegate.rs`)
+  implements no `didFailProvisionalNavigation:withError:`, so a DNS failure,
+  refused connection, timeout, or TLS error produces no page-load event: the
+  navigation never commits (no `Started`) and never finishes, leaving the
+  tab's loading state stuck until the shell's progress poller times out
+  (~30s). `PageLoadEvent` has only `Started`/`Finished` and cannot carry a
+  `Failed` variant without also vendoring `tauri-runtime`/`tauri` (the same
+  constraint as the download expected-size patch), so the failure rides the
+  existing `Finished` event plus a thread_local side channel.
+- `src/wkwebview/navigation.rs` (`did_fail_provisional_navigation`): stashes
+  the `NSError` code + domain via `set_last_page_load_error`, emits
+  `PageLoadEvent::Finished`, then clears the channel with
+  `take_last_page_load_error()`. `src/wkwebview/mod.rs`: the side channel with
+  `page_load_error_pending()` and `take_last_page_load_error()`. The channel
+  is shared by every WKWebView on the main thread (tabs, peek, widget panels,
+  overlays), but only a tab's page-load handler consumes it, and only during
+  the synchronous emit; the unconditional post-emit clear is what guarantees a
+  failure on a non-consuming webview cannot leak into the next tab's load. The
+  shell reads `wry::take_last_page_load_error()` in its `on_page_load` closure
+  and the failing URL from tab state (the target URL, written before
+  navigation).
+- `src/wkwebview/class/wry_navigation_delegate.rs`: the `custom_handler` that
+  wraps the page-load handler substitutes a parseable `about:blank` when
+  `WKWebView.URL` is nil AND a failure is pending, because a provisional
+  failure leaves the URL nil and `tauri-runtime-wry` drops any `Finished`
+  whose URL fails to parse. The substitution is gated on a pending failure so
+  successful loads are untouched.
+- Sound because tauri-runtime-wry invokes the tauri page-load handler
+  synchronously in the same main-thread call stack as the delegate callback
+  (verify on every wry/tauri-runtime-wry bump: the shell's `on_page_load`
+  closure must run inside the delegate callback, not deferred, so the side
+  channel is read before it is overwritten by the next navigation).
+  Provisional failures only; `didFailNavigation:` (post-commit) is left
+  unhandled so a partially-rendered page is not replaced. NSURLErrorCancelled
+  and other user-cancel codes are filtered shell-side (`wis_core::LoadError`),
+  not here.
+
+Precedent that upstream does not move on this: wry#1714 (add
+`didStartProvisionalNavigation` to `PageLoadEvent`) shipped a working patch
+and was closed unmerged after the reporter patched locally.
+
+Removal checklist: wry ships a load-failure page-load event -> drop the
+thread_local + `did_fail_provisional_navigation` + the delegate method + the
+`custom_handler` URL fallback + the `lib.rs` re-export, and move the shell's
+`load_error` macOS arm onto the upstream API.

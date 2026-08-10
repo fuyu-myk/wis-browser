@@ -209,6 +209,23 @@ export interface FaviconRef {
   hash: string
 }
 
+/** Class of a page-load failure (mirror of `wis_core::LoadErrorKind`). */
+export type LoadErrorKind =
+  | 'dns_failure'
+  | 'connection_refused'
+  | 'timeout'
+  | 'tls_error'
+  | 'offline'
+  | 'unknown'
+
+/** A failed page load (mirror of `wis_core::LoadError`). */
+export interface LoadError {
+  kind: LoadErrorKind
+  /** The engine's native error code (diagnostics only). */
+  code: number
+  url: string
+}
+
 export interface Tab {
   id: TabId
   workspace_id: WorkspaceId
@@ -227,6 +244,9 @@ export interface Tab {
    *  false on launch until the first load reports the real values. */
   can_go_back: boolean
   can_go_forward: boolean
+  /** The page's load failure, when the last navigation failed. In-memory only;
+   *  the chrome shows an error page in the tab's place, cleared on next load. */
+  load_error: LoadError | null
   /** Page-zoom factor (1.0 = 100%); persisted per tab. */
   zoom: number
   created_at: string // ISO 8601 from chrono::DateTime<Utc>

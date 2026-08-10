@@ -71,6 +71,14 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     return map
   }, [workspaceTabs])
 
+  const paneModeKey = useMemo(
+    () =>
+      workspaceTabs
+        .map((t) => (isChromeUrl(t.url) || t.load_error !== null ? '1' : '0'))
+        .join(''),
+    [workspaceTabs],
+  )
+
   const activeTab =
     activeWorkspace?.active_tab_id != null
       ? workspaceTabs.find((t) => t.id === activeWorkspace.active_tab_id) ?? null
@@ -340,7 +348,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
       window.removeEventListener('resize', onResize)
       document.removeEventListener('transitionend', onTransitionEnd, true)
     }
-  }, [treeKey, focusWebviewId, syncLayout, resizing, draggingTab, paneAnim])
+  }, [treeKey, paneModeKey, focusWebviewId, syncLayout, resizing, draggingTab, paneAnim])
 
   // Compute the bottom strip's bounds in window coordinates from the content
   // host. The find overlay surface fills this strip.

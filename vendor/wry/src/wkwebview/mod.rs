@@ -39,6 +39,31 @@ pub(crate) fn set_last_download_expected_bytes(bytes: i64) {
 pub fn last_download_expected_bytes() -> i64 {
   LAST_DOWNLOAD_EXPECTED_BYTES.with(|cell| cell.get())
 }
+
+// WIS patch: side channel exposing the most recent navigation failure
+// (`didFailProvisionalNavigation:`), read by the `on_page_load(Finished)`
+// handler's synchronous call stack. Upstream `PageLoadEvent` has only
+// Started/Finished and cannot carry a Failed variant without also vendoring
+// `tauri-runtime`/`tauri`. See WIS-PATCH.md.
+thread_local! {
+  static LAST_PAGE_LOAD_ERROR: std::cell::RefCell<Option<(i64, String)>> =
+    const { std::cell::RefCell::new(None) };
+}
+
+pub(crate) fn set_last_page_load_error(code: i64, domain: String) {
+  LAST_PAGE_LOAD_ERROR.with(|cell| *cell.borrow_mut() = Some((code, domain)));
+}
+
+/// WIS patch: whether a page-load failure is pending on this thread, without
+/// consuming it.
+pub(crate) fn page_load_error_pending() -> bool {
+  LAST_PAGE_LOAD_ERROR.with(|cell| cell.borrow().is_some())
+}
+
+/// WIS patch: take the most recent page-load failure `(code, error domain)`.
+pub fn take_last_page_load_error() -> Option<(i64, String)> {
+  LAST_PAGE_LOAD_ERROR.with(|cell| cell.borrow_mut().take())
+}
 #[cfg(target_os = "macos")]
 use class::wry_web_view_parent::WryWebViewParent;
 use class::{

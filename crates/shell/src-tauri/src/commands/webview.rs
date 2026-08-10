@@ -230,6 +230,18 @@ pub async fn create_tab_webview(
             let url_string = payload.url().to_string();
             let page_url = payload.url().clone();
 
+            #[cfg(target_os = "macos")]
+            let ns_failure: Option<(i64, String)> = if matches!(event, PageLoadEvent::Finished) {
+                wry::take_last_page_load_error()
+            } else {
+                None
+            };
+
+            #[cfg(not(target_os = "macos"))]
+            let ns_failure: Option<(i64, String)> = None;
+
+            let load_failed = ns_failure.is_some();
+
             // A popped-out tab navigating loses its pinned video.
             if matches!(event, PageLoadEvent::Started) {
                 crate::video_popout::handle_navigation(&app, &label_for_load);
@@ -242,19 +254,35 @@ pub async fn create_tab_webview(
             tauri::async_runtime::spawn(async move {
                 let state = app_for_state.state::<AppState>();
                 let result = mutate_unit(&app_for_state, &state, |s| {
-                    s.with_tab_loading(tab_id, loading)
-                        .and_then(|next| next.with_tab_url_synced(tab_id, &url_string))
-                        .and_then(|next| {
-                            if loading {
-                                next.with_tab_reader(tab_id, false)
-                            } else {
-                                Ok(next)
-                            }
-                        })
-                        .and_then(|next| match nav {
-                            Some((back, fwd)) => next.with_tab_nav_state(tab_id, back, fwd),
-                            None => Ok(next),
-                        })
+                    let failure = ns_failure.as_ref().and_then(|(code, domain)| {
+                        let url = s.tab(tab_id).ok()?.url.to_string();
+                        wis_core::LoadError::from_ns_error(domain, *code, url)
+                    });
+
+                    let next = s.with_tab_loading(tab_id, loading)?;
+                    let next = if ns_failure.is_some() {
+                        next
+                    } else {
+                        next.with_tab_url_synced(tab_id, &url_string)?
+                    };
+                    let next = if loading {
+                        next.with_tab_reader(tab_id, false)?
+                    } else {
+                        next
+                    };
+                    // Clear on load start; set on a failed finish.
+                    let next = if loading {
+                        next.with_tab_load_error(tab_id, None)?
+                    } else if let Some(err) = failure {
+                        next.with_tab_load_error(tab_id, Some(err))?
+                    } else {
+                        next
+                    };
+
+                    match nav {
+                        Some((back, fwd)) => next.with_tab_nav_state(tab_id, back, fwd),
+                        None => Ok(next),
+                    }
                 })
                 .await;
                 if let Err(err) = result {
@@ -272,7 +300,7 @@ pub async fn create_tab_webview(
                 });
             }
 
-            if matches!(event, PageLoadEvent::Finished) {
+            if matches!(event, PageLoadEvent::Finished) && !load_failed {
                 // Re-apply the live swipe-nav colour.
                 let color = app
                     .state::<AppState>()
@@ -520,6 +548,11 @@ pub async fn create_tab_webview(
         ephemeral,
         privacy_mode != wis_core::PrivacyMode::Permissive,
     );
+
+    // Windows/Linux report page-load failures through their own native
+    // callbacks.
+    #[cfg(any(windows, target_os = "linux"))]
+    crate::load_failure::install(&child, tab_id);
 
     // Windows click-to-focus is per-controller (no app-wide mouse monitor like
     // macOS); a no-op elsewhere.

@@ -26,6 +26,8 @@ mod interaction_state;
 #[cfg(any(windows, target_os = "linux"))]
 mod keybind;
 mod link_open;
+#[cfg(any(windows, target_os = "linux"))]
+mod load_failure;
 mod load_progress;
 mod memory;
 mod menu;

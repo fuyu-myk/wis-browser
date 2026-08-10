@@ -79,7 +79,7 @@ function PaneLeaf({
   onRestorePopout,
 }: PaneViewProps & { tabId: TabId }) {
   const tab = tabsById.get(tabId)
-  const chrome = tab ? isChromeUrl(tab.url) : false
+  const chrome = tab ? isChromeUrl(tab.url) || tab.load_error !== null : false
   const hintRef = useRef<HTMLDivElement | null>(null)
   const setHint = (side: PaneSide | null) => {
     const el = hintRef.current
@@ -305,9 +305,11 @@ import { NewTabPage } from '@/components/NewTabPage'
 import { SettingsPage } from '@/components/SettingsPage'
 import { HistoryPage } from '@/components/HistoryPage'
 import { DownloadsPage } from '@/components/DownloadsPage'
+import { NetErrorPage } from '@/components/NetErrorPage'
 import { DOWNLOADS_URL, HISTORY_URL, SETTINGS_URL } from '@/lib/url'
 
 function ChromePane({ tab }: { tab: Tab }) {
+  if (tab.load_error) return <NetErrorPage tab={tab} />
   if (tab.url === SETTINGS_URL) return <SettingsPage tabId={tab.id} />
   if (tab.url === HISTORY_URL) return <HistoryPage activeTab={tab} />
   if (tab.url === DOWNLOADS_URL) return <DownloadsPage tabId={tab.id} />
