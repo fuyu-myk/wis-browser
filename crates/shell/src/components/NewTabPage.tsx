@@ -7,7 +7,7 @@ import type { ShortcutTile, Tab } from '@/bindings/types'
 const FAVICON_CACHED_EVENT = 'favicon-cached'
 import { SearchIcon } from '@/lib/icons'
 import { cx } from '@/lib/cx'
-import { isSearchQuery, normaliseUrl, SEARCH_ENGINES } from '@/lib/url'
+import { activeEngine, resolveInput } from '@/lib/url'
 import { reorderByKeys } from '@/lib/shortcuts'
 import { useBrowserState, useUpdateSettings } from '@/hooks/useBrowserState'
 import { useActivePrivacyMode } from '@/hooks/useActivePrivacyMode'
@@ -71,19 +71,24 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
   const navigate = useNavigateOrCreateTab(activeWorkspaceId, activeTab)
 
   // Same suggestion source + commit semantics as the top URL bar.
-  const engine = state?.settings.search_engine ?? 'duckduckgo'
-  const engineLabel = SEARCH_ENGINES[engine].label
+  const searchSettings = state?.settings
   const { findOpenTab, switchToTab } = useOpenTabActions()
 
   const commit = useCallback(
     (raw: string) => {
-      const url = normaliseUrl(raw, engine)
-      if (!url) return
-      if (isSearchQuery(raw)) void commands.recordSearch(raw.trim()).catch(() => undefined)
-      navigate(url)
+      const resolved = resolveInput(raw, searchSettings)
+      if (!resolved) return
+      if (resolved.isSearch) void commands.recordSearch(raw.trim()).catch(() => undefined)
+      navigate(resolved.url)
       setQuery('')
     },
-    [engine, navigate],
+    [searchSettings, navigate],
+  )
+
+  const engineLabelFor = useCallback(
+    (query: string) =>
+      resolveInput(query, searchSettings)?.engineLabel ?? activeEngine(searchSettings).label,
+    [searchSettings],
   )
 
   const suggest = useUrlbarSuggest({
@@ -92,9 +97,9 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
     tabId: activeTab?.id ?? null,
     commit,
     setValue: setQuery,
+    engineLabelFor,
     switchToTab,
     findOpenTab,
-    engineLabel,
   })
   const suggestRef = useRef(suggest)
   suggestRef.current = suggest

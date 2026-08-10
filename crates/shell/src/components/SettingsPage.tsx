@@ -4,7 +4,7 @@ import type { TabId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { useBrowserState, useUpdateSettings } from '@/hooks/useBrowserState'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
-import { DownloadIcon, GlobeIcon, LockIcon, MonitorIcon, PanelTopIcon, PlusIcon, SunIcon } from '@/lib/icons'
+import { DownloadIcon, GlobeIcon, LockIcon, MonitorIcon, PanelTopIcon, PlusIcon, SearchIcon, SunIcon } from '@/lib/icons'
 import {
   BookmarkIcon,
   DatabaseIcon,
@@ -16,6 +16,7 @@ import {
   WifiIcon,
 } from '@/components/settingsIcons'
 import { BookmarksSection } from '@/components/BookmarksSection'
+import { SearchSection } from '@/components/SearchSection'
 import { AppearanceSection } from '@/components/AppearanceSection'
 import { DesignSection } from '@/components/DesignSection'
 import { LayoutSection } from '@/components/LayoutSection'
@@ -41,6 +42,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'appearance', label: 'Appearance', icon: <SunIcon /> },
   { id: 'design', label: 'Design', icon: <PaletteIcon /> },
   { id: 'layout', label: 'Layout', icon: <PanelTopIcon /> },
+  { id: 'search', label: 'Search', icon: <SearchIcon /> },
   { id: 'newtab', label: 'New tab', icon: <PlusIcon /> },
   { id: 'widgets', label: 'Sidebar widgets', icon: <GridIcon /> },
   { id: 'performance', label: 'Performance', icon: <MonitorIcon /> },
@@ -187,6 +189,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
         />
         <DesignSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <LayoutSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
+        <SearchSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <NewTabSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <SidebarWidgetsSection
           widgets={settings.sidebar_widgets}

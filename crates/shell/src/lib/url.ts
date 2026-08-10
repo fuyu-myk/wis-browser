@@ -1,4 +1,4 @@
-import type { SearchEngine, UserSettings } from '@/bindings/types'
+import type { CustomSearchEngine, SearchEngine, UserSettings } from '@/bindings/types'
 
 /** Per-engine metadata: display label + query-URL builder. */
 export const SEARCH_ENGINES: Record<
@@ -20,6 +20,94 @@ export const SEARCH_ENGINES: Record<
 }
 
 const DEFAULT_ENGINE: SearchEngine = 'duckduckgo'
+
+/** The settings slice search resolution needs. */
+export type SearchSettings = Pick<
+  UserSettings,
+  'search_engine' | 'custom_search_engines' | 'builtin_search_keywords'
+>
+
+interface ResolvedEngine {
+  label: string
+  search: (query: string) => string
+}
+
+function customEngine(engine: CustomSearchEngine): ResolvedEngine {
+  return {
+    label: engine.name,
+    search: (q) => engine.template.split('{searchTerms}').join(encodeURIComponent(q)),
+  }
+}
+
+/**
+ * The engine non-URL input searches with: the custom engine marked default
+ * when one exists, else the built-in choice.
+ */
+export function activeEngine(settings?: SearchSettings): ResolvedEngine {
+  const custom = settings?.custom_search_engines.find((e) => e.is_default)
+  if (custom) return customEngine(custom)
+  const engine = settings?.search_engine ?? DEFAULT_ENGINE
+  return SEARCH_ENGINES[engine] ?? SEARCH_ENGINES[DEFAULT_ENGINE]
+}
+
+/** A resolved address-bar input. */
+export interface ResolvedInput {
+  url: string
+  /** True when the input became an engine query. */
+  isSearch: boolean
+  /** Engine label when `isSearch`; null otherwise. */
+  engineLabel: string | null
+}
+
+/**
+ * Turn raw address-bar input into a navigable URL. Keyword triggers
+ * (`kw query`; custom engines first, then built-in keyword assignments) are
+ * checked before the host heuristic so a keyword can never be shadowed; then
+ * full URLs, hosts, and finally a search with the active engine. A bare
+ * keyword with no query falls through to normal handling.
+ */
+export function resolveInput(raw: string, settings?: SearchSettings): ResolvedInput | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+
+  const space = trimmed.search(/\s/)
+  if (space > 0) {
+    const keyword = trimmed.slice(0, space).toLowerCase()
+    const rest = trimmed.slice(space + 1).trim()
+    if (rest) {
+      const custom = settings?.custom_search_engines.find((e) => e.keyword === keyword)
+      if (custom) {
+        const engine = customEngine(custom)
+        return { url: engine.search(rest), isSearch: true, engineLabel: engine.label }
+      }
+      const builtins = settings?.builtin_search_keywords ?? {}
+      const builtin = (Object.keys(builtins) as SearchEngine[]).find(
+        (e) => builtins[e] === keyword && SEARCH_ENGINES[e],
+      )
+      if (builtin) {
+        const engine = SEARCH_ENGINES[builtin]
+        return { url: engine.search(rest), isSearch: true, engineLabel: engine.label }
+      }
+    }
+  }
+
+  try {
+    const u = new URL(trimmed)
+    // Reject things like `mailto:` here.
+    if (u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'about:') {
+      return { url: u.toString(), isSearch: false, engineLabel: null }
+    }
+  } catch {
+    /* fall through */
+  }
+
+  if (looksLikeHost(trimmed)) {
+    return { url: `https://${trimmed}`, isSearch: false, engineLabel: null }
+  }
+
+  const engine = activeEngine(settings)
+  return { url: engine.search(trimmed), isSearch: true, engineLabel: engine.label }
+}
 
 export function normaliseUrl(input: string, engine: SearchEngine = DEFAULT_ENGINE): string | null {
   const trimmed = input.trim()

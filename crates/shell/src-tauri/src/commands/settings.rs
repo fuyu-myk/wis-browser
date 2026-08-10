@@ -27,6 +27,14 @@ pub async fn update_settings(
         patch.shortcuts = Some(wis_core::sanitize_shortcuts(tiles));
     }
 
+    // Drop invalid custom search engines and enforce keyword uniqueness and caps.
+    if let Some(engines) = patch.custom_search_engines.take() {
+        patch.custom_search_engines = Some(wis_core::sanitize_search_engines(engines));
+    }
+    if let Some(map) = patch.builtin_search_keywords.take() {
+        patch.builtin_search_keywords = Some(wis_core::sanitize_builtin_search_keywords(map));
+    }
+
     let keybindings_touched = patch.keybindings.is_some();
     let userscripts_touched = patch.userscripts.is_some();
     let cosmetic_touched = patch.user_cosmetic_rules.is_some();

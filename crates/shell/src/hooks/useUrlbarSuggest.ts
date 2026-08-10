@@ -77,8 +77,10 @@ interface UseUrlbarSuggestArgs {
   switchToTab: (tabId: TabId) => void
   /** Resolve a URL to an open tab id, or null if not open. */
   findOpenTab: (url: string) => TabId | null
-  /** Display label of the active search engine (e.g. "DuckDuckGo"). */
-  engineLabel: string
+  /**
+   * Engine label for the "Search with X" row, resolved per query.
+   */
+  engineLabelFor: (query: string) => string
 }
 
 export interface UrlbarSuggestApi {
@@ -177,7 +179,7 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
       sites: SiteSuggestion[],
       completion: SiteSuggestion | null,
     ): RenderRow[] => {
-      const { findOpenTab, engineLabel } = argsRef.current
+      const { findOpenTab, engineLabelFor } = argsRef.current
       const siteRow = (s: SiteSuggestion, section: string): RenderRow => ({
         kind: 'site',
         section,
@@ -206,7 +208,7 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
       }
       // "Search <engine> for X", only when the input is a search, not a URL.
       if (isSearchQuery(query)) {
-        rows.push({ kind: 'searchQuery', section: SECTION_TOP, query, engineLabel })
+        rows.push({ kind: 'searchQuery', section: SECTION_TOP, query, engineLabel: engineLabelFor(query) })
       }
       // Recommendations pinned below: close matches, excluding the completion.
       const recs = sites.filter((s) => !completion || s.url !== completion.url).slice(0, TYPING_RECS)

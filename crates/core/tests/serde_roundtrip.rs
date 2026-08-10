@@ -110,6 +110,16 @@ fn settings_patch_round_trips_when_all_fields_set() {
             url: "https://example.com/".into(),
         }]),
         search_engine: Some(wis_core::SearchEngine::Google),
+        custom_search_engines: Some(vec![wis_core::CustomSearchEngine {
+            name: "Kagi".into(),
+            keyword: "k".into(),
+            template: "https://kagi.com/search?q={searchTerms}".into(),
+            is_default: true,
+        }]),
+        builtin_search_keywords: Some(HashMap::from([(
+            wis_core::SearchEngine::Google,
+            "g".to_string(),
+        )])),
         filter_list_auto_update: Some(false),
         url_bar_focus_glow: Some(true),
         always_private: Some(true),
@@ -278,6 +288,103 @@ fn upstream_proxy_roundtrips_tagged() {
         serde_json::to_string(&UpstreamProxy::Tor).unwrap(),
         "{\"kind\":\"tor\"}"
     );
+}
+
+#[test]
+fn user_settings_without_custom_engines_deserialises_to_builtin() {
+    // Settings persisted before custom engines existed must still load and
+    // resolve to the built-in choice.
+    let json = r#"{
+        "layout": "sidebar_left",
+        "theme": "system",
+        "accent": "primary",
+        "glass_enabled": true,
+        "sidebar_collapsible": true,
+        "compact": false,
+        "default_privacy_mode": "balanced",
+        "doh_resolver": null,
+        "homepage": null,
+        "search_engine": "google"
+    }"#;
+    let parsed: UserSettings = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.search_engine, wis_core::SearchEngine::Google);
+    assert!(parsed.custom_search_engines.is_empty());
+    assert!(parsed.active_custom_engine().is_none());
+    assert!(parsed.builtin_search_keywords.is_empty());
+}
+
+#[test]
+fn unknown_builtin_keyword_engine_ids_are_dropped() {
+    // A renamed/removed engine variant must not brick the settings blob.
+    let json = r#"{
+        "layout": "sidebar_left",
+        "theme": "system",
+        "accent": "primary",
+        "glass_enabled": true,
+        "sidebar_collapsible": true,
+        "compact": false,
+        "default_privacy_mode": "balanced",
+        "doh_resolver": null,
+        "homepage": null,
+        "builtin_search_keywords": {"google": "g", "altavista": "av"}
+    }"#;
+    let parsed: UserSettings = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.builtin_search_keywords.len(), 1);
+    assert_eq!(
+        parsed.builtin_search_keywords[&wis_core::SearchEngine::Google],
+        "g"
+    );
+}
+
+#[test]
+fn custom_search_engine_wire_format_is_stable() {
+    // The TS mirror hand-maintains these field names; a rename here must fail.
+    let engine = wis_core::CustomSearchEngine {
+        name: "Kagi".into(),
+        keyword: "k".into(),
+        template: "https://kagi.com/search?q={searchTerms}".into(),
+        is_default: true,
+    };
+    let json = serde_json::to_string(&engine).unwrap();
+    for key in [
+        "\"name\":",
+        "\"keyword\":",
+        "\"template\":",
+        "\"is_default\":",
+    ] {
+        assert!(json.contains(key), "missing {key} in {json}");
+    }
+}
+
+#[test]
+fn custom_search_engine_without_is_default_deserialises_to_false() {
+    // Engines persisted without the flag must load as non-default.
+    let json =
+        r#"{"name":"Kagi","keyword":"k","template":"https://kagi.com/search?q={searchTerms}"}"#;
+    let parsed: wis_core::CustomSearchEngine = serde_json::from_str(json).unwrap();
+    assert!(!parsed.is_default);
+}
+
+#[test]
+fn deleted_default_engine_falls_back_to_builtin() {
+    let with_default = UserSettings {
+        search_engine: wis_core::SearchEngine::Bing,
+        custom_search_engines: vec![wis_core::CustomSearchEngine {
+            name: "Kagi".into(),
+            keyword: "k".into(),
+            template: "https://kagi.com/search?q={searchTerms}".into(),
+            is_default: true,
+        }],
+        ..UserSettings::default()
+    };
+    assert_eq!(with_default.active_custom_engine().unwrap().name, "Kagi");
+
+    let removed = with_default.with_patch(wis_core::UserSettingsPatch {
+        custom_search_engines: Some(Vec::new()),
+        ..Default::default()
+    });
+    assert!(removed.active_custom_engine().is_none());
+    assert_eq!(removed.search_engine, wis_core::SearchEngine::Bing);
 }
 
 #[test]

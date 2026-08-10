@@ -326,6 +326,24 @@ fn settings_patch_updates_only_specified_fields() {
         before.default_privacy_mode
     );
     assert_eq!(s1.settings.doh_resolver, before.doh_resolver);
+
+    // Patching the custom-engine list leaves the built-in choice untouched
+    // and vice versa.
+    let s2 = s1.with_settings(UserSettingsPatch {
+        custom_search_engines: Some(vec![wis_core::CustomSearchEngine {
+            name: "Kagi".into(),
+            keyword: "k".into(),
+            template: "https://kagi.com/search?q={searchTerms}".into(),
+            is_default: false,
+        }]),
+        ..Default::default()
+    });
+    assert_eq!(s2.settings.search_engine, before.search_engine);
+    let s3 = s2.with_settings(UserSettingsPatch {
+        search_engine: Some(wis_core::SearchEngine::Bing),
+        ..Default::default()
+    });
+    assert_eq!(s3.settings.custom_search_engines.len(), 1);
 }
 
 #[test]

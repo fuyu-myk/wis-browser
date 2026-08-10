@@ -3752,6 +3752,13 @@ body.has-custom-img .kb-launch-mark {
   padding: 2px 4px;
 }
 .kb-ua-remove:hover { color: var(--text-primary); }
+/* Compact inline keyword box in engine rows. */
+.kb-kw-input {
+  flex: 0 0 auto;
+  width: 92px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
 
 /* -- New-tab launchpad shortcuts ---------------------------------------- */
 .kb-shortcut-list {

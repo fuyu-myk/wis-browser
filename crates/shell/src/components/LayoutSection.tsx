@@ -1,10 +1,4 @@
-import type {
-  LayoutMode,
-  RailSide,
-  SearchEngine,
-  UserSettings,
-  UserSettingsPatch,
-} from '@/bindings/types'
+import type { LayoutMode, RailSide, UserSettings, UserSettingsPatch } from '@/bindings/types'
 import { Segmented, Switch } from '@/components/controls'
 import { PanelTopIcon, SidebarLeftIcon, SidebarRightIcon } from '@/lib/icons'
 
@@ -26,12 +20,6 @@ const EXPANDED_FOLDER_LIMIT_OPTIONS = [
   { value: '3' as const, label: '3' },
   { value: '0' as const, label: 'No limit' },
 ] satisfies ReadonlyArray<{ value: string; label: string }>
-
-const SEARCH_ENGINE_OPTIONS = [
-  { value: 'duckduckgo' as const, label: 'DuckDuckGo' },
-  { value: 'google' as const, label: 'Google' },
-  { value: 'bing' as const, label: 'Bing' },
-] satisfies ReadonlyArray<{ value: SearchEngine; label: string }>
 
 interface LayoutSectionProps {
   settings: UserSettings
@@ -101,18 +89,6 @@ export function LayoutSection({ settings, onUpdate }: LayoutSectionProps) {
             checked={settings.sidebar_collapsible}
             onChange={(sidebar_collapsible) => onUpdate({ sidebar_collapsible })}
             label="Collapsible sidebar"
-          />
-        </div>
-        <div className="row">
-          <div className="l">
-            <span>Search engine</span>
-            <span>Used for address-bar searches and suggestions</span>
-          </div>
-          <Segmented
-            value={settings.search_engine}
-            onChange={(search_engine) => onUpdate({ search_engine })}
-            options={SEARCH_ENGINE_OPTIONS}
-            ariaLabel="Default search engine"
           />
         </div>
         <div className="row">

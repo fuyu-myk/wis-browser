@@ -18,7 +18,7 @@ import type {
   UserSettingsPatch,
 } from '@/bindings/types'
 import { localizeAccelerator, prettyAccelerator } from '@/lib/keybindings'
-import { normaliseUrl } from '@/lib/url'
+import { resolveInput, type SearchSettings } from '@/lib/url'
 
 export type PaletteSection = 'tabs' | 'actions' | 'settings' | 'open'
 
@@ -383,24 +383,25 @@ export function makeActionsSource({ keymap, onDispatch }: ActionsSourceArgs): Pa
 
 interface NavigateSourceArgs {
   onOpen: (url: string) => void | Promise<void>
+  /** Search-resolution slice of the user settings (engine + custom engines). */
+  settings: SearchSettings
 }
 
 /**
  * Type-to-navigate fallback. Whenever the query is non-empty, emit a
- * single row that resolves the query through `normaliseUrl` and opens
- * it as a tab. Lets the palette act as a launcher when nothing matches
- * (and as a quick "open this" when something does). Always sorts last
- * because of the dedicated 'open' section in the surface.
+ * single row that resolves the query through `resolveInput` (keyword
+ * triggers included) and opens it as a tab. Lets the palette act as a
+ * launcher when nothing matches (and as a quick "open this" when something
+ * does). Always sorts last because of the dedicated 'open' section in the
+ * surface.
  */
-export function makeNavigateSource({ onOpen }: NavigateSourceArgs): PaletteSource {
+export function makeNavigateSource({ onOpen, settings }: NavigateSourceArgs): PaletteSource {
   return (query) => {
+    const resolved = resolveInput(query, settings)
+    if (!resolved) return []
     const trimmed = query.trim()
-    if (!trimmed) return []
-    const url = normaliseUrl(trimmed)
-    if (!url) return []
-    const isSearch = url.startsWith('https://duckduckgo.com/?q=')
-    const title = isSearch ? `Search for "${trimmed}"` : `Go to ${url}`
-    const subtitle = isSearch ? 'via DuckDuckGo' : undefined
+    const title = resolved.isSearch ? `Search for "${trimmed}"` : `Go to ${resolved.url}`
+    const subtitle = resolved.isSearch && resolved.engineLabel ? `via ${resolved.engineLabel}` : undefined
     return [
       {
         id: 'open:current',
@@ -408,7 +409,7 @@ export function makeNavigateSource({ onOpen }: NavigateSourceArgs): PaletteSourc
         score: 1,
         title,
         subtitle,
-        activate: () => onOpen(url),
+        activate: () => onOpen(resolved.url),
       },
     ]
   }

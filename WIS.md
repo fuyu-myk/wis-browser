@@ -121,6 +121,7 @@ Each group maps to a `docs/architecture/` doc that carries the mechanism details
 - **Folder + workspace icons**: glyph/emoji icons via `wis_core::icon`, shared `IconPicker`.
 - **Theming & motion**: custom `.wistheme` themes, per-workspace gradient/image/GIF backgrounds, Light/Dark/System mode pushed to web content, and a tokenized three-tier motion system (drag choreography, FLIP close glides, pane/widget entrances).
 - **URL-bar suggestions** and a **configurable launchpad + homepage** (editable shortcut tiles, boundary-sanitized).
+- **Custom search engines**: user-defined engines (`wis_core::search`, `{searchTerms}`/`%s` templates, boundary-sanitized) with address-bar keyword triggers (`kw query`); built-in engines can carry optional keywords too (custom wins on collision); any engine can be the default (Settings > Search), resolved consistently across URL bar, launchpad, and palette.
 
 ### Tabs, panels & media (`docs/architecture/tabs-panels-and-media.md`)
 

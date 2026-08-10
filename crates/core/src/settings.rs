@@ -8,7 +8,7 @@ use crate::keybinding::KeyAction;
 use crate::layout::{LayoutMode, MotionLevel, RailSide, ThemeMode};
 use crate::new_tab::{default_shortcuts, NewTabTarget, ShortcutTile};
 use crate::privacy::PrivacyMode;
-use crate::search::SearchEngine;
+use crate::search::{CustomSearchEngine, SearchEngine};
 use crate::theme::CustomTheme;
 use crate::user_agent::UaProfile;
 use crate::userscript::Userscript;
@@ -54,6 +54,18 @@ pub struct UserSettings {
     /// existing persisted settings deserialise to DuckDuckGo.
     #[serde(default)]
     pub search_engine: SearchEngine,
+    /// User-defined search engines (address-bar keyword + query template).
+    /// At most one carries `is_default`, which then wins over
+    /// `search_engine`; deleting it falls back to the built-in choice.
+    /// Sanitized at the IPC boundary.
+    #[serde(default)]
+    pub custom_search_engines: Vec<CustomSearchEngine>,
+    /// Optional address-bar keywords for the built-in engines.
+    /// Empty by default so no input changes meaning unasked; custom-engine
+    /// keywords win on collision at lookup time. Lenient keys: an unknown
+    /// engine id is dropped rather than failing the settings blob.
+    #[serde(default, deserialize_with = "deserialize_builtin_search_keywords")]
+    pub builtin_search_keywords: HashMap<SearchEngine, String>,
     /// When true, the shell fetches the EasyPrivacy filter list on launch
     /// (and on demand) into the per-user cache, then hot-swaps it into the
     /// running tracker engine. When false, the bundled list is used.
@@ -270,6 +282,21 @@ where
         .collect())
 }
 
+/// Deserialize built-in engine keywords leniently (same rationale as
+/// [`deserialize_keybindings`]): unknown engine ids are dropped.
+fn deserialize_builtin_search_keywords<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<SearchEngine, String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = HashMap::<String, String>::deserialize(deserializer)?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|(id, keyword)| SearchEngine::from_id(&id).map(|engine| (engine, keyword)))
+        .collect())
+}
+
 fn default_filter_subscriptions() -> Vec<String> {
     vec![
         "https://ublockorigin.github.io/uAssets/filters/filters.txt".to_string(),
@@ -294,6 +321,8 @@ impl Default for UserSettings {
             new_tab_target: NewTabTarget::default(),
             shortcuts: default_shortcuts(),
             search_engine: SearchEngine::default(),
+            custom_search_engines: Vec::new(),
+            builtin_search_keywords: HashMap::new(),
             filter_list_auto_update: true,
             url_bar_focus_glow: false,
             always_private: false,
@@ -364,6 +393,14 @@ pub struct UserSettingsPatch {
     pub shortcuts: Option<Vec<ShortcutTile>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub search_engine: Option<SearchEngine>,
+    /// Replaces the whole custom-engine list when present (the UI sends the
+    /// full list). Sanitized boundary-side. `None` keeps the current list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_search_engines: Option<Vec<CustomSearchEngine>>,
+    /// Replaces the whole built-in keyword map when present. Sanitized
+    /// boundary-side. `None` keeps the current map.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub builtin_search_keywords: Option<HashMap<SearchEngine, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter_list_auto_update: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -440,6 +477,12 @@ pub struct UserSettingsPatch {
 }
 
 impl UserSettings {
+    /// The custom engine address-bar searches should use, when one is marked
+    /// default; `None` means use the built-in `search_engine` choice.
+    pub fn active_custom_engine(&self) -> Option<&CustomSearchEngine> {
+        self.custom_search_engines.iter().find(|e| e.is_default)
+    }
+
     /// Return a new `UserSettings` with the patch applied. Self is not mutated.
     pub fn with_patch(&self, patch: UserSettingsPatch) -> Self {
         Self {
@@ -463,6 +506,12 @@ impl UserSettings {
             new_tab_target: patch.new_tab_target.unwrap_or(self.new_tab_target),
             shortcuts: patch.shortcuts.unwrap_or_else(|| self.shortcuts.clone()),
             search_engine: patch.search_engine.unwrap_or(self.search_engine),
+            custom_search_engines: patch
+                .custom_search_engines
+                .unwrap_or_else(|| self.custom_search_engines.clone()),
+            builtin_search_keywords: patch
+                .builtin_search_keywords
+                .unwrap_or_else(|| self.builtin_search_keywords.clone()),
             filter_list_auto_update: patch
                 .filter_list_auto_update
                 .unwrap_or(self.filter_list_auto_update),

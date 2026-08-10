@@ -18,7 +18,7 @@ import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { LoadProgressBar } from '@/components/LoadProgressBar'
 import { cx } from '@/lib/cx'
 import { SearchIcon } from '@/lib/icons'
-import { isChromeUrl, isSearchQuery, normaliseUrl, NEW_TAB_URL, SEARCH_ENGINES } from '@/lib/url'
+import { activeEngine, isChromeUrl, NEW_TAB_URL, resolveInput } from '@/lib/url'
 import { bookmarkFoldersKey, bookmarksKey } from '@/lib/bookmarkKeys'
 import { useBookmarkSync } from '@/hooks/useBookmarkSync'
 import { BMPICKER_OPEN_EVENT, BOOKMARK_PAGE_EVENT, lastFolderKey, PIN_CAP } from '@/lib/bookmarkMenu'
@@ -253,27 +253,32 @@ function useUrlBarForm(
   const workspaceId = activeTab?.workspace_id ?? fallbackWorkspaceId
 
   const { data: state } = useBrowserState()
-  const engine = state?.settings.search_engine ?? 'duckduckgo'
-  const engineLabel = SEARCH_ENGINES[engine].label
+  const searchSettings = state?.settings
 
   /** Navigate (or search) for a raw address-bar string, remembering searches. */
   const go = useCallback(
     (raw: string) => {
-      const target = normaliseUrl(raw, engine)
-      if (!target) return
-      if (isSearchQuery(raw)) {
+      const resolved = resolveInput(raw, searchSettings)
+      if (!resolved) return
+      if (resolved.isSearch) {
         void commands.recordSearch(raw.trim()).catch(() => undefined)
       }
       if (activeTab) {
-        navigate.mutate({ id: activeTab.id, url: target })
+        navigate.mutate({ id: activeTab.id, url: resolved.url })
       } else if (workspaceId) {
-        create.mutate({ workspaceId, url: target })
+        create.mutate({ workspaceId, url: resolved.url })
       }
     },
-    [activeTab, workspaceId, navigate, create, engine],
+    [activeTab, workspaceId, navigate, create, searchSettings],
   )
 
   const { findOpenTab, switchToTab } = useOpenTabActions()
+
+  const engineLabelFor = useCallback(
+    (query: string) =>
+      resolveInput(query, searchSettings)?.engineLabel ?? activeEngine(searchSettings).label,
+    [searchSettings],
+  )
 
   const suggest = useUrlbarSuggest({
     inputRef,
@@ -283,7 +288,7 @@ function useUrlBarForm(
     setValue,
     switchToTab,
     findOpenTab,
-    engineLabel,
+    engineLabelFor,
   })
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {

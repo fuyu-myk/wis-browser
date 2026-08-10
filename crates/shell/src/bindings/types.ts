@@ -35,6 +35,17 @@ export type RailSide = 'left' | 'right'
 
 export type SearchEngine = 'duckduckgo' | 'google' | 'bing'
 
+/** A user-defined search engine (mirror of `wis_core::CustomSearchEngine`). */
+export interface CustomSearchEngine {
+  name: string
+  /** Address-bar trigger (`kw query`): lowercase, no whitespace, unique. */
+  keyword: string
+  /** Query-URL template containing `{searchTerms}`. */
+  template: string
+  /** At most one engine per list; wins over the built-in default. */
+  is_default: boolean
+}
+
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 export type MotionLevel = 'full' | 'reduced' | 'off'
@@ -392,6 +403,10 @@ export interface UserSettings {
   /** Editable launchpad shortcut tiles, in display order. */
   shortcuts: ShortcutTile[]
   search_engine: SearchEngine
+  /** User-defined engines; at most one `is_default`, winning over `search_engine`. */
+  custom_search_engines: CustomSearchEngine[]
+  /** Optional address-bar keywords for built-in engines; custom keywords win on collision. */
+  builtin_search_keywords: Partial<Record<SearchEngine, string>>
   filter_list_auto_update: boolean
   url_bar_focus_glow: boolean
   /** Launch directly into a private (ephemeral) workspace. */
@@ -470,6 +485,10 @@ export interface UserSettingsPatch {
   new_tab_target?: NewTabTarget
   shortcuts?: ShortcutTile[]
   search_engine?: SearchEngine
+  /** Replaces the whole custom-engine list (the UI sends the full list). */
+  custom_search_engines?: CustomSearchEngine[]
+  /** Replaces the whole built-in keyword map. */
+  builtin_search_keywords?: Partial<Record<SearchEngine, string>>
   filter_list_auto_update?: boolean
   url_bar_focus_glow?: boolean
   always_private?: boolean

@@ -11,8 +11,9 @@
  *     chosen action; the chrome's `useKeyActions` handler runs it.
  *     Keeping action dispatch single-sourced means a palette-driven
  *     "New tab" behaves identically to its menu accelerator.
- *   - "Open" items create a new tab from `normaliseUrl(query)` so the
- *     palette doubles as a launcher when nothing else matches.
+ *   - "Open" items create a new tab from `resolveInput(query, settings)`
+ *     (custom-engine keywords included) so the palette doubles as a
+ *     launcher when nothing else matches.
  *   - Cmd+Backspace on a tab row invokes its secondary action (close)
  *     without dismissing the palette so users can sweep stale tabs.
  */
@@ -127,7 +128,7 @@ export function PaletteSurface() {
         onDispatch: dispatchAction,
       }),
       makeSettingsTogglesSource({ settings: state.settings, onChange: updateSettings }),
-      makeNavigateSource({ onOpen: openUrl }),
+      makeNavigateSource({ onOpen: openUrl, settings: state.settings }),
     ]
   }, [state, activateTab, closeTab, dispatchAction, openUrl, updateSettings])
 
