@@ -1,5 +1,10 @@
-use objc2::DeclaredClass;
-use objc2_foundation::{NSError, NSObjectProtocol, NSString};
+use objc2::rc::Retained;
+use objc2::{msg_send, DeclaredClass};
+use objc2_foundation::{
+  NSError, NSObjectProtocol, NSString, NSURLAuthenticationChallenge,
+  NSURLAuthenticationMethodServerTrust, NSURLCredential, NSURLErrorFailingURLPeerTrustErrorKey,
+  NSURLSessionAuthChallengeDisposition,
+};
 use objc2_web_kit::{
   WKNavigation, WKNavigationAction, WKNavigationActionPolicy, WKNavigationResponse,
   WKNavigationResponsePolicy,
@@ -56,11 +61,118 @@ pub(crate) fn did_fail_provisional_navigation(
   _webview: &WKWebView,
   error: &NSError,
 ) {
-  super::set_last_page_load_error(error.code() as i64, error.domain().to_string());
+  super::set_last_page_load_error(
+    error.code() as i64,
+    error.domain().to_string(),
+    failing_leaf_certificate_der(error),
+  );
   if let Some(on_page_load) = &this.ivars().on_page_load_handler {
     on_page_load(PageLoadEvent::Finished);
   }
   super::take_last_page_load_error();
+}
+
+// WIS patch: Security/CoreFoundation calls used to read the leaf certificate
+// out of a server-trust reference. `SecTrustGetCertificateAtIndex` returns a
+// borrowed reference (no release), and the leaf at index 0 is always present
+// without forcing a trust evaluation. Declared raw because neither framework
+// has an objc2 binding in this dependency set.
+#[link(name = "Security", kind = "framework")]
+extern "C" {
+  fn SecTrustGetCertificateAtIndex(
+    trust: *const core::ffi::c_void,
+    ix: isize,
+  ) -> *const core::ffi::c_void;
+  fn SecCertificateCopyData(cert: *const core::ffi::c_void) -> *const core::ffi::c_void;
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+extern "C" {
+  fn CFDataGetLength(data: *const core::ffi::c_void) -> isize;
+  fn CFDataGetBytePtr(data: *const core::ffi::c_void) -> *const u8;
+  fn CFRelease(cf: *const core::ffi::c_void);
+}
+
+/// WIS patch: the DER bytes of `trust`'s leaf certificate, `None` when the
+/// chain is missing or unreadable (callers fail closed on `None`). No trust
+/// evaluation is triggered: only `SecTrustGetCertificateAtIndex(_, 0)` is
+/// used, which the header guarantees returns the leaf without evaluating.
+unsafe fn leaf_certificate_der(trust: *const core::ffi::c_void) -> Option<Vec<u8>> {
+  if trust.is_null() {
+    return None;
+  }
+  let cert = SecTrustGetCertificateAtIndex(trust, 0);
+  if cert.is_null() {
+    return None;
+  }
+  let data = SecCertificateCopyData(cert);
+  if data.is_null() {
+    return None;
+  }
+  let len = CFDataGetLength(data);
+  let ptr = CFDataGetBytePtr(data);
+  let der =
+    (len > 0 && !ptr.is_null()).then(|| std::slice::from_raw_parts(ptr, len as usize).to_vec());
+  CFRelease(data);
+  der
+}
+
+/// WIS patch: the failing server's leaf certificate DER, read from the
+/// provisional-failure `NSError`'s peer-trust userInfo
+/// (`NSURLErrorFailingURLPeerTrustErrorKey` -> `SecTrustRef`). Bound to this
+/// exact navigation, so a later challenge for the same host cannot substitute
+/// a different certificate. `None` for non-TLS failures.
+fn failing_leaf_certificate_der(error: &NSError) -> Option<Vec<u8>> {
+  unsafe {
+    let user_info = error.userInfo();
+    // `objectForKey:` returns a borrowed (+0) SecTrustRef valid while
+    // `user_info` is alive; read as an opaque pointer (no objc2 binding).
+    let trust: *const core::ffi::c_void =
+      msg_send![&*user_info, objectForKey: NSURLErrorFailingURLPeerTrustErrorKey];
+    leaf_certificate_der(trust)
+  }
+}
+
+// WIS patch: WebKit rejects an untrusted TLS certificate before
+// `didFailProvisionalNavigation:` unless the server-trust challenge is
+// answered with a credential. Every server-trust challenge is offered to the
+// embedder-registered evaluator as `(host, leaf certificate DER)`; when it
+// returns true, the challenge is answered with a credential built from that
+// trust. Every other path keeps the system default handling. See WIS-PATCH.md.
+pub(crate) fn did_receive_authentication_challenge(
+  challenge: &NSURLAuthenticationChallenge,
+  handler: &block2::Block<dyn Fn(NSURLSessionAuthChallengeDisposition, *mut NSURLCredential)>,
+) {
+  unsafe {
+    let space = challenge.protectionSpace();
+    if space
+      .authenticationMethod()
+      .isEqualToString(NSURLAuthenticationMethodServerTrust)
+    {
+      // `serverTrust` (`SecTrustRef`) has no objc2-foundation binding, so it
+      // round-trips through `credentialForTrust:` as an opaque pointer.
+      let trust: *mut core::ffi::c_void = msg_send![&*space, serverTrust];
+      if !trust.is_null()
+        && leaf_certificate_der(trust)
+          .is_some_and(|der| super::server_trust_allowed(&space.host().to_string(), &der))
+      {
+        let credential: Option<Retained<NSURLCredential>> =
+          msg_send![objc2::class!(NSURLCredential), credentialForTrust: trust];
+        if let Some(credential) = credential {
+          handler.call((
+            NSURLSessionAuthChallengeDisposition::UseCredential,
+            Retained::as_ptr(&credential) as *mut NSURLCredential,
+          ));
+          return;
+        }
+      }
+    }
+
+    handler.call((
+      NSURLSessionAuthChallengeDisposition::PerformDefaultHandling,
+      std::ptr::null_mut(),
+    ));
+  }
 }
 
 // Navigation handler

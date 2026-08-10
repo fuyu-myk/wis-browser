@@ -1137,6 +1137,10 @@ export const commands = {
   async navGuardProceed(tabId: TabId, url: string, host: string): Promise<void> {
     return invoke('nav_guard_proceed', { tabId, url, host })
   },
+  /** Proceed past the TLS interstitial; the target URL comes from tab state. */
+  async tlsBypassProceed(id: TabId): Promise<void> {
+    return invoke('tls_bypass_proceed', { id })
+  },
   async resolveMediaPermission(
     requestId: number,
     granted: boolean,

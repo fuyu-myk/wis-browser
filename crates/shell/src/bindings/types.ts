@@ -218,12 +218,17 @@ export type LoadErrorKind =
   | 'offline'
   | 'unknown'
 
+/** Why a TLS certificate was rejected (mirror of `wis_core::TlsFault`). */
+export type TlsFault = 'expired' | 'name_mismatch' | 'untrusted' | 'revoked' | 'protocol'
+
 /** A failed page load (mirror of `wis_core::LoadError`). */
 export interface LoadError {
   kind: LoadErrorKind
   /** The engine's native error code (diagnostics only). */
   code: number
   url: string
+  /** The certificate fault behind a `tls_error`, `null` otherwise. */
+  tls: TlsFault | null
 }
 
 export interface Tab {

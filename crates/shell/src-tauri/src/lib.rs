@@ -48,6 +48,7 @@ mod swipe_nav;
 mod tab_preview;
 mod tab_session;
 mod themes;
+mod tls_bypass;
 mod vault;
 mod video_popout;
 mod wallpapers;
@@ -391,6 +392,12 @@ pub fn run() {
             // App handle for the native click navigation-guard handler.
             navguard::set_app_handle(app.handle().clone());
 
+            // Server-trust challenges consult the session TLS-bypass store
+            // (the interstitial's "proceed anyway"), pinned to the exact
+            // certificate the user approved.
+            #[cfg(target_os = "macos")]
+            wry::set_server_trust_evaluator(Box::new(tls_bypass::evaluate));
+
             // App handle for the video-popout message handler.
             video_popout::set_app_handle(app.handle().clone());
 
@@ -654,6 +661,7 @@ pub fn run() {
             windows::restore_session_windows,
             swipe_nav::set_swipe_accent,
             navguard::nav_guard_proceed,
+            tls_bypass::tls_bypass_proceed,
             permissions::resolve_media_permission,
             bookmarks::list_bookmark_folders,
             bookmarks::list_bookmarks,

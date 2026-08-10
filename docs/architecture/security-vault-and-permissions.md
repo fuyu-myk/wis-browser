@@ -64,6 +64,43 @@ The trust boundary is **local vs remote content**, not the window.
 - **Page-load fallback**: `maybe_guard` on `on_page_load` Started catches what the click path cannot (address bar, JS redirects), halting via `stopLoading` (`navigated: true`; "Take me back" goes back).
 - Rust re-assesses the href with `wis_core::link_safety::assess_link`. The interstitial raises for `RiskLevel::High` and for Medium that has a reason beyond `insecure_http` (`should_interrupt`); HTTPS-First already handles plain-http, so `insecure_http`-only Medium is intentionally not interrupted. Waved-through hosts live in the session-scoped `AppState.nav_guard_bypass`; "Proceed anyway" navigates and remembers the host.
 
+## TLS-error interstitial and session bypass
+
+`src/tls_bypass.rs` + `TlsErrorPage.tsx`. A TLS trust failure renders a
+full-page interstitial in the tab's pane (`SplitPaneHost` routes on
+`load_error.kind == "tls_error"`). Copy comes from `wis_core::TlsFault`, the
+per-engine certificate fault normalized purely in `load_error.rs` from
+NSURLError codes (macOS), `COREWEBVIEW2_WEB_ERROR_STATUS` (Windows), and
+`GTlsCertificateFlags` bits (Linux).
+
+- **Bypass gating**: the buried "Advanced, Proceed (unsafe)" affordance shows
+  only for recoverable faults (`expired`, `name_mismatch`, `untrusted`).
+  `revoked` and `protocol` never offer it (`TlsFault::bypassable`, mirrored in
+  the component); empty or unknown Linux flag sets fail closed to `protocol`.
+- **Command boundary**: `tls_bypass_proceed(tab_id)` takes no URL. The failing
+  URL comes from the tab's `load_error`, so the chrome can only bypass the
+  exact fault the interstitial showed, and only for `https`.
+- **Scope**: certificate-pinned, session-only, bound to the failing
+  navigation. The failing certificate is captured from the navigation's own
+  error and frozen against the tab (`record_candidate`, keyed by `TabId`);
+  proceeding pins exactly that certificate. A concurrent connection to the
+  same host cannot change what gets pinned (an earlier host-keyed store
+  could, and did in review). A later different certificate falls back to the
+  interstitial, so one benign bypass cannot silently cover a worse fault. The
+  pin stores are module statics for native-callback safety (the macOS
+  evaluator runs in an ObjC delegate, the Windows hook in a COM callback) and
+  are never persisted. Hosts are keyed lowercased and IPv6-unbracketed so
+  `url::Url` and `NSURLProtectionSpace` agree.
+- **Per engine**: macOS reads the failing leaf certificate from the
+  `NSError`'s `NSURLErrorFailingURLPeerTrustErrorKey` userInfo (seventh
+  vendored-wry patch) and the evaluator accepts a later challenge only when
+  its `(host, leaf DER)` matches the pin. Windows freezes the certificate PEM
+  from the `ServerCertificateErrorDetected` event and sets `ALWAYS_ALLOW` only
+  on a pin match. Linux stashes the failing `gio::TlsCertificate` per tab and
+  passes it to `allow_tls_certificate_for_host` before re-navigating.
+- **Known limitation**: after a bypass the padlock still shows the standard
+  https state; a downgraded indicator lands with the site-info panel.
+
 ## link_safety heuristics
 
 `crates/core/src/link_safety.rs::assess_link` is a pure function (host over the imperative shell), unit-tested, shared by navguard and Peek.

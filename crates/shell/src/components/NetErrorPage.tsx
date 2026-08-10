@@ -25,11 +25,6 @@ function copyFor(kind: LoadErrorKind, host: string): Copy {
         title: `${host} took too long to respond`,
         detail: 'The connection timed out. The site may be busy or your network may be slow.',
       }
-    case 'tls_error':
-      return {
-        title: `Connection to ${host} is not secure`,
-        detail: "The site's security certificate could not be verified, so Wis did not continue.",
-      }
     case 'offline':
       return {
         title: 'You appear to be offline',
@@ -43,7 +38,8 @@ function copyFor(kind: LoadErrorKind, host: string): Copy {
   }
 }
 
-function hostOf(error: LoadError): string {
+/** The failing URL's host, for error-page copy (falls back to the raw URL). */
+export function hostOf(error: LoadError): string {
   try {
     return new URL(error.url).host || error.url
   } catch {

@@ -46,7 +46,7 @@ pub use ids::{DownloadId, TabFolderId, TabId, ThemeId, UserscriptId, WidgetId, W
 pub use keybinding::{default_keymap, effective_keymap, KeyAction};
 pub use layout::{LayoutMode, MotionLevel, RailSide, ThemeMode};
 pub use link_safety::{assess_link, LinkAssessment, LinkWarning, RiskLevel};
-pub use load_error::{LoadError, LoadErrorKind};
+pub use load_error::{LoadError, LoadErrorKind, TlsFault};
 pub use netscape::{parse_netscape, to_netscape, ParsedBookmark, ParsedBookmarks};
 pub use new_tab::{
     default_shortcuts, sanitize_homepage, sanitize_shortcuts, NewTabTarget, ShortcutTile,

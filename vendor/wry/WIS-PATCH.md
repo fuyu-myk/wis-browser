@@ -260,3 +260,53 @@ Removal checklist: wry ships a load-failure page-load event -> drop the
 thread_local + `did_fail_provisional_navigation` + the delegate method + the
 `custom_handler` URL fallback + the `lib.rs` re-export, and move the shell's
 `load_error` macOS arm onto the upstream API.
+
+## Seventh patch: server-trust challenge evaluator (macOS) (Wis-original)
+
+WebKit rejects an untrusted TLS certificate during the provisional load
+unless `webView:didReceiveAuthenticationChallenge:completionHandler:` answers
+the server-trust challenge with a credential. `WKNavigationDelegate`
+implements no such method upstream, so an embedder cannot offer a "proceed
+anyway" bypass on its TLS interstitial.
+
+- `src/wkwebview/mod.rs`: a process-wide evaluator registered once via
+  `wry::set_server_trust_evaluator(Box<dyn Fn(&str, &[u8]) -> bool + Send +
+  Sync>)` (`OnceLock`, first registration wins), called with the challenge's
+  `(host, leaf certificate DER)` so the embedder pins the exact certificate,
+  not the whole host. A static rather than a builder attribute because tauri
+  constructs the `WebViewBuilder` (same constraint as the download-size
+  patch).
+- `wry_navigation_delegate.rs` + `navigation.rs`: the delegate answers a
+  challenge whose method is `NSURLAuthenticationMethodServerTrust` and whose
+  `(host, leaf DER)` the evaluator approves with `UseCredential` +
+  `credentialForTrust:`. Every other path (no evaluator, evaluator declined,
+  unreadable chain, non-server-trust method such as HTTP basic auth or client
+  certificates, nil trust) calls `PerformDefaultHandling`, which is identical
+  to not implementing the method at all. `SecTrustRef` has no
+  objc2-foundation binding, so `serverTrust`/`credentialForTrust:` use raw
+  `msg_send!` with an opaque pointer. The leaf DER is read via raw
+  Security/CoreFoundation externs: `SecTrustGetCertificateAtIndex(_, 0)`
+  returns a borrowed ref (no release) and per SecTrust.h does not trigger a
+  trust evaluation; `SecCertificateCopyData` follows the Copy rule and is
+  released after the bytes are copied out.
+- `did_fail_provisional_navigation` also reads the failing server's leaf
+  certificate from the `NSError`'s `NSURLErrorFailingURLPeerTrustErrorKey`
+  userInfo and bundles its DER into the page-load-error side channel
+  (`(code, domain, Option<DER>)`). This binds the pinnable certificate to the
+  navigation that failed, so a concurrent connection to the same host cannot
+  substitute a different certificate into what the embedder pins (the shell
+  freezes it per tab). `None` for non-TLS failures.
+- `Cargo.toml`: objc2-foundation gains `NSURLAuthenticationChallenge`,
+  `NSURLCredential`, `NSURLError`, `NSURLProtectionSpace`, `NSURLSession`
+  (types and constants only).
+
+Soundness: the completion handler is called exactly once on every path. The
+evaluator is process-wide, so an approved (host, certificate) pair is
+accepted in every WKWebView for the session, matching the shell's
+`tls_bypass` scope (the only registrar). A different certificate for the same
+host falls back to default handling. The block signature matches Apple's
+`(NSURLSessionAuthChallengeDisposition, nullable NSURLCredential *)`.
+
+Removal: when wry ships an authentication-challenge API, drop the static,
+both delegate additions, the `Cargo.toml` features, and the `lib.rs`
+re-export, and move the shell's evaluator registration onto it.

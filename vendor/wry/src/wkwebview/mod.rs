@@ -44,14 +44,17 @@ pub fn last_download_expected_bytes() -> i64 {
 // (`didFailProvisionalNavigation:`), read by the `on_page_load(Finished)`
 // handler's synchronous call stack. Upstream `PageLoadEvent` has only
 // Started/Finished and cannot carry a Failed variant without also vendoring
-// `tauri-runtime`/`tauri`. See WIS-PATCH.md.
+// `tauri-runtime`/`tauri`. The third element is the failing server's leaf
+// certificate DER for a TLS failure (pulled from the NSError's peer-trust
+// userInfo, so it is bound to this exact navigation), `None` otherwise. See
+// WIS-PATCH.md.
 thread_local! {
-  static LAST_PAGE_LOAD_ERROR: std::cell::RefCell<Option<(i64, String)>> =
+  static LAST_PAGE_LOAD_ERROR: std::cell::RefCell<Option<(i64, String, Option<Vec<u8>>)>> =
     const { std::cell::RefCell::new(None) };
 }
 
-pub(crate) fn set_last_page_load_error(code: i64, domain: String) {
-  LAST_PAGE_LOAD_ERROR.with(|cell| *cell.borrow_mut() = Some((code, domain)));
+pub(crate) fn set_last_page_load_error(code: i64, domain: String, leaf_der: Option<Vec<u8>>) {
+  LAST_PAGE_LOAD_ERROR.with(|cell| *cell.borrow_mut() = Some((code, domain, leaf_der)));
 }
 
 /// WIS patch: whether a page-load failure is pending on this thread, without
@@ -60,9 +63,31 @@ pub(crate) fn page_load_error_pending() -> bool {
   LAST_PAGE_LOAD_ERROR.with(|cell| cell.borrow().is_some())
 }
 
-/// WIS patch: take the most recent page-load failure `(code, error domain)`.
-pub fn take_last_page_load_error() -> Option<(i64, String)> {
+/// WIS patch: take the most recent page-load failure
+/// `(code, error domain, failing leaf-certificate DER)`.
+pub fn take_last_page_load_error() -> Option<(i64, String, Option<Vec<u8>>)> {
   LAST_PAGE_LOAD_ERROR.with(|cell| cell.borrow_mut().take())
+}
+
+// WIS patch: embedder hook consulted on every server-trust authentication
+// challenge with `(host, leaf certificate DER)`. When it returns true,
+// the challenge is answered with a credential built from the server's trust
+// (accepting its certificate); otherwise, the system default handling is kept.
+// See WIS-PATCH.md.
+static SERVER_TRUST_EVALUATOR: std::sync::OnceLock<
+  Box<dyn Fn(&str, &[u8]) -> bool + Send + Sync>,
+> = std::sync::OnceLock::new();
+
+/// WIS patch: register the process-wide server-trust evaluator. The first
+/// registration wins; later calls are ignored.
+pub fn set_server_trust_evaluator(evaluator: Box<dyn Fn(&str, &[u8]) -> bool + Send + Sync>) {
+  let _ = SERVER_TRUST_EVALUATOR.set(evaluator);
+}
+
+pub(crate) fn server_trust_allowed(host: &str, leaf_der: &[u8]) -> bool {
+  SERVER_TRUST_EVALUATOR
+    .get()
+    .is_some_and(|eval| eval(host, leaf_der))
 }
 #[cfg(target_os = "macos")]
 use class::wry_web_view_parent::WryWebViewParent;

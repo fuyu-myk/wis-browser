@@ -1,5 +1,9 @@
 use super::*;
 
+/// A macOS provisional page-load failure surfaced through the wry side
+/// channel: `(NSError code, error domain, failing leaf-certificate DER)`.
+type NsPageLoadFailure = (i64, String, Option<Vec<u8>>);
+
 /// Create a Tauri child webview for a tab using `WebviewBuilder` directly.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -231,19 +235,24 @@ pub async fn create_tab_webview(
             let page_url = payload.url().clone();
 
             #[cfg(target_os = "macos")]
-            let ns_failure: Option<(i64, String)> = if matches!(event, PageLoadEvent::Finished) {
+            let ns_failure: Option<NsPageLoadFailure> = if matches!(event, PageLoadEvent::Finished)
+            {
                 wry::take_last_page_load_error()
             } else {
                 None
             };
 
             #[cfg(not(target_os = "macos"))]
-            let ns_failure: Option<(i64, String)> = None;
+            let ns_failure: Option<NsPageLoadFailure> = None;
 
             let load_failed = ns_failure.is_some();
 
-            // A popped-out tab navigating loses its pinned video.
+            // A popped-out tab navigating loses its pinned video; a new
+            // navigation also drops any stale TLS-bypass candidate so it can't
+            // be pinned for a later, certificate-less failure.
             if matches!(event, PageLoadEvent::Started) {
+                #[cfg(any(target_os = "macos", windows))]
+                crate::tls_bypass::clear_candidate(tab_id);
                 crate::video_popout::handle_navigation(&app, &label_for_load);
                 crate::load_progress::start(&app, tab_id);
             }
@@ -254,9 +263,24 @@ pub async fn create_tab_webview(
             tauri::async_runtime::spawn(async move {
                 let state = app_for_state.state::<AppState>();
                 let result = mutate_unit(&app_for_state, &state, |s| {
-                    let failure = ns_failure.as_ref().and_then(|(code, domain)| {
+                    let failure = ns_failure.as_ref().and_then(|(code, domain, cert)| {
                         let url = s.tab(tab_id).ok()?.url.to_string();
-                        wis_core::LoadError::from_ns_error(domain, *code, url)
+                        let err = wis_core::LoadError::from_ns_error(domain, *code, url.clone())?;
+
+                        #[cfg(target_os = "macos")]
+                        if let Some(cert) = cert {
+                            if let Some(host) = Url::parse(&url)
+                                .ok()
+                                .and_then(|u| u.host_str().map(str::to_owned))
+                            {
+                                crate::tls_bypass::record_candidate(tab_id, &host, cert.clone());
+                            }
+                        }
+
+                        #[cfg(not(target_os = "macos"))]
+                        let _ = cert;
+
+                        Some(err)
                     });
 
                     let next = s.with_tab_loading(tab_id, loading)?;

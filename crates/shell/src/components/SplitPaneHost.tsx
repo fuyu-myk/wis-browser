@@ -306,10 +306,13 @@ import { SettingsPage } from '@/components/SettingsPage'
 import { HistoryPage } from '@/components/HistoryPage'
 import { DownloadsPage } from '@/components/DownloadsPage'
 import { NetErrorPage } from '@/components/NetErrorPage'
+import { TlsErrorPage } from '@/components/TlsErrorPage'
 import { DOWNLOADS_URL, HISTORY_URL, SETTINGS_URL } from '@/lib/url'
 
 function ChromePane({ tab }: { tab: Tab }) {
-  if (tab.load_error) return <NetErrorPage tab={tab} />
+  if (tab.load_error) {
+    return tab.load_error.kind === 'tls_error' ? <TlsErrorPage tab={tab} /> : <NetErrorPage tab={tab} />
+  }
   if (tab.url === SETTINGS_URL) return <SettingsPage tabId={tab.id} />
   if (tab.url === HISTORY_URL) return <HistoryPage activeTab={tab} />
   if (tab.url === DOWNLOADS_URL) return <DownloadsPage tabId={tab.id} />

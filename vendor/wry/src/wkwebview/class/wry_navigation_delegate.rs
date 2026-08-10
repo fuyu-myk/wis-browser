@@ -5,7 +5,10 @@
 use std::sync::{Arc, Mutex};
 
 use objc2::{define_class, msg_send, rc::Retained, runtime::NSObject, MainThreadOnly};
-use objc2_foundation::{MainThreadMarker, NSError, NSObjectProtocol};
+use objc2_foundation::{
+  MainThreadMarker, NSError, NSObjectProtocol, NSURLAuthenticationChallenge, NSURLCredential,
+  NSURLSessionAuthChallengeDisposition,
+};
 use objc2_web_kit::{
   WKDownload, WKNavigation, WKNavigationAction, WKNavigationActionPolicy, WKNavigationDelegate,
   WKNavigationResponse, WKNavigationResponsePolicy,
@@ -22,7 +25,8 @@ use crate::{
     download::{navigation_download_action, navigation_download_response},
     navigation::{
       did_commit_navigation, did_fail_provisional_navigation, did_finish_navigation,
-      navigation_policy, navigation_policy_response, web_content_process_did_terminate,
+      did_receive_authentication_challenge, navigation_policy, navigation_policy_response,
+      web_content_process_did_terminate,
     },
   },
   PageLoadEvent, WryWebView,
@@ -82,6 +86,17 @@ define_class!(
       error: &NSError,
     ) {
       did_fail_provisional_navigation(self, webview, error);
+    }
+
+    // WIS patch: answer approved server-trust challenges. See WIS-PATCH.md.
+    #[unsafe(method(webView:didReceiveAuthenticationChallenge:completionHandler:))]
+    fn did_receive_authentication_challenge(
+      &self,
+      _webview: &WKWebView,
+      challenge: &NSURLAuthenticationChallenge,
+      handler: &block2::Block<dyn Fn(NSURLSessionAuthChallengeDisposition, *mut NSURLCredential)>,
+    ) {
+      did_receive_authentication_challenge(challenge, handler);
     }
 
     #[unsafe(method(webView:didCommitNavigation:))]
