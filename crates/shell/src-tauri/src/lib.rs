@@ -1,6 +1,7 @@
 // macOS is the primary platform and keeps the strict dead-code gate.
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
+mod ai;
 mod audio;
 mod backup;
 mod biometrics;
@@ -407,6 +408,10 @@ pub fn run() {
             #[cfg(any(windows, target_os = "linux"))]
             keybind::set_app_handle(app.handle().clone());
 
+            // App handle for the native page-load failure callbacks.
+            #[cfg(any(windows, target_os = "linux"))]
+            load_failure::set_app_handle(app.handle().clone());
+
             // Per-tab audibility poll (tab audio icons + click-to-mute).
             audio::start_poll(app.handle().clone());
 
@@ -654,6 +659,10 @@ pub fn run() {
             windows::restore_session_windows,
             swipe_nav::set_swipe_accent,
             navguard::nav_guard_proceed,
+            ai::ai_set_key,
+            ai::ai_key_present,
+            ai::ai_clear_key,
+            ai::ai_chat,
             permissions::resolve_media_permission,
             bookmarks::list_bookmark_folders,
             bookmarks::list_bookmarks,

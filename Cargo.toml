@@ -55,7 +55,7 @@ rusqlite_migration = "2"
 # Networking & privacy
 hickory-resolver = { version = "0.25", default-features = false, features = ["tokio", "https-ring", "webpki-roots"] }
 adblock = { version = "0.12", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling", "content-blocking"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
 
 # Crypto / encoding (favicon cache: SHA-256 origin hash, base64 data URLs)
 sha2 = "0.10"

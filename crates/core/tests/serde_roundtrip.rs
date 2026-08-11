@@ -177,6 +177,11 @@ fn settings_patch_round_trips_when_all_fields_set() {
             corners: wis_core::CornerStyle::Sharp,
             ..wis_core::ChromeDesign::default()
         }),
+        ai: Some(wis_core::AiSettings {
+            provider: wis_core::AiProvider::OpenAiCompatible,
+            model: "gpt-x".into(),
+            base_url: Some("http://localhost:11434/v1".into()),
+        }),
     };
     let after: UserSettingsPatch = roundtrip(&patch);
     assert_eq!(patch, after);

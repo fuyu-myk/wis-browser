@@ -4,6 +4,7 @@
 //! workspaces, tabs, settings, and the operations that produce new states
 //! from old ones.
 
+pub mod ai;
 pub mod background;
 pub mod backup;
 pub mod design;
@@ -32,6 +33,7 @@ pub mod userscript;
 pub mod widget;
 pub mod workspace;
 
+pub use ai::{AiProvider, ChatMessage, ChatRequest, Role, SseParser, StreamEvent};
 pub use background::{
     Background, BackgroundDrafts, GradientSpec, GradientStop, ImageBackground, ImageFit,
 };
@@ -60,6 +62,7 @@ pub use search::{
     sanitize_builtin_search_keywords, sanitize_search_engines, sanitize_search_keyword,
     CustomSearchEngine, SearchEngine, MAX_CUSTOM_ENGINES, SEARCH_TERMS_TOKEN,
 };
+pub use settings::AiSettings;
 pub use settings::{UserSettings, UserSettingsPatch};
 pub use state::BrowserState;
 pub use tab::{FaviconRef, Tab};

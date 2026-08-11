@@ -208,6 +208,36 @@ pub struct UserSettings {
     /// existing persisted settings deserialise.
     #[serde(default)]
     pub design: ChromeDesign,
+    /// BYOK AI provider configuration. The feature stays dormant until a key
+    /// is set.
+    #[serde(default)]
+    pub ai: AiSettings,
+}
+
+/// BYOK AI provider configuration. Holds only non-secret fields: the provider
+/// selection, the model id, and an optional base URL for OpenAI-compatible
+/// servers. The API key never lives here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AiSettings {
+    #[serde(default)]
+    pub provider: crate::ai::AiProvider,
+    /// Model identifier sent to the provider (a Claude or GPT-style model id).
+    #[serde(default)]
+    pub model: String,
+    /// Base URL for `OpenAiCompatible` providers (Ollama, LM Studio,
+    /// OpenRouter). Ignored by Anthropic; `None` uses the provider default.
+    #[serde(default)]
+    pub base_url: Option<String>,
+}
+
+impl Default for AiSettings {
+    fn default() -> Self {
+        Self {
+            provider: crate::ai::AiProvider::Anthropic,
+            model: String::new(),
+            base_url: None,
+        }
+    }
 }
 
 fn default_top_tabs_max_expanded_folders() -> u32 {
@@ -353,6 +383,7 @@ impl Default for UserSettings {
             active_theme: None,
             motion: MotionLevel::Full,
             design: ChromeDesign::default(),
+            ai: AiSettings::default(),
         }
     }
 }
@@ -474,6 +505,9 @@ pub struct UserSettingsPatch {
     /// Replaces the whole design when present (clamped boundary-side).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub design: Option<ChromeDesign>,
+    /// Replaces the AI provider config when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ai: Option<AiSettings>,
 }
 
 impl UserSettings {
@@ -577,6 +611,7 @@ impl UserSettings {
             active_theme: self.active_theme,
             motion: patch.motion.unwrap_or(self.motion),
             design: patch.design.unwrap_or(self.design),
+            ai: patch.ai.unwrap_or_else(|| self.ai.clone()),
             keybindings: match patch.keybindings {
                 None => self.keybindings.clone(),
                 Some(overrides) => {

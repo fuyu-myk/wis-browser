@@ -9,6 +9,10 @@
 //!   `LocalAuthentication`, or Windows Hello via `UserConsentVerifier`,
 //!   enforced by the shell before calling [`keychain_load`]); the in-memory
 //!   copy zeroizes on drop.
+//! - **AI provider key:** A variable-length UTF-8 API key, stored under its own
+//!   dedicated account, distinct from the vault master key and the session-cookie
+//!   key. Like the session-cookie key, it is not biometric-gated. Returns
+//!   `Zeroizing<Vec<u8>>` because the length is arbitrary.
 //!
 //! The `keychain_*` names are the cross-platform key-store surface; on Windows
 //! they are DPAPI-on-disk, not a literal keychain.
@@ -193,6 +197,50 @@ pub fn session_key_load_or_create() -> Result<MasterKey, VaultError> {
 }
 
 // ---------------------------------------------------------------------------
+// BYOK AI provider key storage
+// ---------------------------------------------------------------------------
+
+/// macOS: login Keychain generic password. Account distinct from
+/// `master-key` and `session-cookie-key`.
+#[cfg(target_os = "macos")]
+const KEYCHAIN_AI_KEY_ACCOUNT: &str = "ai-provider-key";
+
+/// Store (overwriting any existing) the provider API key. Not biometric-gated.
+#[cfg(target_os = "macos")]
+pub fn ai_key_store(secret: &[u8]) -> Result<(), VaultError> {
+    use security_framework::passwords::{delete_generic_password, set_generic_password};
+
+    let _ = delete_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_AI_KEY_ACCOUNT);
+    set_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_AI_KEY_ACCOUNT, secret)
+        .map_err(|e| VaultError::Keychain(e.to_string()))
+}
+
+/// Load the stored provider API key, or `None` when never set. Not
+/// biometric-gated.
+#[cfg(target_os = "macos")]
+pub fn ai_key_load() -> Result<Option<Zeroizing<Vec<u8>>>, VaultError> {
+    use security_framework::passwords::get_generic_password;
+
+    match get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_AI_KEY_ACCOUNT) {
+        Ok(bytes) => Ok(Some(Zeroizing::new(bytes))),
+        Err(err) if err.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(None),
+        Err(err) => Err(VaultError::Keychain(err.to_string())),
+    }
+}
+
+/// Delete the stored provider API key (idempotent).
+#[cfg(target_os = "macos")]
+pub fn ai_key_delete() -> Result<(), VaultError> {
+    use security_framework::passwords::delete_generic_password;
+
+    match delete_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_AI_KEY_ACCOUNT) {
+        Ok(()) => Ok(()),
+        Err(err) if err.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(()),
+        Err(err) => Err(VaultError::Keychain(err.to_string())),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Master-key storage (Windows DPAPI)
 // ---------------------------------------------------------------------------
 //
@@ -210,6 +258,8 @@ const WIN_APP_DIR: &str = "app.myk.wis";
 const MASTER_KEY_FILE: &str = "vault-master.key";
 #[cfg(windows)]
 const SESSION_KEY_FILE: &str = "session-cookie.key";
+#[cfg(windows)]
+const AI_KEY_FILE: &str = "ai-provider.key";
 
 /// The per-user app data folder holding the sealed key blobs, created on first
 /// use. Matches Tauri's `app_data_dir()` so the keys sit beside `wis.db`.
@@ -364,9 +414,53 @@ pub fn session_key_load_or_create() -> Result<MasterKey, VaultError> {
     }
 }
 
+/// Windows: DPAPI-sealed file beside the vault + session keys. Not
+/// biometric-gated.
+#[cfg(windows)]
+pub fn ai_key_store(secret: &[u8]) -> Result<(), VaultError> {
+    let sealed = dpapi_protect(secret)?;
+    let path = secrets_dir()?.join(AI_KEY_FILE);
+    std::fs::write(&path, &sealed).map_err(|e| VaultError::Keychain(format!("write ai key: {e}")))
+}
+
+#[cfg(windows)]
+pub fn ai_key_load() -> Result<Option<Zeroizing<Vec<u8>>>, VaultError> {
+    let path = secrets_dir()?.join(AI_KEY_FILE);
+    match std::fs::read(&path) {
+        Ok(sealed) => Ok(Some(dpapi_unprotect(&sealed)?)),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(VaultError::Keychain(format!("read ai key: {err}"))),
+    }
+}
+
+#[cfg(windows)]
+pub fn ai_key_delete() -> Result<(), VaultError> {
+    let path = secrets_dir()?.join(AI_KEY_FILE);
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(VaultError::Keychain(format!("delete ai key: {err}"))),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Master-key storage (other platforms)
 // ---------------------------------------------------------------------------
+
+#[cfg(not(any(target_os = "macos", windows)))]
+pub fn ai_key_store(_secret: &[u8]) -> Result<(), VaultError> {
+    Err(VaultError::Unsupported)
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+pub fn ai_key_load() -> Result<Option<Zeroizing<Vec<u8>>>, VaultError> {
+    Err(VaultError::Unsupported)
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+pub fn ai_key_delete() -> Result<(), VaultError> {
+    Err(VaultError::Unsupported)
+}
 
 #[cfg(not(any(target_os = "macos", windows)))]
 pub fn keychain_load() -> Result<Option<MasterKey>, VaultError> {
