@@ -43,11 +43,6 @@ pub enum TlsFault {
 }
 
 impl TlsFault {
-    /// Whether the interstitial may offer a "proceed anyway" bypass.
-    pub fn bypassable(self) -> bool {
-        !matches!(self, Self::Revoked | Self::Protocol)
-    }
-
     /// Map Linux `GTlsCertificateFlags` bits to the most severe fault set.
     ///
     /// Bit values verified against gio-sys (`G_TLS_CERTIFICATE_*`):
@@ -175,12 +170,6 @@ impl LoadError {
                 tls: None,
             },
         })
-    }
-
-    /// Whether the chrome may offer a "proceed anyway" bypass for this
-    /// failure: a `TlsError` with a recoverable certificate fault.
-    pub fn bypassable(&self) -> bool {
-        self.kind == LoadErrorKind::TlsError && self.tls.is_some_and(TlsFault::bypassable)
     }
 }
 
@@ -314,30 +303,5 @@ mod tests {
                 "flags {flags:#b}"
             );
         }
-    }
-
-    #[test]
-    fn bypassable_only_for_recoverable_cert_faults() {
-        let err = |tls| LoadError {
-            kind: LoadErrorKind::TlsError,
-            code: 0,
-            url: "https://x/".into(),
-            tls,
-        };
-        assert!(err(Some(TlsFault::Expired)).bypassable());
-        assert!(err(Some(TlsFault::NameMismatch)).bypassable());
-        assert!(err(Some(TlsFault::Untrusted)).bypassable());
-        assert!(!err(Some(TlsFault::Revoked)).bypassable());
-        assert!(!err(Some(TlsFault::Protocol)).bypassable());
-        assert!(!err(None).bypassable());
-
-        // A non-TLS kind is never bypassable, whatever the fault says.
-        let dns = LoadError {
-            kind: LoadErrorKind::DnsFailure,
-            code: 0,
-            url: "https://x/".into(),
-            tls: Some(TlsFault::Expired),
-        };
-        assert!(!dns.bypassable());
     }
 }

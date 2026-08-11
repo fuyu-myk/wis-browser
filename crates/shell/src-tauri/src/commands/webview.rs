@@ -247,12 +247,8 @@ pub async fn create_tab_webview(
 
             let load_failed = ns_failure.is_some();
 
-            // A popped-out tab navigating loses its pinned video; a new
-            // navigation also drops any stale TLS-bypass candidate so it can't
-            // be pinned for a later, certificate-less failure.
+            // A popped-out tab navigating loses its pinned video.
             if matches!(event, PageLoadEvent::Started) {
-                #[cfg(any(target_os = "macos", windows))]
-                crate::tls_bypass::clear_candidate(tab_id);
                 crate::video_popout::handle_navigation(&app, &label_for_load);
                 crate::load_progress::start(&app, tab_id);
             }
@@ -263,24 +259,9 @@ pub async fn create_tab_webview(
             tauri::async_runtime::spawn(async move {
                 let state = app_for_state.state::<AppState>();
                 let result = mutate_unit(&app_for_state, &state, |s| {
-                    let failure = ns_failure.as_ref().and_then(|(code, domain, cert)| {
+                    let failure = ns_failure.as_ref().and_then(|(code, domain, _cert)| {
                         let url = s.tab(tab_id).ok()?.url.to_string();
-                        let err = wis_core::LoadError::from_ns_error(domain, *code, url.clone())?;
-
-                        #[cfg(target_os = "macos")]
-                        if let Some(cert) = cert {
-                            if let Some(host) = Url::parse(&url)
-                                .ok()
-                                .and_then(|u| u.host_str().map(str::to_owned))
-                            {
-                                crate::tls_bypass::record_candidate(tab_id, &host, cert.clone());
-                            }
-                        }
-
-                        #[cfg(not(target_os = "macos"))]
-                        let _ = cert;
-
-                        Some(err)
+                        wis_core::LoadError::from_ns_error(domain, *code, url)
                     });
 
                     let next = s.with_tab_loading(tab_id, loading)?;

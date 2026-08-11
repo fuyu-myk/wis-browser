@@ -19,41 +19,26 @@ function detailFor(fault: TlsFault | null, host: string): string {
   }
 }
 
-/** Mirror of `wis_core::TlsFault::bypassable`. */
-function bypassable(fault: TlsFault | null): boolean {
-  return fault === 'expired' || fault === 'name_mismatch' || fault === 'untrusted'
-}
-
 interface TlsErrorPageProps {
   tab: Tab
 }
 
 /**
- * Full-page interstitial for TLS trust failures. The bypass is deliberately
- * buried behind "Advanced", offered only for recoverable certificate faults,
- * and scoped to this session.
+ * Full-page interstitial for TLS trust failures. Wis does not offer a
+ * "proceed anyway" bypass: the privacy proxy owns trust evaluation and the
+ * certificate challenge never reaches the webview to override.
  */
 export function TlsErrorPage({ tab }: TlsErrorPageProps) {
-  const [busy, setBusy] = useState<'retry' | 'proceed' | null>(null)
-  const [advanced, setAdvanced] = useState(false)
+  const [retrying, setRetrying] = useState(false)
   const error = tab.load_error as LoadError
   const host = hostOf(error)
 
   const retry = async () => {
-    setBusy('retry')
+    setRetrying(true)
     try {
       await commands.navigateTab(tab.id, error.url)
     } finally {
-      setBusy(null)
-    }
-  }
-
-  const proceed = async () => {
-    setBusy('proceed')
-    try {
-      await commands.tlsBypassProceed(tab.id)
-    } finally {
-      setBusy(null)
+      setRetrying(false)
     }
   }
 
@@ -70,43 +55,14 @@ export function TlsErrorPage({ tab }: TlsErrorPageProps) {
         <h1 className="kb-neterror-title">Your connection to {host} isn&apos;t private</h1>
         <p className="kb-neterror-detail">{detailFor(error.tls, host)}</p>
         <p className="kb-neterror-url">{error.url}</p>
-        <div className="kb-tlserror-actions">
-          <button
-            type="button"
-            className="kb-btn"
-            onClick={() => void retry()}
-            disabled={busy !== null}
-          >
-            {busy === 'retry' ? 'Reloading…' : 'Try again'}
-          </button>
-          {bypassable(error.tls) ? (
-            <button
-              type="button"
-              className="kb-btn"
-              aria-expanded={advanced}
-              onClick={() => setAdvanced((cur) => !cur)}
-            >
-              Advanced
-            </button>
-          ) : null}
-        </div>
-        {advanced && bypassable(error.tls) ? (
-          <div className="kb-tlserror-advanced">
-            <p className="kb-tlserror-warning">
-              Wis can&apos;t verify that this server is really {host}. Anything you send or
-              receive could be read or altered by someone in the middle. This exception lasts
-              until Wis quits.
-            </p>
-            <button
-              type="button"
-              className="kb-tlserror-proceed"
-              onClick={() => void proceed()}
-              disabled={busy !== null}
-            >
-              {busy === 'proceed' ? 'Connecting…' : `Proceed to ${host} (unsafe)`}
-            </button>
-          </div>
-        ) : null}
+        <button
+          type="button"
+          className="kb-btn"
+          onClick={() => void retry()}
+          disabled={retrying}
+        >
+          {retrying ? 'Reloading…' : 'Try again'}
+        </button>
       </div>
     </div>
   )

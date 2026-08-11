@@ -263,6 +263,16 @@ thread_local + `did_fail_provisional_navigation` + the delegate method + the
 
 ## Seventh patch: server-trust challenge evaluator (macOS) (Wis-original)
 
+DORMANT. Wis sets a Network.framework proxy config on every tab webview's
+data store (the loopback privacy proxy). That layer resolves TLS trust
+internally, so `webView:didReceiveAuthenticationChallenge:completionHandler:`
+is never invoked while the proxy is active (verified: with the proxy removed
+the delegate fires for both server-trust and HTTP-basic; with it on, neither
+does). The evaluator below is therefore never exercised, and no shell code
+registers it. The patch is retained pending an architecture decision on
+whether trust evaluation moves into the proxy/nw layer; drop it if that
+lands elsewhere. See `memory/auth-challenge-delegate-not-firing.md`.
+
 WebKit rejects an untrusted TLS certificate during the provisional load
 unless `webView:didReceiveAuthenticationChallenge:completionHandler:` answers
 the server-trust challenge with a credential. `WKNavigationDelegate`

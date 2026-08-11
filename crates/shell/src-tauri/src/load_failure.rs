@@ -77,86 +77,7 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, tab_id: 
         if let Err(err) = unsafe { core.add_NavigationCompleted(&handler, &mut token) } {
             log::warn!("load_failure: add_NavigationCompleted failed: {err}");
         }
-
-        install_certificate_bypass(core, tab_id);
     });
-}
-
-/// Windows: on a certificate error, freeze the presented certificate (PEM)
-/// against the tab. Set `ALWAYS_ALLOW` once pinned, and when the presented
-/// certificate matches the pin. Every other certificate error keeps the
-/// default cancel, which surfaces through `NavigationCompleted` above.
-#[cfg(windows)]
-fn install_certificate_bypass(
-    core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2,
-    tab_id: TabId,
-) {
-    use webview2_com::Microsoft::Web::WebView2::Win32::{
-        ICoreWebView2ServerCertificateErrorDetectedEventArgs, ICoreWebView2_14,
-        COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_ALWAYS_ALLOW,
-    };
-    use webview2_com::{CoTaskMemPWSTR, ServerCertificateErrorDetectedEventHandler};
-    use windows::core::Interface;
-
-    let Ok(c14) = core.cast::<ICoreWebView2_14>() else {
-        return;
-    };
-
-    let handler = ServerCertificateErrorDetectedEventHandler::create(Box::new(
-        move |_sender, args: Option<ICoreWebView2ServerCertificateErrorDetectedEventArgs>| {
-            let Some(args) = args else {
-                return Ok(());
-            };
-
-            let mut uri = windows::core::PWSTR::null();
-            // SAFETY: UI thread callback; out-param is a stack local the
-            // CoTaskMemPWSTR wrapper frees.
-            unsafe { args.RequestUri(&mut uri)? };
-            let host = url::Url::parse(&CoTaskMemPWSTR::from(uri).to_string())
-                .ok()
-                .and_then(|u| u.host_str().map(str::to_owned));
-
-            // SAFETY: as above; the certificate getter and PEM out-param are
-            // UI-thread COM calls.
-            let pem = unsafe { args.ServerCertificate() }.ok().and_then(|cert| {
-                let mut pem = windows::core::PWSTR::null();
-                unsafe { cert.ToPemEncoding(&mut pem) }
-                    .ok()
-                    .map(|()| CoTaskMemPWSTR::from(pem).to_string())
-            });
-
-            if let (Some(host), Some(pem)) = (host, pem) {
-                crate::tls_bypass::record_candidate(tab_id, &host, pem.clone().into_bytes());
-                if crate::tls_bypass::is_pinned(&host, pem.as_bytes()) {
-                    // SAFETY: as above.
-                    unsafe {
-                        args.SetAction(COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_ALWAYS_ALLOW)?
-                    };
-                }
-            }
-
-            Ok(())
-        },
-    ));
-    let mut token = 0_i64;
-
-    // SAFETY: runs on the UI thread via with_core_webview2.
-    if let Err(err) = unsafe { c14.add_ServerCertificateErrorDetected(&handler, &mut token) } {
-        log::warn!("load_failure: add_ServerCertificateErrorDetected failed: {err}");
-    }
-}
-
-/// Linux: the failing `(host, certificate)` for each tab's current TLS
-/// interstitial, stashed on the GTK main thread by the TLS-error signal so a
-/// later user-approved bypass can hand the exact certificate to
-/// `allow_tls_certificate_for_host`. Keyed by tab so a concurrent failure on
-/// another tab cannot mutate this tab's frozen candidate; the entry is
-/// removed when consumed.
-#[cfg(target_os = "linux")]
-thread_local! {
-    static PENDING_TLS_CERTS: std::cell::RefCell<
-        std::collections::HashMap<TabId, (String, webkit2gtk::gio::TlsCertificate)>,
-    > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 /// Linux: connect WebKitGTK's `load-failed` and `load-failed-with-tls-errors`
@@ -181,42 +102,11 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, tab_id: 
             !cancelled
         });
 
-        wv.connect_load_failed_with_tls_errors(move |_wv, uri, cert, flags| {
-            if let Some(host) = url::Url::parse(uri)
-                .ok()
-                .and_then(|u| u.host_str().map(crate::tls_bypass::normalize_host))
-            {
-                PENDING_TLS_CERTS.with(|c| c.borrow_mut().insert(tab_id, (host, cert.clone())));
-            }
-
+        wv.connect_load_failed_with_tls_errors(move |_wv, uri, _cert, flags| {
             if let Some(err) = LoadError::from_glib(false, Some(flags.bits()), uri.to_string()) {
                 report(&app_tls, tab_id, Some(err));
             }
             true
         });
     });
-}
-
-/// Linux: allow the certificate frozen for this tab's interstitial on its web
-/// context, consuming the stash entry. `host` is ignored in favor of the
-/// stashed failing host. Runs on the GTK main thread.
-#[cfg(target_os = "linux")]
-pub fn allow_stashed_certificate(app: &AppHandle, tab_id: TabId, _host: &str) {
-    use webkit2gtk::{WebContextExt, WebViewExt};
-
-    let label = format!("tab-{}", tab_id.as_uuid());
-    let Some(webview) = app.webviews().get(&label).cloned() else {
-        log::warn!("tls bypass: no webview for {tab_id}; certificate allowance skipped");
-        return;
-    };
-
-    let result = webview.with_webview(move |w| {
-        let taken = PENDING_TLS_CERTS.with(|c| c.borrow_mut().remove(&tab_id));
-        if let (Some((host, cert)), Some(ctx)) = (taken, w.inner().context()) {
-            ctx.allow_tls_certificate_for_host(&cert, &host);
-        }
-    });
-    if let Err(err) = result {
-        log::warn!("tls bypass: certificate allowance dispatch failed: {err}");
-    }
 }

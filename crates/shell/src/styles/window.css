@@ -2908,31 +2908,6 @@ body.glass-chrome .kb-content {
   word-break: break-all;
 }
 .kb-tlserror-glyph { color: var(--danger); opacity: 0.85; }
-.kb-tlserror-actions { display: flex; gap: 8px; justify-content: center; }
-.kb-tlserror-advanced {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.kb-tlserror-warning {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-}
-.kb-tlserror-proceed {
-  background: none;
-  border: none;
-  padding: 4px;
-  font-size: 12.5px;
-  cursor: pointer;
-  color: var(--danger);
-  text-decoration: underline;
-}
-.kb-tlserror-proceed:disabled { opacity: 0.6; cursor: default; }
 .kb-window.glass-on .kb-newtab-page { background: transparent; }
 /* A user-set workspace background beats the glass transparency. */
 .has-custom-bg .kb-window.glass-on .kb-newtab-page { background: var(--wp-grad); }
