@@ -4,10 +4,20 @@
 //! each registers one here and reports the failure into tab state. The chrome
 //! then renders an error page in the tab's place (`SplitPaneHost`).
 
+use std::sync::OnceLock;
+
 use tauri::{AppHandle, Manager};
 use wis_core::{LoadError, TabId};
 
 use crate::state::AppState;
+
+/// App handle so the native failure callbacks can reach tab state.
+static APP: OnceLock<AppHandle> = OnceLock::new();
+
+/// Record the app handle once during setup so the failure callbacks can report.
+pub fn set_app_handle(app: AppHandle) {
+    let _ = APP.set(app);
+}
 
 /// Set (or clear) a tab's load error from a native callback. `failure`
 /// carries the normalized fault with a placeholder URL; the failing URL is
@@ -43,7 +53,6 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, tab_id: 
     };
     use webview2_com::NavigationCompletedEventHandler;
 
-    let app = webview.app_handle().clone();
     crate::win_webview2::with_core_webview2(webview, move |core| {
         let handler = NavigationCompletedEventHandler::create(Box::new(
             move |_sender: Option<ICoreWebView2>,
@@ -65,7 +74,9 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, tab_id: 
                 unsafe { args.WebErrorStatus(&mut status)? };
                 if let Some(err) = LoadError::from_web_error_status(status.0 as u32, String::new())
                 {
-                    report(&app, tab_id, Some(err));
+                    if let Some(app) = APP.get() {
+                        report(app, tab_id, Some(err));
+                    }
                 }
 
                 Ok(())
@@ -87,15 +98,15 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, tab_id: 
 pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, tab_id: TabId) {
     use webkit2gtk::{NetworkError, WebViewExt};
 
-    let app = webview.app_handle().clone();
-    let app_tls = app.clone();
     let _ = webview.with_webview(move |w| {
         let wv = w.inner();
 
         wv.connect_load_failed(move |_wv, _event, uri, error| {
             let cancelled = error.matches(NetworkError::Cancelled);
             if let Some(err) = LoadError::from_glib(cancelled, None, uri.to_string()) {
-                report(&app, tab_id, Some(err));
+                if let Some(app) = APP.get() {
+                    report(app, tab_id, Some(err));
+                }
             }
 
             // Suppress the engine's default error page only when we showed ours.
@@ -104,7 +115,9 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, tab_id: 
 
         wv.connect_load_failed_with_tls_errors(move |_wv, uri, _cert, flags| {
             if let Some(err) = LoadError::from_glib(false, Some(flags.bits()), uri.to_string()) {
-                report(&app_tls, tab_id, Some(err));
+                if let Some(app) = APP.get() {
+                    report(app, tab_id, Some(err));
+                }
             }
             true
         });
