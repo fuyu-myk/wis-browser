@@ -510,6 +510,9 @@ pub async fn create_tab_webview(
     // Opt+click "Peek" trigger (safe on all tabs; forwards only the link).
     crate::peek::install(&child);
 
+    // AI page-text channel (inert until the chrome requests extraction).
+    crate::page_text::install(&child);
+
     // Cmd/middle-click -> open link in a new background tab.
     crate::link_open::install(&child);
 

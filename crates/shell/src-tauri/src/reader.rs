@@ -8,25 +8,41 @@
 
 /// In-page reader transform. Evaluated inside the target webview only.
 pub fn reader_script() -> &'static str {
-    READER_JS
+    use std::sync::OnceLock;
+
+    static SCRIPT: OnceLock<String> = OnceLock::new();
+    SCRIPT.get_or_init(|| format!("{MAIN_CONTENT_FINDER}\n{READER_BODY}"))
 }
 
-const READER_JS: &str = r#"(function () {
+/// Shared main-content scoring, exposed as `__wisFindMainContent()` returning
+/// the highest text-density article element (named containers, then a
+/// paragraph-density fallback, then a Wikipedia-style tightening).
+///
+/// Reused by reader mode and the AI page-text channel ([`crate::page_text`]).
+/// Injected ahead of whichever transform consumes it.
+pub(crate) const MAIN_CONTENT_FINDER: &str = r#"
+function __wisFindMainContent() {
+  function textLen(el) { return ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim().length; }
+  var best = null, bestScore = 0;
+  var named = document.querySelectorAll('article, main, [role=main], [itemprop=articleBody], .post, .article, .entry-content, .post-content, #content, .content');
+  Array.prototype.slice.call(named).forEach(function (c) { var s = textLen(c); if (s > bestScore) { bestScore = s; best = c; } });
+  if (!best || bestScore < 200) {
+    Array.prototype.slice.call(document.querySelectorAll('div, section')).forEach(function (c) {
+      var ps = c.querySelectorAll('p'); if (ps.length < 2) return;
+      var s = 0; for (var i = 0; i < ps.length; i++) s += textLen(ps[i]);
+      if (s > bestScore) { bestScore = s; best = c; }
+    });
+  }
+  if (!best) best = document.body;
+  var tight = best.querySelector('#mw-content-text, [itemprop=articleBody]');
+  if (tight && textLen(tight) > bestScore * 0.5) { best = tight; }
+  return best;
+}
+"#;
+
+const READER_BODY: &str = r#"(function () {
   try {
-    function textLen(el) { return ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim().length; }
-    var best = null, bestScore = 0;
-    var named = document.querySelectorAll('article, main, [role=main], [itemprop=articleBody], .post, .article, .entry-content, .post-content, #content, .content');
-    Array.prototype.slice.call(named).forEach(function (c) { var s = textLen(c); if (s > bestScore) { bestScore = s; best = c; } });
-    if (!best || bestScore < 200) {
-      Array.prototype.slice.call(document.querySelectorAll('div, section')).forEach(function (c) {
-        var ps = c.querySelectorAll('p'); if (ps.length < 2) return;
-        var s = 0; for (var i = 0; i < ps.length; i++) s += textLen(ps[i]);
-        if (s > bestScore) { bestScore = s; best = c; }
-      });
-    }
-    if (!best) best = document.body;
-    var tight = best.querySelector('#mw-content-text, [itemprop=articleBody]');
-    if (tight && textLen(tight) > bestScore * 0.5) { best = tight; bestScore = textLen(tight); }
+    var best = __wisFindMainContent();
     var title = (document.title || '').trim();
     var clone = best.cloneNode(true);
     ['script', 'style', 'link', 'noscript', 'iframe', 'form', 'nav', 'aside', 'header', 'footer', 'button', 'svg', '[role=navigation]', '.mw-editsection', '.navbox', '.vector-page-toolbar', '.mw-indicators', '.mw-jump-link', '.reflist', '.mw-references-wrap', '.infobox', '.sidebar', '.metadata', '.ambox', '.noprint', '.mw-empty-elt', '.shortdescription', '.hatnote'].forEach(function (sel) {

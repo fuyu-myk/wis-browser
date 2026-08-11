@@ -39,6 +39,7 @@ pub fn install<R: tauri::Runtime>(
         register(&ucm, "wisPeek", &label);
         register(&ucm, "wisMediaPermission", &label);
         register(&ucm, "wisKeybind", &label);
+        register(&ucm, "wisPageText", &label);
 
         // Cosmetic filtering + the element-picker zapper.
         if cosmetic_enabled {
@@ -118,6 +119,9 @@ fn route(name: &str, label: &str, body: &serde_json::Value) {
         }
         "wisCapture" => {
             crate::capture::dispatch_message(label, str_field("username"), str_field("password"));
+        }
+        "wisPageText" => {
+            crate::page_text::dispatch_message(label, str_field("text"), str_field("title"));
         }
         "wisKeybind" => crate::keybind::dispatch_action(label, body),
         "wisCosmetic" => crate::cosmetic::dispatch_cosmetic(label, body),

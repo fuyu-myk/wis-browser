@@ -34,6 +34,7 @@ mod memory;
 mod menu;
 mod navguard;
 mod overlay;
+mod page_text;
 mod pane_focus;
 mod panels;
 mod peek;
@@ -372,6 +373,9 @@ pub fn run() {
             // App handle for the native "Save password?" capture handler.
             capture::set_app_handle(app.handle().clone());
 
+            // App handle for the AI page-text channel's native handler.
+            page_text::set_app_handle(app.handle().clone());
+
             // App handle for the native Opt+click "Peek" handler.
             peek::set_app_handle(app.handle().clone());
 
@@ -663,6 +667,7 @@ pub fn run() {
             ai::ai_key_present,
             ai::ai_clear_key,
             ai::ai_chat,
+            page_text::request_page_text,
             permissions::resolve_media_permission,
             bookmarks::list_bookmark_folders,
             bookmarks::list_bookmarks,

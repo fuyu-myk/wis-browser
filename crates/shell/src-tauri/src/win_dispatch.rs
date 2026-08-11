@@ -27,7 +27,7 @@ pub const SHIM_SCRIPT: &str = r#"(function () {
   if (!window.chrome || !window.chrome.webview) return;
   var names = ['wisOpenInTab', 'wisNavGuard', 'wisPeek', 'wisCosmetic',
                'wisZap', 'wisMediaPermission', 'wisCapture', 'wisPopout', 'wisFindResult',
-               'wisKeybind'];
+               'wisKeybind', 'wisPageText'];
   function forward(name, body) {
     try {
       window.chrome.webview.postMessage(
@@ -202,6 +202,9 @@ fn dispatch(label: &str, ephemeral: bool, cosmetic_enabled: bool, top_frame: boo
                     str_field("password"),
                 );
             }
+        }
+        "wisPageText" => {
+            crate::page_text::dispatch_message(label, str_field("text"), str_field("title"));
         }
         // Cosmetic + zap are top-frame only (an iframe's reply can't be targeted,
         // and a zap must bind to the real tab host).
