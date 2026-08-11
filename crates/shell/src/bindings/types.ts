@@ -406,6 +406,27 @@ export interface ImportSummary {
   passwords_added: number
 }
 
+/** AI provider wire protocol (mirror of `wis_core::AiProvider`). */
+export type AiProvider = 'anthropic' | 'open_ai_compatible'
+
+/**
+ * BYOK AI provider configuration (mirror of `wis_core::AiSettings`). The
+ * feature is dormant until a key is set.
+ */
+export interface AiSettings {
+  provider: AiProvider
+  /** Model identifier sent to the provider. */
+  model: string
+  /** Base URL for `open_ai_compatible` providers; null uses the default. */
+  base_url: string | null
+}
+
+/** A streaming event from `ai_chat` (mirror of `wis_core::StreamEvent`). */
+export type StreamEvent =
+  | { type: 'delta'; text: string }
+  | { type: 'done' }
+  | { type: 'error'; message: string }
+
 export interface UserSettings {
   layout: LayoutMode
   top_tabs_rail_side: RailSide
@@ -489,6 +510,8 @@ export interface UserSettings {
   motion: MotionLevel
   /** Chrome geometry and material. */
   design: ChromeDesign
+  /** BYOK AI provider configuration. */
+  ai: AiSettings
 }
 
 /**
@@ -554,6 +577,7 @@ export interface UserSettingsPatch {
   motion?: MotionLevel
   /** Replaces the whole design when present (clamped boundary-side). */
   design?: ChromeDesign
+  ai?: AiSettings
 }
 
 // ---------------------------------------------------------------------------

@@ -5,8 +5,9 @@
 // param `workspace_id: WorkspaceId` corresponds to `workspaceId` on the JS
 // side. Passing snake_case from JS silently fails to deserialise.
 
-import { invoke } from '@tauri-apps/api/core'
+import { Channel, invoke } from '@tauri-apps/api/core'
 import type {
+  StreamEvent,
   AccentColor,
   Background,
   BackupOptions,
@@ -889,6 +890,41 @@ export const commands = {
    *  on cancel; throws on a wrong passphrase or a corrupted file. */
   async importBackup(passphrase: string): Promise<ImportSummary | null> {
     return invoke('import_backup', { passphrase })
+  },
+
+  // -- AI (BYOK) ------------------------------------------------------------
+
+  /** Store the provider API key in the OS keystore. Rejects an empty key. */
+  async aiSetKey(key: string): Promise<void> {
+    return invoke('ai_set_key', { key })
+  },
+
+  /** Whether a provider API key is stored. */
+  async aiKeyPresent(): Promise<boolean> {
+    return invoke('ai_key_present')
+  },
+
+  /** Remove the stored provider API key. */
+  async aiClearKey(): Promise<void> {
+    return invoke('ai_clear_key')
+  },
+
+  /** Stream a chat completion; deltas arrive on `onEvent`. Model/provider come
+   *  from settings, the key from the keystore. */
+  async aiChat(
+    args: {
+      workspace_id: WorkspaceId
+      messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
+      max_tokens?: number
+    },
+    onEvent: Channel<StreamEvent>,
+  ): Promise<void> {
+    return invoke('ai_chat', { args, onEvent })
+  },
+
+  /** Ask a tab to extract its readable text; arrives as a `wis-page-text` event. */
+  async requestPageText(id: TabId): Promise<void> {
+    return invoke('request_page_text', { id })
   },
 
   // -- settings -------------------------------------------------------------

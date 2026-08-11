@@ -13,6 +13,7 @@ import {
   KeyIcon,
   PaletteIcon,
   ShieldIcon,
+  SparkleIcon,
   WifiIcon,
 } from '@/components/settingsIcons'
 import { BookmarksSection } from '@/components/BookmarksSection'
@@ -31,6 +32,7 @@ import { SiteDataSection } from '@/components/SiteDataSection'
 import { PasswordsSection } from '@/components/PasswordsSection'
 import { KeyboardShortcutsSection } from '@/components/KeyboardShortcutsSection'
 import { BackupSection } from '@/components/BackupSection'
+import { AiSection } from '@/components/AiSection'
 
 interface NavSection {
   id: string
@@ -53,6 +55,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'sitedata', label: 'Site data', icon: <DatabaseIcon /> },
   { id: 'bookmarks', label: 'Bookmarks', icon: <BookmarkIcon /> },
   { id: 'passwords', label: 'Passwords', icon: <KeyIcon /> },
+  { id: 'ai', label: 'AI assistant', icon: <SparkleIcon /> },
   { id: 'shortcuts', label: 'Shortcuts', icon: <KeyboardIcon /> },
   { id: 'backup', label: 'Backup & restore', icon: <LockIcon /> },
 ]
@@ -217,6 +220,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
           ephemeral={activeWorkspace?.ephemeral ?? false}
         />
         <PasswordsSection />
+        <AiSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <KeyboardShortcutsSection
           keybindings={settings.keybindings}
           onChange={(patch) => update.mutate({ keybindings: patch })}
