@@ -10,8 +10,9 @@
 //! titlebar accessory showing the current URL (read-only, with an https lock
 //! glyph), and keeps it in sync as the popup navigates. The same pass installs a
 //! `hover_guard` tracking area on each popup so the tab beneath it stops
-//! highlighting while the cursor is over the popup. The poll stops once every
-//! popup has closed, so it costs nothing when none are open.
+//! highlighting while the cursor is over the popup, and a navigation delegate
+//! that routes custom-scheme redirects to the `app_launch` prompt. The poll stops
+//! once every popup has closed, so it costs nothing when none are open.
 
 use tauri::AppHandle;
 
@@ -188,6 +189,92 @@ mod imp {
         }) as *mut AnyObject
     }
 
+    declare_class!(
+        struct PopupNavDelegate;
+
+        unsafe impl ClassType for PopupNavDelegate {
+            type Super = NSObject;
+            type Mutability = mutability::InteriorMutable;
+            const NAME: &'static str = "WisPopupNavDelegate";
+        }
+
+        impl DeclaredClass for PopupNavDelegate {
+            type Ivars = ();
+        }
+
+        unsafe impl PopupNavDelegate {
+            #[method(webView:decidePolicyForNavigationAction:decisionHandler:)]
+            fn decide_policy(
+                &self,
+                webview: *mut AnyObject,
+                action: *mut AnyObject,
+                handler: &block2::Block<dyn Fn(isize)>,
+            ) {
+                // WKNavigationActionPolicy: Cancel = 0, Allow = 1.
+                let target = unsafe { action_url(action) };
+                let parsed = target.and_then(|t| tauri::Url::parse(&t).ok());
+                let Some(url) = parsed.filter(crate::app_launch::should_intercept) else {
+                    handler.call((1,));
+                    return;
+                };
+
+                handler.call((0,));
+
+                let initiator_host = unsafe { committed_host(webview) };
+                crate::app_launch::intake_global(initiator_host, url);
+            }
+        }
+    );
+
+    fn popup_nav_delegate() -> *mut AnyObject {
+        static DELEGATE: OnceLock<usize> = OnceLock::new();
+        *DELEGATE.get_or_init(|| {
+            let d: Id<PopupNavDelegate> = unsafe { msg_send_id![PopupNavDelegate::alloc(), init] };
+            let ptr = Id::as_ptr(&d) as usize;
+            std::mem::forget(d);
+            ptr
+        }) as *mut AnyObject
+    }
+
+    /// The navigation action's target URL as a string.
+    unsafe fn action_url(action: *mut AnyObject) -> Option<String> {
+        if action.is_null() {
+            return None;
+        }
+
+        let request: *mut AnyObject = msg_send![action, request];
+        if request.is_null() {
+            return None;
+        }
+
+        let nsurl: *mut AnyObject = msg_send![request, URL];
+        if nsurl.is_null() {
+            return None;
+        }
+
+        let s: *mut AnyObject = msg_send![nsurl, absoluteString];
+        let text = nsstring_to_string(s);
+
+        (!text.is_empty()).then_some(text)
+    }
+
+    /// Host of the popup's committed page; `None` before anything committed.
+    unsafe fn committed_host(webview: *mut AnyObject) -> Option<String> {
+        if webview.is_null() {
+            return None;
+        }
+
+        let nsurl: *mut AnyObject = msg_send![webview, URL];
+        if nsurl.is_null() {
+            return None;
+        }
+
+        let host: *mut AnyObject = msg_send![nsurl, host];
+        let text = nsstring_to_string(host);
+
+        (!text.is_empty()).then_some(text)
+    }
+
     const POLL_INTERVAL_SECS: f64 = 0.35;
     // Stop polling a short grace period after the last popup closes (covers a
     // popup that opens and closes between two ticks).
@@ -345,6 +432,11 @@ mod imp {
             let ui_delegate: *mut AnyObject = msg_send![content, UIDelegate];
             if ui_delegate.is_null() {
                 let _: () = msg_send![content, setUIDelegate: popup_ui_delegate()];
+            }
+
+            let nav_delegate: *mut AnyObject = msg_send![content, navigationDelegate];
+            if nav_delegate.is_null() {
+                let _: () = msg_send![content, setNavigationDelegate: popup_nav_delegate()];
             }
             if view_with_tag(win, URL_FIELD_TAG).is_null() {
                 build_bar(win, content);

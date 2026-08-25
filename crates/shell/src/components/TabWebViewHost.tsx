@@ -6,6 +6,7 @@ import type { BrowserState, KeyAction, PaneBranch, PaneNode, SplitDir, Tab, TabI
 import { isChromeUrl, SETTINGS_URL } from '@/lib/url'
 import { currentPlatform } from '@/lib/platform'
 import { isWindowFocused } from '@/lib/windowFocus'
+import { useAppLaunchOverlay } from '@/hooks/useAppLaunchOverlay'
 import { useOverlay } from '@/hooks/useOverlay'
 import { usePermissionOverlay } from '@/hooks/usePermissionOverlay'
 import { useTabAudio } from '@/hooks/useTabAudio'
@@ -30,6 +31,7 @@ interface TabWebViewHostProps {
 export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   usePermissionOverlay(hostRef)
+  useAppLaunchOverlay(hostRef)
   const findOverlay = useOverlay('find')
   const findOpenRef = useRef(false)
 

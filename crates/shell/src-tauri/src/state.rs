@@ -161,6 +161,14 @@ pub struct AppState {
     /// overlay, keyed by a monotonic request id (`media_seq`).
     pub pending_media: std::sync::Mutex<HashMap<u64, crate::permissions::PendingMedia>>,
     pub media_seq: std::sync::atomic::AtomicU64,
+    /// Persisted per-site custom-scheme launch decisions, keyed
+    /// `"<scheme>|<initiator host>"`. A sync mirror of
+    /// `UserSettings.app_launch_permissions`.
+    pub app_launch_permissions: std::sync::RwLock<HashMap<String, bool>>,
+    /// Custom-scheme launches awaiting the user's decision in the prompt
+    /// overlay, keyed by a monotonic request id.
+    pub pending_app_launch: std::sync::Mutex<HashMap<u64, crate::app_launch::PendingAppLaunch>>,
+    pub app_launch_seq: std::sync::atomic::AtomicU64,
     /// Set once the main window has reopened the saved multi-window layout, so
     /// `restore_session_windows` spawns the secondary windows exactly once per run.
     pub session_restored: std::sync::atomic::AtomicBool,
@@ -198,6 +206,7 @@ impl AppState {
         let initial_user_cosmetic_rules = browser.settings.user_cosmetic_rules.clone();
         let initial_userscripts = browser.settings.userscripts.clone();
         let initial_media_permissions = browser.settings.media_permissions.clone();
+        let initial_app_launch_permissions = browser.settings.app_launch_permissions.clone();
         // The main window starts on the persisted active workspace.
         let initial_active_workspace = browser.active_workspace_id;
         Self {
@@ -233,6 +242,9 @@ impl AppState {
             media_permissions_session: std::sync::RwLock::new(HashMap::new()),
             pending_media: std::sync::Mutex::new(HashMap::new()),
             media_seq: std::sync::atomic::AtomicU64::new(0),
+            app_launch_permissions: std::sync::RwLock::new(initial_app_launch_permissions),
+            pending_app_launch: std::sync::Mutex::new(HashMap::new()),
+            app_launch_seq: std::sync::atomic::AtomicU64::new(0),
             session_restored: std::sync::atomic::AtomicBool::new(false),
             window_geometry: std::sync::Mutex::new(HashMap::new()),
             geometry_gen: std::sync::atomic::AtomicU64::new(0),
@@ -368,6 +380,15 @@ impl AppState {
             .media_permissions
             .write()
             .expect("media_permissions poisoned");
+        *guard = perms;
+    }
+
+    /// Replace the remembered app-launch read-cache.
+    pub fn refresh_app_launch_permissions_cache(&self, perms: HashMap<String, bool>) {
+        let mut guard = self
+            .app_launch_permissions
+            .write()
+            .expect("app_launch_permissions poisoned");
         *guard = perms;
     }
 

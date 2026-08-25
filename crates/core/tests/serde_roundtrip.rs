@@ -138,6 +138,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
             "camera|https://example.com".to_string(),
             true,
         )])),
+        app_launch_permissions: Some(HashMap::from([("zoommtg|zoom.us".to_string(), true)])),
         sidebar_widgets: Some(vec![wis_core::Widget {
             id: wis_core::WidgetId::new(),
             kind: wis_core::WidgetKind::Claude,

@@ -474,6 +474,8 @@ export interface UserSettings {
   ua_site_overrides: Record<string, UaProfile>
   /** Remembered camera/mic consent, keyed `"<kind>|<origin>"` (true = allow). */
   media_permissions: Record<string, boolean>
+  /** Remembered open-in-app decisions, keyed `"<scheme>|<host>"` (true = launch). */
+  app_launch_permissions: Record<string, boolean>
   /** Global quick-launch sidebar widgets, in display order. */
   sidebar_widgets: Widget[]
   /** Cap loaded widget panels (LRU reclaim); off means limitless. */
@@ -551,6 +553,7 @@ export interface UserSettingsPatch {
   ua_site_overrides?: Record<string, UaProfile>
   /** Replaces the whole remembered-permissions map when present. */
   media_permissions?: Record<string, boolean>
+  app_launch_permissions?: Record<string, boolean>
   /** Replaces the whole widget list when present. */
   sidebar_widgets?: Widget[]
   widget_panel_limit_enabled?: boolean

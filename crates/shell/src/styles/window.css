@@ -596,7 +596,6 @@ body.is-overlay-surface:not(.glass-on) {
   border-radius: var(--radius-2xl);
   background: var(--popover);
   border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: var(--shadow-pop);
   color: var(--text-primary);
   opacity: 0;
   transform: scale(0.97);
@@ -691,6 +690,18 @@ body.is-overlay-surface:not(.glass-on) {
 .kb-perm-btn.is-primary:hover {
   background: color-mix(in srgb, var(--primary-600) 88%, black);
   border-color: color-mix(in srgb, var(--primary-600) 88%, black);
+}
+
+/* Open-in-app prompt: the cancelled custom-scheme URL, shown in full on hover. */
+.kb-applaunch-url {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  border-radius: calc(7px * var(--radius-scale));
+  padding: 5px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Settings -> Privacy: remembered site-permission rows. */

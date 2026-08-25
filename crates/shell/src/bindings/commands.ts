@@ -1180,6 +1180,10 @@ export const commands = {
   ): Promise<void> {
     return invoke('resolve_media_permission', { requestId, granted, remember })
   },
+  /** Resolve an open-in-app prompt; granted launches the OS-registered app. */
+  async appLaunchDecide(requestId: number, granted: boolean, remember: boolean): Promise<void> {
+    return invoke('app_launch_decide', { requestId, granted, remember })
+  },
 
   // -- bookmarks (per-workspace, foldered) ----------------------------------
 

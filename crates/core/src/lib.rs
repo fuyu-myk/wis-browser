@@ -5,6 +5,7 @@
 //! from old ones.
 
 pub mod ai;
+pub mod app_launch;
 pub mod background;
 pub mod backup;
 pub mod design;

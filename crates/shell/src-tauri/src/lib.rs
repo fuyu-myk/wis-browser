@@ -2,6 +2,7 @@
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
 mod ai;
+mod app_launch;
 mod audio;
 mod backup;
 mod biometrics;
@@ -405,6 +406,9 @@ pub fn run() {
             // App handle for the camera/microphone consent message handler.
             permissions::set_app_handle(app.handle().clone());
 
+            // App handle for the popup open-in-app navigation delegate.
+            app_launch::set_app_handle(app.handle().clone());
+
             // App handle for the find-in-page match-count delegate.
             find::set_app_handle(app.handle().clone());
 
@@ -669,6 +673,7 @@ pub fn run() {
             ai::ai_chat,
             page_text::request_page_text,
             permissions::resolve_media_permission,
+            app_launch::app_launch_decide,
             bookmarks::list_bookmark_folders,
             bookmarks::list_bookmarks,
             bookmarks::create_bookmark_folder,

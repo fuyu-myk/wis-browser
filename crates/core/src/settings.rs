@@ -126,6 +126,11 @@ pub struct UserSettings {
     /// camera+microphone). Session-only decisions are not stored here.
     #[serde(default)]
     pub media_permissions: HashMap<String, bool>,
+    /// Persisted per-site custom-scheme launch decisions the user chose to
+    /// remember, keyed `"<scheme>|<initiator host>"` (`wis_core::app_launch`).
+    /// True launches without asking; false drops silently.
+    #[serde(default)]
+    pub app_launch_permissions: HashMap<String, bool>,
     /// Global quick-launch sidebar widgets (social apps + AI providers), in
     /// display order. Shown in every workspace's sidebar; clicking one opens
     /// its URL in a split pane. Empty by default.
@@ -365,6 +370,7 @@ impl Default for UserSettings {
             user_agent_profile: UaProfile::default(),
             ua_site_overrides: HashMap::new(),
             media_permissions: HashMap::new(),
+            app_launch_permissions: HashMap::new(),
             sidebar_widgets: Vec::new(),
             widget_panel_limit_enabled: true,
             widget_panel_limit: 2,
@@ -460,6 +466,10 @@ pub struct UserSettingsPatch {
     /// the current map.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media_permissions: Option<HashMap<String, bool>>,
+    /// Replaces the whole remembered app-launch map when present. `None` keeps
+    /// the current map.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_launch_permissions: Option<HashMap<String, bool>>,
     /// Replaces the whole widget list when present (the frontend holds the
     /// full ordered list). `None` keeps the current list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -572,6 +582,9 @@ impl UserSettings {
             media_permissions: patch
                 .media_permissions
                 .unwrap_or_else(|| self.media_permissions.clone()),
+            app_launch_permissions: patch
+                .app_launch_permissions
+                .unwrap_or_else(|| self.app_launch_permissions.clone()),
             sidebar_widgets: patch
                 .sidebar_widgets
                 .unwrap_or_else(|| self.sidebar_widgets.clone()),

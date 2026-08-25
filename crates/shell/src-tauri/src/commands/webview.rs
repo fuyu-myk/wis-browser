@@ -165,13 +165,24 @@ pub async fn create_tab_webview(
         }
     }
 
-    // Per-page scriptlet swap (uBO `+js` rules) before each main-frame
-    // navigation commits; Permissive workspaces opt out of blocking.
-    if nav_privacy_mode != wis_core::PrivacyMode::Permissive {
+    // The single navigation hook carries two concerns: custom-scheme
+    // navigations are cancelled on every workspace and offered as an app
+    // handoff, and the per-page scriptlet swap (uBO `+js` rules) runs before
+    // each main-frame navigation commits, except on Permissive workspaces.
+    {
         let app_for_nav = app.clone();
         let label_for_nav = label_ident.clone();
+        let scriptlets = nav_privacy_mode != wis_core::PrivacyMode::Permissive;
         builder = builder.on_navigation(move |url| {
-            crate::cosmetic::swap_scriptlets(&app_for_nav, &label_for_nav, url.as_str());
+            if crate::app_launch::should_intercept(url) {
+                crate::app_launch::intake_from_tab(&app_for_nav, tab_id, url.clone());
+                return false;
+            }
+
+            if scriptlets {
+                crate::cosmetic::swap_scriptlets(&app_for_nav, &label_for_nav, url.as_str());
+            }
+
             true
         });
     }
@@ -370,6 +381,11 @@ pub async fn create_tab_webview(
         let app = app.clone();
         let opener_label = label_ident.clone();
         move |url, features| {
+            if crate::app_launch::should_intercept(&url) {
+                crate::app_launch::intake_from_tab(&app, tab_id, url.clone());
+                return tauri::webview::NewWindowResponse::Deny;
+            }
+
             if crate::popup_chrome::wants_popup(&url, &features) {
                 crate::popup_chrome::ensure_running(&app, url.as_str());
                 return tauri::webview::NewWindowResponse::Allow;

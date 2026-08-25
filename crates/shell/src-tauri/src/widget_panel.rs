@@ -404,6 +404,25 @@ pub async fn open_widget_panel(
         builder = builder.scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
     }
 
+    // Custom-scheme navigations app handoff.
+    {
+        let app_for_nav = app.clone();
+        let label_for_nav = label.clone();
+        builder = builder.on_navigation(move |url| {
+            if crate::app_launch::should_intercept(url) {
+                crate::app_launch::intake_from_webview(
+                    &app_for_nav,
+                    label_for_nav.clone(),
+                    url.clone(),
+                );
+
+                return false;
+            }
+
+            true
+        });
+    }
+
     if let Some(ua) = &user_agent {
         builder = builder.user_agent(ua);
     }

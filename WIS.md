@@ -105,6 +105,7 @@ Each group maps to a `docs/architecture/` doc that carries the mechanism details
 - **Stay logged in across restarts**: encrypted session-cookie snapshot restored before first load, fixed 14-day TTL, gated by the `persist_sessions` setting; never for ephemeral workspaces.
 - **Camera & microphone consent**: app-side `getUserMedia` gate + in-browser prompt with remembered decisions (macOS/Windows/Linux; the Linux prompt is wired but not yet exercised in the VM).
 - **Navigation safety interstitial**: `navguard` re-assesses risky links (click-time and page-load fallback) and interrupts High/Medium threats; shares `link_safety` heuristics with Peek.
+- **Open in app**: custom-scheme navigations (zoommtg://, slack://, mailto:) are cancelled at every policy seam (tabs, new-window, macOS engine popups, Peek, widget panels) and offered as an OS handoff via a prompt overlay with per-site remembered decisions (`app_launch`, `UserSettings.app_launch_permissions`); this is what completes OAuth "open in app" linkbacks. Windows/Linux popup redirects fall back to engine defaults.
 - **Strict CSP** on local surfaces and the local-vs-remote **capability isolation** above; the vendored Tauri-stack patches (`wry`/`tao`/`tauri-runtime-wry`) stay clean verbatim drops of upstream PRs, dropped when those merge; feature code never patches them.
 
 ### State & storage (`docs/architecture/data-model-and-state.md`)
