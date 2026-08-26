@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 
 import { commands } from '@/bindings/commands'
 import type { AiProvider, AiSettings, UserSettings, UserSettingsPatch } from '@/bindings/types'
+import { baseUrlProblem } from '@/lib/ai'
+import { cx } from '@/lib/cx'
+import { isFeatureUnavailableHere } from '@/lib/platformSupport'
 import { Segmented } from '@/components/controls'
 
 const PROVIDER_OPTIONS = [
@@ -14,11 +17,26 @@ interface AiSectionProps {
   onUpdate: (patch: UserSettingsPatch) => void
 }
 
+function errorMessage(error: unknown): string {
+  if (typeof error === 'string') return error
+  if (
+    error !== null &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof (error as { message: unknown }).message === 'string'
+  ) {
+    return (error as { message: string }).message
+  }
+  return 'unknown error'
+}
+
 /**
- * BYOK AI settings: provider, model, optional base URL, and the API key.
- * Setting a key is the sole activation switch for the assistant. The key is
- * write-only here (stored in the OS keychain, never shown back); provider and
- * model persist through the normal settings patch.
+ * BYOK AI settings: provider, model, optional base URL, and the API key. This
+ * section is where the assistant is switched on: it stays dormant until a key
+ * is stored, or, for an OpenAI-compatible provider, a base URL is set (a local
+ * server authenticates nothing, so it needs no key). The key is write-only
+ * here (stored in the OS keychain, never shown back); the rest persists
+ * through the normal settings patch.
  */
 export function AiSection({ settings, onUpdate }: AiSectionProps) {
   const ai = settings.ai
@@ -28,10 +46,16 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
   const [keyDraft, setKeyDraft] = useState('')
   const [keyPresent, setKeyPresent] = useState<boolean | null>(null)
   const [keyBusy, setKeyBusy] = useState(false)
+  const [keyError, setKeyError] = useState<string | null>(null)
+
+  const supported = !isFeatureUnavailableHere('ai_assistant')
+  const keyOptional = ai.provider === 'open_ai_compatible'
+  const baseProblem = baseUrlProblem(baseDraft)
 
   useEffect(() => {
-    void commands.aiKeyPresent().then(setKeyPresent)
-  }, [])
+    if (!supported) return
+    void commands.aiKeyPresent().then(setKeyPresent, () => setKeyPresent(false))
+  }, [supported])
 
   const patchAi = (next: Partial<AiSettings>) => onUpdate({ ai: { ...ai, ...next } })
 
@@ -47,22 +71,40 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
     const key = keyDraft.trim()
     if (!key) return
     setKeyBusy(true)
+    setKeyError(null)
     try {
       await commands.aiSetKey(key)
       setKeyDraft('')
       setKeyPresent(true)
+    } catch (error: unknown) {
+      setKeyError(errorMessage(error))
     } finally {
       setKeyBusy(false)
     }
   }
   const clearKey = async () => {
     setKeyBusy(true)
+    setKeyError(null)
     try {
       await commands.aiClearKey()
       setKeyPresent(false)
+    } catch (error: unknown) {
+      setKeyError(errorMessage(error))
     } finally {
       setKeyBusy(false)
     }
+  }
+
+  if (!supported) {
+    return (
+      <section id="ai" className="sec">
+        <div className="sec-h">AI assistant</div>
+        <p className="kb-vault-msg">
+          The assistant is not available on Linux yet as there is no OS key store to seal
+          the provider key in.
+        </p>
+      </section>
+    )
   }
 
   return (
@@ -86,12 +128,14 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
       <div className="row">
         <div className="l">
           <span>Model</span>
-          <span>The model identifier sent to the provider (a Claude or GPT-style id).</span>
+          <span>
+            The model identifier, exactly as the provider names it.
+          </span>
         </div>
         <input
           type="text"
           className="kb-text-input"
-          placeholder="claude-..."
+          placeholder={keyOptional ? 'llama3.2' : 'claude-...'}
           value={modelDraft}
           onChange={(e) => setModelDraft(e.currentTarget.value)}
           onBlur={commitModel}
@@ -105,7 +149,9 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
         <div className="row">
           <div className="l">
             <span>Base URL</span>
-            <span>The OpenAI-compatible API base. Blank uses the OpenAI default.</span>
+            <span className={cx({ 'is-error': baseProblem !== null })}>
+              {baseProblem ?? 'Setting one turns the assistant on. Blank uses OpenAI.'}
+            </span>
           </div>
           <input
             type="text"
@@ -123,18 +169,20 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
       )}
       <div className="row">
         <div className="l">
-          <span>API key</span>
+          <span>{keyOptional ? 'API key (optional)' : 'API key'}</span>
           <span>
             {keyPresent
               ? 'A key is stored in your device keychain. Enter a new one to replace it.'
-              : 'Stored in your device keychain, never on disk or synced. The assistant stays off until a key is set.'}
+              : keyOptional
+                ? 'Kept in your device keychain. Leave blank for a local server.'
+                : 'Kept in your device keychain, never on disk or synced.'}
           </span>
         </div>
         <div className="kb-shortcut-add">
           <input
             type="password"
             className="kb-text-input"
-            placeholder={keyPresent ? '••••••••••••' : 'sk-...'}
+            placeholder={keyPresent ? '••••••••••••' : keyOptional ? 'Not needed locally' : 'sk-...'}
             value={keyDraft}
             onChange={(e) => setKeyDraft(e.currentTarget.value)}
             onKeyDown={(e) => {
@@ -163,6 +211,7 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
           )}
         </div>
       </div>
+      {keyError !== null && <p className="kb-vault-msg">{keyError}</p>}
     </section>
   )
 }

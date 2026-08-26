@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react'
 
 import type { BrowserState, Tab, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { HistoryIcon, SettingsIcon } from '@/lib/icons'
+import { AssistantIcon, HistoryIcon, SettingsIcon } from '@/lib/icons'
 
 import { BookmarksButton } from '@/components/BookmarksButton'
 import { Brand } from '@/components/Brand'
@@ -21,6 +21,10 @@ interface SidebarProps {
   setExpanded: (v: boolean) => void
   onOpenHistory: () => void
   onOpenSettings: () => void
+  /** False until a provider key is stored, which hides the assistant entirely. */
+  aiAvailable: boolean
+  aiOpen: boolean
+  onToggleAi: () => void
 }
 
 // Expands on edge hover, empty-area click, or URL bar activation when
@@ -32,6 +36,9 @@ export function Sidebar({
   setExpanded,
   onOpenHistory,
   onOpenSettings,
+  aiAvailable,
+  aiOpen,
+  onToggleAi,
 }: SidebarProps) {
   const activeWorkspace = state.workspaces.find((w) => w.id === state.active_workspace_id)
   const tabs: Tab[] = activeWorkspace
@@ -167,6 +174,18 @@ export function Sidebar({
         <DownloadsButton />
         {!activeWorkspace?.ephemeral && <BookmarksButton />}
         <VpnToggle workspace={activeWorkspace ?? null} />
+        {aiAvailable && (
+          <button
+            type="button"
+            className={cx('kb-circle-btn', { 'is-active': aiOpen })}
+            aria-label="Assistant"
+            aria-pressed={aiOpen}
+            title="Assistant"
+            onClick={onToggleAi}
+          >
+            <AssistantIcon />
+          </button>
+        )}
         <button
           type="button"
           className="kb-circle-btn"

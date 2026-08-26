@@ -22,6 +22,7 @@ import { useKeyActions } from '@/hooks/useKeyActions'
 import { useKeybindCapture } from '@/hooks/useKeybindCapture'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 import { useSwipeAccentSync } from '@/hooks/useSwipeAccentSync'
+import { useAiAvailable } from '@/hooks/useAiAvailable'
 import { useWorkspaceBackground } from '@/hooks/useWorkspaceBackground'
 
 import { Content } from '@/components/Content'
@@ -41,6 +42,7 @@ interface WindowProps {
 
 export function Window({ state, settings }: WindowProps) {
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
   const [discardedTabs, setDiscardedTabs] = useState<ReadonlySet<TabId>>(new Set())
   const onDiscardedChange = useCallback(
     (next: Set<TabId>) => setDiscardedTabs(next),
@@ -86,6 +88,11 @@ export function Window({ state, settings }: WindowProps) {
   useDockIcon(isPrivate)
   useSwipeAccentSync(settings)
 
+  const aiAvailable = useAiAvailable(settings.ai)
+  useEffect(() => {
+    if (!aiAvailable) setAiOpen(false)
+  }, [aiAvailable])
+
   // Warm the favicon cache for sidebar widgets on startup (and when the set
   // changes).
   const widgetUrlsKey = settings.sidebar_widgets.map((w) => w.url).join('\n')
@@ -128,6 +135,9 @@ export function Window({ state, settings }: WindowProps) {
             side={railSide}
             onOpenSettings={openSettings}
             onOpenHistory={openHistory}
+            aiAvailable={aiAvailable}
+            aiOpen={aiOpen}
+            onToggleAi={() => setAiOpen((v) => !v)}
           />
         </>
       ) : (
@@ -138,9 +148,18 @@ export function Window({ state, settings }: WindowProps) {
           setExpanded={setSidebarExpanded}
           onOpenHistory={openHistory}
           onOpenSettings={openSettings}
+          aiAvailable={aiAvailable}
+          aiOpen={aiOpen}
+          onToggleAi={() => setAiOpen((v) => !v)}
         />
       )}
-      <Content state={state} onDiscardedChange={onDiscardedChange} />
+      <Content
+        state={state}
+        aiOpen={aiOpen}
+        onCloseAi={() => setAiOpen(false)}
+        onOpenSettings={openSettings}
+        onDiscardedChange={onDiscardedChange}
+      />
       <WindowResizeEdges />
     </div>
     </DiscardedTabsContext.Provider>

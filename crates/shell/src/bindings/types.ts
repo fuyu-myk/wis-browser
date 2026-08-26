@@ -424,6 +424,7 @@ export interface AiSettings {
 /** A streaming event from `ai_chat` (mirror of `wis_core::StreamEvent`). */
 export type StreamEvent =
   | { type: 'delta'; text: string }
+  | { type: 'reasoning'; text: string }
   | { type: 'done' }
   | { type: 'error'; message: string }
 

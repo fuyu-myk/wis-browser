@@ -6,8 +6,13 @@
 //! Rust, which re-emits it to the chrome as a Tauri event.
 //!
 //! Trust model:
-//! - The **URL is read from the webview natively**. The chrome correlates a
-//!   response to its request by that URL.
+//! - The **tab id and URL are both read natively**, from the sending webview's
+//!   label and its own `URL`. The chrome correlates a response to its request
+//!   by tab id, so one window's extraction can never satisfy another's request
+//!   and a page cannot claim an origin that is not its own.
+//! - Only the **main frame** may answer. Message handlers are exposed in every
+//!   frame, but the reported URL is the top-level document's, so a subframe
+//!   could otherwise put its own text forward as the page's.
 //! - Page text is untrusted input everywhere it flows: the handler re-caps it
 //!   in bytes even though the page script already capped it, and the chrome
 //!   renders it with React escaping only. It is never eval'd or trusted as
@@ -26,7 +31,10 @@ const PAGE_TEXT_EVENT: &str = "wis-page-text";
 const MAX_PAGE_TEXT_BYTES: usize = 150 * 1024;
 
 #[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct PageTextEvent {
+    /// The answering tab, taken from the webview's own label.
+    tab_id: String,
     /// The origin URL, read natively from the webview.
     url: String,
     /// The page title (display only; page-provided).
@@ -84,14 +92,15 @@ fn cap_text(text: &str) -> String {
     text[..end].to_string()
 }
 
-/// Emit the extracted text to the chrome. `url` is the sending webview's own
-/// URL, so text is always attributed to its true origin; `title`/`text` are
-/// page-provided and untrusted.
-fn emit_page_text(url: String, title: String, text: String) {
+/// Emit the extracted text to the chrome. `label` and `url` are the sending
+/// webview's own, so text is always attributed to its true tab and origin;
+/// `title`/`text` are page-provided and untrusted.
+fn emit_page_text(label: &str, url: String, title: String, text: String) {
     let Some(app) = APP.get() else {
         return;
     };
     let event = PageTextEvent {
+        tab_id: label.strip_prefix("tab-").unwrap_or(label).to_string(),
         url,
         title,
         text: cap_text(&text),
@@ -116,7 +125,7 @@ pub(crate) fn dispatch_message(label: &str, text: String, title: String) {
         return;
     };
 
-    emit_page_text(url, title, text);
+    emit_page_text(label, url, title, text);
 }
 
 /// Ask a tab to extract and deliver its readable text. The result arrives
@@ -142,7 +151,7 @@ pub async fn request_page_text(app: AppHandle, id: wis_core::TabId) -> wis_core:
 /// chrome asks. No-op off macOS (Windows/Linux route through their dispatchers).
 pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
     #[cfg(target_os = "macos")]
-    macos::install(webview);
+    macos::install(webview, webview.label().to_string());
 
     #[cfg(not(target_os = "macos"))]
     let _ = webview;
@@ -161,6 +170,10 @@ mod macos {
 
     use super::emit_page_text;
 
+    struct HandlerIvars {
+        label: String,
+    }
+
     declare_class!(
         struct PageTextHandler;
 
@@ -171,20 +184,22 @@ mod macos {
         }
 
         impl DeclaredClass for PageTextHandler {
-            type Ivars = ();
+            type Ivars = HandlerIvars;
         }
 
         unsafe impl PageTextHandler {
             #[method(userContentController:didReceiveScriptMessage:)]
             fn did_receive(&self, _ucc: *mut AnyObject, message: *mut AnyObject) {
-                unsafe { handle_message(message) }
+                let label = self.ivars().label.clone();
+                unsafe { handle_message(&label, message) }
             }
         }
     );
 
     impl PageTextHandler {
-        fn new() -> Id<Self> {
-            unsafe { msg_send_id![Self::alloc(), init] }
+        fn new(label: String) -> Id<Self> {
+            let this = Self::alloc().set_ivars(HandlerIvars { label });
+            unsafe { msg_send_id![super(this), init] }
         }
     }
 
@@ -217,8 +232,18 @@ mod macos {
         nsstring_to_string(v)
     }
 
-    unsafe fn handle_message(message: *mut AnyObject) {
+    unsafe fn handle_message(label: &str, message: *mut AnyObject) {
         if message.is_null() {
+            return;
+        }
+
+        let frame: *mut AnyObject = msg_send![message, frameInfo];
+        if frame.is_null() {
+            return;
+        }
+
+        let is_main_frame: bool = msg_send![frame, isMainFrame];
+        if !is_main_frame {
             return;
         }
 
@@ -255,12 +280,12 @@ mod macos {
         };
 
         let title = dict_string(body, "title").unwrap_or_default();
-        emit_page_text(url, title, text);
+        emit_page_text(label, url, title, text);
     }
 
     /// Register the narrow `wisPageText` message handler on a tab webview.
-    pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
-        let _ = webview.with_webview(|w| unsafe {
+    pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, label: String) {
+        let _ = webview.with_webview(move |w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
             if wk.is_null() {
                 return;
@@ -276,7 +301,7 @@ mod macos {
                 return;
             }
 
-            let handler = PageTextHandler::new();
+            let handler = PageTextHandler::new(label.clone());
             let name = ns_string("wisPageText");
             let _: () = msg_send![controller, addScriptMessageHandler: &*handler, name: name];
         });

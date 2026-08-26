@@ -31,4 +31,4 @@ pub use proxy::{probe_upstream, ProxyServer};
 pub use resolver::{DohResolver, Resolver, StubResolver};
 #[cfg(feature = "tor")]
 pub use tor::TorProxy;
-pub use upgrader::HttpsUpgrader;
+pub use upgrader::{is_loopback, HttpsUpgrader};

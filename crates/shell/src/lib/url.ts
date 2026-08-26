@@ -156,6 +156,21 @@ export function isSearchQuery(input: string): boolean {
   return !looksLikeHost(trimmed)
 }
 
+/**
+ * Whether `href` is a plain web link, safe to open in a tab from an untrusted
+ * source (model output, page content).
+ * 
+ * Everything else is refused. Compares `URL.protocol`, never a string prefix.
+ */
+export function isWebUrl(href: string): boolean {
+  try {
+    const parsed = new URL(href)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 /** Truthy when a tab's URL should not cause a native webview to be created. */
 export function isChromeUrl(url: string): boolean {
   return url.startsWith('about:')

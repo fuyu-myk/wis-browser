@@ -8,8 +8,8 @@ use url::Url;
 use wis_core::{PerSitePolicy, PrivacyMode};
 use wis_network::upgrader::UpgradeAction;
 use wis_network::{
-    Decision, DohResolver, HttpsUpgrader, NetworkContext, OutboundRequest, RefererPolicy,
-    RequestPolicy, RequestType, Resolver, StubResolver, TrackerBlocker,
+    is_loopback, Decision, DohResolver, HttpsUpgrader, NetworkContext, OutboundRequest,
+    RefererPolicy, RequestPolicy, RequestType, Resolver, StubResolver, TrackerBlocker,
 };
 
 fn u(s: &str) -> Url {
@@ -169,6 +169,38 @@ fn loopback_is_exempt_from_upgrade_in_every_mode() {
                 "{url_str} under {mode:?}"
             );
         }
+    }
+}
+
+/// `is_loopback` decides whether a request may skip the workspace proxy (the
+/// assistant does this for a local model), so a false positive would route a
+/// remote endpoint straight out. The negative cases are the load-bearing half.
+#[test]
+fn only_this_machine_counts_as_loopback() {
+    for url_str in [
+        "http://localhost/",
+        "http://localhost:11434/v1",
+        "http://dev.localhost/",
+        "http://127.0.0.1:11434/",
+        "http://127.0.0.2/",
+        "http://[::1]:8080/",
+        "https://localhost/",
+    ] {
+        assert!(is_loopback(&u(url_str)), "{url_str} is this machine");
+    }
+
+    for url_str in [
+        "https://api.anthropic.com/v1/messages",
+        "https://api.openai.com/v1",
+        // A LAN model is not loopback: it still routes through the proxy.
+        "http://192.168.1.5:11434/v1",
+        "http://10.0.0.7/",
+        // Hosts that merely read like loopback.
+        "http://localhost.example.com/",
+        "http://notlocalhost/",
+        "http://127.0.0.1.example.com/",
+    ] {
+        assert!(!is_loopback(&u(url_str)), "{url_str} is not this machine");
     }
 }
 

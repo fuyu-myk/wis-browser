@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { BrowserState, RailSide } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { HistoryIcon, SettingsIcon } from '@/lib/icons'
+import { AssistantIcon, HistoryIcon, SettingsIcon } from '@/lib/icons'
 
 import { BookmarksButton } from '@/components/BookmarksButton'
 import { Brand } from '@/components/Brand'
@@ -16,6 +16,10 @@ interface TopTabsRailProps {
   side: RailSide
   onOpenSettings: () => void
   onOpenHistory: () => void
+  /** False until a provider key is stored, which hides the assistant entirely. */
+  aiAvailable: boolean
+  aiOpen: boolean
+  onToggleAi: () => void
 }
 
 /**
@@ -24,7 +28,15 @@ interface TopTabsRailProps {
  * Pinned tabs live in the top strip in this layout. Expands only while the
  * workspace popover is open.
  */
-export function TopTabsRail({ state, side, onOpenSettings, onOpenHistory }: TopTabsRailProps) {
+export function TopTabsRail({
+  state,
+  side,
+  onOpenSettings,
+  onOpenHistory,
+  aiAvailable,
+  aiOpen,
+  onToggleAi,
+}: TopTabsRailProps) {
   const [workspacePopoverOpen, setWorkspacePopoverOpen] = useState(false)
   // Hold the expansion briefly after the popover closes.
   const [linger, setLinger] = useState(false)
@@ -55,6 +67,17 @@ export function TopTabsRail({ state, side, onOpenSettings, onOpenHistory }: TopT
         <DownloadsButton />
         {!activeWorkspace?.ephemeral && <BookmarksButton />}
         <VpnToggle workspace={activeWorkspace} />
+        {aiAvailable && (
+          <button
+            type="button"
+            className={cx('kb-circle-btn', 'kb-rail-settings', { 'is-active': aiOpen })}
+            aria-label="Assistant"
+            aria-pressed={aiOpen}
+            onClick={onToggleAi}
+          >
+            <AssistantIcon />
+          </button>
+        )}
         <button
           type="button"
           className="kb-circle-btn kb-rail-settings"

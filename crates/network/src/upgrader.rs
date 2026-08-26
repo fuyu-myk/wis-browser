@@ -57,7 +57,8 @@ impl HttpsUpgrader {
     }
 }
 
-fn is_loopback(url: &Url) -> bool {
+/// Whether `url` points at this machine.
+pub fn is_loopback(url: &Url) -> bool {
     match url.host() {
         Some(Host::Domain(d)) => d == "localhost" || d.ends_with(".localhost"),
         Some(Host::Ipv4(addr)) => addr.is_loopback(),

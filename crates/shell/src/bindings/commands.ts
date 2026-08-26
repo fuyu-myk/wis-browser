@@ -910,16 +910,24 @@ export const commands = {
   },
 
   /** Stream a chat completion; deltas arrive on `onEvent`. Model/provider come
-   *  from settings, the key from the keystore. */
+   *  from settings, the key from the keystore. `request_id` is the caller's
+   *  handle for `aiCancel`. */
   async aiChat(
     args: {
       workspace_id: WorkspaceId
+      request_id: string
       messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
       max_tokens?: number
     },
     onEvent: Channel<StreamEvent>,
   ): Promise<void> {
     return invoke('ai_chat', { args, onEvent })
+  },
+
+  /** Stop the completion started with `requestId`, closing the upstream
+   *  request. A no-op once that completion has finished. */
+  async aiCancel(requestId: string): Promise<void> {
+    return invoke('ai_cancel', { requestId })
   },
 
   /** Ask a tab to extract its readable text; arrives as a `wis-page-text` event. */

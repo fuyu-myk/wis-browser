@@ -261,3 +261,23 @@ export const FileIcon = (p: Props) => (
     <path d="M14 2v4a2 2 0 0 0 2 2h4" />
   </Icon>
 )
+
+export const AssistantIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+    <path d="m12 7 1.1 2.6 2.6 1.1-2.6 1.1-1.1 2.6-1.1-2.6-2.6-1.1 2.6-1.1Z" />
+  </Icon>
+)
+
+export const SendIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="M4 12h14" />
+    <path d="m12 5 7 7-7 7" />
+  </Icon>
+)
+
+export const StopIcon = (p: Props) => (
+  <Icon {...p}>
+    <rect x="7" y="7" width="10" height="10" rx="1.5" />
+  </Icon>
+)

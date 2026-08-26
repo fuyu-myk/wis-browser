@@ -671,6 +671,7 @@ pub fn run() {
             ai::ai_key_present,
             ai::ai_clear_key,
             ai::ai_chat,
+            ai::ai_cancel,
             page_text::request_page_text,
             permissions::resolve_media_permission,
             app_launch::app_launch_decide,

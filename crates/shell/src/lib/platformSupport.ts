@@ -34,6 +34,9 @@ const FEATURES: Readonly<Record<string, FeatureSupport>> = {
   // macOS reparents the webview into a floating window; Windows uses the
   // engine's native Picture-in-Picture. Linux (WebKitGTK) has neither yet.
   pop_out_video: { label: 'Video pop-out', unavailableOn: ['linux'] },
+  // The provider key is sealed in the OS key store (Keychain / DPAPI), and
+  // Linux has none. Mirrors `ai_supported()` in `ai.rs`.
+  ai_assistant: { label: 'AI assistant', unavailableOn: ['linux'] },
 }
 
 /** True when `featureId` is not available on the running platform. */

@@ -304,6 +304,20 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     void commands.focusSelf().catch(() => undefined)
   }, [focusWebviewId])
 
+  // Compute the bottom strip's bounds in window coordinates from the content
+  // host. The find overlay surface fills this strip.
+  const findRect = useCallback(() => {
+    const el = hostRef.current
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    return {
+      x: r.x,
+      y: r.y + r.height - FIND_STRIP_HEIGHT_PX,
+      width: r.width,
+      height: FIND_STRIP_HEIGHT_PX,
+    }
+  }, [])
+
   useLayoutEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -320,6 +334,15 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
         layout.set(id, { x: r.x, y: r.y, width: r.width, height: r.height })
       })
       syncLayout(layout, focusWebviewId)
+
+      if (findOpenRef.current) {
+        const rect = findRect()
+        if (rect) {
+          void commands
+            .sizeOverlay('find', rect.x, rect.y, rect.width, rect.height)
+            .catch(() => undefined)
+        }
+      }
     }
     measure()
 
@@ -350,21 +373,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
       window.removeEventListener('resize', onResize)
       document.removeEventListener('transitionend', onTransitionEnd, true)
     }
-  }, [treeKey, paneModeKey, focusWebviewId, syncLayout, resizing, draggingTab, paneAnim])
-
-  // Compute the bottom strip's bounds in window coordinates from the content
-  // host. The find overlay surface fills this strip.
-  const findRect = useCallback(() => {
-    const el = hostRef.current
-    if (!el) return null
-    const r = el.getBoundingClientRect()
-    return {
-      x: r.x,
-      y: r.y + r.height - FIND_STRIP_HEIGHT_PX,
-      width: r.width,
-      height: FIND_STRIP_HEIGHT_PX,
-    }
-  }, [])
+  }, [treeKey, paneModeKey, focusWebviewId, syncLayout, resizing, draggingTab, paneAnim, findRect])
 
   // Find-overlay orchestration: open on Cmd+F, hide when the surface requests
   // close, keep the strip pinned to the bottom on window resize.

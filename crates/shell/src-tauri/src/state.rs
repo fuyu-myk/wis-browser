@@ -187,6 +187,10 @@ pub struct AppState {
     /// clipboard), held so the success toast's "Save" button can write it to
     /// disk without re-capturing. Replaced on each capture.
     pub last_screenshot: std::sync::Mutex<Option<Vec<u8>>>,
+    /// Cancel flags for in-flight assistant completions, keyed by the request
+    /// id the panel minted. Set by `ai_cancel` and dropped by `ai_chat` when
+    /// its stream ends. (see [`crate::ai`])
+    pub ai_cancels: std::sync::Mutex<HashMap<String, Arc<std::sync::atomic::AtomicBool>>>,
     /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
     /// Only present with the `tor` feature.
     #[cfg(feature = "tor")]
@@ -250,6 +254,7 @@ impl AppState {
             geometry_gen: std::sync::atomic::AtomicU64::new(0),
             swipe_accent: std::sync::Mutex::new("#6b77f8".to_string()),
             last_screenshot: std::sync::Mutex::new(None),
+            ai_cancels: std::sync::Mutex::new(HashMap::new()),
             #[cfg(feature = "tor")]
             tor_proxy: Mutex::new(None),
         }

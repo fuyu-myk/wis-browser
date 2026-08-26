@@ -50,17 +50,21 @@ impl ChatMessage {
 pub struct ChatRequest {
     pub model: String,
     pub messages: Vec<ChatMessage>,
+    /// Ceiling on generated tokens. Required by Anthropic.
     pub max_tokens: u32,
 }
 
 /// A normalized event from a provider's streaming response. Serializes with
-/// an internal `type` tag (`delta` / `done` / `error`) so the frontend can
-/// discriminate; never carries the API key.
+/// an internal `type` tag (`delta` / `reasoning` / `done` / `error`) so the
+/// frontend can discriminate; never carries the API key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEvent {
     /// A chunk of assistant text.
     Delta { text: String },
+    /// A chunk of the model's reasoning. Kept separate from
+    /// [`StreamEvent::Delta`].
+    Reasoning { text: String },
     /// The stream finished normally.
     Done,
     /// The provider reported an error mid-stream.
@@ -115,7 +119,6 @@ pub fn chat_body(provider: AiProvider, req: &ChatRequest) -> serde_json::Value {
                 .collect();
             serde_json::json!({
                 "model": req.model,
-                "max_tokens": req.max_tokens,
                 "stream": true,
                 "messages": messages,
             })
@@ -165,7 +168,7 @@ impl SseParser {
             // Trim the trailing \n and any \r (CRLF servers).
             let line = String::from_utf8_lossy(&line);
             let line = line.trim_end_matches(['\n', '\r']);
-            if let Some(event) = self.parse_line(line) {
+            for event in self.parse_line(line) {
                 let done = matches!(event, StreamEvent::Done | StreamEvent::Error { .. });
                 events.push(event);
                 if done {
@@ -187,81 +190,112 @@ impl SseParser {
         events
     }
 
-    fn parse_line(&self, line: &str) -> Option<StreamEvent> {
+    /// Events completed by one SSE line. A chunk can carry both reasoning and
+    /// answer text, so this yields a list rather than at most one event.
+    fn parse_line(&self, line: &str) -> Vec<StreamEvent> {
         if self.finished {
-            return None;
+            return Vec::new();
         }
 
-        let data = line.strip_prefix("data:")?.trim_start();
+        let Some(data) = line.strip_prefix("data:").map(str::trim_start) else {
+            return Vec::new();
+        };
         if data.is_empty() {
-            return None;
+            return Vec::new();
         }
 
+        if self.provider == AiProvider::OpenAiCompatible && data == "[DONE]" {
+            return vec![StreamEvent::Done];
+        }
+
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(data) else {
+            return Vec::new();
+        };
         match self.provider {
-            AiProvider::OpenAiCompatible if data == "[DONE]" => Some(StreamEvent::Done),
-            _ => {
-                let json: serde_json::Value = serde_json::from_str(data).ok()?;
-                match self.provider {
-                    AiProvider::Anthropic => parse_anthropic(&json),
-                    AiProvider::OpenAiCompatible => parse_openai(&json),
-                }
-            }
+            AiProvider::Anthropic => parse_anthropic(&json),
+            AiProvider::OpenAiCompatible => parse_openai(&json),
         }
     }
 }
 
-fn parse_anthropic(json: &serde_json::Value) -> Option<StreamEvent> {
+/// A non-empty string field of `delta`, as `make` wraps it.
+fn delta_event(
+    delta: &serde_json::Value,
+    field: &str,
+    make: fn(String) -> StreamEvent,
+) -> Option<StreamEvent> {
+    let text = delta.get(field).and_then(|v| v.as_str())?;
+    if text.is_empty() {
+        return None;
+    }
+
+    Some(make(text.to_string()))
+}
+
+fn parse_anthropic(json: &serde_json::Value) -> Vec<StreamEvent> {
     match json.get("type").and_then(|t| t.as_str()) {
         Some("content_block_delta") => {
-            let delta = json.get("delta")?;
-            if delta.get("type").and_then(|t| t.as_str()) == Some("text_delta") {
-                let text = delta.get("text").and_then(|t| t.as_str())?;
-                return Some(StreamEvent::Delta {
-                    text: text.to_string(),
-                });
-            }
+            let Some(delta) = json.get("delta") else {
+                return Vec::new();
+            };
 
-            None
+            match delta.get("type").and_then(|t| t.as_str()) {
+                Some("text_delta") => delta_event(delta, "text", |text| StreamEvent::Delta { text })
+                    .into_iter()
+                    .collect(),
+                Some("thinking_delta") => {
+                    delta_event(delta, "thinking", |text| StreamEvent::Reasoning { text })
+                        .into_iter()
+                        .collect()
+                }
+                _ => Vec::new(),
+            }
         }
-        Some("message_stop") => Some(StreamEvent::Done),
+        Some("message_stop") => vec![StreamEvent::Done],
         Some("error") => {
             let message = json
                 .get("error")
                 .and_then(|e| e.get("message"))
                 .and_then(|m| m.as_str())
                 .unwrap_or("provider error");
-            Some(StreamEvent::Error {
+            vec![StreamEvent::Error {
                 message: message.to_string(),
-            })
+            }]
         }
         // message_start, content_block_start/stop, message_delta, ping: no text.
-        _ => None,
+        _ => Vec::new(),
     }
 }
 
-fn parse_openai(json: &serde_json::Value) -> Option<StreamEvent> {
+fn parse_openai(json: &serde_json::Value) -> Vec<StreamEvent> {
     if let Some(err) = json.get("error").filter(|e| !e.is_null()) {
         let message = err
             .get("message")
             .and_then(|m| m.as_str())
             .unwrap_or("provider error");
-        return Some(StreamEvent::Error {
+        return vec![StreamEvent::Error {
             message: message.to_string(),
-        });
+        }];
     }
 
-    let choice = json.get("choices")?.as_array()?.first()?;
-    let content = choice
-        .get("delta")
-        .and_then(|d| d.get("content"))
-        .and_then(|c| c.as_str());
+    let Some(delta) = json
+        .get("choices")
+        .and_then(|c| c.as_array())
+        .and_then(|c| c.first())
+        .and_then(|c| c.get("delta"))
+    else {
+        return Vec::new();
+    };
 
-    match content {
-        Some(text) if !text.is_empty() => Some(StreamEvent::Delta {
-            text: text.to_string(),
-        }),
-        _ => None,
-    }
+    let reasoning = delta_event(delta, "reasoning", |text| StreamEvent::Reasoning { text })
+        .or_else(|| delta_event(delta, "reasoning_content", |text| StreamEvent::Reasoning { text }));
+
+    reasoning
+        .into_iter()
+        .chain(delta_event(delta, "content", |text| StreamEvent::Delta {
+            text,
+        }))
+        .collect()
 }
 
 #[cfg(test)]
@@ -354,6 +388,64 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
     }
 
     #[test]
+    fn openai_reasoning_deltas_are_kept_apart_from_the_answer() {
+        let stream = b"data: {\"choices\":[{\"delta\":{\"reasoning\":\"weigh\"}}]}\n\n\
+data: {\"choices\":[{\"delta\":{\"reasoning\":\" it\"}}]}\n\n\
+data: {\"choices\":[{\"delta\":{\"content\":\"Yes\"}}]}\n\n\
+data: [DONE]\n\n";
+        assert_eq!(
+            feed_all(AiProvider::OpenAiCompatible, &[stream]),
+            vec![
+                StreamEvent::Reasoning {
+                    text: "weigh".into()
+                },
+                StreamEvent::Reasoning { text: " it".into() },
+                StreamEvent::Delta { text: "Yes".into() },
+                StreamEvent::Done
+            ]
+        );
+    }
+
+    #[test]
+    fn openai_reasoning_content_is_the_same_event() {
+        let stream = b"data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"hmm\"}}]}\n\n";
+        assert_eq!(
+            feed_all(AiProvider::OpenAiCompatible, &[stream]),
+            vec![StreamEvent::Reasoning { text: "hmm".into() }]
+        );
+    }
+
+    #[test]
+    fn a_chunk_carrying_both_reasoning_and_content_yields_both() {
+        let stream = b"data: {\"choices\":[{\"delta\":{\"reasoning\":\"so\",\"content\":\"Hi\"}}]}\n\n";
+        assert_eq!(
+            feed_all(AiProvider::OpenAiCompatible, &[stream]),
+            vec![
+                StreamEvent::Reasoning { text: "so".into() },
+                StreamEvent::Delta { text: "Hi".into() }
+            ]
+        );
+    }
+
+    #[test]
+    fn anthropic_thinking_deltas_parse_as_reasoning() {
+        let stream = b"data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"step\"}}\n\n\
+data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"signature_delta\",\"signature\":\"abc\"}}\n\n\
+data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"Done\"}}\n\n";
+        assert_eq!(
+            feed_all(AiProvider::Anthropic, &[stream]),
+            vec![
+                StreamEvent::Reasoning {
+                    text: "step".into()
+                },
+                StreamEvent::Delta {
+                    text: "Done".into()
+                }
+            ]
+        );
+    }
+
+    #[test]
     fn crlf_line_endings_parse() {
         let stream = b"data: {\"choices\":[{\"delta\":{\"content\":\"x\"}}]}\r\ndata: [DONE]\r\n";
         assert_eq!(
@@ -408,6 +500,32 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let messages = body["messages"].as_array().unwrap();
         assert_eq!(messages.len(), 1, "system is not a message for anthropic");
         assert_eq!(messages[0]["role"], "user");
+    }
+
+    #[test]
+    fn openai_body_sends_no_token_ceiling() {
+        let req = ChatRequest {
+            model: "qwen3".into(),
+            max_tokens: 1024,
+            messages: vec![ChatMessage::user("hi")],
+        };
+        let body = chat_body(AiProvider::OpenAiCompatible, &req);
+        assert!(
+            body.get("max_tokens").is_none(),
+            "capping this cuts a reasoning model off mid-thought"
+        );
+        assert_eq!(body["stream"], true);
+    }
+
+    #[test]
+    fn anthropic_body_still_sends_the_required_token_ceiling() {
+        let req = ChatRequest {
+            model: "claude-x".into(),
+            max_tokens: 2048,
+            messages: vec![ChatMessage::user("hi")],
+        };
+        let body = chat_body(AiProvider::Anthropic, &req);
+        assert_eq!(body["max_tokens"], 2048, "the Messages API requires it");
     }
 
     #[test]
