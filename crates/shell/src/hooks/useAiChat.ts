@@ -277,6 +277,7 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
           wire: shared ? messages[messages.length - 1].content : null,
           sharedHost: shared ? hostOf(shared.url) : null,
           reasoningMs: null,
+          truncated: false,
           error: null,
           streaming: false,
         },
@@ -288,6 +289,7 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
           wire: null,
           sharedHost: null,
           reasoningMs: null,
+          truncated: false,
           error: null,
           streaming: true,
         },
@@ -309,13 +311,14 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
         }
 
         let settled = false
+        let truncated = false
         const settle = (error: string | null) => {
           if (settled || genRef.current !== gen) return
           settled = true
           if (requestIdRef.current === requestId) requestIdRef.current = null
           flushDeltas()
           closeReasoning()
-          setTurns((prev) => settleTurn(prev, assistantId, error))
+          setTurns((prev) => settleTurn(prev, assistantId, error, truncated))
           setPhase('idle')
         }
 
@@ -328,7 +331,8 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
           } else if (event.type === 'reasoning') {
             if (reasonedAt === null) reasonedAt = Date.now()
             queueDelta(assistantId, '', event.text)
-          } else if (event.type === 'done') settle(null)
+          } else if (event.type === 'truncated') truncated = true
+          else if (event.type === 'done') settle(null)
           else settle(event.message)
         }
 

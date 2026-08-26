@@ -29,6 +29,8 @@ export interface AiTurn {
   sharedHost: string | null
   /** How long the model reasoned before answering, once known. */
   reasoningMs: number | null
+  /** True when the provider stopped at its token ceiling mid-answer. */
+  truncated: boolean
   /** Set on an assistant turn that ended in a failure instead of an answer. */
   error: string | null
   /** True while this assistant turn is still receiving deltas. */
@@ -192,6 +194,9 @@ export function settleTurn(
   turns: readonly AiTurn[],
   id: number,
   error: string | null,
+  truncated: boolean,
 ): AiTurn[] {
-  return turns.map((t) => (t.id === id ? { ...t, streaming: false, error } : t))
+  return turns.map((t) =>
+    t.id === id ? { ...t, streaming: false, error, truncated } : t,
+  )
 }

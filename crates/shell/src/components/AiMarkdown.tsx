@@ -6,11 +6,18 @@ import { isWebUrl } from '@/lib/url'
 
 interface AiMarkdownProps {
   text: string
-  /** Receives only http(s) hrefs; refused schemes render as plain text. */
-  onOpenLink: (href: string) => void
+  /** Receives only http(s) hrefs; refused schemes render as plain text. The
+   *  visible text rides along for the deceptive-text check. */
+  onOpenLink: (href: string, text: string) => void
 }
 
-function SpanView({ span, onOpenLink }: { span: Span; onOpenLink: (href: string) => void }) {
+function SpanView({
+  span,
+  onOpenLink,
+}: {
+  span: Span
+  onOpenLink: (href: string, text: string) => void
+}) {
   switch (span.kind) {
     case 'strong':
       return <strong>{span.text}</strong>
@@ -27,7 +34,7 @@ function SpanView({ span, onOpenLink }: { span: Span; onOpenLink: (href: string)
           type="button"
           className="kb-ai-md-link"
           title={hostOf(span.href)}
-          onClick={() => onOpenLink(span.href)}
+          onClick={() => onOpenLink(span.href, span.text)}
         >
           {span.text}
         </button>
@@ -38,7 +45,7 @@ function SpanView({ span, onOpenLink }: { span: Span; onOpenLink: (href: string)
   }
 }
 
-function spansOf(spans: Span[], onOpenLink: (href: string) => void): ReactNode {
+function spansOf(spans: Span[], onOpenLink: (href: string, text: string) => void): ReactNode {
   return spans.map((span, i) => <SpanView key={i} span={span} onOpenLink={onOpenLink} />)
 }
 
@@ -47,7 +54,7 @@ function listOf(
   items: ListItem[],
   ordered: boolean,
   depth: number,
-  onOpenLink: (href: string) => void,
+  onOpenLink: (href: string, text: string) => void,
 ): ReactNode {
   const out: ReactNode[] = []
   let i = 0
@@ -76,7 +83,13 @@ function listOf(
   return <Tag>{out}</Tag>
 }
 
-function BlockView({ block, onOpenLink }: { block: Block; onOpenLink: (href: string) => void }) {
+function BlockView({
+  block,
+  onOpenLink,
+}: {
+  block: Block
+  onOpenLink: (href: string, text: string) => void
+}) {
   switch (block.kind) {
     case 'paragraph':
       return <p>{spansOf(block.spans, onOpenLink)}</p>

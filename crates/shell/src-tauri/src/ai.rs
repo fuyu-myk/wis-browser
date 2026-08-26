@@ -167,6 +167,16 @@ impl Drop for CancelGuard<'_> {
     }
 }
 
+/// Assess a link the way navguard's heuristics would, with the anchor text
+/// included.
+#[tauri::command]
+pub async fn ai_assess_link(
+    url: String,
+    anchor_text: Option<String>,
+) -> wis_core::link_safety::LinkAssessment {
+    wis_core::link_safety::assess_link(&url, anchor_text.as_deref())
+}
+
 /// Stop an in-flight completion, closing the upstream connection rather than
 /// only muting the reply. A no-op for an id that already finished.
 #[tauri::command]

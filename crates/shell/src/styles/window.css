@@ -8010,3 +8010,8 @@ body.motion-off .kb-ai-think-label.is-live {
   font-size: 11.5px;
   color: var(--text-tertiary);
 }
+.kb-ai-truncated {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--warning-strong);
+}

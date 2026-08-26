@@ -11,9 +11,11 @@ import {
 } from '@/lib/ai'
 import { cx } from '@/lib/cx'
 import { ChevronDownIcon, FileIcon, PlusIcon, SendIcon, StopIcon, XIcon } from '@/lib/icons'
+import { hostOf } from '@/lib/ai'
 import { useAiChat, type AiPageSource } from '@/hooks/useAiChat'
 
 import { AiMarkdown } from '@/components/AiMarkdown'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 const WIDTH_STORAGE_KEY = 'wis-ai-panel-width'
 
@@ -61,6 +63,8 @@ export function AiPanel({
   const [draft, setDraft] = useState('')
   const [attachPage, setAttachPage] = useState(false)
   const [width, setWidth] = useState(readStoredWidth)
+  /** A link whose text claims a different destination, held for confirmation. */
+  const [linkPrompt, setLinkPrompt] = useState<{ href: string; text: string } | null>(null)
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
@@ -133,12 +137,28 @@ export function AiPanel({
 
   // A model link opens as a new tab, never a navigation: the panel is chrome,
   // and its window navigating away would replace the browser shell itself.
-  const openLink = useCallback(
+  const createLinkTab = useCallback(
     (href: string) => {
       if (workspaceId === null) return
       void commands.createTab(workspaceId, href).catch(() => undefined)
     },
     [workspaceId],
+  )
+
+  const openLink = useCallback(
+    (href: string, text: string) => {
+      void commands
+        .aiAssessLink(href, text)
+        .then(
+          (assessment) => assessment.warnings.some((w) => w.code === 'deceptive_text'),
+          () => false,
+        )
+        .then((deceptive) => {
+          if (deceptive) setLinkPrompt({ href, text })
+          else createLinkTab(href)
+        })
+    },
+    [createLinkTab],
   )
 
   const startResize = useCallback(
@@ -304,11 +324,33 @@ export function AiPanel({
         </div>
         {chat.phase === 'reading' && <div className="kb-ai-status">Reading the page</div>}
       </div>
+      <ConfirmDialog
+        open={linkPrompt !== null}
+        title="This link may be deceptive"
+        message={
+          linkPrompt !== null
+            ? `The link reads "${linkPrompt.text}" but goes to ${hostOf(linkPrompt.href)}.`
+            : undefined
+        }
+        confirmLabel="Open anyway"
+        danger
+        onConfirm={() => {
+          if (linkPrompt !== null) createLinkTab(linkPrompt.href)
+          setLinkPrompt(null)
+        }}
+        onCancel={() => setLinkPrompt(null)}
+      />
     </aside>
   )
 }
 
-function TurnRow({ turn, onOpenLink }: { turn: AiTurn; onOpenLink: (href: string) => void }) {
+function TurnRow({
+  turn,
+  onOpenLink,
+}: {
+  turn: AiTurn
+  onOpenLink: (href: string, text: string) => void
+}) {
   const [expanded, setExpanded] = useState(false)
   const thinking = turn.streaming && turn.content === ''
   const hasReasoning = turn.reasoning !== ''
@@ -351,6 +393,9 @@ function TurnRow({ turn, onOpenLink }: { turn: AiTurn; onOpenLink: (href: string
           <p className="kb-ai-text">{turn.content}</p>
         ))}
       {turn.error !== null && <p className="kb-ai-error">{turn.error}</p>}
+      {turn.truncated && (
+        <p className="kb-ai-truncated">Cut short at the provider's output limit.</p>
+      )}
     </li>
   )
 }

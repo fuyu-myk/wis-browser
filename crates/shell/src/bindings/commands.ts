@@ -930,6 +930,12 @@ export const commands = {
     return invoke('ai_cancel', { requestId })
   },
 
+  /** Assess a link with its visible text, for the deceptive-text signal only
+   *  the panel can see. Pure; never touches the network. */
+  async aiAssessLink(url: string, anchorText: string | null): Promise<LinkAssessment> {
+    return invoke('ai_assess_link', { url, anchorText })
+  },
+
   /** Ask a tab to extract its readable text; arrives as a `wis-page-text` event. */
   async requestPageText(id: TabId): Promise<void> {
     return invoke('request_page_text', { id })

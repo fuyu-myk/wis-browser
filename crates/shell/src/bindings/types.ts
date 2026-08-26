@@ -425,6 +425,7 @@ export interface AiSettings {
 export type StreamEvent =
   | { type: 'delta'; text: string }
   | { type: 'reasoning'; text: string }
+  | { type: 'truncated' }
   | { type: 'done' }
   | { type: 'error'; message: string }
 

@@ -65,6 +65,8 @@ pub enum StreamEvent {
     /// A chunk of the model's reasoning. Kept separate from
     /// [`StreamEvent::Delta`].
     Reasoning { text: String },
+    /// An incomplete answer.
+    Truncated,
     /// The stream finished normally.
     Done,
     /// The provider reported an error mid-stream.
@@ -251,6 +253,18 @@ fn parse_anthropic(json: &serde_json::Value) -> Vec<StreamEvent> {
                 _ => Vec::new(),
             }
         }
+        Some("message_delta") => {
+            let capped = json
+                .get("delta")
+                .and_then(|d| d.get("stop_reason"))
+                .and_then(|s| s.as_str())
+                == Some("max_tokens");
+            if capped {
+                vec![StreamEvent::Truncated]
+            } else {
+                Vec::new()
+            }
+        }
         Some("message_stop") => vec![StreamEvent::Done],
         Some("error") => {
             let message = json
@@ -278,13 +292,20 @@ fn parse_openai(json: &serde_json::Value) -> Vec<StreamEvent> {
         }];
     }
 
-    let Some(delta) = json
+    let Some(choice) = json
         .get("choices")
         .and_then(|c| c.as_array())
         .and_then(|c| c.first())
-        .and_then(|c| c.get("delta"))
     else {
         return Vec::new();
+    };
+    let capped = choice.get("finish_reason").and_then(|f| f.as_str()) == Some("length");
+    let Some(delta) = choice.get("delta") else {
+        return if capped {
+            vec![StreamEvent::Truncated]
+        } else {
+            Vec::new()
+        };
     };
 
     let reasoning = delta_event(delta, "reasoning", |text| StreamEvent::Reasoning { text })
@@ -295,6 +316,7 @@ fn parse_openai(json: &serde_json::Value) -> Vec<StreamEvent> {
         .chain(delta_event(delta, "content", |text| StreamEvent::Delta {
             text,
         }))
+        .chain(capped.then_some(StreamEvent::Truncated))
         .collect()
 }
 
@@ -442,6 +464,48 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
                     text: "Done".into()
                 }
             ]
+        );
+    }
+
+    #[test]
+    fn openai_length_finish_surfaces_truncation() {
+        let stream = b"data: {\"choices\":[{\"delta\":{\"content\":\"partial\"},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n\n";
+        assert_eq!(
+            feed_all(AiProvider::OpenAiCompatible, &[stream]),
+            vec![
+                StreamEvent::Delta {
+                    text: "partial".into()
+                },
+                StreamEvent::Truncated,
+                StreamEvent::Done
+            ]
+        );
+    }
+
+    #[test]
+    fn openai_stop_finish_is_not_truncation() {
+        let stream = b"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+        assert_eq!(
+            feed_all(AiProvider::OpenAiCompatible, &[stream]),
+            vec![StreamEvent::Done]
+        );
+    }
+
+    #[test]
+    fn anthropic_max_tokens_stop_reason_surfaces_truncation() {
+        let stream = b"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"max_tokens\"},\"usage\":{\"output_tokens\":4096}}\n\ndata: {\"type\":\"message_stop\"}\n\n";
+        assert_eq!(
+            feed_all(AiProvider::Anthropic, &[stream]),
+            vec![StreamEvent::Truncated, StreamEvent::Done]
+        );
+    }
+
+    #[test]
+    fn anthropic_end_turn_stop_reason_is_not_truncation() {
+        let stream = b"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\ndata: {\"type\":\"message_stop\"}\n\n";
+        assert_eq!(
+            feed_all(AiProvider::Anthropic, &[stream]),
+            vec![StreamEvent::Done]
         );
     }
 
