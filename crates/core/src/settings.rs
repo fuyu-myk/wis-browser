@@ -233,6 +233,10 @@ pub struct AiSettings {
     /// OpenRouter). Ignored by Anthropic; `None` uses the provider default.
     #[serde(default)]
     pub base_url: Option<String>,
+    /// Ask Anthropic for summarized reasoning (adaptive thinking). Off by
+    /// default.
+    #[serde(default)]
+    pub show_reasoning: bool,
 }
 
 impl Default for AiSettings {
@@ -241,6 +245,7 @@ impl Default for AiSettings {
             provider: crate::ai::AiProvider::Anthropic,
             model: String::new(),
             base_url: None,
+            show_reasoning: false,
         }
     }
 }

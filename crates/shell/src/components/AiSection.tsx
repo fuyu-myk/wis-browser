@@ -5,7 +5,7 @@ import type { AiProvider, AiSettings, UserSettings, UserSettingsPatch } from '@/
 import { baseUrlProblem } from '@/lib/ai'
 import { cx } from '@/lib/cx'
 import { isFeatureUnavailableHere } from '@/lib/platformSupport'
-import { Segmented } from '@/components/controls'
+import { Segmented, Switch } from '@/components/controls'
 
 const PROVIDER_OPTIONS = [
   { value: 'anthropic' as const, label: 'Anthropic' },
@@ -145,6 +145,22 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
           aria-label="AI model"
         />
       </div>
+      {ai.provider === 'anthropic' && (
+        <div className="row">
+          <div className="l">
+            <span>Show reasoning</span>
+            <span>
+              Streams Claude's summarized thinking into the panel. Billed as output
+              tokens; needs a current Claude model.
+            </span>
+          </div>
+          <Switch
+            checked={ai.show_reasoning}
+            onChange={(show_reasoning) => patchAi({ show_reasoning })}
+            label="Show reasoning"
+          />
+        </div>
+      )}
       {ai.provider === 'open_ai_compatible' && (
         <div className="row">
           <div className="l">

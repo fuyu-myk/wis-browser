@@ -52,6 +52,9 @@ pub struct ChatRequest {
     pub messages: Vec<ChatMessage>,
     /// Ceiling on generated tokens. Required by Anthropic.
     pub max_tokens: u32,
+    /// Request summarized reasoning. Anthropic only: adaptive thinking with
+    /// `display: summarized`.
+    pub thinking: bool,
 }
 
 /// A normalized event from a provider's streaming response. Serializes with
@@ -109,6 +112,12 @@ pub fn chat_body(provider: AiProvider, req: &ChatRequest) -> serde_json::Value {
             });
             if let Some(system) = system {
                 body["system"] = serde_json::Value::String(system);
+            }
+            if req.thinking {
+                body["thinking"] = serde_json::json!({
+                    "type": "adaptive",
+                    "display": "summarized",
+                });
             }
 
             body
@@ -549,6 +558,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "claude-x".into(),
             max_tokens: 1024,
+            thinking: false,
             messages: vec![
                 ChatMessage {
                     role: Role::System,
@@ -571,6 +581,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "qwen3".into(),
             max_tokens: 1024,
+            thinking: false,
             messages: vec![ChatMessage::user("hi")],
         };
         let body = chat_body(AiProvider::OpenAiCompatible, &req);
@@ -586,6 +597,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "claude-x".into(),
             max_tokens: 2048,
+            thinking: false,
             messages: vec![ChatMessage::user("hi")],
         };
         let body = chat_body(AiProvider::Anthropic, &req);
@@ -593,10 +605,43 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
     }
 
     #[test]
+    fn anthropic_body_carries_summarized_thinking_only_when_asked() {
+        let mut req = ChatRequest {
+            model: "claude-opus-5".into(),
+            max_tokens: 16000,
+            thinking: true,
+            messages: vec![ChatMessage::user("hi")],
+        };
+        let body = chat_body(AiProvider::Anthropic, &req);
+        assert_eq!(body["thinking"]["type"], "adaptive");
+        assert_eq!(body["thinking"]["display"], "summarized");
+
+        req.thinking = false;
+        let body = chat_body(AiProvider::Anthropic, &req);
+        assert!(body.get("thinking").is_none());
+    }
+
+    #[test]
+    fn openai_body_never_carries_a_thinking_config() {
+        let req = ChatRequest {
+            model: "qwen3".into(),
+            max_tokens: 16000,
+            thinking: true,
+            messages: vec![ChatMessage::user("hi")],
+        };
+        let body = chat_body(AiProvider::OpenAiCompatible, &req);
+        assert!(
+            body.get("thinking").is_none(),
+            "the OpenAI-compatible wire has no such field; reasoning models stream regardless"
+        );
+    }
+
+    #[test]
     fn openai_body_keeps_system_as_leading_message() {
         let req = ChatRequest {
             model: "gpt-x".into(),
             max_tokens: 1024,
+            thinking: false,
             messages: vec![
                 ChatMessage {
                     role: Role::System,

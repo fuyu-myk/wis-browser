@@ -212,10 +212,15 @@ pub async fn ai_chat(
         request_id: args.request_id.clone(),
     };
 
-    let (provider, model, base_url) = {
+    let (provider, model, base_url, show_reasoning) = {
         let browser = state.browser.lock().await;
         let ai = &browser.settings.ai;
-        (ai.provider, ai.model.clone(), ai.base_url.clone())
+        (
+            ai.provider,
+            ai.model.clone(),
+            ai.base_url.clone(),
+            ai.show_reasoning,
+        )
     };
     if model.trim().is_empty() {
         return Err(WisError::InvalidInput {
@@ -227,9 +232,16 @@ pub async fn ai_chat(
         message: format!("could not read key: {e}"),
     })?;
 
+    let thinking = show_reasoning && provider == AiProvider::Anthropic;
+    let max_tokens = if thinking {
+        args.max_tokens.max(16000)
+    } else {
+        args.max_tokens
+    };
     let req = ChatRequest {
         model,
-        max_tokens: args.max_tokens,
+        max_tokens,
+        thinking,
         messages: args
             .messages
             .into_iter()

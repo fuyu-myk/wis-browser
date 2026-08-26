@@ -419,6 +419,8 @@ export interface AiSettings {
   model: string
   /** Base URL for `open_ai_compatible` providers; null uses the default. */
   base_url: string | null
+  /** Ask Anthropic for summarized reasoning (billed as output tokens). */
+  show_reasoning: boolean
 }
 
 /** A streaming event from `ai_chat` (mirror of `wis_core::StreamEvent`). */
