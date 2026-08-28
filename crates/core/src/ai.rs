@@ -45,6 +45,18 @@ impl ChatMessage {
     }
 }
 
+/// How a request treats the model's reasoning, Anthropic only.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum ThinkingMode {
+    /// Whatever the model does by default.
+    #[default]
+    ProviderDefault,
+    /// Ask for adaptive thinking with a summarized display.
+    Summarized,
+    /// Explicitly forbid thinking.
+    Disabled,
+}
+
 /// What the request asks a provider to generate.
 #[derive(Debug, Clone)]
 pub struct ChatRequest {
@@ -52,9 +64,7 @@ pub struct ChatRequest {
     pub messages: Vec<ChatMessage>,
     /// Ceiling on generated tokens. Required by Anthropic.
     pub max_tokens: u32,
-    /// Request summarized reasoning. Anthropic only: adaptive thinking with
-    /// `display: summarized`.
-    pub thinking: bool,
+    pub thinking: ThinkingMode,
 }
 
 /// A normalized event from a provider's streaming response. Serializes with
@@ -113,20 +123,40 @@ pub fn chat_body(provider: AiProvider, req: &ChatRequest) -> serde_json::Value {
             if let Some(system) = system {
                 body["system"] = serde_json::Value::String(system);
             }
-            if req.thinking {
-                body["thinking"] = serde_json::json!({
-                    "type": "adaptive",
-                    "display": "summarized",
-                });
+            match req.thinking {
+                ThinkingMode::ProviderDefault => {}
+                ThinkingMode::Summarized => {
+                    body["thinking"] = serde_json::json!({
+                        "type": "adaptive",
+                        "display": "summarized",
+                    });
+                }
+                ThinkingMode::Disabled => {
+                    body["thinking"] = serde_json::json!({ "type": "disabled" });
+                }
             }
 
             body
         }
         AiProvider::OpenAiCompatible => {
+            // Best-effort no thinking switch.
+            let last_user = req
+                .messages
+                .iter()
+                .rposition(|m| m.role == Role::User)
+                .filter(|_| req.thinking == ThinkingMode::Disabled);
             let messages: Vec<serde_json::Value> = req
                 .messages
                 .iter()
-                .map(|m| serde_json::json!({ "role": role_wire(m.role), "content": m.content }))
+                .enumerate()
+                .map(|(i, m)| {
+                    let content = if last_user == Some(i) {
+                        format!("{}\n\n/no_think", m.content)
+                    } else {
+                        m.content.clone()
+                    };
+                    serde_json::json!({ "role": role_wire(m.role), "content": content })
+                })
                 .collect();
             serde_json::json!({
                 "model": req.model,
@@ -558,7 +588,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "claude-x".into(),
             max_tokens: 1024,
-            thinking: false,
+            thinking: ThinkingMode::ProviderDefault,
             messages: vec![
                 ChatMessage {
                     role: Role::System,
@@ -581,7 +611,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "qwen3".into(),
             max_tokens: 1024,
-            thinking: false,
+            thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
         let body = chat_body(AiProvider::OpenAiCompatible, &req);
@@ -597,7 +627,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "claude-x".into(),
             max_tokens: 2048,
-            thinking: false,
+            thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
         let body = chat_body(AiProvider::Anthropic, &req);
@@ -609,15 +639,50 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let mut req = ChatRequest {
             model: "claude-opus-5".into(),
             max_tokens: 16000,
-            thinking: true,
+            thinking: ThinkingMode::Summarized,
             messages: vec![ChatMessage::user("hi")],
         };
         let body = chat_body(AiProvider::Anthropic, &req);
         assert_eq!(body["thinking"]["type"], "adaptive");
         assert_eq!(body["thinking"]["display"], "summarized");
 
-        req.thinking = false;
+        req.thinking = ThinkingMode::ProviderDefault;
         let body = chat_body(AiProvider::Anthropic, &req);
+        assert!(body.get("thinking").is_none());
+    }
+
+    #[test]
+    fn anthropic_body_can_forbid_thinking_outright() {
+        let req = ChatRequest {
+            model: "claude-opus-5".into(),
+            max_tokens: 4096,
+            thinking: ThinkingMode::Disabled,
+            messages: vec![ChatMessage::user("hi")],
+        };
+        let body = chat_body(AiProvider::Anthropic, &req);
+        assert_eq!(body["thinking"]["type"], "disabled");
+        assert_eq!(body["messages"][0]["content"], "hi");
+    }
+
+    #[test]
+    fn openai_disabled_thinking_appends_the_qwen_soft_switch() {
+        let req = ChatRequest {
+            model: "qwen3.5:9b".into(),
+            max_tokens: 4096,
+            thinking: ThinkingMode::Disabled,
+            messages: vec![
+                ChatMessage::user("first"),
+                ChatMessage {
+                    role: Role::Assistant,
+                    content: "answer".into(),
+                },
+                ChatMessage::user("second"),
+            ],
+        };
+        let body = chat_body(AiProvider::OpenAiCompatible, &req);
+        let messages = body["messages"].as_array().unwrap();
+        assert_eq!(messages[0]["content"], "first", "only the final user turn");
+        assert_eq!(messages[2]["content"], "second\n\n/no_think");
         assert!(body.get("thinking").is_none());
     }
 
@@ -626,7 +691,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "qwen3".into(),
             max_tokens: 16000,
-            thinking: true,
+            thinking: ThinkingMode::Summarized,
             messages: vec![ChatMessage::user("hi")],
         };
         let body = chat_body(AiProvider::OpenAiCompatible, &req);
@@ -641,7 +706,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "gpt-x".into(),
             max_tokens: 1024,
-            thinking: false,
+            thinking: ThinkingMode::ProviderDefault,
             messages: vec![
                 ChatMessage {
                     role: Role::System,

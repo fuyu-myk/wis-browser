@@ -7835,6 +7835,16 @@ body[data-close-btn="hidden"] .kb-topbar .h-tab .close { display: none; }
   gap: 6px;
   align-items: flex-start;
 }
+.kb-ai-think-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.kb-ai-btn.kb-ai-now {
+  font-size: 11px;
+  padding: 2px 8px;
+  color: var(--text-secondary);
+}
 .kb-ai-think-row {
   display: inline-flex;
   align-items: center;

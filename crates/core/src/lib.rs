@@ -34,7 +34,7 @@ pub mod userscript;
 pub mod widget;
 pub mod workspace;
 
-pub use ai::{AiProvider, ChatMessage, ChatRequest, Role, SseParser, StreamEvent};
+pub use ai::{AiProvider, ChatMessage, ChatRequest, Role, SseParser, StreamEvent, ThinkingMode};
 pub use background::{
     Background, BackgroundDrafts, GradientSpec, GradientStop, ImageBackground, ImageFit,
 };

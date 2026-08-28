@@ -5,13 +5,13 @@ import type { WorkspaceId } from '@/bindings/types'
 import {
   AI_PANEL_WIDTH_DEFAULT,
   clampPanelWidth,
+  hostOf,
   SUMMARIZE_PROMPT,
   thinkDurationLabel,
   type AiTurn,
 } from '@/lib/ai'
 import { cx } from '@/lib/cx'
 import { ChevronDownIcon, FileIcon, PlusIcon, SendIcon, StopIcon, XIcon } from '@/lib/icons'
-import { hostOf } from '@/lib/ai'
 import { useAiChat, type AiPageSource } from '@/hooks/useAiChat'
 
 import { AiMarkdown } from '@/components/AiMarkdown'
@@ -259,7 +259,12 @@ export function AiPanel({
         ) : (
           <ul className="kb-ai-list">
             {chat.turns.map((turn) => (
-              <TurnRow key={turn.id} turn={turn} onOpenLink={openLink} />
+              <TurnRow
+                key={turn.id}
+                turn={turn}
+                onOpenLink={openLink}
+                onAnswerNow={chat.answerNow}
+              />
             ))}
           </ul>
         )}
@@ -347,9 +352,11 @@ export function AiPanel({
 function TurnRow({
   turn,
   onOpenLink,
+  onAnswerNow,
 }: {
   turn: AiTurn
   onOpenLink: (href: string, text: string) => void
+  onAnswerNow: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const thinking = turn.streaming && turn.content === ''
@@ -362,27 +369,39 @@ function TurnRow({
       )}
       {(thinking || hasReasoning) && (
         <div className="kb-ai-think">
-          {hasReasoning ? (
-            <button
-              type="button"
-              className="kb-ai-think-row"
-              onClick={() => setExpanded((v) => !v)}
-              aria-expanded={expanded}
-            >
-              <span className={cx('kb-ai-think-label', { 'is-live': thinking })}>
-                {thinking
-                  ? 'thinking...'
-                  : turn.reasoningMs !== null
-                    ? thinkDurationLabel(turn.reasoningMs)
-                    : 'thoughts'}
+          <div className="kb-ai-think-head">
+            {hasReasoning ? (
+              <button
+                type="button"
+                className="kb-ai-think-row"
+                onClick={() => setExpanded((v) => !v)}
+                aria-expanded={expanded}
+              >
+                <span className={cx('kb-ai-think-label', { 'is-live': thinking })}>
+                  {thinking
+                    ? 'thinking...'
+                    : turn.reasoningMs !== null
+                      ? thinkDurationLabel(turn.reasoningMs)
+                      : 'thoughts'}
+                </span>
+                <ChevronDownIcon className={cx('kb-ai-think-chevron', { 'is-open': expanded })} />
+              </button>
+            ) : (
+              <span className="kb-ai-think-row is-static">
+                <span className="kb-ai-think-label is-live">thinking...</span>
               </span>
-              <ChevronDownIcon className={cx('kb-ai-think-chevron', { 'is-open': expanded })} />
-            </button>
-          ) : (
-            <span className="kb-ai-think-row is-static">
-              <span className="kb-ai-think-label is-live">thinking...</span>
-            </span>
-          )}
+            )}
+            {thinking && (
+              <button
+                type="button"
+                className="kb-ai-btn kb-ai-now"
+                onClick={onAnswerNow}
+                title="Cut thinking short and answer with what it currently has"
+              >
+                Answer now
+              </button>
+            )}
+          </div>
           {expanded && <p className="kb-ai-reasoning">{turn.reasoning}</p>}
         </div>
       )}

@@ -18,8 +18,8 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
 use wis_core::ai::chat_body;
 use wis_core::{
-    AiProvider, ChatMessage, ChatRequest, Role, SseParser, StreamEvent, WisError, WisResult,
-    WorkspaceId,
+    AiProvider, ChatMessage, ChatRequest, Role, SseParser, StreamEvent, ThinkingMode, WisError,
+    WisResult, WorkspaceId,
 };
 use zeroize::Zeroizing;
 
@@ -136,6 +136,9 @@ pub struct AiChatArgs {
     pub max_tokens: u32,
     /// Caller-minted id [`ai_cancel`] uses to stop this completion.
     pub request_id: String,
+    /// Forbid thinking for this request regardless of the show-reasoning setting.
+    #[serde(default)]
+    pub skip_reasoning: bool,
 }
 
 fn default_max_tokens() -> u32 {
@@ -232,8 +235,14 @@ pub async fn ai_chat(
         message: format!("could not read key: {e}"),
     })?;
 
-    let thinking = show_reasoning && provider == AiProvider::Anthropic;
-    let max_tokens = if thinking {
+    let thinking = if args.skip_reasoning {
+        ThinkingMode::Disabled
+    } else if provider == AiProvider::Anthropic && show_reasoning {
+        ThinkingMode::Summarized
+    } else {
+        ThinkingMode::ProviderDefault
+    };
+    let max_tokens = if thinking == ThinkingMode::Summarized {
         args.max_tokens.max(16000)
     } else {
         args.max_tokens
@@ -254,7 +263,7 @@ pub async fn ai_chat(
     let body = chat_body(provider, &req);
 
     let key = key.as_ref().map(|k| k.as_slice());
-    let (url, headers) = match provider {
+    let (url, mut headers) = match provider {
         AiProvider::Anthropic => {
             let key = key.ok_or_else(|| WisError::InvalidInput {
                 message: "no AI key configured".into(),
@@ -264,9 +273,19 @@ pub async fn ai_chat(
         AiProvider::OpenAiCompatible => openai_request(base_url.as_deref(), key)?,
     };
 
-    let local_endpoint = url::Url::parse(&url)
-        .map(|parsed| wis_network::is_loopback(&parsed))
+    let parsed_url = url::Url::parse(&url).ok();
+    let local_endpoint = parsed_url
+        .as_ref()
+        .map(wis_network::is_loopback)
         .unwrap_or(false);
+    if local_endpoint {
+        headers.remove(reqwest::header::AUTHORIZATION);
+    }
+    let endpoint_host = parsed_url
+        .as_ref()
+        .and_then(|u| u.host_str())
+        .unwrap_or("the provider")
+        .to_string();
 
     let mut builder = reqwest::Client::builder().connect_timeout(AI_CONNECT_TIMEOUT);
     if !local_endpoint {
@@ -304,7 +323,10 @@ pub async fn ai_chat(
             Ok(resp) => resp,
             Err(e) => {
                 return Err(WisError::InvalidInput {
-                    message: format!("request failed: {}", transport_error(&e)),
+                    message: format!(
+                        "request failed: {} ({endpoint_host})",
+                        transport_error(&e)
+                    ),
                 })
             }
         },
@@ -314,7 +336,10 @@ pub async fn ai_chat(
         let status = resp.status().as_u16();
         let detail = resp.text().await.unwrap_or_default();
         let _ = on_event.send(StreamEvent::Error {
-            message: format!("provider error {status}: {}", first_line(&detail, 300)),
+            message: format!(
+                "provider error {status} from {endpoint_host}: {}",
+                first_line(&detail, 300)
+            ),
         });
 
         return Ok(());
@@ -338,7 +363,10 @@ pub async fn ai_chat(
             Err(e) => {
                 // A truncated or reset body arrives here.
                 let _ = on_event.send(StreamEvent::Error {
-                    message: format!("stream error: {}", transport_error(&e)),
+                    message: format!(
+                        "stream error: {} ({endpoint_host})",
+                        transport_error(&e)
+                    ),
                 });
                 emitted_terminal = true;
                 break;

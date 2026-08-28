@@ -918,6 +918,7 @@ export const commands = {
       request_id: string
       messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
       max_tokens?: number
+      skip_reasoning?: boolean
     },
     onEvent: Channel<StreamEvent>,
   ): Promise<void> {

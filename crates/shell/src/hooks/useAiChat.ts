@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { commands } from '@/bindings/commands'
 import type { StreamEvent, TabId, WorkspaceId } from '@/bindings/types'
 import {
+  ANSWER_NOW_DIRECTIVE,
   appendDelta,
   hostOf,
   settleTurn,
@@ -50,6 +51,12 @@ export interface AiChat {
    * started.
    */
   send: (question: string, page: AiPageSource | null) => Promise<boolean>
+  /**
+   * Cut the current thinking short: cancel the in-flight stream and restart
+   * the same turn demanding an immediate answer. Only meaningful while a
+   * response is streaming.
+   */
+  answerNow: () => void
   stop: () => void
   reset: () => void
 }
@@ -89,6 +96,8 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
 
   /** Request id of the stream in flight, so stopping can cancel it upstream. */
   const requestIdRef = useRef<string | null>(null)
+  /** Restarts the in-flight exchange's stream, for the answer-now path. */
+  const restartRef = useRef<((gen: number, immediate: boolean) => void) | null>(null)
 
   const pendingPageRef = useRef<{
     tabId: TabId
@@ -207,12 +216,25 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
   const abandonInFlight = useCallback(() => {
     genRef.current += 1
     abandonPageRead()
+    restartRef.current = null
     const requestId = requestIdRef.current
     if (requestId !== null) {
       requestIdRef.current = null
       void commands.aiCancel(requestId).catch(() => undefined)
     }
   }, [abandonPageRead])
+
+  const answerNow = useCallback(() => {
+    const restart = restartRef.current
+    if (restart === null) return
+    const requestId = requestIdRef.current
+    if (requestId !== null) {
+      requestIdRef.current = null
+      void commands.aiCancel(requestId).catch(() => undefined)
+    }
+    flushDeltas()
+    restart(++genRef.current, true)
+  }, [flushDeltas])
 
   const stop = useCallback(() => {
     abandonInFlight()
@@ -296,26 +318,31 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
       ])
       setPhase('streaming')
 
-      // The exchange is committed to the transcript from here, so the caller
-      // may clear the composer; the stream itself runs on unattended.
-      void (async () => {
-        let reasonedAt: number | null = null
-        let reasonedFor: number | null = null
-        const closeReasoning = () => {
-          if (reasonedAt === null || reasonedFor !== null) return
-          reasonedFor = Date.now() - reasonedAt
-          const ms = reasonedFor
-          setTurns((prev) =>
-            prev.map((t) => (t.id === assistantId ? { ...t, reasoningMs: ms } : t)),
-          )
-        }
+      let reasonedAt: number | null = null
+      let reasonedFor: number | null = null
+      const closeReasoning = () => {
+        if (reasonedAt === null || reasonedFor !== null) return
+        reasonedFor = Date.now() - reasonedAt
+        const ms = reasonedFor
+        setTurns((prev) =>
+          prev.map((t) => (t.id === assistantId ? { ...t, reasoningMs: ms } : t)),
+        )
+      }
+
+      const start = (streamGen: number, immediate: boolean) => {
+        const requestId = crypto.randomUUID()
+        requestIdRef.current = requestId
+        const wire = immediate
+          ? [...messages, { role: 'system' as const, content: ANSWER_NOW_DIRECTIVE }]
+          : messages
 
         let settled = false
         let truncated = false
         const settle = (error: string | null) => {
-          if (settled || genRef.current !== gen) return
+          if (settled || genRef.current !== streamGen) return
           settled = true
           if (requestIdRef.current === requestId) requestIdRef.current = null
+          restartRef.current = null
           flushDeltas()
           closeReasoning()
           setTurns((prev) => settleTurn(prev, assistantId, error, truncated))
@@ -324,7 +351,7 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
 
         const channel = new Channel<StreamEvent>()
         channel.onmessage = (event) => {
-          if (genRef.current !== gen) return
+          if (genRef.current !== streamGen) return
           if (event.type === 'delta') {
             closeReasoning()
             queueDelta(assistantId, event.text, '')
@@ -336,21 +363,29 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
           else settle(event.message)
         }
 
-        try {
-          await commands.aiChat(
-            { workspace_id: workspaceId, request_id: requestId, messages },
+        void commands
+          .aiChat(
+            {
+              workspace_id: workspaceId,
+              request_id: requestId,
+              messages: wire,
+              skip_reasoning: immediate,
+            },
             channel,
           )
-          settle(null)
-        } catch (error: unknown) {
-          settle(errorMessage(error))
-        }
-      })()
+          .then(
+            () => settle(null),
+            (error: unknown) => settle(errorMessage(error)),
+          )
+      }
+
+      restartRef.current = start
+      start(gen, false)
 
       return true
     },
     [workspaceId, readPage, flushDeltas, queueDelta],
   )
 
-  return { turns, phase, notice, send, stop, reset }
+  return { turns, phase, notice, send, answerNow, stop, reset }
 }

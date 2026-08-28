@@ -80,6 +80,14 @@ export function baseUrlProblem(raw: string): string | null {
   return null
 }
 
+/**
+ * Trailing system directive for the answer-now resend. The OpenAI-compatible
+ * arm folds it into the request; Anthropic drops non-leading system messages
+ * in `chat_body`.
+ */
+export const ANSWER_NOW_DIRECTIVE =
+  'Stop deliberating. Give your best answer immediately, without further reasoning.'
+
 export const AI_PANEL_WIDTH_MIN = 280
 export const AI_PANEL_WIDTH_MAX = 620
 export const AI_PANEL_WIDTH_DEFAULT = 360
