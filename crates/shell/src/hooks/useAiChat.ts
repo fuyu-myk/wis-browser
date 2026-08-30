@@ -3,15 +3,29 @@ import { Channel } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
-import type { StreamEvent, TabId, WorkspaceId } from '@/bindings/types'
+import type { AiToolCall, StreamEvent, TabId, WorkspaceId } from '@/bindings/types'
 import {
   ANSWER_NOW_DIRECTIVE,
   appendDelta,
+  appendToolSegments,
+  cancelRunningTools,
+  closeThink,
+  extractUrls,
+  fetchToolContent,
+  finalizeInterrupted,
   hostOf,
+  MAX_TOOL_ROUNDS,
+  planToolCalls,
+  previewToolResponse,
+  roundSegments,
+  searchToolContent,
+  settleToolCall,
   settleTurn,
+  TOOL_BUDGET_DIRECTIVE,
   wireMessages,
   type AiTurn,
   type SharedPage,
+  type WireMessage,
 } from '@/lib/ai'
 
 /** Tauri event carrying a tab's extracted readable text. */
@@ -52,9 +66,9 @@ export interface AiChat {
    */
   send: (question: string, page: AiPageSource | null) => Promise<boolean>
   /**
-   * Cut the current thinking short: cancel the in-flight stream and restart
-   * the same turn demanding an immediate answer. Only meaningful while a
-   * response is streaming.
+   * Cut the current thinking or tool round short: cancel whatever is in
+   * flight and restart the same turn demanding an immediate answer, tools
+   * withheld. Only meaningful while a response is underway.
    */
   answerNow: () => void
   stop: () => void
@@ -81,14 +95,17 @@ function errorMessage(error: unknown): string {
  * conversation never carries into another.
  *
  * Streaming deltas are coalesced into one state update per frame.
+ *
+ * `webEnabled` marks that web tools can actually be offered for the current
+ * settings and platform; it steers the system prompt and nothing else.
  */
-export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
+export function useAiChat(workspaceId: WorkspaceId | null, webEnabled: boolean): AiChat {
   const [turns, setTurns] = useState<readonly AiTurn[]>([])
   const [phase, setPhase] = useState<AiPhase>('idle')
   const [notice, setNotice] = useState<string | null>(null)
 
   // Bumped whenever a send is superseded or stopped, so a late delta from an
-  // abandoned stream is dropped instead of appended.
+  // abandoned stream, or a late tool result, is dropped instead of applied.
   const genRef = useRef(0)
   const nextIdRef = useRef(1)
   const turnsRef = useRef<readonly AiTurn[]>([])
@@ -239,7 +256,7 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
   const stop = useCallback(() => {
     abandonInFlight()
     flushDeltas()
-    setTurns((prev) => prev.map((t) => (t.streaming ? { ...t, streaming: false } : t)))
+    setTurns((prev) => finalizeInterrupted(prev))
     setPhase('idle')
   }, [abandonInFlight, flushDeltas])
 
@@ -285,9 +302,25 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
       const userId = nextIdRef.current++
       const assistantId = nextIdRef.current++
       const history = turnsRef.current
-      const messages = wireMessages(history, asked, shared)
-      const requestId = crypto.randomUUID()
-      requestIdRef.current = requestId
+      const requestWorkspaceId = workspaceId
+
+      // The exchange's wire, grown in place by tool rounds.
+      let convo: WireMessage[] = wireMessages(history, asked, shared, webEnabled)
+      // Fetches are allowed only for URLs the user wrote or a search returned.
+      const allowedUrls = new Set<string>(extractUrls(asked))
+      for (const t of history) {
+        if (t.role !== 'user') continue
+        for (const u of extractUrls(t.content)) allowedUrls.add(u)
+      }
+      const seenQueries = new Set<string>()
+      let rounds = 0
+      let toolsExhausted = false
+      /** Answer text of the current stream round, for its wire message. */
+      let roundText = ''
+      /** Sticky across rounds: any truncation marks the whole turn. */
+      let truncated = false
+      /** When the live thinking spell started, for its duration label. */
+      let thinkStart: number | null = null
 
       setTurns([
         ...history,
@@ -295,10 +328,9 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
           id: userId,
           role: 'user',
           content: asked,
-          reasoning: '',
-          wire: shared ? messages[messages.length - 1].content : null,
+          segments: [],
+          wire: shared ? convo[convo.length - 1].content : null,
           sharedHost: shared ? hostOf(shared.url) : null,
-          reasoningMs: null,
           truncated: false,
           error: null,
           streaming: false,
@@ -307,10 +339,9 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
           id: assistantId,
           role: 'assistant',
           content: '',
-          reasoning: '',
+          segments: [],
           wire: null,
           sharedHost: null,
-          reasoningMs: null,
           truncated: false,
           error: null,
           streaming: true,
@@ -318,26 +349,28 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
       ])
       setPhase('streaming')
 
-      let reasonedAt: number | null = null
-      let reasonedFor: number | null = null
       const closeReasoning = () => {
-        if (reasonedAt === null || reasonedFor !== null) return
-        reasonedFor = Date.now() - reasonedAt
-        const ms = reasonedFor
-        setTurns((prev) =>
-          prev.map((t) => (t.id === assistantId ? { ...t, reasoningMs: ms } : t)),
-        )
+        if (thinkStart === null) return
+        const ms = Date.now() - thinkStart
+        thinkStart = null
+        flushDeltas()
+        setTurns((prev) => closeThink(prev, assistantId, ms))
       }
 
       const start = (streamGen: number, immediate: boolean) => {
         const requestId = crypto.randomUUID()
         requestIdRef.current = requestId
+        if (immediate) {
+          closeReasoning()
+          setTurns((prev) => cancelRunningTools(prev, assistantId))
+        }
         const wire = immediate
-          ? [...messages, { role: 'system' as const, content: ANSWER_NOW_DIRECTIVE }]
-          : messages
+          ? [...convo, { role: 'system' as const, content: ANSWER_NOW_DIRECTIVE }]
+          : convo
 
         let settled = false
-        let truncated = false
+        let toolCalls: AiToolCall[] | null = null
+        let handedOff = false
         const settle = (error: string | null) => {
           if (settled || genRef.current !== streamGen) return
           settled = true
@@ -354,29 +387,122 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
           if (genRef.current !== streamGen) return
           if (event.type === 'delta') {
             closeReasoning()
+            roundText += event.text
             queueDelta(assistantId, event.text, '')
           } else if (event.type === 'reasoning') {
-            if (reasonedAt === null) reasonedAt = Date.now()
+            if (thinkStart === null) thinkStart = Date.now()
             queueDelta(assistantId, '', event.text)
+          } else if (event.type === 'tool_calls') {
+            closeReasoning()
+            toolCalls = event.calls
           } else if (event.type === 'truncated') truncated = true
-          else if (event.type === 'done') settle(null)
-          else settle(event.message)
+          else if (event.type === 'done') {
+            // The budget is a hard stop.
+            if (toolCalls !== null && !immediate && !toolsExhausted && !settled) {
+              const calls = toolCalls
+              toolCalls = null
+              handedOff = true
+              if (requestIdRef.current === requestId) requestIdRef.current = null
+              void executeRound(streamGen, calls)
+            } else settle(null)
+          } else settle(event.message)
         }
 
         void commands
           .aiChat(
             {
-              workspace_id: workspaceId,
+              workspace_id: requestWorkspaceId,
               request_id: requestId,
               messages: wire,
               skip_reasoning: immediate,
+              no_tools: toolsExhausted,
             },
             channel,
           )
           .then(
-            () => settle(null),
-            (error: unknown) => settle(errorMessage(error)),
+            () => {
+              if (!handedOff) settle(null)
+            },
+            (error: unknown) => {
+              if (!handedOff) settle(errorMessage(error))
+            },
           )
+      }
+
+      // One tool round: vet the calls, run them in order, feed the results
+      // back, and stream again.
+      const executeRound = async (streamGen: number, rawCalls: AiToolCall[]) => {
+        rounds += 1
+        if (roundText !== '') queueDelta(assistantId, '\n\n', '')
+        const planned = planToolCalls(rawCalls, allowedUrls, seenQueries)
+        for (const p of planned) {
+          if (p.action.kind === 'search') seenQueries.add(p.action.query.toLowerCase())
+        }
+        const round = roundSegments(planned)
+        flushDeltas()
+        setTurns((prev) => appendToolSegments(prev, assistantId, round.segments))
+
+        const toolMessages: WireMessage[] = []
+        for (let i = 0; i < planned.length; i += 1) {
+          if (genRef.current !== streamGen) return
+          const p = planned[i]
+          const slot = round.slots[i]
+          let ok = false
+          let display = ''
+          let content = ''
+          let resultCount: number | undefined
+          if (p.action.kind === 'reject') {
+            content = p.action.reason
+            display = p.action.reason
+          } else if (p.action.kind === 'search') {
+            try {
+              const results = await commands.aiWebSearch(p.action.query)
+              for (const r of results) allowedUrls.add(r.url)
+              ok = true
+              resultCount = results.length
+              content = searchToolContent(results)
+              display = content
+            } catch (error: unknown) {
+              display = errorMessage(error)
+              content = `search failed: ${display}`
+            }
+          } else {
+            try {
+              const fetched = await commands.aiWebFetch(p.action.url)
+              ok = true
+              content = fetchToolContent(fetched)
+              display = content
+            } catch (error: unknown) {
+              display = errorMessage(error)
+              content = `fetch failed: ${display}`
+            }
+          }
+          if (genRef.current !== streamGen) return
+          setTurns((prev) =>
+            settleToolCall(
+              prev,
+              assistantId,
+              round.segments.length - 1 - slot.seg,
+              slot.call,
+              ok,
+              previewToolResponse(display),
+              resultCount,
+            ),
+          )
+          toolMessages.push({ role: 'tool', content, tool_call_id: p.callId })
+        }
+
+        convo = [
+          ...convo,
+          { role: 'assistant', content: roundText, tool_calls: rawCalls },
+          ...toolMessages,
+        ]
+        roundText = ''
+        if (rounds >= MAX_TOOL_ROUNDS && !toolsExhausted) {
+          toolsExhausted = true
+          convo = [...convo, { role: 'system', content: TOOL_BUDGET_DIRECTIVE }]
+        }
+        start(streamGen, false)
       }
 
       restartRef.current = start
@@ -384,7 +510,7 @@ export function useAiChat(workspaceId: WorkspaceId | null): AiChat {
 
       return true
     },
-    [workspaceId, readPage, flushDeltas, queueDelta],
+    [workspaceId, webEnabled, readPage, flushDeltas, queueDelta],
   )
 
   return { turns, phase, notice, send, answerNow, stop, reset }

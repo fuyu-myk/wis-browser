@@ -27,13 +27,28 @@ pub enum Role {
     System,
     User,
     Assistant,
+    /// OpenAI-compatible wire only.
+    Tool,
 }
 
-/// One turn in a conversation.
+/// One tool invocation the model asked for, or is being answered about.
+/// `arguments` stays a raw JSON string end to end, exactly as the wire
+/// carries it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+/// One turn in a conversation. `tool_calls` rides an assistant turn that
+/// requested tools.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatMessage {
     pub role: Role,
     pub content: String,
+    pub tool_calls: Vec<ToolCall>,
+    pub tool_call_id: Option<String>,
 }
 
 impl ChatMessage {
@@ -41,6 +56,8 @@ impl ChatMessage {
         Self {
             role: Role::User,
             content: content.into(),
+            tool_calls: Vec::new(),
+            tool_call_id: None,
         }
     }
 }
@@ -64,6 +81,8 @@ pub struct ChatRequest {
     pub messages: Vec<ChatMessage>,
     /// Ceiling on generated tokens. Required by Anthropic.
     pub max_tokens: u32,
+    /// Offer the web tools (OpenAI-compatible arm only).
+    pub web_tools: bool,
     pub thinking: ThinkingMode,
 }
 
@@ -78,6 +97,9 @@ pub enum StreamEvent {
     /// A chunk of the model's reasoning. Kept separate from
     /// [`StreamEvent::Delta`].
     Reasoning { text: String },
+    /// The model asked for tools instead of (or before) answering. Emitted
+    /// once per request round, after every fragment has been reassembled.
+    ToolCalls { calls: Vec<ToolCall> },
     /// An incomplete answer.
     Truncated,
     /// The stream finished normally.
@@ -91,7 +113,43 @@ fn role_wire(role: Role) -> &'static str {
         Role::System => "system",
         Role::User => "user",
         Role::Assistant => "assistant",
+        Role::Tool => "tool",
     }
+}
+
+/// The tools the assistant may offer a model. Nothing here can send data
+/// anywhere, except for the search engine and the fetched page itself.
+fn web_tool_definitions() -> serde_json::Value {
+    serde_json::json!([
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the web. Use for current events, recent facts, or anything after your training data. Returns titles, URLs and snippets.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "The search query." }
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "web_fetch",
+                "description": "Fetch a web page and return its readable text. Only URLs from web_search results or from the user's message are allowed.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": { "type": "string", "description": "The http(s) URL to fetch." }
+                    },
+                    "required": ["url"]
+                }
+            }
+        }
+    ])
 }
 
 /// Build the JSON request body for `provider`. `stream` is always set; the
@@ -111,7 +169,13 @@ pub fn chat_body(provider: AiProvider, req: &ChatRequest) -> serde_json::Value {
             let messages: Vec<serde_json::Value> = req
                 .messages
                 .iter()
-                .filter(|m| m.role != Role::System)
+                .filter(|m| {
+                    m.role != Role::System
+                        && m.role != Role::Tool
+                        && !(m.role == Role::Assistant
+                            && m.content.is_empty()
+                            && !m.tool_calls.is_empty())
+                })
                 .map(|m| serde_json::json!({ "role": role_wire(m.role), "content": m.content }))
                 .collect();
             let mut body = serde_json::json!({
@@ -155,14 +219,41 @@ pub fn chat_body(provider: AiProvider, req: &ChatRequest) -> serde_json::Value {
                     } else {
                         m.content.clone()
                     };
-                    serde_json::json!({ "role": role_wire(m.role), "content": content })
+                    let mut msg =
+                        serde_json::json!({ "role": role_wire(m.role), "content": content });
+
+                    if !m.tool_calls.is_empty() {
+                        msg["tool_calls"] = m
+                            .tool_calls
+                            .iter()
+                            .map(|c| {
+                                serde_json::json!({
+                                    "id": c.id,
+                                    "type": "function",
+                                    "function": { "name": c.name, "arguments": c.arguments },
+                                })
+                            })
+                            .collect();
+                    }
+                    if let Some(id) = &m.tool_call_id {
+                        msg["tool_call_id"] = serde_json::Value::String(id.clone());
+                    }
+
+                    msg
                 })
                 .collect();
-            serde_json::json!({
+            let mut body = serde_json::json!({
                 "model": req.model,
                 "stream": true,
                 "messages": messages,
-            })
+            });
+
+            // Tools are never offered on an answer-now retry.
+            if req.web_tools && req.thinking != ThinkingMode::Disabled {
+                body["tools"] = web_tool_definitions();
+            }
+
+            body
         }
     }
 }
@@ -181,6 +272,11 @@ pub struct SseParser {
     buf: Vec<u8>,
     /// Latched once a terminal event was seen, so trailing noise is ignored.
     finished: bool,
+    /// Tool-call fragments accumulated by wire index; the wire streams a
+    /// call's id, name and argument text across many chunks.
+    pending_tools: Vec<ToolCall>,
+    /// Set once the accumulated calls were emitted, so EOF cannot re-emit.
+    tools_flushed: bool,
 }
 
 impl SseParser {
@@ -189,6 +285,8 @@ impl SseParser {
             provider,
             buf: Vec::new(),
             finished: false,
+            pending_tools: Vec::new(),
+            tools_flushed: false,
         }
     }
 
@@ -233,7 +331,7 @@ impl SseParser {
 
     /// Events completed by one SSE line. A chunk can carry both reasoning and
     /// answer text, so this yields a list rather than at most one event.
-    fn parse_line(&self, line: &str) -> Vec<StreamEvent> {
+    fn parse_line(&mut self, line: &str) -> Vec<StreamEvent> {
         if self.finished {
             return Vec::new();
         }
@@ -246,7 +344,9 @@ impl SseParser {
         }
 
         if self.provider == AiProvider::OpenAiCompatible && data == "[DONE]" {
-            return vec![StreamEvent::Done];
+            let mut events = self.flush_tools();
+            events.push(StreamEvent::Done);
+            return events;
         }
 
         let Ok(json) = serde_json::from_str::<serde_json::Value>(data) else {
@@ -254,7 +354,132 @@ impl SseParser {
         };
         match self.provider {
             AiProvider::Anthropic => parse_anthropic(&json),
-            AiProvider::OpenAiCompatible => parse_openai(&json),
+            AiProvider::OpenAiCompatible => self.parse_openai(&json),
+        }
+    }
+
+    /// Drain what a closed stream left behind. A server that reaches EOF
+    /// without `[DONE]` or a `tool_calls` finish marker may still have handed
+    /// over a complete round.
+    pub fn finish(&mut self) -> Vec<StreamEvent> {
+        self.flush_tools()
+    }
+
+    /// Emit the reassembled tool calls once, dropping fragments that never
+    /// received a name.
+    fn flush_tools(&mut self) -> Vec<StreamEvent> {
+        if self.tools_flushed || self.pending_tools.is_empty() {
+            return Vec::new();
+        }
+
+        self.tools_flushed = true;
+        let calls: Vec<ToolCall> = std::mem::take(&mut self.pending_tools)
+            .into_iter()
+            .filter(|c| !c.name.is_empty())
+            .enumerate()
+            .map(|(i, mut c)| {
+                if c.id.is_empty() {
+                    c.id = format!("call_{i}");
+                }
+
+                c
+            })
+            .collect();
+        if calls.is_empty() {
+            return Vec::new();
+        }
+
+        vec![StreamEvent::ToolCalls { calls }]
+    }
+
+    fn parse_openai(&mut self, json: &serde_json::Value) -> Vec<StreamEvent> {
+        if let Some(err) = json.get("error").filter(|e| !e.is_null()) {
+            let message = err
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("provider error");
+            return vec![StreamEvent::Error {
+                message: message.to_string(),
+            }];
+        }
+
+        let Some(choice) = json
+            .get("choices")
+            .and_then(|c| c.as_array())
+            .and_then(|c| c.first())
+        else {
+            return Vec::new();
+        };
+        let finish = choice.get("finish_reason").and_then(|f| f.as_str());
+
+        let mut events = Vec::new();
+        if let Some(delta) = choice.get("delta") {
+            if let Some(fragments) = delta.get("tool_calls").and_then(|t| t.as_array()) {
+                for fragment in fragments {
+                    self.accumulate_tool_fragment(fragment);
+                }
+            }
+
+            let reasoning = delta_event(delta, "reasoning", |text| StreamEvent::Reasoning { text })
+                .or_else(|| {
+                    delta_event(delta, "reasoning_content", |text| StreamEvent::Reasoning {
+                        text,
+                    })
+                });
+            events.extend(reasoning);
+            events.extend(delta_event(delta, "content", |text| StreamEvent::Delta {
+                text,
+            }));
+        }
+
+        match finish {
+            Some("tool_calls") => events.extend(self.flush_tools()),
+            Some("length") => {
+                self.pending_tools.clear();
+                events.push(StreamEvent::Truncated);
+            }
+            _ => {}
+        }
+
+        events
+    }
+
+    /// Fold one wire fragment into the pending call at its index. The id and
+    /// name usually arrive on the first fragment, the argument text split
+    /// across the rest.
+    fn accumulate_tool_fragment(&mut self, fragment: &serde_json::Value) {
+        let index = fragment
+            .get("index")
+            .and_then(|i| i.as_u64())
+            .unwrap_or(self.pending_tools.len().saturating_sub(1) as u64)
+            as usize;
+        if index >= 32 {
+            return;
+        }
+
+        while self.pending_tools.len() <= index {
+            self.pending_tools.push(ToolCall {
+                id: String::new(),
+                name: String::new(),
+                arguments: String::new(),
+            });
+        }
+
+        let call = &mut self.pending_tools[index];
+        if let Some(id) = fragment.get("id").and_then(|i| i.as_str()) {
+            if !id.is_empty() {
+                call.id = id.to_string();
+            }
+        }
+        if let Some(function) = fragment.get("function") {
+            if let Some(name) = function.get("name").and_then(|n| n.as_str()) {
+                if !name.is_empty() {
+                    call.name = name.to_string();
+                }
+            }
+            if let Some(args) = function.get("arguments").and_then(|a| a.as_str()) {
+                call.arguments.push_str(args);
+            }
         }
     }
 }
@@ -281,9 +506,11 @@ fn parse_anthropic(json: &serde_json::Value) -> Vec<StreamEvent> {
             };
 
             match delta.get("type").and_then(|t| t.as_str()) {
-                Some("text_delta") => delta_event(delta, "text", |text| StreamEvent::Delta { text })
-                    .into_iter()
-                    .collect(),
+                Some("text_delta") => {
+                    delta_event(delta, "text", |text| StreamEvent::Delta { text })
+                        .into_iter()
+                        .collect()
+                }
                 Some("thinking_delta") => {
                     delta_event(delta, "thinking", |text| StreamEvent::Reasoning { text })
                         .into_iter()
@@ -318,45 +545,6 @@ fn parse_anthropic(json: &serde_json::Value) -> Vec<StreamEvent> {
         // message_start, content_block_start/stop, message_delta, ping: no text.
         _ => Vec::new(),
     }
-}
-
-fn parse_openai(json: &serde_json::Value) -> Vec<StreamEvent> {
-    if let Some(err) = json.get("error").filter(|e| !e.is_null()) {
-        let message = err
-            .get("message")
-            .and_then(|m| m.as_str())
-            .unwrap_or("provider error");
-        return vec![StreamEvent::Error {
-            message: message.to_string(),
-        }];
-    }
-
-    let Some(choice) = json
-        .get("choices")
-        .and_then(|c| c.as_array())
-        .and_then(|c| c.first())
-    else {
-        return Vec::new();
-    };
-    let capped = choice.get("finish_reason").and_then(|f| f.as_str()) == Some("length");
-    let Some(delta) = choice.get("delta") else {
-        return if capped {
-            vec![StreamEvent::Truncated]
-        } else {
-            Vec::new()
-        };
-    };
-
-    let reasoning = delta_event(delta, "reasoning", |text| StreamEvent::Reasoning { text })
-        .or_else(|| delta_event(delta, "reasoning_content", |text| StreamEvent::Reasoning { text }));
-
-    reasoning
-        .into_iter()
-        .chain(delta_event(delta, "content", |text| StreamEvent::Delta {
-            text,
-        }))
-        .chain(capped.then_some(StreamEvent::Truncated))
-        .collect()
 }
 
 #[cfg(test)]
@@ -478,7 +666,8 @@ data: [DONE]\n\n";
 
     #[test]
     fn a_chunk_carrying_both_reasoning_and_content_yields_both() {
-        let stream = b"data: {\"choices\":[{\"delta\":{\"reasoning\":\"so\",\"content\":\"Hi\"}}]}\n\n";
+        let stream =
+            b"data: {\"choices\":[{\"delta\":{\"reasoning\":\"so\",\"content\":\"Hi\"}}]}\n\n";
         assert_eq!(
             feed_all(AiProvider::OpenAiCompatible, &[stream]),
             vec![
@@ -507,6 +696,171 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
     }
 
     #[test]
+    fn openai_tool_call_fragments_reassemble_across_chunks() {
+        let chunks: &[&[u8]] = &[
+            b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"web_search\",\"arguments\":\"{\\\"que\"}}]}}]}\n\n",
+            b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"ry\\\": \\\"rust\\\"}\"}}]}}]}\n\n",
+            b"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            b"data: [DONE]\n\n",
+        ];
+        assert_eq!(
+            feed_all(AiProvider::OpenAiCompatible, chunks),
+            vec![
+                StreamEvent::ToolCalls {
+                    calls: vec![ToolCall {
+                        id: "call_1".into(),
+                        name: "web_search".into(),
+                        arguments: "{\"query\": \"rust\"}".into(),
+                    }]
+                },
+                StreamEvent::Done
+            ]
+        );
+    }
+
+    #[test]
+    fn tool_calls_flush_on_eof_when_no_finish_marker_arrives() {
+        let chunks: &[&[u8]] = &[
+            b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"function\":{\"name\":\"web_fetch\",\"arguments\":\"{}\"}}]}}]}\n\n",
+            b"data: [DONE]\n\n",
+        ];
+        let events = feed_all(AiProvider::OpenAiCompatible, chunks);
+        assert!(matches!(events[0], StreamEvent::ToolCalls { .. }));
+        assert_eq!(events[1], StreamEvent::Done);
+    }
+
+    #[test]
+    fn a_nameless_tool_fragment_never_becomes_a_round() {
+        let chunks: &[&[u8]] = &[
+            b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"junk\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            b"data: [DONE]\n\n",
+        ];
+        assert_eq!(
+            feed_all(AiProvider::OpenAiCompatible, chunks),
+            vec![StreamEvent::Done]
+        );
+    }
+
+    #[test]
+    fn openai_body_declares_tools_only_when_asked_and_not_forced() {
+        let mut req = ChatRequest {
+            model: "qwen3.5:9b".into(),
+            max_tokens: 4096,
+            web_tools: true,
+            thinking: ThinkingMode::ProviderDefault,
+            messages: vec![ChatMessage::user("hi")],
+        };
+        let body = chat_body(AiProvider::OpenAiCompatible, &req);
+        let tools = body["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0]["function"]["name"], "web_search");
+        assert_eq!(tools[1]["function"]["name"], "web_fetch");
+
+        // The answer-now retry must not be able to start another round.
+        req.thinking = ThinkingMode::Disabled;
+        let body = chat_body(AiProvider::OpenAiCompatible, &req);
+        assert!(body.get("tools").is_none());
+
+        req.thinking = ThinkingMode::ProviderDefault;
+        req.web_tools = false;
+        let body = chat_body(AiProvider::OpenAiCompatible, &req);
+        assert!(body.get("tools").is_none());
+    }
+
+    #[test]
+    fn tool_turns_serialize_for_openai_and_are_dropped_for_anthropic() {
+        let messages = vec![
+            ChatMessage::user("what is new in rust"),
+            ChatMessage {
+                role: Role::Assistant,
+                content: String::new(),
+                tool_calls: vec![ToolCall {
+                    id: "call_1".into(),
+                    name: "web_search".into(),
+                    arguments: "{\"query\":\"rust news\"}".into(),
+                }],
+                tool_call_id: None,
+            },
+            ChatMessage {
+                role: Role::Tool,
+                content: "results here".into(),
+                tool_calls: Vec::new(),
+                tool_call_id: Some("call_1".into()),
+            },
+        ];
+        let req = ChatRequest {
+            model: "qwen3.5:9b".into(),
+            max_tokens: 4096,
+            web_tools: true,
+            thinking: ThinkingMode::ProviderDefault,
+            messages,
+        };
+
+        let body = chat_body(AiProvider::OpenAiCompatible, &req);
+        let wire = body["messages"].as_array().unwrap();
+        assert_eq!(wire.len(), 3);
+        assert_eq!(wire[1]["tool_calls"][0]["function"]["name"], "web_search");
+        assert_eq!(wire[1]["tool_calls"][0]["type"], "function");
+        assert_eq!(wire[2]["role"], "tool");
+        assert_eq!(wire[2]["tool_call_id"], "call_1");
+
+        let body = chat_body(AiProvider::Anthropic, &req);
+        let wire = body["messages"].as_array().unwrap();
+        assert_eq!(wire.len(), 1, "a tool round is not Anthropic-expressible");
+        assert_eq!(wire[0]["role"], "user");
+    }
+
+    #[test]
+    fn an_id_less_tool_call_gets_a_synthesized_id() {
+        let chunks: &[&[u8]] = &[
+            b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"web_search\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
+        ];
+        let events = feed_all(AiProvider::OpenAiCompatible, chunks);
+        let StreamEvent::ToolCalls { calls } = &events[0] else {
+            panic!("expected tool calls, got {events:?}");
+        };
+        assert_eq!(calls[0].id, "call_0");
+    }
+
+    #[test]
+    fn an_index_less_continuation_extends_the_call_underway() {
+        let chunks: &[&[u8]] = &[
+            b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"web_search\",\"arguments\":\"{\\\"query\\\":\"}}]}}]}\n\n",
+            b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"function\":{\"arguments\":\"\\\"rust\\\"}\"}}]}}]}\n\n",
+            b"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+        ];
+        let events = feed_all(AiProvider::OpenAiCompatible, chunks);
+        let StreamEvent::ToolCalls { calls } = &events[0] else {
+            panic!("expected tool calls, got {events:?}");
+        };
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].arguments, "{\"query\":\"rust\"}");
+    }
+
+    #[test]
+    fn length_truncation_discards_half_built_tool_calls() {
+        let chunks: &[&[u8]] = &[
+            b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"function\":{\"name\":\"web_fetch\",\"arguments\":\"{\\\"ur\"}}]},\"finish_reason\":\"length\"}]}\n\n",
+            b"data: [DONE]\n\n",
+        ];
+        assert_eq!(
+            feed_all(AiProvider::OpenAiCompatible, chunks),
+            vec![StreamEvent::Truncated, StreamEvent::Done]
+        );
+    }
+
+    #[test]
+    fn finish_flushes_a_round_the_stream_never_terminated() {
+        let mut parser = SseParser::new(AiProvider::OpenAiCompatible);
+        let _ = parser.feed(
+            b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"function\":{\"name\":\"web_search\",\"arguments\":\"{}\"}}]}}]}\n\n",
+        );
+        let events = parser.finish();
+        assert!(matches!(events[0], StreamEvent::ToolCalls { .. }));
+        assert!(parser.finish().is_empty(), "finish flushes only once");
+    }
+
+    #[test]
     fn openai_length_finish_surfaces_truncation() {
         let stream = b"data: {\"choices\":[{\"delta\":{\"content\":\"partial\"},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n\n";
         assert_eq!(
@@ -523,7 +877,8 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
 
     #[test]
     fn openai_stop_finish_is_not_truncation() {
-        let stream = b"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+        let stream =
+            b"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
         assert_eq!(
             feed_all(AiProvider::OpenAiCompatible, &[stream]),
             vec![StreamEvent::Done]
@@ -588,11 +943,14 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "claude-x".into(),
             max_tokens: 1024,
+            web_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![
                 ChatMessage {
                     role: Role::System,
                     content: "be brief".into(),
+                    tool_calls: Vec::new(),
+                    tool_call_id: None,
                 },
                 ChatMessage::user("hi"),
             ],
@@ -611,6 +969,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "qwen3".into(),
             max_tokens: 1024,
+            web_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -627,6 +986,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "claude-x".into(),
             max_tokens: 2048,
+            web_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -639,6 +999,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let mut req = ChatRequest {
             model: "claude-opus-5".into(),
             max_tokens: 16000,
+            web_tools: false,
             thinking: ThinkingMode::Summarized,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -656,6 +1017,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "claude-opus-5".into(),
             max_tokens: 4096,
+            web_tools: false,
             thinking: ThinkingMode::Disabled,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -669,12 +1031,15 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "qwen3.5:9b".into(),
             max_tokens: 4096,
+            web_tools: false,
             thinking: ThinkingMode::Disabled,
             messages: vec![
                 ChatMessage::user("first"),
                 ChatMessage {
                     role: Role::Assistant,
                     content: "answer".into(),
+                    tool_calls: Vec::new(),
+                    tool_call_id: None,
                 },
                 ChatMessage::user("second"),
             ],
@@ -691,6 +1056,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "qwen3".into(),
             max_tokens: 16000,
+            web_tools: false,
             thinking: ThinkingMode::Summarized,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -706,11 +1072,14 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         let req = ChatRequest {
             model: "gpt-x".into(),
             max_tokens: 1024,
+            web_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![
                 ChatMessage {
                     role: Role::System,
                     content: "be brief".into(),
+                    tool_calls: Vec::new(),
+                    tool_call_id: None,
                 },
                 ChatMessage::user("hi"),
             ],

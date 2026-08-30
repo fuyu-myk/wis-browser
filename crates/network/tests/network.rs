@@ -8,8 +8,9 @@ use url::Url;
 use wis_core::{PerSitePolicy, PrivacyMode};
 use wis_network::upgrader::UpgradeAction;
 use wis_network::{
-    is_loopback, Decision, DohResolver, HttpsUpgrader, NetworkContext, OutboundRequest,
-    RefererPolicy, RequestPolicy, RequestType, Resolver, StubResolver, TrackerBlocker,
+    is_loopback, is_public_web_url, Decision, DohResolver, HttpsUpgrader, NetworkContext,
+    OutboundRequest, RefererPolicy, RequestPolicy, RequestType, Resolver, StubResolver,
+    TrackerBlocker,
 };
 
 fn u(s: &str) -> Url {
@@ -201,6 +202,48 @@ fn only_this_machine_counts_as_loopback() {
         "http://127.0.0.1.example.com/",
     ] {
         assert!(!is_loopback(&u(url_str)), "{url_str} is not this machine");
+    }
+}
+
+/// `is_public_web_url` gates what the assistant may fetch for a model, so a
+/// false positive hands a model-controlled request to internal infrastructure.
+#[test]
+fn only_public_web_urls_are_fetchable_for_a_model() {
+    for url_str in [
+        "https://example.com/",
+        "http://news.ycombinator.com/item?id=1",
+        "https://sub.domain.co.uk/path?q=1",
+        "http://93.184.216.34/",
+        "http://[::ffff:93.184.216.34]/",
+    ] {
+        assert!(is_public_web_url(&u(url_str)), "{url_str} is public");
+    }
+
+    for url_str in [
+        "http://localhost:11434/",
+        "http://127.0.0.1/",
+        "http://[::1]/",
+        "http://192.168.1.1/admin",
+        "http://10.0.0.7/",
+        "http://172.16.0.1/",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://100.64.0.1/",
+        "http://0.0.0.0/",
+        "http://[fd00::1]/",
+        "http://[fe80::1]/",
+        // IPv4-mapped IPv6 reaches the IPv4 network; private stays private.
+        "http://[::ffff:127.0.0.1]/",
+        "http://[::ffff:192.168.1.1]/",
+        "http://[::ffff:169.254.169.254]/",
+        "http://router.local/",
+        "http://vault.internal/",
+        "http://nas.home.arpa/",
+        "http://intranet/",
+        "https://user:pass@example.com/",
+        "ftp://example.com/",
+        "file:///etc/passwd",
+    ] {
+        assert!(!is_public_web_url(&u(url_str)), "{url_str} must be refused");
     }
 }
 

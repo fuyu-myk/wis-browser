@@ -9,6 +9,8 @@ import {
   SUMMARIZE_PROMPT,
   thinkDurationLabel,
   type AiTurn,
+  type ThinkSegment,
+  type ToolSegment,
 } from '@/lib/ai'
 import { cx } from '@/lib/cx'
 import { ChevronDownIcon, FileIcon, PlusIcon, SendIcon, StopIcon, XIcon } from '@/lib/icons'
@@ -34,6 +36,8 @@ interface AiPanelProps {
   page: AiPageSource | null
   /** The configured model id; empty means the assistant cannot send yet. */
   model: string
+  /** Whether web tools can be offered for the current settings and platform. */
+  webAccess: boolean
   onClose: () => void
   onOpenSettings: () => void
 }
@@ -56,10 +60,11 @@ export function AiPanel({
   workspaceId,
   page,
   model,
+  webAccess,
   onClose,
   onOpenSettings,
 }: AiPanelProps) {
-  const chat = useAiChat(workspaceId)
+  const chat = useAiChat(workspaceId, webAccess)
   const [draft, setDraft] = useState('')
   const [attachPage, setAttachPage] = useState(false)
   const [width, setWidth] = useState(readStoredWidth)
@@ -358,51 +363,59 @@ function TurnRow({
   onOpenLink: (href: string, text: string) => void
   onAnswerNow: () => void
 }) {
-  const [expanded, setExpanded] = useState(false)
-  const thinking = turn.streaming && turn.content === ''
-  const hasReasoning = turn.reasoning !== ''
+  const [openSegments, setOpenSegments] = useState<ReadonlySet<number>>(new Set())
+  const toggleSegment = (i: number) =>
+    setOpenSegments((prev) => {
+      const next = new Set(prev)
+      if (next.has(i)) next.delete(i)
+      else next.add(i)
+      return next
+    })
+
+  // The newest live spell or running tool.
+  let activeIndex = -1
+  for (let i = turn.segments.length - 1; i >= 0; i -= 1) {
+    const seg = turn.segments[i]
+    if (seg.kind === 'think' ? seg.live : seg.status === 'running') {
+      activeIndex = i
+      break
+    }
+  }
+  const answerable = turn.streaming && activeIndex !== -1
+  const waiting = turn.streaming && activeIndex === -1 && turn.content === ''
 
   return (
     <li className={cx('kb-ai-turn', `is-${turn.role}`)}>
       {turn.sharedHost !== null && (
         <span className="kb-ai-shared">Page content shared: {turn.sharedHost}</span>
       )}
-      {(thinking || hasReasoning) && (
+      {turn.segments.map((seg, i) =>
+        seg.kind === 'think' ? (
+          <ThinkRow
+            key={i}
+            seg={seg}
+            open={openSegments.has(i)}
+            onToggle={() => toggleSegment(i)}
+            answerNow={answerable && i === activeIndex ? onAnswerNow : null}
+          />
+        ) : (
+          <ToolRow
+            key={i}
+            seg={seg}
+            open={openSegments.has(i)}
+            onToggle={() => toggleSegment(i)}
+            answerNow={answerable && i === activeIndex ? onAnswerNow : null}
+          />
+        ),
+      )}
+      {waiting && (
         <div className="kb-ai-think">
           <div className="kb-ai-think-head">
-            {hasReasoning ? (
-              <button
-                type="button"
-                className="kb-ai-think-row"
-                onClick={() => setExpanded((v) => !v)}
-                aria-expanded={expanded}
-              >
-                <span className={cx('kb-ai-think-label', { 'is-live': thinking })}>
-                  {thinking
-                    ? 'thinking...'
-                    : turn.reasoningMs !== null
-                      ? thinkDurationLabel(turn.reasoningMs)
-                      : 'thoughts'}
-                </span>
-                <ChevronDownIcon className={cx('kb-ai-think-chevron', { 'is-open': expanded })} />
-              </button>
-            ) : (
-              <span className="kb-ai-think-row is-static">
-                <span className="kb-ai-think-label is-live">thinking...</span>
-              </span>
-            )}
-            {thinking && (
-              <button
-                type="button"
-                className="kb-ai-btn kb-ai-now"
-                onClick={onAnswerNow}
-                title="Cut thinking short and answer with what it currently has"
-              >
-                Answer now
-              </button>
-            )}
+            <span className="kb-ai-think-row is-static">
+              <span className="kb-ai-think-label is-live">thinking...</span>
+            </span>
+            <AnswerNowButton onAnswerNow={onAnswerNow} />
           </div>
-          {expanded && <p className="kb-ai-reasoning">{turn.reasoning}</p>}
         </div>
       )}
       {turn.content !== '' &&
@@ -416,5 +429,110 @@ function TurnRow({
         <p className="kb-ai-truncated">Cut short at the provider's output limit.</p>
       )}
     </li>
+  )
+}
+
+function AnswerNowButton({ onAnswerNow }: { onAnswerNow: () => void }) {
+  return (
+    <button
+      type="button"
+      className="kb-ai-btn kb-ai-now"
+      onClick={onAnswerNow}
+      title="Cut this short and answer with what it currently has"
+    >
+      Answer now
+    </button>
+  )
+}
+
+function ThinkRow({
+  seg,
+  open,
+  onToggle,
+  answerNow,
+}: {
+  seg: ThinkSegment
+  open: boolean
+  onToggle: () => void
+  answerNow: (() => void) | null
+}) {
+  const label = seg.live
+    ? 'thinking...'
+    : seg.ms !== null
+      ? thinkDurationLabel(seg.ms)
+      : 'thoughts'
+
+  return (
+    <div className="kb-ai-think">
+      <div className="kb-ai-think-head">
+        {seg.text !== '' ? (
+          <button
+            type="button"
+            className="kb-ai-think-row"
+            onClick={onToggle}
+            aria-expanded={open}
+          >
+            <span className={cx('kb-ai-think-label', { 'is-live': seg.live })}>{label}</span>
+            <ChevronDownIcon className={cx('kb-ai-think-chevron', { 'is-open': open })} />
+          </button>
+        ) : (
+          <span className="kb-ai-think-row is-static">
+            <span className={cx('kb-ai-think-label', { 'is-live': seg.live })}>{label}</span>
+          </span>
+        )}
+        {answerNow !== null && <AnswerNowButton onAnswerNow={answerNow} />}
+      </div>
+      {open && seg.text !== '' && <p className="kb-ai-reasoning">{seg.text}</p>}
+    </div>
+  )
+}
+
+function ToolRow({
+  seg,
+  open,
+  onToggle,
+  answerNow,
+}: {
+  seg: ToolSegment
+  open: boolean
+  onToggle: () => void
+  answerNow: (() => void) | null
+}) {
+  const running = seg.status === 'running'
+  const label =
+    seg.note ?? `using tool: ${seg.tool === 'search' ? 'web search' : 'web fetch'}`
+
+  return (
+    <div className="kb-ai-think">
+      <div className="kb-ai-think-head">
+        <button
+          type="button"
+          className="kb-ai-think-row"
+          onClick={onToggle}
+          aria-expanded={open}
+        >
+          <span
+            className={cx('kb-ai-think-label', {
+              'is-live': running,
+              'is-failed': seg.status === 'failed',
+            })}
+          >
+            {label}
+          </span>
+          <ChevronDownIcon className={cx('kb-ai-think-chevron', { 'is-open': open })} />
+        </button>
+        {answerNow !== null && <AnswerNowButton onAnswerNow={answerNow} />}
+      </div>
+      {open && (
+        <div className="kb-ai-tool-body">
+          {seg.calls.map((call, i) => (
+            <div key={i} className="kb-ai-tool-call">
+              <span className="kb-ai-tool-detail">{call.detail}</span>
+              {call.response !== '' && <pre className="kb-ai-tool-resp">{call.response}</pre>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

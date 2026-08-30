@@ -237,6 +237,9 @@ pub struct AiSettings {
     /// default.
     #[serde(default)]
     pub show_reasoning: bool,
+    /// Offer the model web search + page fetch tools. Off by default.
+    #[serde(default)]
+    pub web_access: bool,
 }
 
 impl Default for AiSettings {
@@ -246,6 +249,7 @@ impl Default for AiSettings {
             model: String::new(),
             base_url: None,
             show_reasoning: false,
+            web_access: false,
         }
     }
 }

@@ -43,6 +43,9 @@ export function Content({
       ? 'left'
       : 'right'
 
+  const aiWebAccess =
+    state.settings.ai.web_access && state.settings.ai.provider === 'open_ai_compatible'
+
   // Kept mounted after the first open.
   const aiMountedRef = useRef(false)
   if (aiOpen) aiMountedRef.current = true
@@ -59,6 +62,7 @@ export function Content({
           workspaceId={activeWorkspace?.id ?? null}
           page={page}
           model={state.settings.ai.model}
+          webAccess={aiWebAccess}
           onClose={onCloseAi}
           onOpenSettings={onOpenSettings}
         />

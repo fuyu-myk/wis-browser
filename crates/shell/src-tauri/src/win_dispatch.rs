@@ -44,6 +44,24 @@ pub const SHIM_SCRIPT: &str = r#"(function () {
   });
 })();"#;
 
+/// Document-start shim for the hidden AI fetch webview (Windows): the page is
+/// untrusted, so only the `wisAiFetch` channel exists there instead of the
+/// full tab shim.
+pub const AI_FETCH_SHIM: &str = r#"(function () {
+  if (!window.chrome || !window.chrome.webview) return;
+  window.webkit = window.webkit || {};
+  var mh = window.webkit.messageHandlers = window.webkit.messageHandlers || {};
+  if (!mh.wisAiFetch) {
+    mh.wisAiFetch = { postMessage: function (body) {
+      try {
+        window.chrome.webview.postMessage(
+          JSON.stringify({ handler: 'wisAiFetch', body: body === undefined ? null : body })
+        );
+      } catch (e) {}
+    } };
+  }
+})();"#;
+
 #[derive(serde::Deserialize)]
 struct Envelope {
     handler: String,
@@ -112,6 +130,54 @@ pub fn install_find_only<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>
                         if let Ok(env) = serde_json::from_str::<Envelope>(&raw) {
                             if env.handler == "wisFindResult" {
                                 crate::find::dispatch_message(&label, &env.body);
+                            }
+                        }
+                    }
+                }
+
+                Ok(())
+            },
+        ));
+
+        let mut token = 0_i64;
+        // SAFETY: runs on the UI thread via `with_core_webview2`.
+        let _ = unsafe { core.add_WebMessageReceived(&handler, &mut token) };
+    });
+}
+
+/// Install a fetch-scoped web-message receiver on a hidden AI fetch webview.
+/// Only the `wisAiFetch` channel is routed, top frame only: the fetched page
+/// gains none of the tab channels, and a subframe cannot put its own text
+/// forward under the top document's URL.
+pub fn install_ai_fetch_only<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    let label = webview.label().to_string();
+    crate::win_webview2::with_core_webview2(webview, move |core| {
+        let handler = WebMessageReceivedEventHandler::create(Box::new(
+            move |sender: Option<ICoreWebView2>,
+                  args: Option<ICoreWebView2WebMessageReceivedEventArgs>|
+                  -> windows::core::Result<()> {
+                if let Some(args) = args {
+                    let mut msg = windows::core::PWSTR::null();
+                    // SAFETY: `args` is live for the callback; `CoTaskMemPWSTR`
+                    // takes ownership of the returned buffer and frees it.
+                    if unsafe { args.TryGetWebMessageAsString(&mut msg) }.is_ok()
+                        && is_top_frame(sender.as_ref(), &args)
+                    {
+                        let raw = CoTaskMemPWSTR::from(msg).to_string();
+                        if let Ok(env) = serde_json::from_str::<Envelope>(&raw) {
+                            if env.handler == "wisAiFetch" {
+                                let field = |key: &str| {
+                                    env.body
+                                        .get(key)
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or_default()
+                                        .to_string()
+                                };
+                                crate::ai_fetch::dispatch_message(
+                                    &label,
+                                    field("text"),
+                                    field("title"),
+                                );
                             }
                         }
                     }

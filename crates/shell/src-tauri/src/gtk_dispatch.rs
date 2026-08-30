@@ -53,6 +53,37 @@ pub fn install<R: tauri::Runtime>(
     });
 }
 
+/// Register only the `wisAiFetch` channel on a hidden AI fetch webview and
+/// route it to the fetch dispatcher. WebKitGTK script messages also carry
+/// no frame identity.
+pub fn install_ai_fetch_only<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    let label = webview.label().to_string();
+    let _ = webview.with_webview(move |w| {
+        let wv = w.inner();
+        let Some(ucm) = wv.user_content_manager() else {
+            log::warn!("gtk_dispatch: fetch webview has no user content manager");
+            return;
+        };
+        if !ucm.register_script_message_handler("wisAiFetch") {
+            log::warn!("gtk_dispatch: failed to register handler wisAiFetch");
+            return;
+        }
+
+        ucm.connect_script_message_received(Some("wisAiFetch"), move |_ucm, result| {
+            if let Some(body) = decode(result) {
+                let str_field = |key: &str| {
+                    body.get(key)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string()
+                };
+
+                crate::ai_fetch::dispatch_message(&label, str_field("text"), str_field("title"));
+            }
+        });
+    });
+}
+
 /// Register one named handler and connect its `script-message-received::<name>`
 /// signal, routing the decoded body to [`route`]. The connection lives on the
 /// `UserContentManager` (owned by the webview), so it is dropped with the tab

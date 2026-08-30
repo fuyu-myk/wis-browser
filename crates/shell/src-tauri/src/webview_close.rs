@@ -1,8 +1,7 @@
-//! Full webview teardown. wry's macOS `Drop` deliberately leaks the
-//! `WKWebView` (retains it after removing it from the view hierarchy), so
-//! `Webview::close` alone strands the page's WebContent process. Closing
-//! the page first via the `_close` SPI makes WebKit exit the content
-//! process; the leaked NSObject that remains is a few KB of shell.
+//! Full webview teardown. `Webview::close` alone was observed to strand the
+//! page's WebContent process, so every destroy path closes the page first
+//! via the `_close` SPI, which makes WebKit exit the content process
+//! deterministically.
 
 /// Close a webview's WebKit page so its content process exits.
 ///
@@ -37,8 +36,9 @@ pub fn terminate_page(webview: &tauri::Webview) {
 pub fn terminate_page(_webview: &tauri::Webview) {}
 
 /// Tear down every remote-content webview owned by `window_label` (tabs,
-/// widget panels, peek). Runs on window close, where the OS window otherwise
-/// drops its children through the same leaking `Drop`. Chrome and overlay
+/// widget panels, peek, AI fetches). Runs on window close, where the OS
+/// window otherwise drops its children without an explicit page close and
+/// leaves the content-process exit to dealloc timing. Chrome and overlay
 /// webviews are left alone: they are local app surfaces.
 pub fn terminate_window_pages(app: &tauri::AppHandle, window_label: &str) {
     use tauri::Manager;
@@ -51,6 +51,7 @@ pub fn terminate_window_pages(app: &tauri::AppHandle, window_label: &str) {
         if label.starts_with("tab-")
             || label.starts_with("widget-panel-")
             || label.starts_with("peek-page-")
+            || label.starts_with("wis-fetch-")
         {
             terminate_page(&wv);
         }

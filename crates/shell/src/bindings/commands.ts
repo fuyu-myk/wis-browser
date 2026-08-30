@@ -7,6 +7,9 @@
 
 import { Channel, invoke } from '@tauri-apps/api/core'
 import type {
+  AiFetchResponse,
+  AiSearchResult,
+  AiToolCall,
   StreamEvent,
   AccentColor,
   Background,
@@ -916,9 +919,15 @@ export const commands = {
     args: {
       workspace_id: WorkspaceId
       request_id: string
-      messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
+      messages: {
+        role: 'system' | 'user' | 'assistant' | 'tool'
+        content: string
+        tool_calls?: AiToolCall[]
+        tool_call_id?: string
+      }[]
       max_tokens?: number
       skip_reasoning?: boolean
+      no_tools?: boolean
     },
     onEvent: Channel<StreamEvent>,
   ): Promise<void> {
@@ -935,6 +944,17 @@ export const commands = {
    *  the panel can see. Pure; never touches the network. */
   async aiAssessLink(url: string, anchorText: string | null): Promise<LinkAssessment> {
     return invoke('ai_assess_link', { url, anchorText })
+  },
+
+  /** Search the web for the assistant inside a hidden, isolated webview.
+   *  Result URLs are the only ones `aiWebFetch` should then be offered. */
+  async aiWebSearch(query: string): Promise<AiSearchResult[]> {
+    return invoke('ai_web_search', { query })
+  },
+
+  /** Fetch one public web page's readable text for the assistant. */
+  async aiWebFetch(url: string): Promise<AiFetchResponse> {
+    return invoke('ai_web_fetch', { url })
   },
 
   /** Ask a tab to extract its readable text; arrives as a `wis-page-text` event. */

@@ -124,6 +124,10 @@ pub async fn ai_clear_key(app: AppHandle) -> WisResult<()> {
 pub struct AiMessage {
     pub role: Role,
     pub content: String,
+    #[serde(default)]
+    pub tool_calls: Vec<wis_core::ai::ToolCall>,
+    #[serde(default)]
+    pub tool_call_id: Option<String>,
 }
 
 /// Arguments for [`ai_chat`]. The model and provider come from settings; the
@@ -139,6 +143,9 @@ pub struct AiChatArgs {
     /// Forbid thinking for this request regardless of the show-reasoning setting.
     #[serde(default)]
     pub skip_reasoning: bool,
+    /// Withhold web tools for this request.
+    #[serde(default)]
+    pub no_tools: bool,
 }
 
 fn default_max_tokens() -> u32 {
@@ -215,7 +222,7 @@ pub async fn ai_chat(
         request_id: args.request_id.clone(),
     };
 
-    let (provider, model, base_url, show_reasoning) = {
+    let (provider, model, base_url, show_reasoning, web_access) = {
         let browser = state.browser.lock().await;
         let ai = &browser.settings.ai;
         (
@@ -223,6 +230,7 @@ pub async fn ai_chat(
             ai.model.clone(),
             ai.base_url.clone(),
             ai.show_reasoning,
+            ai.web_access,
         )
     };
     if model.trim().is_empty() {
@@ -250,6 +258,7 @@ pub async fn ai_chat(
     let req = ChatRequest {
         model,
         max_tokens,
+        web_tools: web_access && provider == AiProvider::OpenAiCompatible && !args.no_tools,
         thinking,
         messages: args
             .messages
@@ -257,6 +266,8 @@ pub async fn ai_chat(
             .map(|m| ChatMessage {
                 role: m.role,
                 content: m.content,
+                tool_calls: m.tool_calls,
+                tool_call_id: m.tool_call_id,
             })
             .collect(),
     };
@@ -363,10 +374,7 @@ pub async fn ai_chat(
             Err(e) => {
                 // A truncated or reset body arrives here.
                 let _ = on_event.send(StreamEvent::Error {
-                    message: format!(
-                        "stream error: {} ({endpoint_host})",
-                        transport_error(&e)
-                    ),
+                    message: format!("stream error: {} ({endpoint_host})", transport_error(&e)),
                 });
                 emitted_terminal = true;
                 break;
@@ -387,8 +395,15 @@ pub async fn ai_chat(
         }
     }
 
-    // A clean EOF with no terminal event.
+    // A clean EOF with no terminal event: drain any tool round the stream
+    // handed over without a finish marker, then close.
     if !emitted_terminal {
+        for ev in parser.finish() {
+            if on_event.send(ev).is_err() {
+                return Ok(());
+            }
+        }
+
         let _ = on_event.send(StreamEvent::Done);
     }
 

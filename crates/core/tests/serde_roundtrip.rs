@@ -183,6 +183,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
             model: "gpt-x".into(),
             base_url: Some("http://localhost:11434/v1".into()),
             show_reasoning: true,
+            web_access: true,
         }),
     };
     let after: UserSettingsPatch = roundtrip(&patch);

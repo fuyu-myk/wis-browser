@@ -421,12 +421,37 @@ export interface AiSettings {
   base_url: string | null
   /** Ask Anthropic for summarized reasoning (billed as output tokens). */
   show_reasoning: boolean
+  /** Offer web search/fetch tools to OpenAI-compatible models (macOS only). */
+  web_access: boolean
+}
+
+/** One tool call requested by the model (mirror of `wis_core::ai::ToolCall`). */
+export interface AiToolCall {
+  id: string
+  name: string
+  /** Raw JSON string, exactly as the wire carries it. */
+  arguments: string
+}
+
+/** One web search hit for the assistant (mirror of `ai_fetch::AiSearchResult`). */
+export interface AiSearchResult {
+  title: string
+  url: string
+  snippet: string
+}
+
+/** A fetched page for the assistant (mirror of `ai_fetch::AiFetchResponse`). */
+export interface AiFetchResponse {
+  url: string
+  title: string
+  text: string
 }
 
 /** A streaming event from `ai_chat` (mirror of `wis_core::StreamEvent`). */
 export type StreamEvent =
   | { type: 'delta'; text: string }
   | { type: 'reasoning'; text: string }
+  | { type: 'tool_calls'; calls: AiToolCall[] }
   | { type: 'truncated' }
   | { type: 'done' }
   | { type: 'error'; message: string }

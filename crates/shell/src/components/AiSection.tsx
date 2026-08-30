@@ -164,6 +164,22 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
       {ai.provider === 'open_ai_compatible' && (
         <div className="row">
           <div className="l">
+            <span>Allow web access</span>
+            <span>
+              Lets the model search the web and read public pages through isolated,
+              invisible page loads. What it reads goes to your endpoint.
+            </span>
+          </div>
+          <Switch
+            checked={ai.web_access}
+            onChange={(web_access) => patchAi({ web_access })}
+            label="Allow web access"
+          />
+        </div>
+      )}
+      {ai.provider === 'open_ai_compatible' && (
+        <div className="row">
+          <div className="l">
             <span>Base URL</span>
             <span className={cx({ 'is-error': baseProblem !== null })}>
               {baseProblem ?? 'Setting one turns the assistant on. Blank uses OpenAI.'}

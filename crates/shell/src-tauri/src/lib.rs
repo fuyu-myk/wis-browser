@@ -2,6 +2,7 @@
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
 mod ai;
+mod ai_fetch;
 mod app_launch;
 mod audio;
 mod backup;
@@ -377,6 +378,10 @@ pub fn run() {
             // App handle for the AI page-text channel's native handler.
             page_text::set_app_handle(app.handle().clone());
 
+            // App handle for the assistant's web-fetch dispatchers.
+            #[cfg(any(windows, target_os = "linux"))]
+            ai_fetch::set_app_handle(app.handle().clone());
+
             // App handle for the native Opt+click "Peek" handler.
             peek::set_app_handle(app.handle().clone());
 
@@ -673,6 +678,8 @@ pub fn run() {
             ai::ai_chat,
             ai::ai_cancel,
             ai::ai_assess_link,
+            ai_fetch::ai_web_search,
+            ai_fetch::ai_web_fetch,
             page_text::request_page_text,
             permissions::resolve_media_permission,
             app_launch::app_launch_decide,
