@@ -76,7 +76,8 @@ export function useUpdateSettings() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (patch: UserSettingsPatch) => commands.updateSettings(patch),
-    onMutate: (patch: UserSettingsPatch) => {
+    onMutate: async (patch: UserSettingsPatch) => {
+      await qc.cancelQueries({ queryKey: BROWSER_STATE_KEY })
       qc.setQueryData<BrowserState>([...BROWSER_STATE_KEY], (old) =>
         old ? { ...old, settings: applySettingsPatch(old.settings, patch) } : old,
       )

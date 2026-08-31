@@ -70,5 +70,5 @@ pub use tab::{FaviconRef, Tab};
 pub use tab_folder::TabFolder;
 pub use theme::{CustomTheme, ModeTokens, ThemeFile, ThemeTokens, THEME_FILE_VERSION};
 pub use user_agent::{ua_for_host, UaPlatform, UaProfile};
-pub use widget::{Widget, WidgetKind};
+pub use widget::{Widget, WidgetGroup, WidgetKind};
 pub use workspace::{AccentColor, EssentialPin, Workspace};

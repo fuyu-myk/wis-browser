@@ -12,6 +12,12 @@ pub async fn update_settings(
         }
     }
 
+    if let Some(widgets) = &patch.sidebar_widgets {
+        for widget in widgets {
+            widget.validate()?;
+        }
+    }
+
     // Clamp boundary-supplied design values before they reach the
     // pure state transition.
     if let Some(design) = patch.design {

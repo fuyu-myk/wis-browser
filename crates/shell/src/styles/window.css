@@ -3911,6 +3911,19 @@ body.has-custom-img .kb-launch-mark {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
+}
+/* Reserved footprint for an empty group while a custom widget is mid-drag. */
+.kb-widget-row.is-slot {
+  min-width: 26px;
+  min-height: 26px;
+  border: 1px dashed transparent;
+  border-radius: 8px;
+}
+/* Drop target for a custom widget mid-drag. */
+.kb-widget-row.is-slot.is-target {
+  border-color: color-mix(in oklab, var(--text-primary) 55%, transparent);
+  background: var(--overlay);
 }
 .kb-widget-dock.is-sidebar {
   max-height: 30vh;
@@ -3938,7 +3951,7 @@ body.has-custom-img .kb-launch-mark {
   width: 28px;
 }
 .kb-window.collapsible .kb-side.is-expanded .kb-widget-dock.is-sidebar .kb-widget-row {
-  width: calc(var(--sb-w) - 20px);
+  width: calc(var(--sb-w) - 24px);
 }
 .kb-window.collapsible.layout-sidebar-right .kb-side .kb-widget-dock.is-sidebar .kb-widget-row {
   justify-content: flex-end;
@@ -3969,7 +3982,7 @@ body.has-custom-img .kb-launch-mark {
   width: 28px;
 }
 .kb-side.kb-rail.is-expanded .kb-widget-dock.is-rail .kb-widget-row {
-  width: calc(var(--sb-w) - 20px);
+  width: calc(var(--sb-w) - 24px);
 }
 .kb-side.kb-rail.is-right .kb-widget-dock.is-rail .kb-widget-row {
   justify-content: flex-end;
@@ -3977,12 +3990,18 @@ body.has-custom-img .kb-launch-mark {
 .kb-widget-divider {
   height: 1px;
   width: 100%;
+  flex-shrink: 0;
   margin: 1px 0;
   background: color-mix(in oklab, var(--text-primary) 20%, transparent);
 }
+.kb-widget-divider.is-hidden { display: none; }
 .kb-widget-btn {
+  position: relative;
   width: 30px;
   height: 30px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
   border-radius: calc(9px * var(--radius-scale));
   display: grid;
   place-items: center;
@@ -3998,7 +4017,7 @@ body.has-custom-img .kb-launch-mark {
   background: var(--overlay);
   border-color: var(--primary-500);
 }
-.kb-widget-btn.is-dragging { opacity: 0.45; }
+.kb-widget-btn.is-dragging > * { opacity: 0.45; }
 
 /* Resize strip surface (overlay-widgetresize): a thin invisible overlay
    webview spanning the widget panel's inner edge. */
@@ -4144,6 +4163,83 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   background: color-mix(in oklab, var(--text-primary) 20%, transparent);
   margin: 14px 0;
 }
+/* A user-added site. */
+.kb-widget-chip.is-custom { cursor: default; }
+.kb-widget-chip.is-editing { outline: 2px solid var(--primary-500); outline-offset: 1px; }
+.kb-widget-chip-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.kb-widget-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: -2px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.kb-widget-chip-x:hover { opacity: 1; }
+.kb-widget-chip-x svg { width: 12px; height: 12px; }
+.kb-widget-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.kb-widget-add .kb-text-input:first-child { flex: 0 1 160px; }
+.kb-widget-add .kb-text-input { flex: 1 1 220px; min-width: 160px; }
+.kb-widget-add-problem {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+.kb-widget-add-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.kb-widget-add-group-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+/* Where a drag will land, painted by the neighbouring favicon. */
+.kb-widget-btn.is-drop-before::before,
+.kb-widget-btn.is-drop-after::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--primary-500);
+}
+.kb-widget-btn.is-drop-before::before { left: 1px; }
+.kb-widget-btn.is-drop-after::after { right: 1px; }
+.kb-widget-row.is-stacked > .kb-widget-btn.is-drop-before::before,
+.kb-widget-row.is-stacked > .kb-widget-btn.is-drop-after::after {
+  top: auto;
+  bottom: auto;
+  left: 4px;
+  right: 4px;
+  width: auto;
+  height: 3px;
+}
+.kb-widget-row.is-stacked > .kb-widget-btn.is-drop-before::before { top: 1px; }
+.kb-widget-row.is-stacked > .kb-widget-btn.is-drop-after::after { bottom: 1px; }
 
 /* -- Peek (Opt+click link preview) -------------------------------------- */
 .kb-peek-backdrop {

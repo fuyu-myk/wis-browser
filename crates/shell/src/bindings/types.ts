@@ -199,7 +199,18 @@ export type WidgetKind =
   | 'deep_seek'
   | 'qwen'
   | 'perplexity'
+  | 'gmail'
+  | 'google_calendar'
+  | 'google_keep'
+  | 'notion'
+  | 'todoist'
+  | 'outlook'
+  | 'proton_mail'
+  | 'proton_calendar'
   | 'custom'
+
+/** Dock row a widget renders under (mirror of `wis_core::WidgetGroup`). */
+export type WidgetGroup = 'social' | 'ai' | 'productivity' | 'custom'
 
 // ---------------------------------------------------------------------------
 // Domain types.
@@ -645,6 +656,8 @@ export interface Widget {
   url: string
   icon: string | null
   enabled: boolean
+  /** Dock-row override for a custom widget; null renders under the kind's own row. */
+  group: WidgetGroup | null
 }
 
 export interface BrowserState {
