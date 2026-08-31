@@ -3899,10 +3899,13 @@ body.has-custom-img .kb-launch-mark {
 /* -- Sidebar quick-launch widgets --------------------------------------- */
 .kb-widget-dock {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   flex-direction: column;
   gap: 8px;
   padding: 8px 2px;
+  --dock-fade: min(20px, 25%);
+  /* Favicon button size. */
+  --widget-btn: 30px;
   /* Same theme-inverting line as .kb-widget-divider below. */
   border-top: 1px solid color-mix(in oklab, var(--text-primary) 20%, transparent);
 }
@@ -3915,7 +3918,6 @@ body.has-custom-img .kb-launch-mark {
 }
 /* Reserved footprint for an empty group while a custom widget is mid-drag. */
 .kb-widget-row.is-slot {
-  min-width: 26px;
   min-height: 26px;
   border: 1px dashed transparent;
   border-radius: 8px;
@@ -3925,15 +3927,51 @@ body.has-custom-img .kb-launch-mark {
   border-color: color-mix(in oklab, var(--text-primary) 55%, transparent);
   background: var(--overlay);
 }
+/* One row's worth of floor. */
+.kb-widget-dock.is-sidebar,
+.kb-widget-dock.is-rail {
+  min-height: calc(17px + var(--widget-btn, 30px));
+}
 .kb-widget-dock.is-sidebar {
   max-height: 30vh;
   overflow-y: auto;
   scrollbar-width: none;
 }
 .kb-widget-dock.is-sidebar::-webkit-scrollbar { display: none; }
+/* Cut edge fade. */
+.kb-widget-dock.can-scroll-down {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--dock-fade)), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--dock-fade)), transparent);
+}
+.kb-widget-dock.can-scroll-up {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0 1px,
+    transparent 1px,
+    #000 var(--dock-fade)
+  );
+  mask-image: linear-gradient(to bottom, #000 0 1px, transparent 1px, #000 var(--dock-fade));
+}
+.kb-widget-dock.can-scroll-up.can-scroll-down {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0 1px,
+    transparent 1px,
+    #000 var(--dock-fade),
+    #000 calc(100% - var(--dock-fade)),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0 1px,
+    transparent 1px,
+    #000 var(--dock-fade),
+    #000 calc(100% - var(--dock-fade)),
+    transparent
+  );
+}
 .kb-window.collapsible .kb-side .kb-widget-dock.is-sidebar {
   width: 32px;
-  flex-shrink: 0;
   align-self: flex-start;
   transition: width var(--dur-med) ease;
   margin-left: 1px;
@@ -3941,7 +3979,7 @@ body.has-custom-img .kb-launch-mark {
 .kb-window.collapsible.layout-sidebar-right .kb-side .kb-widget-dock.is-sidebar {
   align-self: flex-end;
   margin-left: 0;
-  margin-right: -1px;
+  margin-right: 0;
 }
 .kb-window.collapsible .kb-side.is-expanded .kb-widget-dock.is-sidebar {
   width: calc(var(--sb-w) - 20px);
@@ -3953,8 +3991,11 @@ body.has-custom-img .kb-launch-mark {
 .kb-window.collapsible .kb-side.is-expanded .kb-widget-dock.is-sidebar .kb-widget-row {
   width: calc(var(--sb-w) - 24px);
 }
-.kb-window.collapsible.layout-sidebar-right .kb-side .kb-widget-dock.is-sidebar .kb-widget-row {
+.kb-window.layout-sidebar-right .kb-side .kb-widget-dock.is-sidebar .kb-widget-row {
   justify-content: flex-end;
+}
+.kb-window.layout-sidebar-right .kb-side .kb-widget-dock.is-sidebar {
+  padding-right: 0;
 }
 .kb-window.collapsible.layout-sidebar-right .kb-side .kb-widget-dock.is-sidebar {
   align-items: flex-end;
@@ -3997,8 +4038,8 @@ body.has-custom-img .kb-launch-mark {
 .kb-widget-divider.is-hidden { display: none; }
 .kb-widget-btn {
   position: relative;
-  width: 30px;
-  height: 30px;
+  width: var(--widget-btn, 30px);
+  height: var(--widget-btn, 30px);
   touch-action: none;
   user-select: none;
   -webkit-user-drag: none;
@@ -4010,6 +4051,11 @@ body.has-custom-img .kb-launch-mark {
   cursor: pointer;
   padding: 0;
   transition: background var(--transition-speed) ease, transform var(--dur-fast) ease;
+}
+/* Size the button to the column. */
+.kb-window.collapsible .kb-side:not(.is-expanded) .kb-widget-dock.is-sidebar,
+.kb-side.kb-rail:not(.is-expanded) .kb-widget-dock.is-rail {
+  --widget-btn: 28px;
 }
 .kb-widget-btn:hover { background: var(--overlay); }
 .kb-widget-btn:active { transform: translateY(1px); }

@@ -147,6 +147,8 @@ export function WidgetDock({ widgets, variant = 'sidebar' }: WidgetDockProps) {
     isCustom: boolean
   } | null>(null)
   const [preview, setPreview] = useState<DropPreview | null>(null)
+  /** Which edges have content past them, for the dock's cut-off fade. */
+  const [edges, setEdges] = useState({ up: false, down: false })
 
   const widgetsRef = useRef(widgets)
   widgetsRef.current = widgets
@@ -197,6 +199,25 @@ export function WidgetDock({ widgets, variant = 'sidebar' }: WidgetDockProps) {
 
   useEffect(() => {
     const dock = dockRef.current
+    if (dock === null) return
+    const measure = () => {
+      const slack = dock.scrollHeight - dock.clientHeight
+      const up = dock.scrollTop > 1
+      const down = slack > 1 && dock.scrollTop < slack - 1
+      setEdges((prev) => (prev.up === up && prev.down === down ? prev : { up, down }))
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(dock)
+    dock.addEventListener('scroll', measure, { passive: true })
+    return () => {
+      observer.disconnect()
+      dock.removeEventListener('scroll', measure)
+    }
+  }, [widgets, dragged])
+
+  useEffect(() => {
+    const dock = dockRef.current
     if (dragged === null || dock === null) return
     const reresolve = () => {
       const point = lastPointRef.current
@@ -236,10 +257,11 @@ export function WidgetDock({ widgets, variant = 'sidebar' }: WidgetDockProps) {
     const downward =
       dock.scrollTop + dock.clientHeight < dock.scrollHeight &&
       (bound === null || bound.bottom > port.bottom)
+    const edge = Math.min(AUTOSCROLL_EDGE, port.height / 3)
     const direction =
-      clientY < port.top + AUTOSCROLL_EDGE && upward
+      clientY < port.top + edge && upward
         ? -1
-        : clientY > port.bottom - AUTOSCROLL_EDGE && downward
+        : clientY > port.bottom - edge && downward
           ? 1
           : 0
     scrollDirRef.current = direction
@@ -443,7 +465,10 @@ export function WidgetDock({ widgets, variant = 'sidebar' }: WidgetDockProps) {
     <>
       <div
         ref={dockRef}
-        className={cx('kb-widget-dock', `is-${variant}`)}
+        className={cx('kb-widget-dock', `is-${variant}`, {
+          'can-scroll-up': edges.up && dragged === null,
+          'can-scroll-down': edges.down && dragged === null,
+        })}
         role="toolbar"
         aria-label="Quick launch widgets"
       >
