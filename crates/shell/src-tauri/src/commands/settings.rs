@@ -1,5 +1,7 @@
 use super::*;
 
+use wis_network::Resolver;
+
 #[tauri::command]
 pub async fn update_settings(
     app: AppHandle,
@@ -50,13 +52,21 @@ pub async fn update_settings(
     let persistence_disabled = patch.persist_sessions == Some(false);
     let fraud_warning_changed = patch.fraud_warning_enabled;
     let media_extensions_changed = patch.media_extensions_enabled;
-    let settings = mutate_immediate(&app, &state, |s| {
+    let (settings, doh_changed) = mutate_immediate(&app, &state, |s| {
+        let before = crate::state::doh_provider_of(s.settings.doh_resolver.as_deref());
         let next = s.with_settings(patch);
         let settings = next.settings.clone();
+        let changed = crate::state::doh_provider_of(settings.doh_resolver.as_deref()) != before;
 
-        Ok((next, settings))
+        Ok((next, (settings, changed)))
     })
     .await?;
+
+    if doh_changed {
+        state.resolver.set(crate::state::build_resolver(
+            settings.doh_resolver.as_deref(),
+        ));
+    }
 
     if keybindings_touched {
         let effective = wis_core::effective_keymap(&settings.keybindings);

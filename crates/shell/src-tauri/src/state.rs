@@ -23,7 +23,7 @@ use std::sync::{Arc, RwLock};
 use tokio::sync::Mutex;
 use wis_core::{BrowserState, PrivacyMode, WorkspaceId};
 use wis_network::{
-    DohResolver, ProxyServer, RequestPolicy, Resolver, StubResolver, TrackerBlocker,
+    DohResolver, ProxyServer, RequestPolicy, Resolver, SwappableResolver, TrackerBlocker,
 };
 use wis_storage::Storage;
 
@@ -95,7 +95,9 @@ pub struct AppState {
     /// [`crate::tab_session`]).
     pub tab_session_saver: crate::tab_session::TabSessionSaver,
     pub tracker_blocker: RwLock<Arc<TrackerBlocker>>,
-    pub resolver: Arc<dyn Resolver>,
+    /// Swappable so a DoH provider change takes effect on the next lookup:
+    /// running proxies hold this handle, not the resolver behind it.
+    pub resolver: Arc<SwappableResolver>,
     pub content_rules: RwLock<HashMap<PrivacyMode, Option<RuleSpec>>>,
     /// Sync read-cache of [`UserSettings.user_cosmetic_rules`](wis_core::UserSettings::user_cosmetic_rules)
     /// (host -> hidden selectors), so the synchronous cosmetic message handler can read them
@@ -202,7 +204,7 @@ impl AppState {
         browser: BrowserState,
         storage: Arc<dyn Storage>,
         tracker_blocker: Arc<TrackerBlocker>,
-        resolver: Arc<dyn Resolver>,
+        resolver: Arc<SwappableResolver>,
         filter_cache_dir: PathBuf,
         initial_filter_text: &str,
     ) -> Self {
@@ -667,21 +669,18 @@ impl AppState {
     }
 }
 
-/// Build a resolver from the current settings' DoH endpoint. Falls back to a
-/// stub resolver (returning errors) if no DoH URL is configured.
+/// Build a resolver for the settings' DoH endpoint. Every connection resolves
+/// through this and there is no OS-DNS fallback, so an unset or unusable
+/// endpoint still resolves, through the default provider.
 pub fn build_resolver(doh_url: Option<&str>) -> Arc<dyn Resolver> {
+    Arc::new(DohResolver::for_provider(doh_provider_of(doh_url)))
+}
+
+/// The provider an endpoint setting resolves through, unset included.
+pub fn doh_provider_of(doh_url: Option<&str>) -> wis_network::DohProvider {
     match doh_url {
-        Some(url) => match DohResolver::from_settings_url(url) {
-            Ok(resolver) => Arc::new(resolver),
-            Err(err) => {
-                log::warn!("failed to build DoH resolver from {url}: {err}; using stub");
-                Arc::new(StubResolver::new())
-            }
-        },
-        None => {
-            log::info!("no DoH resolver configured; using stub");
-            Arc::new(StubResolver::new())
-        }
+        Some(url) => wis_network::doh_provider_for(url),
+        None => wis_network::DohProvider::Cloudflare,
     }
 }
 
@@ -689,13 +688,14 @@ pub fn build_resolver(doh_url: Option<&str>) -> Arc<dyn Resolver> {
 mod tests {
     use super::*;
     use wis_network::filter_lists::DEFAULT_TRACKER_LIST;
+    use wis_network::StubResolver;
     use wis_storage::SqliteStorage;
 
     fn app_state_for_test() -> AppState {
         let storage: Arc<dyn Storage> =
             Arc::new(SqliteStorage::open_in_memory().expect("in-memory DB"));
         let blocker = Arc::new(TrackerBlocker::with_default_list().expect("default list"));
-        let resolver: Arc<dyn Resolver> = Arc::new(StubResolver::new());
+        let resolver = Arc::new(SwappableResolver::new(Arc::new(StubResolver::new())));
         AppState::new(
             BrowserState::new_with_defaults(),
             storage,

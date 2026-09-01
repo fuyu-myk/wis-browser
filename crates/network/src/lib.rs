@@ -28,7 +28,9 @@ pub use context::{NetworkContext, RefererPolicy};
 pub use error::{NetworkError, NetworkResult};
 pub use policy::{Decision, OutboundRequest, RequestPolicy};
 pub use proxy::{probe_upstream, ProxyServer};
-pub use resolver::{DohResolver, Resolver, StubResolver};
+pub use resolver::{
+    doh_provider_for, DohProvider, DohResolver, Resolver, StubResolver, SwappableResolver,
+};
 #[cfg(feature = "tor")]
 pub use tor::TorProxy;
 pub use upgrader::{is_loopback, is_public_web_url, HttpsUpgrader};

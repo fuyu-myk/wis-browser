@@ -205,7 +205,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
           activeWorkspace={activeWorkspace}
           onUpdate={(patch) => update.mutate(patch)}
         />
-        <NetworkSection workspace={activeWorkspace} />
+        <NetworkSection workspace={activeWorkspace} settings={settings} />
         <CompatibilitySection
           profile={settings.user_agent_profile}
           overrides={settings.ua_site_overrides}

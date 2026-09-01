@@ -16,7 +16,7 @@ use crate::widget::Widget;
 use crate::workspace::AccentColor;
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_DOH_RESOLVER: &str = "https://mozilla.cloudflare-dns.com/dns-query";
+const DEFAULT_DOH_RESOLVER: &str = "https://cloudflare-dns.com/dns-query";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserSettings {

@@ -8,9 +8,9 @@ use url::Url;
 use wis_core::{PerSitePolicy, PrivacyMode};
 use wis_network::upgrader::UpgradeAction;
 use wis_network::{
-    is_loopback, is_public_web_url, Decision, DohResolver, HttpsUpgrader, NetworkContext,
-    OutboundRequest, RefererPolicy, RequestPolicy, RequestType, Resolver, StubResolver,
-    TrackerBlocker,
+    doh_provider_for, is_loopback, is_public_web_url, Decision, DohProvider, DohResolver,
+    HttpsUpgrader, NetworkContext, OutboundRequest, RefererPolicy, RequestPolicy, RequestType,
+    Resolver, StubResolver, SwappableResolver, TrackerBlocker,
 };
 
 fn u(s: &str) -> Url {
@@ -39,14 +39,93 @@ async fn stub_resolver_errors_on_unknown_host() {
     assert!(stub.resolve("nope.example").await.is_err());
 }
 
+/// The picker in the chrome stores one of `DohProvider::url()`; a stored URL
+/// that no longer maps to its provider would silently resolve elsewhere.
 #[test]
-fn doh_resolver_constructs_for_known_providers() {
-    // Unit tests that don't involve actual network I/O
-    let _ = DohResolver::cloudflare();
-    let _ = DohResolver::quad9();
-    let _ = DohResolver::from_settings_url("https://cloudflare-dns.com/dns-query").unwrap();
-    let _ = DohResolver::from_settings_url("https://mozilla.cloudflare-dns.com/dns-query").unwrap();
-    let _ = DohResolver::from_settings_url("https://my-doh.example/dns-query").unwrap();
+fn every_provider_url_maps_back_to_its_own_provider() {
+    for provider in [
+        DohProvider::Cloudflare,
+        DohProvider::Quad9,
+        DohProvider::Google,
+    ] {
+        assert_eq!(doh_provider_for(provider.url()), provider, "{provider:?}");
+    }
+
+    // Pinned: `wis_core`'s default endpoint is this literal.
+    // Neither crate can see the other's copy.
+    assert_eq!(
+        DohProvider::Cloudflare.url(),
+        "https://cloudflare-dns.com/dns-query"
+    );
+}
+
+#[test]
+fn known_endpoints_and_addresses_map_to_their_provider() {
+    let cases = [
+        ("https://dns.quad9.net/dns-query", DohProvider::Quad9),
+        ("https://9.9.9.9/dns-query", DohProvider::Quad9),
+        ("https://dns.google/dns-query", DohProvider::Google),
+        ("https://8.8.8.8/dns-query", DohProvider::Google),
+        (
+            "https://cloudflare-dns.com/dns-query",
+            DohProvider::Cloudflare,
+        ),
+        ("https://DNS.Google/dns-query", DohProvider::Google),
+        // The historical default: Cloudflare's resolver under Mozilla's terms.
+        (
+            "https://mozilla.cloudflare-dns.com/dns-query",
+            DohProvider::Cloudflare,
+        ),
+    ];
+    for (url, expected) in cases {
+        assert_eq!(doh_provider_for(url), expected, "{url}");
+    }
+}
+
+/// DNS has no OS fallback in this browser, so an unusable stored value must
+/// still resolve rather than leaving every connection dead.
+#[test]
+fn unknown_and_malformed_endpoints_fall_back_to_cloudflare() {
+    for url in [
+        "https://my-doh.example/dns-query",
+        "not a url",
+        "",
+        "https:///dns-query",
+    ] {
+        assert_eq!(doh_provider_for(url), DohProvider::Cloudflare, "{url}");
+    }
+}
+
+#[tokio::test]
+async fn a_swapped_resolver_answers_from_its_replacement() {
+    let first: Arc<dyn Resolver> = Arc::new(
+        StubResolver::new().with("example.com", vec![IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))]),
+    );
+    let swappable = SwappableResolver::new(first);
+    assert_eq!(
+        swappable.resolve("example.com").await.unwrap(),
+        vec![IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))]
+    );
+
+    swappable.set(Arc::new(
+        StubResolver::new().with("example.com", vec![IpAddr::V4(Ipv4Addr::new(9, 9, 9, 9))]),
+    ));
+    assert_eq!(
+        swappable.resolve("example.com").await.unwrap(),
+        vec![IpAddr::V4(Ipv4Addr::new(9, 9, 9, 9))]
+    );
+}
+
+#[test]
+fn doh_resolver_constructs_for_every_provider() {
+    // Construction only; no network I/O.
+    for provider in [
+        DohProvider::Cloudflare,
+        DohProvider::Quad9,
+        DohProvider::Google,
+    ] {
+        let _ = DohResolver::for_provider(provider);
+    }
 }
 
 // ---------------------------------------------------------------------------

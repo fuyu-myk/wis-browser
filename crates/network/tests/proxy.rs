@@ -19,7 +19,8 @@ use hyper::{Method, Request, Response};
 use hyper_util::rt::TokioIo;
 use tokio::net::{TcpListener, TcpStream};
 use wis_network::{
-    policy::Decision, ProxyServer, RequestPolicy, Resolver, StubResolver, TrackerBlocker,
+    policy::Decision, ProxyServer, RequestPolicy, Resolver, StubResolver, SwappableResolver,
+    TrackerBlocker,
 };
 
 /// Spin up a tiny HTTP/1 server on `127.0.0.1:0` that returns `200 OK`
@@ -106,6 +107,33 @@ fn url_host(url: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
+
+/// The reason the resolver sits behind a swappable handle: a proxy takes it
+/// once at `start`, so changing the DNS provider has to reach the requests an
+/// already-running proxy is serving.
+#[tokio::test]
+async fn a_running_proxy_resolves_through_a_swapped_resolver() {
+    let upstream_port = start_stub_upstream("hello from upstream").await;
+    let swappable = Arc::new(SwappableResolver::new(Arc::new(StubResolver::new())));
+    let proxy = start_proxy(TrackerBlocker::empty(), swappable.clone()).await;
+    let url = format!("http://localhost:{upstream_port}/some/path");
+
+    let resp = send_through_proxy(proxy.port(), Method::GET, &url).await;
+    assert_ne!(resp.status(), 200, "the host should not resolve yet");
+
+    swappable.set(Arc::new(
+        StubResolver::new().with("localhost", vec![IpAddr::V4(Ipv4Addr::LOCALHOST)]),
+    ));
+
+    let resp = send_through_proxy(proxy.port(), Method::GET, &url).await;
+    assert_eq!(
+        resp.status(),
+        200,
+        "the running proxy must use the new resolver"
+    );
+    let body = resp.into_body().collect().await.expect("body").to_bytes();
+    assert_eq!(body, Bytes::from_static(b"hello from upstream"));
+}
 
 #[tokio::test]
 async fn proxy_forwards_allowed_http_request_to_upstream() {

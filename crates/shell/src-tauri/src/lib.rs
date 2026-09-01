@@ -178,7 +178,9 @@ pub fn run() {
                     Arc::new(TrackerBlocker::empty())
                 }
             };
-            let resolver = state::build_resolver(browser_state.settings.doh_resolver.as_deref());
+            let resolver = std::sync::Arc::new(wis_network::SwappableResolver::new(
+                state::build_resolver(browser_state.settings.doh_resolver.as_deref()),
+            ));
             let auto_update = browser_state.settings.filter_list_auto_update;
             let initial_keybindings = browser_state.settings.keybindings.clone();
             let primary_workspace = browser_state.active_workspace_id;
