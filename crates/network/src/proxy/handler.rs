@@ -15,13 +15,16 @@ use super::tunnel::tunnel;
 use super::upstream::{bad_gateway, empty, forward, full};
 
 /// Entry point for every request the proxy accepts.
+///
+/// `route_rx` ends CONNECT tunnels when the workspace's route changes.
 pub async fn handle(
     req: Request<Incoming>,
     policy: Arc<RequestPolicy>,
     resolver: Arc<dyn Resolver>,
+    route_rx: tokio::sync::watch::Receiver<u64>,
 ) -> Response<BoxBody<Bytes, hyper::Error>> {
     if req.method() == Method::CONNECT {
-        return handle_connect(req, policy, resolver).await;
+        return handle_connect(req, policy, resolver, route_rx).await;
     }
     handle_http(req, policy, resolver).await
 }
@@ -75,6 +78,7 @@ async fn handle_connect(
     req: Request<Incoming>,
     policy: Arc<RequestPolicy>,
     resolver: Arc<dyn Resolver>,
+    route_rx: tokio::sync::watch::Receiver<u64>,
 ) -> Response<BoxBody<Bytes, hyper::Error>> {
     // The path can't be seen for HTTPS, an https://host/ document request
     // is synthesized and run that through the policy. Host-level
@@ -105,7 +109,7 @@ async fn handle_connect(
                 host = %synthetic.host_str().unwrap_or(""),
                 "CONNECT tunnel"
             );
-            tunnel(req, resolver, policy.upstream().cloned()).await
+            tunnel(req, resolver, policy.upstream().cloned(), route_rx).await
         }
         Decision::Block { reason } => {
             tracing::info!(target = %synthetic, %reason, "blocked CONNECT");

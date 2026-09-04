@@ -27,6 +27,12 @@ export function VpnToggle({ workspace }: VpnToggleProps) {
   const current = workspace?.upstream_proxy ?? null
   const enabled = current != null
   const upstreamKey = JSON.stringify(current)
+  const manual = current?.kind === 'socks5'
+  const [torAvailable, setTorAvailable] = useState(true)
+
+  useEffect(() => {
+    void commands.torAvailable().then(setTorAvailable, () => setTorAvailable(false))
+  }, [])
 
   const [phase, setPhase] = useState<Phase>(enabled ? 'connecting' : 'idle')
 
@@ -56,10 +62,11 @@ export function VpnToggle({ workspace }: VpnToggleProps) {
   if (!workspace) return null
 
   const onClick = () => {
+    if (manual || !torAvailable) return
     setPhase(enabled ? 'idle' : 'connecting') // optimistic; the effect reconfirms
     void commands
       .setWorkspaceUpstream(workspace.id, enabled ? null : { kind: 'tor' })
-      .catch(() => undefined)
+      .catch(() => setPhase('error'))
       .finally(() => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }))
   }
 
@@ -67,13 +74,17 @@ export function VpnToggle({ workspace }: VpnToggleProps) {
   const connected = phase === 'connected'
   const errored = phase === 'error'
 
-  const label = connecting
-    ? 'Setting up VPN…'
-    : connected
-      ? 'VPN connected — click to disconnect'
-      : errored
-        ? 'VPN couldn’t connect — click to turn off'
-        : 'VPN off — click to connect'
+  const label = manual
+    ? 'This workspace routes through a SOCKS5 proxy — change it in Settings'
+    : !torAvailable
+      ? 'Built-in Tor is not included in this build'
+      : connecting
+        ? 'Setting up VPN…'
+        : connected
+          ? 'VPN connected — click to disconnect'
+          : errored
+            ? 'VPN couldn’t connect — click to turn off'
+            : 'VPN off — click to connect'
 
   const stateClasses = { 'is-on': connected, 'is-connecting': connecting, 'is-error': errored }
   const className = cx('kb-circle-btn', 'kb-rail-vpn', stateClasses)
@@ -85,7 +96,7 @@ export function VpnToggle({ workspace }: VpnToggleProps) {
       aria-label={label}
       aria-pressed={connected}
       title={label}
-      disabled={connecting}
+      disabled={connecting || manual || !torAvailable}
       onClick={onClick}
     >
       {connecting ? <span className="kb-vpn-spinner" aria-hidden /> : <ShieldIcon on={connected} />}

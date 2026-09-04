@@ -483,7 +483,7 @@ impl AppState {
     /// HTTPS-First upgrades. HTTPS is tunnelled raw; path-level filtering is
     /// enforced in the WebView engine (see `content_filter`).
     pub async fn ensure_proxy_for(&self, workspace_id: WorkspaceId) -> Result<u16, WisShellError> {
-        let (privacy_mode, upstream) = {
+        let (privacy_mode, upstream_setting) = {
             let browser = self.browser.lock().await;
             let ws = browser
                 .workspace(workspace_id)
@@ -491,7 +491,7 @@ impl AppState {
             (ws.privacy_mode, ws.upstream_proxy.clone())
         };
 
-        let upstream = self.resolve_upstream(upstream).await?;
+        let upstream = self.resolve_upstream(upstream_setting.clone()).await?;
 
         let mut proxies = self.proxies.lock().await;
         if let Some(server) = proxies.get(&workspace_id) {
@@ -507,6 +507,20 @@ impl AppState {
 
         log::info!("workspace {workspace_id} proxy listening on 127.0.0.1:{port}");
         proxies.insert(workspace_id, server);
+        drop(proxies);
+
+        let current = {
+            let browser = self.browser.lock().await;
+            browser
+                .workspace(workspace_id)
+                .map(|ws| (ws.privacy_mode, ws.upstream_proxy.clone()))
+                .ok()
+        };
+        if let Some((mode_now, upstream_now)) = current {
+            if mode_now != privacy_mode || upstream_now != upstream_setting {
+                let _ = self.update_proxy_policy(workspace_id, true).await;
+            }
+        }
 
         Ok(port)
     }
@@ -525,30 +539,50 @@ impl AppState {
         }
     }
 
-    /// Hot-swap a running workspace proxy's policy from current state (privacy
-    /// mode + upstream proxy), without rebinding the port. No-op if the proxy
-    /// hasn't been started yet.
-    pub async fn update_proxy_policy(&self, workspace_id: WorkspaceId) {
-        let (privacy_mode, upstream) = {
+    /// Re-point a running proxy at the workspace's current policy. `sever`
+    /// also cuts connections already open, which a route change requires.
+    pub async fn update_proxy_policy(
+        &self,
+        workspace_id: WorkspaceId,
+        sever: bool,
+    ) -> Result<(), WisShellError> {
+        let (privacy_mode, upstream_setting) = {
             let browser = self.browser.lock().await;
             match browser.workspace(workspace_id) {
                 Ok(ws) => (ws.privacy_mode, ws.upstream_proxy.clone()),
-                Err(_) => return,
+                Err(_) => return Ok(()),
             }
         };
-        let upstream = match self.resolve_upstream(upstream).await {
+        let upstream = match self.resolve_upstream(upstream_setting.clone()).await {
             Ok(up) => up,
             Err(err) => {
-                log::warn!("workspace {workspace_id} upstream resolve failed: {err}");
-                return;
+                self.proxies.lock().await.remove(&workspace_id);
+                log::warn!("workspace {workspace_id} upstream resolve failed: {err}; proxy dropped");
+                return Err(err);
             }
         };
+
+        {
+            let browser = self.browser.lock().await;
+            if let Ok(ws) = browser.workspace(workspace_id) {
+                if ws.privacy_mode != privacy_mode || ws.upstream_proxy != upstream_setting {
+                    log::info!("workspace {workspace_id} route changed while resolving; skipping");
+                    return Ok(());
+                }
+            }
+        }
+
         let proxies = self.proxies.lock().await;
         if let Some(server) = proxies.get(&workspace_id) {
             let policy = Arc::new(self.build_request_policy(privacy_mode, upstream));
             server.update_policy(policy);
+            if sever {
+                server.sever_open_connections();
+            }
             log::info!("workspace {workspace_id} proxy policy updated in place");
         }
+
+        Ok(())
     }
 
     /// Resolve a workspace upstream for the transport layer: built-in Tor maps

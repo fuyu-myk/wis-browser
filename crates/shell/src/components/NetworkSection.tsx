@@ -1,11 +1,42 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
+import { cx } from '@/lib/cx'
 import type { UserSettings, Workspace } from '@/bindings/types'
-import { Segmented, Switch } from '@/components/controls'
+import { Segmented } from '@/components/controls'
 import { dohProviderFor, DOH_PROVIDERS, type DohProviderId } from '@/lib/doh'
+import {
+  DEFAULT_SOCKS5_PORT,
+  proxyHostProblem,
+  proxyPortProblem,
+  upstreamMode,
+  type UpstreamMode,
+} from '@/lib/upstream'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+
+/** How often an active upstream is re-checked while this page is open. */
+const PROBE_INTERVAL_MS = 30_000
+
+const ROUTE_OPTIONS = [
+  { value: 'off' as const, label: 'Direct' },
+  { value: 'tor' as const, label: 'Tor' },
+  { value: 'socks5' as const, label: 'SOCKS5' },
+] satisfies ReadonlyArray<{ value: UpstreamMode; label: string }>
+
+function errorMessage(error: unknown): string {
+  if (typeof error === 'string') return error
+  if (error instanceof Error) return error.message
+  if (
+    error !== null &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof (error as { message: unknown }).message === 'string'
+  ) {
+    return (error as { message: string }).message
+  }
+  return 'unknown error'
+}
 
 type ProbeStatus =
   | { kind: 'idle' }
@@ -26,6 +57,31 @@ export function NetworkSection({ workspace, settings }: NetworkSectionProps) {
   const [status, setStatus] = useState<ProbeStatus>({ kind: 'idle' })
   /** Result of the lookup made right after a provider change. */
   const [dns, setDns] = useState<ProbeStatus>({ kind: 'idle' })
+  const mode = upstreamMode(current)
+  /** Shows the host/port fields before anything is stored. */
+  const [manualOpen, setManualOpen] = useState(mode === 'socks5')
+  const [hostDraft, setHostDraft] = useState(
+    current?.kind === 'socks5' ? current.host : '127.0.0.1',
+  )
+  const [portDraft, setPortDraft] = useState(
+    String(current?.kind === 'socks5' ? current.port : DEFAULT_SOCKS5_PORT),
+  )
+  const [torAvailable, setTorAvailable] = useState(true)
+  /** A refused route, kept apart from the probe so it is not overwritten. */
+  const [applyError, setApplyError] = useState<string | null>(null)
+  const problemId = useId()
+
+  useEffect(() => {
+    void commands.torAvailable().then(setTorAvailable, () => setTorAvailable(false))
+  }, [])
+
+  useEffect(() => {
+    const carried = workspace?.upstream_proxy ?? null
+    setManualOpen(upstreamMode(carried) === 'socks5')
+    setHostDraft(carried?.kind === 'socks5' ? carried.host : '127.0.0.1')
+    setPortDraft(String(carried?.kind === 'socks5' ? carried.port : DEFAULT_SOCKS5_PORT))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace?.id])
 
   // Confirm the connection whenever the VPN is on.
   useEffect(() => {
@@ -35,33 +91,79 @@ export function NetworkSection({ workspace, settings }: NetworkSectionProps) {
       return
     }
     setStatus({ kind: 'connecting' })
-    commands.testUpstream(current).then(
-      () => {
-        if (!cancelled) setStatus({ kind: 'ok' })
-      },
-      (e: unknown) => {
-        if (!cancelled) {
-          setStatus({ kind: 'fail', msg: e instanceof Error ? e.message : String(e) })
-        }
-      },
-    )
+    // A slow or bootstrapping upstream can outlast the interval; without this
+    // the attempts would stack up behind each other.
+    let inFlight = false
+    const probe = () => {
+      if (inFlight) return Promise.resolve()
+      inFlight = true
+      return commands.testUpstream(current).then(
+        () => {
+          if (!cancelled) setStatus({ kind: 'ok' })
+        },
+        (e: unknown) => {
+          if (!cancelled) {
+            setStatus({ kind: 'fail', msg: errorMessage(e) })
+          }
+        },
+      )
+      .finally(() => {
+        inFlight = false
+      })
+    }
+    void probe()
+    const timer = window.setInterval(() => void probe(), PROBE_INTERVAL_MS)
     return () => {
       cancelled = true
+      window.clearInterval(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upstreamKey])
 
-  const toggle = (next: boolean) => {
+  const apply = (next: Workspace['upstream_proxy']) => {
     if (!workspace) return
-    if (next) setStatus({ kind: 'connecting' }) // optimistic
+    if (JSON.stringify(next ?? null) === upstreamKey) return
+    setApplyError(null)
+    if (next !== null) setStatus({ kind: 'connecting' }) // optimistic
     void commands
-      .setWorkspaceUpstream(workspace.id, next ? { kind: 'tor' } : null)
-      .catch(() => undefined)
+      .setWorkspaceUpstream(workspace.id, next)
+      .then(
+        () => {
+          if (next === null) setStatus({ kind: 'idle' })
+        },
+        (e: unknown) => {
+          setApplyError(errorMessage(e))
+          setStatus({ kind: 'idle' })
+        },
+      )
       .finally(() => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }))
   }
 
+  const chooseRoute = (next: UpstreamMode) => {
+    setManualOpen(next === 'socks5')
+    if (next === 'socks5') return
+    apply(next === 'tor' ? { kind: 'tor' } : null)
+  }
+  const showManual = manualOpen || mode === 'socks5'
+  /** SOCKS5 is selected but nothing routes through it yet. */
+  const unapplied = showManual && mode !== 'socks5'
+
+  const hostProblem = proxyHostProblem(hostDraft)
+  const portProblem = proxyPortProblem(portDraft)
+  const manualProblem = hostProblem ?? portProblem
+  const applyManual = () => {
+    if (manualProblem !== null) return
+    apply({ kind: 'socks5', host: hostDraft.trim(), port: Number.parseInt(portDraft, 10) })
+  }
+
   const provider = dohProviderFor(settings.doh_resolver)
-  const dnsBypassed = on
+  // Both upstreams resolve for themselves.
+  const dnsNote =
+    mode === 'tor'
+      ? 'This workspace routes through Tor, which resolves at its exit, so this provider is not used here.'
+      : mode === 'socks5'
+        ? 'This workspace routes through a SOCKS5 proxy, which resolves for itself, so this provider is not used here.'
+        : DOH_PROVIDERS.find((p) => p.id === provider)?.note
 
   const chooseProvider = (id: DohProviderId) => {
     const next = DOH_PROVIDERS.find((p) => p.id === id)
@@ -72,7 +174,7 @@ export function NetworkSection({ workspace, settings }: NetworkSectionProps) {
       .then(() => commands.resolveHostname('example.com'))
       .then(
         () => setDns({ kind: 'ok' }),
-        (e: unknown) => setDns({ kind: 'fail', msg: e instanceof Error ? e.message : String(e) }),
+        (e: unknown) => setDns({ kind: 'fail', msg: errorMessage(e) }),
       )
       .finally(() => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }))
   }
@@ -83,17 +185,94 @@ export function NetworkSection({ workspace, settings }: NetworkSectionProps) {
       {workspace && (
         <div className="row">
           <div className="l">
-            <span>VPN (Tor)</span>
-            <span>Route this workspace through the built-in Tor network. First connect bootstraps and can take a few seconds.</span>
+            <span>Route this workspace</span>
+            <span className={cx({ 'is-error': applyError !== null })}>
+              {applyError !== null
+                ? applyError
+                : unapplied
+                ? `Not applied yet: this workspace still routes ${
+                    mode === 'tor' ? 'through Tor' : 'directly'
+                  }.`
+                : mode === 'tor'
+                  ? 'Through the built-in Tor network. The first connection bootstraps and can take a few seconds.'
+                  : mode === 'socks5'
+                    ? 'Through the SOCKS5 proxy below, which resolves its own DNS.'
+                    : torAvailable
+                      ? 'Straight out, with no proxy in between.'
+                      : 'Straight out. Built-in Tor is not included in this build.'}
+            </span>
           </div>
-          <Switch checked={on} onChange={toggle} label="VPN" />
+          <Segmented
+            value={showManual ? 'socks5' : mode}
+            onChange={chooseRoute}
+            options={ROUTE_OPTIONS.filter((o) => o.value !== 'tor' || torAvailable)}
+            ariaLabel="Upstream route"
+          />
+        </div>
+      )}
+      {workspace && showManual && (
+        <div className="row">
+          <div className="l">
+            <span>SOCKS5 proxy</span>
+            <span
+              id={problemId}
+              aria-live="polite"
+              className={cx({ 'is-error': manualProblem !== null })}
+            >
+              {manualProblem ?? 'The host and port of a proxy running on your machine or network.'}
+            </span>
+          </div>
+          <div className="kb-shortcut-add">
+            <input
+              type="text"
+              className="kb-text-input"
+              placeholder="127.0.0.1"
+              value={hostDraft}
+              aria-invalid={hostProblem !== null}
+              aria-describedby={problemId}
+              onChange={(e) => setHostDraft(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') applyManual()
+              }}
+              aria-label="SOCKS5 proxy host"
+            />
+            <input
+              type="text"
+              inputMode="numeric"
+              className="kb-text-input kb-port-input"
+              placeholder={String(DEFAULT_SOCKS5_PORT)}
+              value={portDraft}
+              aria-invalid={portProblem !== null}
+              aria-describedby={problemId}
+              onChange={(e) => setPortDraft(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') applyManual()
+              }}
+              aria-label="SOCKS5 proxy port"
+            />
+            <button
+              type="button"
+              className="kb-btn is-primary"
+              onClick={applyManual}
+              disabled={manualProblem !== null}
+              aria-describedby={problemId}
+            >
+              Apply
+            </button>
+          </div>
         </div>
       )}
       {workspace && on && (
         <div className="row">
           <div className="l">
             <span>Connection</span>
-            <span>Status of the Tor connection for this workspace.</span>
+            <span className={cx({ 'is-error': status.kind === 'fail' })}>
+              {status.kind === 'fail'
+                ? status.msg
+                : mode === 'tor'
+                  ? 'Status of the Tor connection for this workspace.'
+                  : 'Whether the proxy answers and speaks SOCKS5.'}
+            </span>
           </div>
           <ProbeBadge status={status} />
         </div>
@@ -102,9 +281,7 @@ export function NetworkSection({ workspace, settings }: NetworkSectionProps) {
         <div className="l">
           <span>Encrypted DNS</span>
           <span>
-            {dnsBypassed
-              ? 'This workspace routes through Tor, which resolves at its exit, so this provider is not used here.'
-              : DOH_PROVIDERS.find((p) => p.id === provider)?.note}
+            {dnsNote}
           </span>
         </div>
         <Segmented

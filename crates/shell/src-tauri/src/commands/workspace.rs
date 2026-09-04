@@ -145,7 +145,7 @@ pub async fn set_workspace_privacy_mode(
     })
     .await?;
 
-    state.update_proxy_policy(id).await;
+    let _ = state.update_proxy_policy(id, false).await;
 
     let spec = state.content_rule_spec(mode);
     let tab_labels: Vec<String> = {
@@ -188,6 +188,20 @@ pub async fn set_workspace_upstream(
     id: WorkspaceId,
     upstream: Option<UpstreamProxy>,
 ) -> WisResult<Workspace> {
+    let upstream = match upstream {
+        Some(proxy) => {
+            let proxy = proxy.normalized();
+            proxy.validate()?;
+            Some(proxy)
+        }
+        None => None,
+    };
+
+    state
+        .resolve_upstream(upstream.clone())
+        .await
+        .map_err(WisError::from)?;
+
     let workspace = mutate(&app, &state, |s| {
         let next = s.with_workspace_upstream_proxy(id, upstream.clone())?;
         let updated = next.workspace(id)?.clone();
@@ -196,7 +210,10 @@ pub async fn set_workspace_upstream(
     })
     .await?;
 
-    state.update_proxy_policy(id).await;
+    state
+        .update_proxy_policy(id, true)
+        .await
+        .map_err(WisError::from)?;
 
     let tab_labels: Vec<String> = {
         let browser = state.browser.lock().await;
@@ -232,15 +249,20 @@ pub(crate) fn is_chrome_url(url: &str) -> bool {
 /// Tor is "probed" by bootstrapping the embedded client.
 #[tauri::command]
 pub async fn test_upstream(state: State<'_, AppState>, upstream: UpstreamProxy) -> WisResult<()> {
+    let upstream = upstream.normalized();
+    upstream.validate()?;
     match upstream {
         UpstreamProxy::Tor => {
-            state
-                .ensure_tor()
-                .await
-                .map(|_| ())
-                .map_err(|e| WisError::InvalidInput {
-                    message: e.to_string(),
-                })
+            // Probe the client's currently listening port.
+            let port = state.ensure_tor().await.map_err(|e| WisError::InvalidInput {
+                message: e.to_string(),
+            })?;
+            wis_network::probe_upstream(&UpstreamProxy::Socks5 {
+                host: "127.0.0.1".to_string(),
+                port,
+            })
+            .await
+            .map_err(|reason| WisError::InvalidInput { message: reason })
         }
         other => wis_network::probe_upstream(&other)
             .await

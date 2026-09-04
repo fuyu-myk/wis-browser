@@ -22,6 +22,7 @@ pub async fn tunnel(
     req: Request<Incoming>,
     resolver: Arc<dyn Resolver>,
     upstream: Option<UpstreamProxy>,
+    mut route_rx: tokio::sync::watch::Receiver<u64>,
 ) -> Response<BoxBody<Bytes, hyper::Error>> {
     let (host, port) = match parse_authority(&req) {
         Some(pair) => pair,
@@ -40,9 +41,24 @@ pub async fn tunnel(
             Ok(upgraded) => {
                 let mut upgraded = TokioIo::new(upgraded);
                 let mut upstream = upstream;
-                if let Err(err) = tokio::io::copy_bidirectional(&mut upgraded, &mut upstream).await
-                {
-                    tracing::debug!("tunnel closed: {err}");
+                // A route change drops this tunnel.
+                let rerouted = async {
+                    if route_rx.changed().await.is_ok() {
+                        return;
+                    }
+
+                    std::future::pending::<()>().await
+                };
+
+                tokio::select! {
+                    copied = tokio::io::copy_bidirectional(&mut upgraded, &mut upstream) => {
+                        if let Err(err) = copied {
+                            tracing::debug!("tunnel closed: {err}");
+                        }
+                    }
+                    _ = rerouted => {
+                        tracing::debug!("tunnel cut: the workspace route changed");
+                    }
                 }
             }
             Err(err) => tracing::warn!("CONNECT upgrade failed: {err}"),

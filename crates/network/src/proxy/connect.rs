@@ -54,6 +54,11 @@ pub async fn probe_upstream(upstream: &UpstreamProxy) -> Result<(), String> {
     if method[0] != 0x05 {
         return Err(format!("{host}:{port} is not a SOCKS5 proxy"));
     }
+    if method[1] == 0xFF {
+        return Err(format!(
+            "{host}:{port} requires SOCKS5 authentication, which is not supported"
+        ));
+    }
 
     Ok(())
 }
@@ -70,7 +75,7 @@ pub async fn connect_target(
         Some(UpstreamProxy::Socks5 {
             host: proxy_host,
             port: proxy_port,
-        }) => socks5_connect(proxy_host, *proxy_port, host, port).await,
+        }) => socks5_connect(proxy_host, *proxy_port, host, port, resolver).await,
         // The shell resolves Tor to a concrete loopback SOCKS5 address before
         // building the policy, so it should never reach the transport layer.
         Some(UpstreamProxy::Tor) => {
@@ -82,6 +87,16 @@ pub async fn connect_target(
 /// Direct connection: DoH-resolve the host, then dial each address in turn
 /// until one connects.
 async fn direct(host: &str, port: u16, resolver: &Arc<dyn Resolver>) -> Result<TcpStream, String> {
+    dial_resolved(host, port, resolver).await
+}
+
+/// Resolve `host` through the configured resolver, then dial each address it
+/// returns until one connects.
+async fn dial_resolved(
+    host: &str,
+    port: u16,
+    resolver: &Arc<dyn Resolver>,
+) -> Result<TcpStream, String> {
     let addrs = match timeout(RESOLVE_TIMEOUT, resolver.resolve(host)).await {
         Ok(Ok(addrs)) => addrs,
         Ok(Err(e)) => return Err(format!("dns {host}: {e}")),
@@ -120,15 +135,19 @@ async fn socks5_connect(
     proxy_port: u16,
     host: &str,
     port: u16,
+    resolver: &Arc<dyn Resolver>,
 ) -> Result<TcpStream, String> {
     let host_bytes = host.as_bytes();
     if host_bytes.len() > 255 {
         return Err(format!("socks5: host {host} too long"));
     }
 
-    let mut s = TcpStream::connect((proxy_host, proxy_port))
-        .await
-        .map_err(|e| format!("socks5 connect {proxy_host}:{proxy_port}: {e}"))?;
+    let mut s = match proxy_host.parse::<std::net::IpAddr>() {
+        Ok(ip) => TcpStream::connect((ip, proxy_port))
+            .await
+            .map_err(|e| format!("socks5 connect {proxy_host}:{proxy_port}: {e}"))?,
+        Err(_) => dial_resolved(proxy_host, proxy_port, resolver).await?,
+    };
 
     // Greeting: VER=5, NMETHODS=1, METHODS=[0x00 no-auth].
     s.write_all(&[0x05, 0x01, 0x00])

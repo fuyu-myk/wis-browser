@@ -37,6 +37,8 @@ pub struct ProxyServer {
     shutdown_tx: watch::Sender<bool>,
     /// Hot-swappable request policy.
     policy_tx: watch::Sender<Arc<RequestPolicy>>,
+    /// Bumped to cut tunnels opened under a previous route.
+    route_tx: watch::Sender<u64>,
 }
 
 impl ProxyServer {
@@ -57,6 +59,7 @@ impl ProxyServer {
         let local_addr = listener.local_addr()?;
         let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
         let (policy_tx, policy_rx) = watch::channel(policy);
+        let (route_tx, route_rx) = watch::channel(0u64);
 
         tokio::spawn(async move {
             loop {
@@ -79,7 +82,8 @@ impl ProxyServer {
                         };
                         let policy_rx = policy_rx.clone();
                         let resolver = resolver.clone();
-                        tokio::spawn(serve_connection(stream, policy_rx, resolver));
+                        let route_rx = route_rx.clone();
+                        tokio::spawn(serve_connection(stream, policy_rx, resolver, route_rx));
                     }
                 }
             }
@@ -91,12 +95,19 @@ impl ProxyServer {
             local_addr,
             shutdown_tx,
             policy_tx,
+            route_tx,
         })
     }
 
     /// Swap in a new request policy; takes effect on the next request.
     pub fn update_policy(&self, policy: Arc<RequestPolicy>) {
         let _ = self.policy_tx.send(policy);
+    }
+
+    /// Cut every tunnel this proxy is carrying. A new policy binds new
+    /// requests only.
+    pub fn sever_open_connections(&self) {
+        self.route_tx.send_modify(|epoch| *epoch = epoch.wrapping_add(1));
     }
 
     pub fn local_addr(&self) -> SocketAddr {
@@ -118,13 +129,18 @@ async fn serve_connection(
     stream: tokio::net::TcpStream,
     policy_rx: watch::Receiver<Arc<RequestPolicy>>,
     resolver: Arc<dyn Resolver>,
+    route_rx: watch::Receiver<u64>,
 ) {
     let io = TokioIo::new(stream);
     let service = service_fn(move |req: Request<Incoming>| {
+        // A cloned receiver inherits the version its parent last saw, and the
+        // parent here never observes one.
+        let mut route_rx = route_rx.clone();
+        route_rx.mark_unchanged();
         let policy = policy_rx.borrow().clone();
         let resolver = resolver.clone();
         async move {
-            let resp: Response<_> = handler::handle(req, policy, resolver).await;
+            let resp: Response<_> = handler::handle(req, policy, resolver, route_rx).await;
             Ok::<_, Infallible>(resp)
         }
     });

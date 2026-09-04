@@ -4247,6 +4247,7 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 }
 .kb-widget-add .kb-text-input:first-child { flex: 0 1 160px; }
 .kb-widget-add .kb-text-input { flex: 1 1 220px; min-width: 160px; }
+.kb-shortcut-add .kb-text-input.kb-port-input { flex: 0 0 84px; min-width: 84px; }
 .kb-widget-add-problem {
   margin: 6px 0 0;
   font-size: 12px;

@@ -10,6 +10,7 @@
 
 use std::convert::Infallible;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::time::Duration;
 use std::sync::Arc;
 
 use http_body_util::{BodyExt, Empty, Full};
@@ -17,6 +18,7 @@ use hyper::body::{Bytes, Incoming};
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response};
 use hyper_util::rt::TokioIo;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use wis_network::{
     policy::Decision, ProxyServer, RequestPolicy, Resolver, StubResolver, SwappableResolver,
@@ -222,6 +224,143 @@ async fn proxy_blocks_connect_to_tracker_host() {
     let resp = sender.send_request(req).await.expect("send");
     // 502: the proxy refused to tunnel to a blocked host.
     assert_eq!(resp.status(), 502);
+}
+
+/// A route change cannot re-point a tunnel that is already open: it was
+/// dialled through the old upstream. Severing is what stops it carrying
+/// traffic the old way, which for a switch to Tor means carrying it in the
+/// clear.
+#[tokio::test]
+async fn severing_cuts_a_tunnel_opened_under_the_previous_route() {
+    // Echoes whatever it receives, so the tunnel can be shown live first.
+    let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+        .await
+        .expect("bind echo target");
+    let target_port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut buf = [0u8; 64];
+                loop {
+                    match stream.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            if stream.write_all(&buf[..n]).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    });
+
+    let resolver: Arc<dyn Resolver> =
+        Arc::new(StubResolver::new().with("localhost", vec![IpAddr::V4(Ipv4Addr::LOCALHOST)]));
+    let proxy = start_proxy(TrackerBlocker::empty(), resolver).await;
+
+    let stream = TcpStream::connect(("127.0.0.1", proxy.port()))
+        .await
+        .expect("connect to proxy");
+    let io = TokioIo::new(stream);
+    let (mut sender, conn) = hyper::client::conn::http1::handshake::<_, Empty<Bytes>>(io)
+        .await
+        .expect("handshake");
+    tokio::spawn(async move {
+        let _ = conn.with_upgrades().await;
+    });
+
+    let req = Request::builder()
+        .method(Method::CONNECT)
+        .uri(format!("localhost:{target_port}"))
+        .body(Empty::<Bytes>::new())
+        .expect("request build");
+    let resp = sender.send_request(req).await.expect("send");
+    assert_eq!(resp.status(), 200, "the tunnel should open");
+
+    let upgraded = hyper::upgrade::on(resp).await.expect("upgrade");
+    let mut tunnel = TokioIo::new(upgraded);
+
+    tunnel.write_all(b"ping").await.expect("write through tunnel");
+    let mut echoed = [0u8; 4];
+    tunnel.read_exact(&mut echoed).await.expect("read echo");
+    assert_eq!(&echoed, b"ping", "the tunnel carries traffic before severing");
+
+    proxy.sever_open_connections();
+
+    let mut after = [0u8; 1];
+    let closed = tokio::time::timeout(Duration::from_secs(5), tunnel.read(&mut after))
+        .await
+        .expect("a severed tunnel must close rather than hang");
+    assert!(
+        matches!(closed, Ok(0) | Err(_)),
+        "expected the tunnel to end, read returned {closed:?}"
+    );
+}
+
+/// Severing must end the tunnels open at that moment and nothing else. A
+/// receiver that is born already-stale would cut every later tunnel too,
+/// which is every page load after a single route change.
+#[tokio::test]
+async fn a_tunnel_opened_after_a_sever_still_carries_traffic() {
+    let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+        .await
+        .expect("bind echo target");
+    let target_port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut buf = [0u8; 64];
+                loop {
+                    match stream.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            if stream.write_all(&buf[..n]).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    });
+
+    let resolver: Arc<dyn Resolver> =
+        Arc::new(StubResolver::new().with("localhost", vec![IpAddr::V4(Ipv4Addr::LOCALHOST)]));
+    let proxy = start_proxy(TrackerBlocker::empty(), resolver).await;
+
+    // A route change with nothing open, as switching upstream in a fresh
+    // window does.
+    proxy.sever_open_connections();
+
+    let stream = TcpStream::connect(("127.0.0.1", proxy.port()))
+        .await
+        .expect("connect to proxy");
+    let io = TokioIo::new(stream);
+    let (mut sender, conn) = hyper::client::conn::http1::handshake::<_, Empty<Bytes>>(io)
+        .await
+        .expect("handshake");
+    tokio::spawn(async move {
+        let _ = conn.with_upgrades().await;
+    });
+
+    let req = Request::builder()
+        .method(Method::CONNECT)
+        .uri(format!("localhost:{target_port}"))
+        .body(Empty::<Bytes>::new())
+        .expect("request build");
+    let resp = sender.send_request(req).await.expect("send");
+    assert_eq!(resp.status(), 200);
+
+    let upgraded = hyper::upgrade::on(resp).await.expect("upgrade");
+    let mut tunnel = TokioIo::new(upgraded);
+    tunnel.write_all(b"ping").await.expect("write through tunnel");
+    let mut echoed = [0u8; 4];
+    tunnel
+        .read_exact(&mut echoed)
+        .await
+        .expect("a tunnel opened after a sever must carry traffic");
+    assert_eq!(&echoed, b"ping");
 }
 
 #[tokio::test]
