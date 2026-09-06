@@ -320,3 +320,23 @@ host falls back to default handling. The block signature matches Apple's
 Removal: when wry ships an authentication-challenge API, drop the static,
 both delegate additions, the `Cargo.toml` features, and the `lib.rs`
 re-export, and move the shell's evaluator registration onto it.
+
+## Seventh patch: forced main-frame downloads (macOS) (Wis-original)
+
+- `src/wkwebview/navigation.rs` (`navigation_policy_response`): upstream only
+  routes a response to the download delegate when `canShowMIMEType` is false,
+  so a PDF (and any attachment WebKit can render: images, text) opens in
+  WebKit's inline PDF viewer, whose HUD buttons ("open in Preview", download)
+  call private UI-delegate hooks wry does not implement, leaving the tab with
+  no way back. The patch also asks the embedder policy for main-frame
+  responses: `wry::set_main_frame_download_policy(mime_types, attachments)`
+  (`src/wkwebview/mod.rs`, a process-wide `RwLock`) forces the Download
+  policy for the listed MIME types and, when `attachments` is set, for any
+  `Content-Disposition: attachment` response (`NSHTTPURLResponse
+  valueForHTTPHeaderField:`, macOS 10.15+). Subframes (`isForMainFrame`
+  false) keep rendering inline so embedded PDF previews are untouched. Wis
+  sets `["application/pdf"]` + attachments at setup.
+
+Removal checklist: wry exposes a navigation-response policy hook -> move the
+policy into the shell's handler and drop the static + `lib.rs` re-export.
+

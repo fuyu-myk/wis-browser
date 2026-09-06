@@ -69,14 +69,56 @@ pub fn take_last_page_load_error() -> Option<(i64, String, Option<Vec<u8>>)> {
   LAST_PAGE_LOAD_ERROR.with(|cell| cell.borrow_mut().take())
 }
 
+// WIS patch: main-frame responses the embedder wants downloaded even though
+// WebKit could render them inline (PDF), plus `Content-Disposition:
+// attachment` responses. Consulted by `navigation_policy_response`. See
+// WIS-PATCH.md.
+static MAIN_FRAME_DOWNLOAD_POLICY: std::sync::RwLock<(Vec<String>, bool)> =
+  std::sync::RwLock::new((Vec::new(), false));
+
+/// WIS patch: route main-frame responses whose MIME type is one of
+/// `mime_types` (or, with `attachments`, that carry a
+/// `Content-Disposition: attachment` header) into the download pipeline
+/// instead of rendering them inline. Subframes are never affected.
+pub fn set_main_frame_download_policy(mime_types: &[&str], attachments: bool) {
+  if let Ok(mut policy) = MAIN_FRAME_DOWNLOAD_POLICY.write() {
+    *policy = (
+      mime_types.iter().map(|m| m.to_ascii_lowercase()).collect(),
+      attachments,
+    );
+  }
+}
+
+pub(crate) fn main_frame_download_forced(
+  mime_type: Option<&str>,
+  disposition: Option<&str>,
+) -> bool {
+  let Ok(policy) = MAIN_FRAME_DOWNLOAD_POLICY.read() else {
+    return false;
+  };
+  let (types, attachments) = &*policy;
+
+  let by_type = mime_type.is_some_and(|m| {
+    let m = m.trim().to_ascii_lowercase();
+    types.iter().any(|t| *t == m)
+  });
+  let by_disposition = *attachments
+    && disposition.is_some_and(|d| {
+      d.trim_start()
+        .to_ascii_lowercase()
+        .starts_with("attachment")
+    });
+
+  by_type || by_disposition
+}
+
 // WIS patch: embedder hook consulted on every server-trust authentication
 // challenge with `(host, leaf certificate DER)`. When it returns true,
 // the challenge is answered with a credential built from the server's trust
 // (accepting its certificate); otherwise, the system default handling is kept.
 // See WIS-PATCH.md.
-static SERVER_TRUST_EVALUATOR: std::sync::OnceLock<
-  Box<dyn Fn(&str, &[u8]) -> bool + Send + Sync>,
-> = std::sync::OnceLock::new();
+static SERVER_TRUST_EVALUATOR: std::sync::OnceLock<Box<dyn Fn(&str, &[u8]) -> bool + Send + Sync>> =
+  std::sync::OnceLock::new();
 
 /// WIS patch: register the process-wide server-trust evaluator. The first
 /// registration wins; later calls are ignored.

@@ -374,6 +374,11 @@ pub fn run() {
             // Trackpad scroll-phase monitor (macOS; no-op elsewhere).
             swipe_nav::install_phase_monitor(app.handle());
 
+            // PDFs and attachment responses download instead of rendering in
+            // WebKit's viewer.
+            #[cfg(target_os = "macos")]
+            wry::set_main_frame_download_policy(&["application/pdf"], true);
+
             // App handle for the native "Save password?" capture handler.
             capture::set_app_handle(app.handle().clone());
 

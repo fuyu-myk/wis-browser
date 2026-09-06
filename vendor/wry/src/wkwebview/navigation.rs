@@ -1,7 +1,7 @@
 use objc2::rc::Retained;
 use objc2::{msg_send, DeclaredClass};
 use objc2_foundation::{
-  NSError, NSObjectProtocol, NSString, NSURLAuthenticationChallenge,
+  ns_string, NSError, NSHTTPURLResponse, NSObjectProtocol, NSString, NSURLAuthenticationChallenge,
   NSURLAuthenticationMethodServerTrust, NSURLCredential, NSURLErrorFailingURLPeerTrustErrorKey,
   NSURLSessionAuthChallengeDisposition,
 };
@@ -220,8 +220,20 @@ pub(crate) fn navigation_policy_response(
 ) {
   unsafe {
     let can_show_mime_type = response.canShowMIMEType();
+    // WIS patch: the embedder can force main-frame downloads (PDF, attachment
+    // disposition) that WebKit would otherwise render inline. See WIS-PATCH.md.
+    let forced = response.isForMainFrame() && {
+      let resp = response.response();
+      let mime_type = resp.MIMEType().map(|m| m.to_string());
+      let disposition = resp
+        .downcast::<NSHTTPURLResponse>()
+        .ok()
+        .and_then(|http| http.valueForHTTPHeaderField(ns_string!("Content-Disposition")))
+        .map(|d| d.to_string());
+      super::main_frame_download_forced(mime_type.as_deref(), disposition.as_deref())
+    };
 
-    if !can_show_mime_type {
+    if !can_show_mime_type || forced {
       let has_download_handler = this.ivars().has_download_handler;
       if has_download_handler {
         (*handler).call((WKNavigationResponsePolicy::Download,));
