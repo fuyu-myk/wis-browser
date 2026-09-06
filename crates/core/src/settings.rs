@@ -101,6 +101,12 @@ pub struct UserSettings {
     /// exposed as a toggle because the check performs network lookups.
     #[serde(default = "default_fraud_warning_enabled")]
     pub fraud_warning_enabled: bool,
+    /// Global Privacy Control: ask sites not to sell or share the user's
+    /// data. Sent as the `Sec-GPC: 1` header on requests the proxy can see
+    /// (plain HTTP; encrypted traffic passes through untouched) and exposed as
+    /// `navigator.globalPrivacyControl` in every frame. On by default.
+    #[serde(default = "default_global_privacy_control")]
+    pub global_privacy_control: bool,
     /// Enable WebKit Media Source + Encrypted Media Extensions on remote
     /// pages (adaptive streaming + the FairPlay key system). On by default
     /// (MSE is off in embedded WKWebView, breaking many video sites);
@@ -282,6 +288,10 @@ fn default_fraud_warning_enabled() -> bool {
     true
 }
 
+fn default_global_privacy_control() -> bool {
+    true
+}
+
 fn default_video_popout_enabled() -> bool {
     true
 }
@@ -374,6 +384,7 @@ impl Default for UserSettings {
             tab_sleep_minutes: 15,
             persist_sessions: true,
             fraud_warning_enabled: true,
+            global_privacy_control: true,
             media_extensions_enabled: true,
             video_popout_enabled: true,
             user_agent_profile: UaProfile::default(),
@@ -461,6 +472,8 @@ pub struct UserSettingsPatch {
     pub persist_sessions: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fraud_warning_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub global_privacy_control: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media_extensions_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -576,6 +589,9 @@ impl UserSettings {
             fraud_warning_enabled: patch
                 .fraud_warning_enabled
                 .unwrap_or(self.fraud_warning_enabled),
+            global_privacy_control: patch
+                .global_privacy_control
+                .unwrap_or(self.global_privacy_control),
             media_extensions_enabled: patch
                 .media_extensions_enabled
                 .unwrap_or(self.media_extensions_enabled),

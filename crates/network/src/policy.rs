@@ -39,6 +39,7 @@ pub struct RequestPolicy {
     upgrader: HttpsUpgrader,
     per_site: Vec<PerSitePolicy>,
     upstream: Option<UpstreamProxy>,
+    global_privacy_control: bool,
 }
 
 impl RequestPolicy {
@@ -49,6 +50,15 @@ impl RequestPolicy {
             privacy_mode,
             per_site: Vec::new(),
             upstream: None,
+            global_privacy_control: false,
+        }
+    }
+
+    /// Send `Sec-GPC: 1` on every request the proxy forwards itself.
+    pub fn with_global_privacy_control(self, enabled: bool) -> Self {
+        Self {
+            global_privacy_control: enabled,
+            ..self
         }
     }
 
@@ -72,6 +82,10 @@ impl RequestPolicy {
 
     pub fn privacy_mode(&self) -> PrivacyMode {
         self.privacy_mode
+    }
+
+    pub fn global_privacy_control(&self) -> bool {
+        self.global_privacy_control
     }
 
     /// Run the request through the full policy. The order is significant:

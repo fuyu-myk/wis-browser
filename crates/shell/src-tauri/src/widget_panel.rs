@@ -348,7 +348,15 @@ pub async fn open_widget_panel(
         return Ok(());
     }
 
-    let (workspace_id, ephemeral, privacy_mode, user_agent, fraud_warning, media_extensions) = {
+    let (
+        workspace_id,
+        ephemeral,
+        privacy_mode,
+        user_agent,
+        fraud_warning,
+        media_extensions,
+        global_privacy_control,
+    ) = {
         let browser = state.browser.lock().await;
         // One workspace per window: the panel belongs to the calling window's
         // workspace (its data store, proxy, privacy mode).
@@ -373,6 +381,7 @@ pub async fn open_widget_panel(
             user_agent,
             browser.settings.fraud_warning_enabled,
             browser.settings.media_extensions_enabled,
+            browser.settings.global_privacy_control,
         )
     };
 
@@ -400,7 +409,8 @@ pub async fn open_widget_panel(
     }
     builder = builder
         .initialization_script(crate::link_open::page_script())
-        .initialization_script(crate::link_open::panel_page_script());
+        .initialization_script(crate::link_open::panel_page_script())
+        .initialization_script_for_all_frames(crate::gpc::page_script(global_privacy_control));
 
     // Fluent overlay scrollbars; WebView2 only.
     #[cfg(windows)]

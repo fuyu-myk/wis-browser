@@ -473,6 +473,7 @@ impl AppState {
         let browser = self.browser.lock().await;
         let mode = browser.active_workspace().privacy_mode;
         RequestPolicy::new(mode, self.current_tracker_blocker())
+            .with_global_privacy_control(browser.settings.global_privacy_control)
     }
 
     /// Lazily start (or look up) the workspace's loopback proxy and return
@@ -483,12 +484,16 @@ impl AppState {
     /// HTTPS-First upgrades. HTTPS is tunnelled raw; path-level filtering is
     /// enforced in the WebView engine (see `content_filter`).
     pub async fn ensure_proxy_for(&self, workspace_id: WorkspaceId) -> Result<u16, WisShellError> {
-        let (privacy_mode, upstream_setting) = {
+        let (privacy_mode, upstream_setting, global_privacy_control) = {
             let browser = self.browser.lock().await;
             let ws = browser
                 .workspace(workspace_id)
                 .map_err(WisShellError::from)?;
-            (ws.privacy_mode, ws.upstream_proxy.clone())
+            (
+                ws.privacy_mode,
+                ws.upstream_proxy.clone(),
+                browser.settings.global_privacy_control,
+            )
         };
 
         let upstream = self.resolve_upstream(upstream_setting.clone()).await?;
@@ -498,7 +503,8 @@ impl AppState {
             return Ok(server.port());
         }
 
-        let policy = Arc::new(self.build_request_policy(privacy_mode, upstream));
+        let policy =
+            Arc::new(self.build_request_policy(privacy_mode, upstream, global_privacy_control));
         let bind: SocketAddr = ([127, 0, 0, 1], 0).into();
         let server = ProxyServer::start(policy, self.resolver.clone(), bind)
             .await
@@ -531,11 +537,24 @@ impl AppState {
         &self,
         privacy_mode: PrivacyMode,
         upstream: Option<wis_core::UpstreamProxy>,
+        global_privacy_control: bool,
     ) -> RequestPolicy {
-        let policy = RequestPolicy::new(privacy_mode, self.current_tracker_blocker());
+        let policy = RequestPolicy::new(privacy_mode, self.current_tracker_blocker())
+            .with_global_privacy_control(global_privacy_control);
         match upstream {
             Some(up) => policy.with_upstream(up),
             None => policy,
+        }
+    }
+
+    /// Re-point every running proxy at its workspace's current policy, for a
+    /// global setting change. Open connections are kept.
+    pub async fn refresh_all_proxy_policies(&self) {
+        let ids: Vec<WorkspaceId> = self.proxies.lock().await.keys().cloned().collect();
+        for id in ids {
+            if let Err(err) = self.update_proxy_policy(id, false).await {
+                log::warn!("workspace {id} proxy policy refresh failed: {err}");
+            }
         }
     }
 
@@ -546,10 +565,14 @@ impl AppState {
         workspace_id: WorkspaceId,
         sever: bool,
     ) -> Result<(), WisShellError> {
-        let (privacy_mode, upstream_setting) = {
+        let (privacy_mode, upstream_setting, global_privacy_control) = {
             let browser = self.browser.lock().await;
             match browser.workspace(workspace_id) {
-                Ok(ws) => (ws.privacy_mode, ws.upstream_proxy.clone()),
+                Ok(ws) => (
+                    ws.privacy_mode,
+                    ws.upstream_proxy.clone(),
+                    browser.settings.global_privacy_control,
+                ),
                 Err(_) => return Ok(()),
             }
         };
@@ -576,7 +599,8 @@ impl AppState {
 
         let proxies = self.proxies.lock().await;
         if let Some(server) = proxies.get(&workspace_id) {
-            let policy = Arc::new(self.build_request_policy(privacy_mode, upstream));
+            let policy =
+                Arc::new(self.build_request_policy(privacy_mode, upstream, global_privacy_control));
             server.update_policy(policy);
             if sever {
                 server.sever_open_connections();

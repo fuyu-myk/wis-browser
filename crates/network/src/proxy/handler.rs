@@ -65,7 +65,15 @@ async fn handle_http(
     };
 
     match decision {
-        Decision::Allow => forward(req, resolver, policy.upstream().cloned()).await,
+        Decision::Allow => {
+            forward(
+                req,
+                resolver,
+                policy.upstream().cloned(),
+                policy.global_privacy_control(),
+            )
+            .await
+        }
         Decision::Rewrite { url: new_url } => moved_permanently(new_url.as_str()),
         Decision::Block { reason } => {
             tracing::info!(target = %url, %reason, "blocked HTTP");

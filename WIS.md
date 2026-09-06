@@ -92,7 +92,7 @@ Each group maps to a `docs/architecture/` doc that carries the mechanism details
 
 ### Privacy & network (`docs/architecture/privacy-and-network-engine.md`)
 
-- **Network privacy**: per-request DoH with a provider picker (Cloudflare, Quad9, Google; applied live, no restart), HTTPS-First, host-level + `WKContentRuleList` tracker blocking, and a per-workspace upstream proxy (built-in Tor, or a SOCKS5 host and port entered in settings and validated at the boundary, both reachability-probed).
+- **Network privacy**: per-request DoH with a provider picker (Cloudflare, Quad9, Google; applied live, no restart), HTTPS-First, host-level + `WKContentRuleList` tracker blocking, and a per-workspace upstream proxy (built-in Tor, or a SOCKS5 host and port entered in settings and validated at the boundary, both reachability-probed), and Global Privacy Control (on by default: `Sec-GPC` on the plain-HTTP requests the proxy forwards, `navigator.globalPrivacyControl` in every frame).
 - **Cosmetic filtering + element picker / zapper**: hides empty ad slots / nags beyond network blocking (`wisCosmetic`/`wisZap`), `:has(...)` procedural rules included; per-host user rules persist. Runs on macOS/Windows/Linux (Linux via `gtk_dispatch`).
 - **Scriptlets & user scripts**: uBO `+js` (Brave resource library) and Tampermonkey `.user.js` injected per-navigation (page world, no `GM_*`); the scriptlet/user-script swap is macOS-only for now.
 - **Filter lists**: EasyList/EasyPrivacy plus user subscriptions feed the engine (YouTube ad blocking via uBO scriptlets); managed in Settings -> Privacy.

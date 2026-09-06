@@ -505,6 +505,8 @@ export interface UserSettings {
   persist_sessions: boolean
   /** WebKit fraudulent-website warning (Apple-proxied Safe Browsing). */
   fraud_warning_enabled: boolean
+  /** Global Privacy Control. */
+  global_privacy_control: boolean
   media_extensions_enabled: boolean
   /** Float a playing video as an always-on-top mini player on tab switch. */
   video_popout_enabled: boolean
@@ -586,6 +588,7 @@ export interface UserSettingsPatch {
   tab_sleep_minutes?: number
   persist_sessions?: boolean
   fraud_warning_enabled?: boolean
+  global_privacy_control?: boolean
   media_extensions_enabled?: boolean
   video_popout_enabled?: boolean
   user_agent_profile?: UaProfile

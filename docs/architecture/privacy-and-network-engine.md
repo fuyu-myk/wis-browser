@@ -56,3 +56,7 @@ Blocking is defense in depth across three layers, each catching what the others 
 ## Fraudulent website warning
 
 - `webview_prefs.rs` enables WebKit's `fraudulentWebsiteWarningEnabled` (Apple-proxied Safe Browsing, off by default in WKWebView) on every remote webview (tabs, Peek, widget panels), showing a full-page warning before a suspected phishing/malware site. It complements `wis_core::link_safety`'s structural heuristics with a real threat database. A Settings -> Privacy toggle (default on, since the check performs network lookups) re-applies to all live remote webviews without reloads. Local chrome/overlay webviews are never touched.
+
+## Global Privacy Control
+
+- `UserSettings.global_privacy_control` (default on) drives two halves. The proxy stamps `Sec-GPC: 1` on every request it forwards itself (`proxy/upstream.rs`, read from `RequestPolicy::global_privacy_control`). `gpc.rs` defines `navigator.globalPrivacyControl` in every frame of every remote webview (tabs, Peek, widget panels) at document start. A settings change re-points every running proxy (`AppState::refresh_all_proxy_policies`) and, on every live remote webview, flips the top frame of the current document through `window.__wisGpcSet` and installs one more document-start all-frames script that flips every later document. Flip scripts accumulate one per toggle per webview, the last one winning; loaded iframes follow on their next navigation.

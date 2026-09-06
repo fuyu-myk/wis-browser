@@ -149,7 +149,7 @@ pub async fn open_peek(
         let _ = existing.close();
     }
 
-    let (active_ws, ephemeral, user_agent, fraud_warning, media_extensions) = {
+    let (active_ws, ephemeral, user_agent, fraud_warning, media_extensions, global_privacy_control) = {
         let browser = state.browser.lock().await;
         // Preview through the calling window's workspace (one per window), so a
         // peek inherits that window's proxy / blocking / UA.
@@ -172,6 +172,7 @@ pub async fn open_peek(
             user_agent,
             browser.settings.fraud_warning_enabled,
             browser.settings.media_extensions_enabled,
+            browser.settings.global_privacy_control,
         )
     };
     #[cfg(not(windows))]
@@ -214,6 +215,8 @@ pub async fn open_peek(
         .expect("swipe_accent poisoned")
         .clone();
     builder = builder.initialization_script(crate::swipe_nav::accent_script(&swipe_accent));
+    builder = builder
+        .initialization_script_for_all_frames(crate::gpc::page_script(global_privacy_control));
 
     #[cfg(target_os = "macos")]
     {

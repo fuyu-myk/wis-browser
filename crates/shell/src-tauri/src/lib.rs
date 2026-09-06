@@ -22,6 +22,7 @@ mod external;
 mod favicons;
 mod file_io;
 mod find;
+mod gpc;
 #[cfg(target_os = "linux")]
 mod gtk_dispatch;
 mod hover_guard;

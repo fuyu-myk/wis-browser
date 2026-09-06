@@ -51,6 +51,7 @@ pub async fn update_settings(
     let theme_touched = patch.theme.is_some();
     let persistence_disabled = patch.persist_sessions == Some(false);
     let fraud_warning_changed = patch.fraud_warning_enabled;
+    let gpc_changed = patch.global_privacy_control;
     let media_extensions_changed = patch.media_extensions_enabled;
     let (settings, doh_changed) = mutate_immediate(&app, &state, |s| {
         let before = crate::state::doh_provider_of(s.settings.doh_resolver.as_deref());
@@ -101,6 +102,11 @@ pub async fn update_settings(
 
     if let Some(enabled) = fraud_warning_changed {
         crate::webview_prefs::apply_fraud_warning_to_all_remote(&app, enabled);
+    }
+
+    if let Some(enabled) = gpc_changed {
+        state.refresh_all_proxy_policies().await;
+        crate::gpc::apply_to_all_remote(&app, enabled);
     }
 
     if let Some(enabled) = media_extensions_changed {

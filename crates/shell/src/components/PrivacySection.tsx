@@ -130,6 +130,20 @@ export function PrivacySection({ settings, activeWorkspace, onUpdate }: PrivacyS
         </div>
         <div className="row">
           <div className="l">
+            <span>Global Privacy Control</span>
+            <span>
+              Ask sites not to sell or share your data. Every page sees this signal,
+              and it is sent only on unencrypted requests.
+            </span>
+          </div>
+          <Switch
+            checked={settings.global_privacy_control}
+            onChange={(global_privacy_control) => onUpdate({ global_privacy_control })}
+            label="Global Privacy Control"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
             <span>Streaming media support</span>
             <span>
               {isMacOS()

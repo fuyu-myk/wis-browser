@@ -25,6 +25,49 @@ use wis_network::{
     TrackerBlocker,
 };
 
+/// Spin up a tiny HTTP/1 server on `127.0.0.1:0` that answers every request
+/// with the value of the `header` it received, or `absent`, then return its
+/// bound port.
+async fn start_header_echo_upstream(header: &'static str) -> u16 {
+    let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+        .await
+        .expect("bind upstream");
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        loop {
+            let (stream, _) = match listener.accept().await {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            let io = TokioIo::new(stream);
+
+            tokio::spawn(async move {
+                let _ = hyper::server::conn::http1::Builder::new()
+                    .serve_connection(
+                        io,
+                        service_fn(move |req: Request<Incoming>| async move {
+                            let seen = req
+                                .headers()
+                                .get(header)
+                                .and_then(|v| v.to_str().ok())
+                                .unwrap_or("absent")
+                                .to_string();
+                            Ok::<_, Infallible>(
+                                Response::builder()
+                                    .status(200)
+                                    .body(Full::new(Bytes::from(seen)))
+                                    .unwrap(),
+                            )
+                        }),
+                    )
+                    .await;
+            });
+        }
+    });
+
+    port
+}
+
 /// Spin up a tiny HTTP/1 server on `127.0.0.1:0` that returns `200 OK`
 /// with the given body for every request, then return its bound port.
 async fn start_stub_upstream(body: &'static str) -> u16 {
@@ -61,13 +104,43 @@ async fn start_stub_upstream(body: &'static str) -> u16 {
 }
 
 async fn start_proxy(blocker: TrackerBlocker, resolver: Arc<dyn Resolver>) -> ProxyServer {
-    let policy = Arc::new(RequestPolicy::new(
+    let policy = RequestPolicy::new(wis_core::PrivacyMode::Balanced, Arc::new(blocker));
+    start_proxy_with(policy, resolver).await
+}
+
+async fn start_proxy_with(policy: RequestPolicy, resolver: Arc<dyn Resolver>) -> ProxyServer {
+    ProxyServer::start(
+        Arc::new(policy),
+        resolver,
+        SocketAddr::from(([127, 0, 0, 1], 0)),
+    )
+    .await
+    .expect("proxy start")
+}
+
+fn localhost_resolver() -> Arc<dyn Resolver> {
+    Arc::new(StubResolver::new().with("localhost", vec![IpAddr::V4(Ipv4Addr::LOCALHOST)]))
+}
+
+/// What the upstream saw in `Sec-GPC` for one request forwarded by a proxy
+/// whose policy has Global Privacy Control set to `enabled`.
+async fn gpc_seen_by_upstream(enabled: bool) -> Bytes {
+    let upstream_port = start_header_echo_upstream("sec-gpc").await;
+    let policy = RequestPolicy::new(
         wis_core::PrivacyMode::Balanced,
-        Arc::new(blocker),
-    ));
-    ProxyServer::start(policy, resolver, SocketAddr::from(([127, 0, 0, 1], 0)))
-        .await
-        .expect("proxy start")
+        Arc::new(TrackerBlocker::empty()),
+    )
+    .with_global_privacy_control(enabled);
+    let proxy = start_proxy_with(policy, localhost_resolver()).await;
+
+    let url = format!("http://localhost:{upstream_port}/");
+    let sent = if enabled { "0" } else { "1" };
+    let resp =
+        send_through_proxy_with_header(proxy.port(), Method::GET, &url, Some(("sec-gpc", sent)))
+            .await;
+    assert_eq!(resp.status(), 200);
+
+    resp.into_body().collect().await.expect("body").to_bytes()
 }
 
 /// Send a request through the proxy. Bypasses any client-side proxy
@@ -77,6 +150,16 @@ async fn send_through_proxy(
     proxy_port: u16,
     method: Method,
     absolute_url: &str,
+) -> Response<Incoming> {
+    send_through_proxy_with_header(proxy_port, method, absolute_url, None).await
+}
+
+/// [`send_through_proxy`] with one extra request header.
+async fn send_through_proxy_with_header(
+    proxy_port: u16,
+    method: Method,
+    absolute_url: &str,
+    header: Option<(&str, &str)>,
 ) -> Response<Incoming> {
     let stream = TcpStream::connect(("127.0.0.1", proxy_port))
         .await
@@ -88,12 +171,14 @@ async fn send_through_proxy(
     tokio::spawn(async move {
         let _ = conn.await;
     });
-    let req = Request::builder()
+    let mut req = Request::builder()
         .method(method)
         .uri(absolute_url)
-        .header("host", url_host(absolute_url))
-        .body(Empty::<Bytes>::new())
-        .expect("request build");
+        .header("host", url_host(absolute_url));
+    if let Some((name, value)) = header {
+        req = req.header(name, value);
+    }
+    let req = req.body(Empty::<Bytes>::new()).expect("request build");
 
     sender.send_request(req).await.expect("send")
 }
@@ -157,6 +242,22 @@ async fn proxy_forwards_allowed_http_request_to_upstream() {
 
     let body = resp.into_body().collect().await.expect("body").to_bytes();
     assert_eq!(body, Bytes::from_static(b"hello from upstream"));
+}
+
+/// The header rides only what the proxy forwards itself; CONNECT tunnels
+/// carry encrypted bytes it cannot touch. Whatever the client sent is
+/// replaced, so the proxy's setting is the only source of the signal.
+#[tokio::test]
+async fn global_privacy_control_adds_sec_gpc_to_forwarded_requests() {
+    assert_eq!(gpc_seen_by_upstream(true).await, Bytes::from_static(b"1"));
+}
+
+#[tokio::test]
+async fn global_privacy_control_off_sends_no_sec_gpc() {
+    assert_eq!(
+        gpc_seen_by_upstream(false).await,
+        Bytes::from_static(b"absent")
+    );
 }
 
 #[tokio::test]

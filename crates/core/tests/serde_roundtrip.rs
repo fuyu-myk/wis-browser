@@ -127,6 +127,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
         tab_sleep_minutes: Some(30),
         persist_sessions: Some(false),
         fraud_warning_enabled: Some(false),
+        global_privacy_control: Some(false),
         media_extensions_enabled: Some(false),
         video_popout_enabled: Some(false),
         user_agent_profile: Some(wis_core::UaProfile::Chrome),

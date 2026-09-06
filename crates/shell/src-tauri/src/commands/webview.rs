@@ -42,7 +42,14 @@ pub async fn create_tab_webview(
 
     let label_ident = label.clone();
 
-    let (ephemeral, user_agent, fraud_warning, media_extensions, nav_privacy_mode) = {
+    let (
+        ephemeral,
+        user_agent,
+        fraud_warning,
+        media_extensions,
+        nav_privacy_mode,
+        global_privacy_control,
+    ) = {
         let browser = state.browser.lock().await;
         let ephemeral = browser
             .workspace(workspace_id)
@@ -65,6 +72,7 @@ pub async fn create_tab_webview(
             browser.settings.fraud_warning_enabled,
             browser.settings.media_extensions_enabled,
             nav_privacy_mode,
+            browser.settings.global_privacy_control,
         )
     };
 
@@ -94,6 +102,8 @@ pub async fn create_tab_webview(
         .initialization_script(crate::video_popout::page_script())
         .initialization_script(crate::peek::page_script())
         .initialization_script(crate::link_open::page_script())
+        // Global Privacy Control's page signal, in every frame.
+        .initialization_script_for_all_frames(crate::gpc::page_script(global_privacy_control))
         // Swipe back/forward: publish the indicator colour, then the gesture+UI.
         .initialization_script(crate::swipe_nav::accent_script(&swipe_accent));
 

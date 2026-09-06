@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
 use hyper::body::{Bytes, Incoming};
+use hyper::header::HeaderValue;
 use hyper::{HeaderMap, Request, Response, Uri};
 use hyper_util::rt::TokioIo;
 use url::Url;
@@ -21,13 +22,14 @@ use crate::Resolver;
 /// Forward an HTTP request through to its upstream and return the
 /// response (with the body streamed through unchanged). Hop-by-hop
 /// headers are stripped on both legs. When `upstream` is set the connection
-/// is routed through it.
+/// is routed through it. `global_privacy_control` adds `Sec-GPC: 1`.
 pub async fn forward(
     req: Request<Incoming>,
     resolver: Arc<dyn Resolver>,
     upstream: Option<UpstreamProxy>,
+    global_privacy_control: bool,
 ) -> Response<BoxBody<Bytes, hyper::Error>> {
-    match forward_inner(req, resolver, upstream).await {
+    match forward_inner(req, resolver, upstream, global_privacy_control).await {
         Ok(resp) => resp,
         Err(reason) => bad_gateway(&reason),
     }
@@ -37,6 +39,7 @@ async fn forward_inner(
     req: Request<Incoming>,
     resolver: Arc<dyn Resolver>,
     upstream: Option<UpstreamProxy>,
+    global_privacy_control: bool,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, String> {
     let uri = req.uri().clone();
     let url = parse_uri_as_url(&uri).map_err(|e| format!("invalid request URI {uri}: {e}"))?;
@@ -71,6 +74,13 @@ async fn forward_inner(
         "host",
         host.parse().expect("hostname is a valid header value"),
     );
+    if global_privacy_control {
+        parts
+            .headers
+            .insert("sec-gpc", HeaderValue::from_static("1"));
+    } else {
+        parts.headers.remove("sec-gpc");
+    }
     parts.uri = path_and_query
         .parse::<Uri>()
         .map_err(|e| format!("invalid origin-form uri: {e}"))?;
