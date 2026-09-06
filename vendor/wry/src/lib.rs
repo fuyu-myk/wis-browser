@@ -392,7 +392,8 @@ use wkwebview::*;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub use wkwebview::{
   cancel_download_to, last_download_expected_bytes, set_main_frame_download_policy,
-  set_server_trust_evaluator, take_last_page_load_error, PrintMargin, PrintOptions, WryWebView,
+  set_server_trust_evaluator, set_webpage_preferences_hook, take_last_page_load_error, PrintMargin,
+  PrintOptions, WryWebView,
 };
 
 #[cfg(target_os = "windows")]

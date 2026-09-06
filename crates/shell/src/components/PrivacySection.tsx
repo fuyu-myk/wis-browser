@@ -12,6 +12,7 @@ import type {
 import { Segmented, Switch } from '@/components/controls'
 import { isMacOS } from '@/lib/platform'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import { AutoplayRows } from '@/components/AutoplayRows'
 import { FilterListsSection } from '@/components/FilterListsSection'
 import { UserscriptsSection } from '@/components/UserscriptsSection'
 import { AppLaunchSection } from '@/components/AppLaunchSection'
@@ -159,6 +160,7 @@ export function PrivacySection({ settings, activeWorkspace, onUpdate }: PrivacyS
             />
           )}
         </div>
+        <AutoplayRows settings={settings} onUpdate={onUpdate} />
         <div className="row">
           <div className="l">
             <span>Auto-update filter lists</span>

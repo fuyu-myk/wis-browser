@@ -79,7 +79,8 @@ wis-secrets = { path = "crates/secrets" }
 # documented patch (see each crate's WIS-PATCH.md). Drop a patch once its
 # upstream PR ships, then `cargo update`.
 #   wry 0.55.1               nil-URL panic (wry#1729) + webview2 container leak;
-#                            Linux gtk::Fixed set_bounds persistence (wry#1745)
+#                            Linux gtk::Fixed set_bounds persistence (wry#1745);
+#                            macOS webpage-preferences hook (autoplay policy)
 #   tao 0.35.2               Linux `content_fixed` overlay layer (tao#1232)
 #   tauri-runtime-wry 2.11.2 route Linux child webviews into `content_fixed`
 #                            (tauri#15463); requires the tao + wry patches

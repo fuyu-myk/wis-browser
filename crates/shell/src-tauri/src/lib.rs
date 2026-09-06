@@ -5,6 +5,7 @@ mod ai;
 mod ai_fetch;
 mod app_launch;
 mod audio;
+mod autoplay;
 mod backup;
 mod biometrics;
 mod bookmarks;
@@ -382,6 +383,8 @@ pub fn run() {
 
             // App handle for the native "Save password?" capture handler.
             capture::set_app_handle(app.handle().clone());
+            #[cfg(target_os = "macos")]
+            autoplay::install_hook(app.handle().clone());
 
             // App handle for the AI page-text channel's native handler.
             page_text::set_app_handle(app.handle().clone());

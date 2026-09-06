@@ -159,6 +159,9 @@ pub struct AppState {
     /// Session-only ("just once") camera/microphone decisions, checked ahead of
     /// the persisted set and dropped on restart.
     pub media_permissions_session: std::sync::RwLock<HashMap<String, bool>>,
+    /// Sync mirror of the autoplay setting and its per-host overrides, read
+    /// per navigation on the main thread.
+    pub autoplay: std::sync::RwLock<crate::autoplay::AutoplayCache>,
     /// Camera/microphone requests awaiting the user's decision in the prompt
     /// overlay, keyed by a monotonic request id (`media_seq`).
     pub pending_media: std::sync::Mutex<HashMap<u64, crate::permissions::PendingMedia>>,
@@ -212,6 +215,10 @@ impl AppState {
         let initial_user_cosmetic_rules = browser.settings.user_cosmetic_rules.clone();
         let initial_userscripts = browser.settings.userscripts.clone();
         let initial_media_permissions = browser.settings.media_permissions.clone();
+        let initial_autoplay = crate::autoplay::AutoplayCache {
+            policy: browser.settings.autoplay_policy,
+            overrides: browser.settings.autoplay_site_overrides.clone(),
+        };
         let initial_app_launch_permissions = browser.settings.app_launch_permissions.clone();
         // The main window starts on the persisted active workspace.
         let initial_active_workspace = browser.active_workspace_id;
@@ -246,6 +253,7 @@ impl AppState {
             muted_widgets: std::sync::Mutex::new(HashSet::new()),
             media_permissions: std::sync::RwLock::new(initial_media_permissions),
             media_permissions_session: std::sync::RwLock::new(HashMap::new()),
+            autoplay: std::sync::RwLock::new(initial_autoplay),
             pending_media: std::sync::Mutex::new(HashMap::new()),
             media_seq: std::sync::atomic::AtomicU64::new(0),
             app_launch_permissions: std::sync::RwLock::new(initial_app_launch_permissions),
@@ -388,6 +396,18 @@ impl AppState {
             .write()
             .expect("media_permissions poisoned");
         *guard = perms;
+    }
+
+    /// Replace the autoplay read-cache.
+    pub fn refresh_autoplay_cache(&self, cache: crate::autoplay::AutoplayCache) {
+        let mut guard = self.autoplay.write().expect("autoplay poisoned");
+        *guard = cache;
+    }
+
+    /// The autoplay policy for the page at `url`.
+    pub fn autoplay_policy_for(&self, url: &str) -> wis_core::AutoplayPolicy {
+        let cache = self.autoplay.read().expect("autoplay poisoned");
+        crate::autoplay::policy_for_url(&cache, url)
     }
 
     /// Replace the remembered app-launch read-cache.

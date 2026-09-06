@@ -491,6 +491,11 @@ pub async fn open_widget_panel(
         let app = app.clone();
         let id = id.clone();
         move |_webview, payload: PageLoadPayload<'_>| {
+            #[cfg(target_os = "linux")]
+            if matches!(payload.event(), PageLoadEvent::Started) {
+                crate::autoplay::apply_for_page_load(&app, &_webview, payload.url().as_str());
+            }
+
             // Skip the about:blank placeholder.
             if matches!(payload.event(), PageLoadEvent::Started)
                 && payload.url().as_str() != "about:blank"
@@ -527,6 +532,8 @@ pub async fn open_widget_panel(
     // Apple-proxied Safe Browsing warning.
     crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
     crate::webview_prefs::apply_media_extensions(&child, media_extensions);
+    #[cfg(target_os = "linux")]
+    crate::autoplay::apply(&child, state.autoplay_policy_for(parsed.as_str()));
 
     // Per-site camera/microphone consent gate.
     crate::permissions::install(&child);

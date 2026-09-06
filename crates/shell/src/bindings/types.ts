@@ -507,6 +507,10 @@ export interface UserSettings {
   fraud_warning_enabled: boolean
   /** Global Privacy Control. */
   global_privacy_control: boolean
+  /** What media may start without a gesture; mirrors `AutoplayPolicy`. */
+  autoplay_policy: AutoplayPolicy
+  /** Per-host autoplay overrides, keyed by normalised host. */
+  autoplay_site_overrides: Record<string, AutoplayPolicy>
   media_extensions_enabled: boolean
   /** Float a playing video as an always-on-top mini player on tab switch. */
   video_popout_enabled: boolean
@@ -589,6 +593,8 @@ export interface UserSettingsPatch {
   persist_sessions?: boolean
   fraud_warning_enabled?: boolean
   global_privacy_control?: boolean
+  autoplay_policy?: AutoplayPolicy
+  autoplay_site_overrides?: Record<string, AutoplayPolicy>
   media_extensions_enabled?: boolean
   video_popout_enabled?: boolean
   user_agent_profile?: UaProfile
@@ -717,6 +723,9 @@ export interface HistoryEntry {
   visited_at: string // ISO 8601 from chrono::DateTime<Utc>
   visit_count: number
 }
+
+/** What media may start without a gesture; mirrors `wis_core::AutoplayPolicy`. */
+export type AutoplayPolicy = 'allow' | 'block_audible' | 'block'
 
 /** One separable slice of a workspace's site data; mirrors `SiteDataKind`. */
 export type SiteDataKind = 'cookies' | 'cache' | 'storage'

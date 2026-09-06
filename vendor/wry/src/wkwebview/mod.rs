@@ -131,6 +131,26 @@ pub(crate) fn server_trust_allowed(host: &str, leaf_der: &[u8]) -> bool {
     .get()
     .is_some_and(|eval| eval(host, leaf_der))
 }
+
+// WIS patch: embedder hook consulted on every main-frame navigation policy
+// decision with the target URL and the navigation's `WKWebpagePreferences`
+// (as a raw object pointer), so per-site page preferences such as the
+// autoplay policy can be set before the load. See WIS-PATCH.md.
+type WebpagePreferencesHook = Box<dyn Fn(&str, *mut std::ffi::c_void) + Send + Sync>;
+static WEBPAGE_PREFERENCES_HOOK: std::sync::OnceLock<WebpagePreferencesHook> =
+  std::sync::OnceLock::new();
+
+/// WIS patch: register the process-wide webpage-preferences hook. The first
+/// registration wins; later calls are ignored.
+pub fn set_webpage_preferences_hook(hook: WebpagePreferencesHook) {
+  let _ = WEBPAGE_PREFERENCES_HOOK.set(hook);
+}
+
+pub(crate) fn apply_webpage_preferences(url: &str, preferences: *mut std::ffi::c_void) {
+  if let Some(hook) = WEBPAGE_PREFERENCES_HOOK.get() {
+    hook(url, preferences);
+  }
+}
 #[cfg(target_os = "macos")]
 use class::wry_web_view_parent::WryWebViewParent;
 use class::{
@@ -1119,7 +1139,10 @@ r#"Object.defineProperty(window, 'ipc', {
       let parent = self.webview.superview().unwrap();
       let parent_frame = parent.frame();
       #[cfg(target_os = "macos")]
-      let webview_frame = self.parked_frame.get().unwrap_or_else(|| self.webview.frame());
+      let webview_frame = self
+        .parked_frame
+        .get()
+        .unwrap_or_else(|| self.webview.frame());
       #[cfg(not(target_os = "macos"))]
       let webview_frame = self.webview.frame();
 

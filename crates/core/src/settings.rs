@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use crate::autoplay::AutoplayPolicy;
 use crate::design::ChromeDesign;
 use crate::ids::ThemeId;
 use crate::keybinding::KeyAction;
@@ -107,6 +108,14 @@ pub struct UserSettings {
     /// `navigator.globalPrivacyControl` in every frame. On by default.
     #[serde(default = "default_global_privacy_control")]
     pub global_privacy_control: bool,
+    /// What media may start without a gesture. Applied per page load on
+    /// macOS and per webview on Linux; WebView2 (Windows) has no runtime
+    /// knob and keeps its own rule.
+    #[serde(default)]
+    pub autoplay_policy: AutoplayPolicy,
+    /// Per-host autoplay overrides, keyed by normalised host.
+    #[serde(default)]
+    pub autoplay_site_overrides: HashMap<String, AutoplayPolicy>,
     /// Enable WebKit Media Source + Encrypted Media Extensions on remote
     /// pages (adaptive streaming + the FairPlay key system). On by default
     /// (MSE is off in embedded WKWebView, breaking many video sites);
@@ -385,6 +394,8 @@ impl Default for UserSettings {
             persist_sessions: true,
             fraud_warning_enabled: true,
             global_privacy_control: true,
+            autoplay_policy: AutoplayPolicy::default(),
+            autoplay_site_overrides: HashMap::new(),
             media_extensions_enabled: true,
             video_popout_enabled: true,
             user_agent_profile: UaProfile::default(),
@@ -474,6 +485,10 @@ pub struct UserSettingsPatch {
     pub fraud_warning_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub global_privacy_control: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub autoplay_policy: Option<AutoplayPolicy>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub autoplay_site_overrides: Option<HashMap<String, AutoplayPolicy>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media_extensions_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -592,6 +607,10 @@ impl UserSettings {
             global_privacy_control: patch
                 .global_privacy_control
                 .unwrap_or(self.global_privacy_control),
+            autoplay_policy: patch.autoplay_policy.unwrap_or(self.autoplay_policy),
+            autoplay_site_overrides: patch
+                .autoplay_site_overrides
+                .unwrap_or_else(|| self.autoplay_site_overrides.clone()),
             media_extensions_enabled: patch
                 .media_extensions_enabled
                 .unwrap_or(self.media_extensions_enabled),

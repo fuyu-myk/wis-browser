@@ -4,7 +4,12 @@
 
 use std::sync::{Arc, Mutex};
 
-use objc2::{define_class, msg_send, rc::Retained, runtime::NSObject, MainThreadOnly};
+use objc2::{
+  define_class, msg_send,
+  rc::Retained,
+  runtime::{AnyObject, NSObject},
+  MainThreadOnly,
+};
 use objc2_foundation::{
   MainThreadMarker, NSError, NSObjectProtocol, NSURLAuthenticationChallenge, NSURLCredential,
   NSURLSessionAuthChallengeDisposition,
@@ -26,7 +31,7 @@ use crate::{
     navigation::{
       did_commit_navigation, did_fail_provisional_navigation, did_finish_navigation,
       did_receive_authentication_challenge, navigation_policy, navigation_policy_response,
-      web_content_process_did_terminate,
+      navigation_policy_with_preferences, web_content_process_did_terminate,
     },
   },
   PageLoadEvent, WryWebView,
@@ -60,6 +65,20 @@ define_class!(
       handler: &block2::Block<dyn Fn(WKNavigationActionPolicy)>,
     ) {
       navigation_policy(self, webview, action, handler);
+    }
+
+    // WIS patch: the preferences variant, which WebKit calls instead of the
+    // plain one when present, hands the embedder the navigation's
+    // WKWebpagePreferences before the plain policy logic runs. See WIS-PATCH.md.
+    #[unsafe(method(webView:decidePolicyForNavigationAction:preferences:decisionHandler:))]
+    fn navigation_policy_with_preferences(
+      &self,
+      webview: &WKWebView,
+      action: &WKNavigationAction,
+      preferences: &AnyObject,
+      handler: &block2::Block<dyn Fn(WKNavigationActionPolicy, *mut AnyObject)>,
+    ) {
+      navigation_policy_with_preferences(self, webview, action, preferences, handler);
     }
 
     #[unsafe(method(webView:decidePolicyForNavigationResponse:decisionHandler:))]

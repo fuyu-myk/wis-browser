@@ -361,3 +361,23 @@ policy into the shell's handler and drop the static + `lib.rs` re-export.
 Removal checklist: wry hides child webviews in a way AppKit excludes from
 drag hit-testing (or upstream adopts this) -> drop the field, `park` and
 the `bounds`/`set_bounds` branches.
+
+## Ninth patch: per-navigation webpage preferences hook (macOS) (Wis-original)
+
+WebKit consults `webView:decidePolicyForNavigationAction:preferences:decisionHandler:`
+in place of the plain variant when the delegate implements it, and the
+`WKWebpagePreferences` it passes is the only place a page-level policy such as
+autoplay (`_autoplayPolicy`, SPI) can be set after a webview exists; the
+configuration knob is creation-time and tauri constructs the builder.
+
+- `src/wkwebview/mod.rs`: a process-wide hook registered once via
+  `wry::set_webpage_preferences_hook(Box<dyn Fn(&str, *mut c_void) + Send + Sync>)`
+  (`OnceLock`, first registration wins), called with the target URL and the
+  preferences object as a raw pointer so the embedder's objc2 version does not
+  have to match wry's.
+- `wry_navigation_delegate.rs` + `navigation.rs`: the delegate gains the
+  preferences variant. On a main-frame navigation it runs the hook, then calls
+  the existing `navigation_policy` with a wrapping block that returns the same
+  preferences alongside the policy, so download and navigation-handler
+  behaviour is unchanged. Subframe navigations skip the hook: WebKit applies
+  website policies from the main frame only.

@@ -6,13 +6,14 @@
 //! The property is baked into each remote webview at creation with the
 //! setting of that moment, and a document-start script re-runs on every
 //! later document with that same value.
-//! 
+//!
 //! A toggle does two things per live remote webview:
-//!   1. Flips the top frame of the current document through
-//! `window.__wisGpcSet`
-//!   2. Installs one more document-start script that flips every later
-//! document in every frame. The flip scripts run after the baked one
-//! and accumulate one per toggle, the last one winning.
+//!
+//! 1. Flips the top frame of the current document through
+//!    `window.__wisGpcSet`.
+//! 2. Installs one more document-start script that flips every later
+//!    document in every frame. The flip scripts run after the baked one
+//!    and accumulate one per toggle, the last one winning.
 
 /// The property definition; `%ON%` is replaced by the setting at creation.
 const GPC_JS: &str = r#"(function () {

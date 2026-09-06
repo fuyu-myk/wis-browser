@@ -195,7 +195,7 @@ pub async fn clear_site_data(
     }
 
     #[cfg(not(any(target_os = "macos", windows)))]
-    let _ = (app, workspace_id);
+    let _ = (app, workspace_id, since_unix);
 
     Ok(())
 }

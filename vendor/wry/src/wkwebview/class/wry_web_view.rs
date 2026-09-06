@@ -255,7 +255,13 @@ unsafe fn menu_claims(
 
     let action: Option<objc2::runtime::Sel> = objc2::msg_send![&*item, action];
     let editing = action
-      .and_then(|sel| sel.name().to_str().ok().map(|n| EDITING_ACTIONS.contains(&n)))
+      .and_then(|sel| {
+        sel
+          .name()
+          .to_str()
+          .ok()
+          .map(|n| EDITING_ACTIONS.contains(&n))
+      })
       .unwrap_or(false);
 
     return !editing;

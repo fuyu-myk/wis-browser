@@ -42,6 +42,13 @@ pub async fn update_settings(
     if let Some(map) = patch.builtin_search_keywords.take() {
         patch.builtin_search_keywords = Some(wis_core::sanitize_builtin_search_keywords(map));
     }
+    if let Some(map) = patch.autoplay_site_overrides.take() {
+        patch.autoplay_site_overrides = Some(
+            map.into_iter()
+                .map(|(host, policy)| (wis_core::user_agent::normalize_host(&host), policy))
+                .collect(),
+        );
+    }
 
     let keybindings_touched = patch.keybindings.is_some();
     let userscripts_touched = patch.userscripts.is_some();
@@ -52,6 +59,8 @@ pub async fn update_settings(
     let persistence_disabled = patch.persist_sessions == Some(false);
     let fraud_warning_changed = patch.fraud_warning_enabled;
     let gpc_changed = patch.global_privacy_control;
+    let autoplay_touched =
+        patch.autoplay_policy.is_some() || patch.autoplay_site_overrides.is_some();
     let media_extensions_changed = patch.media_extensions_enabled;
     let (settings, doh_changed) = mutate_immediate(&app, &state, |s| {
         let before = crate::state::doh_provider_of(s.settings.doh_resolver.as_deref());
@@ -107,6 +116,16 @@ pub async fn update_settings(
     if let Some(enabled) = gpc_changed {
         state.refresh_all_proxy_policies().await;
         crate::gpc::apply_to_all_remote(&app, enabled);
+    }
+
+    if autoplay_touched {
+        state.refresh_autoplay_cache(crate::autoplay::AutoplayCache {
+            policy: settings.autoplay_policy,
+            overrides: settings.autoplay_site_overrides.clone(),
+        });
+
+        #[cfg(target_os = "linux")]
+        crate::autoplay::apply_to_all_remote(&app);
     }
 
     if let Some(enabled) = media_extensions_changed {

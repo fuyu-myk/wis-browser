@@ -6,6 +6,7 @@
 
 pub mod ai;
 pub mod app_launch;
+pub mod autoplay;
 pub mod background;
 pub mod backup;
 pub mod clear;
@@ -36,6 +37,7 @@ pub mod widget;
 pub mod workspace;
 
 pub use ai::{AiProvider, ChatMessage, ChatRequest, Role, SseParser, StreamEvent, ThinkingMode};
+pub use autoplay::{autoplay_policy_for_host, AutoplayPolicy};
 pub use background::{
     Background, BackgroundDrafts, GradientSpec, GradientStop, ImageBackground, ImageFit,
 };

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { commands } from '@/bindings/commands'
 import type { UaProfile, UserSettingsPatch } from '@/bindings/types'
 import { Segmented } from '@/components/controls'
+import { normalizeHostInput } from '@/lib/host'
 import { currentPlatform } from '@/lib/platform'
 
 type SimpleUa = 'safari' | 'chrome' | 'default'
@@ -18,21 +19,6 @@ function uaProfileLabel(p: UaProfile): string {
   if (p === 'chrome') return 'Chrome'
   if (p === 'default') return 'Engine default'
   return 'Custom'
-}
-
-/** Reduce a pasted URL or `host/path` to a `www.`-stripped, lowercased host. */
-function normalizeHostInput(raw: string): string {
-  let s = raw.trim().toLowerCase()
-  if (s === '') return ''
-  if (s.includes('://')) {
-    try {
-      s = new URL(s).hostname
-    } catch {
-      // Not a parseable URL; fall through and treat the text as a host.
-    }
-  }
-  s = s.split('/')[0]
-  return s.replace(/^www\./, '')
 }
 
 function defaultBrowserHelp(isDefault: boolean | null): string {

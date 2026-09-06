@@ -211,6 +211,40 @@ pub(crate) fn navigation_policy(
   }
 }
 
+// WIS patch: the preferences variant of the policy decision. Runs the
+// embedder hook (`set_webpage_preferences_hook`) on main-frame navigations,
+// then the plain policy logic with a handler that passes those same
+// preferences back to WebKit. See WIS-PATCH.md.
+pub(crate) fn navigation_policy_with_preferences(
+  this: &WryNavigationDelegate,
+  webview: &WKWebView,
+  action: &WKNavigationAction,
+  preferences: &objc2::runtime::AnyObject,
+  handler: &block2::Block<dyn Fn(WKNavigationActionPolicy, *mut objc2::runtime::AnyObject)>,
+) {
+  unsafe {
+    let is_main_frame = action.targetFrame().is_some_and(|f| f.isMainFrame());
+    if is_main_frame {
+      let url = action
+        .request()
+        .URL()
+        .and_then(|u| u.absoluteString())
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+      let prefs_ptr: *const objc2::runtime::AnyObject = preferences;
+      super::apply_webpage_preferences(&url, prefs_ptr as *mut std::ffi::c_void);
+    }
+
+    let preferences = objc2::Message::retain(preferences);
+    let outer = handler.copy();
+    let inner = block2::RcBlock::new(move |policy: WKNavigationActionPolicy| {
+      let ptr: *const objc2::runtime::AnyObject = Retained::as_ptr(&preferences);
+      outer.call((policy, ptr as *mut objc2::runtime::AnyObject));
+    });
+    navigation_policy(this, webview, action, &inner);
+  }
+}
+
 // Navigation handler
 pub(crate) fn navigation_policy_response(
   this: &WryNavigationDelegate,

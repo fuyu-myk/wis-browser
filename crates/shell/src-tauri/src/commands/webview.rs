@@ -283,6 +283,8 @@ pub async fn create_tab_webview(
 
             // A popped-out tab navigating loses its pinned video.
             if matches!(event, PageLoadEvent::Started) {
+                #[cfg(target_os = "linux")]
+                crate::autoplay::apply_for_page_load(&app, &webview, payload.url().as_str());
                 crate::video_popout::handle_navigation(&app, &label_for_load);
                 crate::load_progress::start(&app, tab_id);
             }
@@ -530,6 +532,10 @@ pub async fn create_tab_webview(
 
     // MSE + EME/FairPlay (adaptive streaming + DRM key system).
     crate::webview_prefs::apply_media_extensions(&child, media_extensions);
+
+    // Autoplay: macOS applies per navigation through the wry hook.
+    #[cfg(target_os = "linux")]
+    crate::autoplay::apply(&child, state.autoplay_policy_for(parsed.as_str()));
 
     // A muted tab stays muted across sleep/wake webview recreation.
     {
