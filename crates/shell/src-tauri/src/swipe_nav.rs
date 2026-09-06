@@ -4,10 +4,11 @@
 //! no progress to drive UI, so this replaces it with an injected page script:
 //! it watches `wheel` overscroll at the page's true horizontal edge, draws a
 //! themed half-circle indicator that peeks in from the side and *fills* at the
-//! commit threshold, and on release past the threshold calls
-//! `history.back()`/`forward()` (so the usual page-load hook keeps the URL bar
-//! in sync). The indicator lives in a shadow root for style isolation and is
-//! drawn in-page so it tracks the gesture with zero IPC latency.
+//! commit threshold, and on release past the threshold snaps the fill to full,
+//! calls `history.back()`/`forward()` (so the usual page-load hook keeps the
+//! URL bar in sync) and holds the filled indicator briefly before fading it.
+//! The indicator lives in a shadow root for style isolation and is drawn
+//! in-page so it tracks the gesture with zero IPC latency.
 //!
 //! Wheel events carry no gesture phase in JS, so the shell supplies the two
 //! signals the script cannot read itself:
@@ -45,6 +46,7 @@ const SWIPE_NAV_JS: &str = r#"(function () {
   var END_DELAY = 90;      // no-phase fallback: ms of wheel quiet = fingers lifted
   var SAFETY_DELAY = 1200; // native mode: wheel quiet after which a gesture is abandoned
   var MIN_DECIDE = 3;      // |dx|+|dy| below this is too small to classify a sequence
+  var HOLD = 150;          // ms the filled indicator lingers after a committed lift
 
   function accent() { return window.__wisSwipeAccent || '#6b77f8'; }
 
@@ -84,7 +86,7 @@ const SWIPE_NAV_JS: &str = r#"(function () {
     return false;
   }
 
-  var host, semi, arr, ind;
+  var host, semi, arr, ind, hideTimer = null;
   function build(dir) {
     if (!host) {
       host = document.createElement('div');
@@ -121,7 +123,7 @@ const SWIPE_NAV_JS: &str = r#"(function () {
     arr = ind.querySelector('.arr');
   }
 
-  function show(dir) { build(dir); ind.style.opacity = '1'; }
+  function show(dir) { clearTimeout(hideTimer); build(dir); ind.style.opacity = '1'; }
   function update(p, dir) {
     // Emerge from the edge as progress grows (hidden at 0, flush at 1).
     var tx = (dir === 'back' ? -1 : 1) * (R + M) * (1 - Math.min(p, 1));
@@ -131,6 +133,12 @@ const SWIPE_NAV_JS: &str = r#"(function () {
     if (!semi) return;
     semi.style.fillOpacity = on ? '1' : '0';
     arr.setAttribute('stroke', on ? contrast(accent()) : accent());
+  }
+  function fillNow() {
+    if (!semi) return;
+    semi.style.transition = 'none';
+    arr.style.transition = 'none';
+    setArmed(true);
   }
   function hide() { if (ind) ind.style.opacity = '0'; }
 
@@ -151,6 +159,7 @@ const SWIPE_NAV_JS: &str = r#"(function () {
     };
   } catch (e) {}
   window.addEventListener('popstate', function () { navState.back = null; navState.fwd = null; });
+  window.addEventListener('pagehide', function () { cancel(); });
 
   function canNavigate(dir) {
     var known = dir === 'back' ? navState.back : navState.fwd;
@@ -174,12 +183,15 @@ const SWIPE_NAV_JS: &str = r#"(function () {
     if (!active) return;
     var commit = active.armed, dir = active.dir;
     active = null;
-    hide();
-    if (commit) { if (dir === 'back') history.back(); else history.forward(); }
+    if (!commit) { hide(); return; }
+    fillNow();
+    hideTimer = setTimeout(hide, HOLD);
+    if (dir === 'back') history.back(); else history.forward();
   }
 
   function cancel() {
     clearTimeout(quietTimer);
+    clearTimeout(hideTimer);
     seq = null;
     active = null;
     hide();
@@ -189,8 +201,7 @@ const SWIPE_NAV_JS: &str = r#"(function () {
     nativePhase = true;
     if (p === 'began') {
       fingersDown = true;
-      if (active) cancel();
-      seq = null;
+      cancel();
     } else if (p === 'ended') {
       fingersDown = false;
       finalize();
@@ -433,4 +444,35 @@ pub async fn set_swipe_accent(
 /// Webviews that carry the swipe gesture.
 pub(crate) fn swipe_target(label: &str) -> bool {
     label.starts_with("tab-") || label.starts_with("peek-page-")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::page_script;
+
+    #[test]
+    fn commit_snaps_the_fill_and_holds_before_navigating() {
+        let js = page_script();
+        assert!(js.contains("var HOLD = 150;"));
+        let snap = js
+            .find("fillNow();")
+            .expect("finalize snaps the armed visual");
+        let hold = js
+            .find("hideTimer = setTimeout(hide, HOLD);")
+            .expect("finalize schedules the hold");
+        let nav = js
+            .find("if (dir === 'back') history.back(); else history.forward();")
+            .expect("finalize navigates");
+        assert!(snap < hold && hold < nav);
+        assert!(js.contains("semi.style.transition = 'none';"));
+        assert!(js.contains("arr.style.transition = 'none';"));
+    }
+
+    #[test]
+    fn hold_is_cancelled_by_new_input_and_unload() {
+        let js = page_script();
+        assert!(js.contains("function show(dir) { clearTimeout(hideTimer);"));
+        assert!(js.contains("window.addEventListener('pagehide', function () { cancel(); });"));
+        assert!(!js.contains("if (active) cancel();"));
+    }
 }
