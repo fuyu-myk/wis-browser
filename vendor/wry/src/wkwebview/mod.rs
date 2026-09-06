@@ -270,6 +270,9 @@ pub(crate) struct InnerWebView {
   #[cfg(target_os = "macos")]
   // We need this to update the traffic light inset
   parent_view: Option<Retained<WryWebViewParent>>,
+  // WIS patch: the frame a hidden child view is parked away from (see `set_visible`).
+  #[cfg(target_os = "macos")]
+  parked_frame: std::cell::Cell<Option<CGRect>>,
 }
 
 impl InnerWebView {
@@ -745,7 +748,14 @@ impl InnerWebView {
         is_child,
         #[cfg(target_os = "macos")]
         parent_view: None,
+        #[cfg(target_os = "macos")]
+        parked_frame: std::cell::Cell::new(None),
       };
+
+      #[cfg(target_os = "macos")]
+      if w.webview.isHidden() {
+        w.park(true);
+      }
 
       // Initialize scripts
       w.init(
@@ -1108,6 +1118,9 @@ r#"Object.defineProperty(window, 'ipc', {
     unsafe {
       let parent = self.webview.superview().unwrap();
       let parent_frame = parent.frame();
+      #[cfg(target_os = "macos")]
+      let webview_frame = self.parked_frame.get().unwrap_or_else(|| self.webview.frame());
+      #[cfg(not(target_os = "macos"))]
       let webview_frame = self.webview.frame();
 
       Ok(Rect {
@@ -1135,7 +1148,11 @@ r#"Object.defineProperty(window, 'ipc', {
           origin: window_position(&parent_view, x, y, height),
           size: CGSize::new(width, height),
         };
-        self.webview.setFrame(frame);
+        if self.parked_frame.get().is_some() {
+          self.parked_frame.set(Some(frame));
+        } else {
+          self.webview.setFrame(frame);
+        }
       }
     }
 
@@ -1143,8 +1160,35 @@ r#"Object.defineProperty(window, 'ipc', {
   }
 
   pub fn set_visible(&self, visible: bool) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    self.park(!visible);
     self.webview.setHidden(!visible);
     Ok(())
+  }
+
+  // WIS patch: AppKit resolves a drag destination from the frontmost view
+  // under the cursor whether or not it is hidden, so a hidden child webview
+  // stacked above a visible one takes every drag away from it. A hidden
+  // child is parked off-window and keeps its logical frame for `bounds` and
+  // `set_bounds`; showing moves it back. See WIS-PATCH.md.
+  #[cfg(target_os = "macos")]
+  fn park(&self, hidden: bool) {
+    if !self.is_child {
+      return;
+    }
+
+    if hidden {
+      if self.parked_frame.get().is_none() {
+        let frame = self.webview.frame();
+        self.parked_frame.set(Some(frame));
+        self.webview.setFrame(CGRect {
+          origin: CGPoint::new(-100_000.0, -100_000.0),
+          size: frame.size,
+        });
+      }
+    } else if let Some(frame) = self.parked_frame.take() {
+      self.webview.setFrame(frame);
+    }
   }
 
   pub fn focus(&self) -> Result<()> {

@@ -340,3 +340,24 @@ re-export, and move the shell's evaluator registration onto it.
 Removal checklist: wry exposes a navigation-response policy hook -> move the
 policy into the shell's handler and drop the static + `lib.rs` re-export.
 
+## Eighth patch: hidden child webviews are parked off-window (macOS) (Wis-original)
+
+- `src/wkwebview/mod.rs` (`set_visible`, `park`, `bounds`, `set_bounds`):
+  AppKit resolves a drag destination from the frontmost view under the
+  cursor without checking the hidden flag, then only walks up that view's
+  ancestors. Wis stacks hidden overlay webviews (palette, window picker,
+  navguard, ...) and hidden background tabs above the visible tab, so an
+  in-page HTML5 drag was delivered to whichever hidden view sat on top: a
+  registered one answered `NSDragOperationNone` from its own WebKit, an
+  unregistered one yielded no destination at all, and the page underneath
+  never received `dragover`/`drop` (GitHub pin reorder, any sortable list).
+  Peek worked only because it is the newest child and sits above the
+  overlays. A hidden child webview is now moved to (-100000, -100000) while
+  it keeps its logical frame: `bounds` reports the parked frame and
+  `set_bounds` updates it, so tauri's SetSize round-trip and Wis's
+  show-then-position sequences see no change; showing moves the view back.
+  Webviews created hidden go through the same path.
+
+Removal checklist: wry hides child webviews in a way AppKit excludes from
+drag hit-testing (or upstream adopts this) -> drop the field, `park` and
+the `bounds`/`set_bounds` branches.

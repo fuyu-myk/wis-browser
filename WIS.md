@@ -68,7 +68,7 @@ wis-browser-app  (crates/shell/src-tauri)  - Tauri shell, IPC commands, AppState
 
 ### Webview compositing, overlays, windows
 
-**Native tab webviews (`tab-<uuid>`) composite above the chrome webview, so any floating UI is a separate per-window overlay webview.** The browser is one OS window per workspace (`windows.rs`); multi-window session/geometry restore, engine-popup routing (`popup_chrome`, `on_new_window`: geometry popups stay native, plain navigations become tabs), and Cmd/middle-click open-in-tab all live here. Off-main AppKit is marshaled via `run_on_main_thread`. Every webview, chrome and page alike, disables wry's drag-drop handler so pages keep native HTML5 DnD and file drops. Detail: `docs/architecture/webviews-windows-and-overlays.md`.
+**Native tab webviews (`tab-<uuid>`) composite above the chrome webview, so any floating UI is a separate per-window overlay webview.** The browser is one OS window per workspace (`windows.rs`); multi-window session/geometry restore, engine-popup routing (`popup_chrome`, `on_new_window`: geometry popups stay native, plain navigations become tabs), and Cmd/middle-click open-in-tab all live here. Off-main AppKit is marshaled via `run_on_main_thread`. Every webview, chrome and page alike, disables wry's drag-drop handler so pages keep native HTML5 DnD and file drops, and hidden child webviews are parked off-window (vendored wry) so a hidden overlay or background tab never intercepts a drag meant for the visible page. Detail: `docs/architecture/webviews-windows-and-overlays.md`.
 
 ### Capability boundary
 
