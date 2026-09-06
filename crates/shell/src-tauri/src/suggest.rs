@@ -79,19 +79,25 @@ pub async fn get_url_suggestions(
     })
 }
 
-/// Remember an address-bar search (skipped while the active workspace is
-/// private/ephemeral).
+/// Remember an address-bar search (skipped when `workspace_id` is a
+/// private/ephemeral workspace).
 #[tauri::command]
-pub async fn record_search(state: State<'_, AppState>, query: String) -> WisResult<()> {
+pub async fn record_search(
+    state: State<'_, AppState>,
+    query: String,
+    workspace_id: WorkspaceId,
+) -> WisResult<()> {
     let trimmed = query.trim().to_string();
     if trimmed.is_empty() {
         return Ok(());
     }
 
-    let ephemeral = {
-        let browser = state.browser.lock().await;
-        browser.active_workspace().ephemeral
-    };
+    let ephemeral = state
+        .browser
+        .lock()
+        .await
+        .workspace(workspace_id)?
+        .ephemeral;
     if ephemeral {
         return Ok(());
     }

@@ -254,9 +254,12 @@ pub async fn test_upstream(state: State<'_, AppState>, upstream: UpstreamProxy) 
     match upstream {
         UpstreamProxy::Tor => {
             // Probe the client's currently listening port.
-            let port = state.ensure_tor().await.map_err(|e| WisError::InvalidInput {
-                message: e.to_string(),
-            })?;
+            let port = state
+                .ensure_tor()
+                .await
+                .map_err(|e| WisError::InvalidInput {
+                    message: e.to_string(),
+                })?;
             wis_network::probe_upstream(&UpstreamProxy::Socks5 {
                 host: "127.0.0.1".to_string(),
                 port,

@@ -78,11 +78,13 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
     (raw: string) => {
       const resolved = resolveInput(raw, searchSettings)
       if (!resolved) return
-      if (resolved.isSearch) void commands.recordSearch(raw.trim()).catch(() => undefined)
+      if (resolved.isSearch && activeWorkspaceId) {
+        void commands.recordSearch(raw.trim(), activeWorkspaceId).catch(() => undefined)
+      }
       navigate(resolved.url)
       setQuery('')
     },
-    [searchSettings, navigate],
+    [searchSettings, navigate, activeWorkspaceId],
   )
 
   const engineLabelFor = useCallback(

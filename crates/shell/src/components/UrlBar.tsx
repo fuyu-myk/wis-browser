@@ -260,8 +260,8 @@ function useUrlBarForm(
     (raw: string) => {
       const resolved = resolveInput(raw, searchSettings)
       if (!resolved) return
-      if (resolved.isSearch) {
-        void commands.recordSearch(raw.trim()).catch(() => undefined)
+      if (resolved.isSearch && workspaceId) {
+        void commands.recordSearch(raw.trim(), workspaceId).catch(() => undefined)
       }
       if (activeTab) {
         navigate.mutate({ id: activeTab.id, url: resolved.url })

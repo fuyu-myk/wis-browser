@@ -107,7 +107,8 @@ impl ProxyServer {
     /// Cut every tunnel this proxy is carrying. A new policy binds new
     /// requests only.
     pub fn sever_open_connections(&self) {
-        self.route_tx.send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+        self.route_tx
+            .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
     }
 
     pub fn local_addr(&self) -> SocketAddr {

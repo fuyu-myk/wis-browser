@@ -10,8 +10,8 @@
 
 use std::convert::Infallible;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 
 use http_body_util::{BodyExt, Empty, Full};
 use hyper::body::{Bytes, Incoming};
@@ -281,10 +281,16 @@ async fn severing_cuts_a_tunnel_opened_under_the_previous_route() {
     let upgraded = hyper::upgrade::on(resp).await.expect("upgrade");
     let mut tunnel = TokioIo::new(upgraded);
 
-    tunnel.write_all(b"ping").await.expect("write through tunnel");
+    tunnel
+        .write_all(b"ping")
+        .await
+        .expect("write through tunnel");
     let mut echoed = [0u8; 4];
     tunnel.read_exact(&mut echoed).await.expect("read echo");
-    assert_eq!(&echoed, b"ping", "the tunnel carries traffic before severing");
+    assert_eq!(
+        &echoed, b"ping",
+        "the tunnel carries traffic before severing"
+    );
 
     proxy.sever_open_connections();
 
@@ -354,7 +360,10 @@ async fn a_tunnel_opened_after_a_sever_still_carries_traffic() {
 
     let upgraded = hyper::upgrade::on(resp).await.expect("upgrade");
     let mut tunnel = TokioIo::new(upgraded);
-    tunnel.write_all(b"ping").await.expect("write through tunnel");
+    tunnel
+        .write_all(b"ping")
+        .await
+        .expect("write through tunnel");
     let mut echoed = [0u8; 4];
     tunnel
         .read_exact(&mut echoed)

@@ -183,9 +183,9 @@ export const commands = {
     return invoke('get_url_suggestions', { query, workspaceId })
   },
 
-  /** Remember a search (no-op in private workspaces). */
-  async recordSearch(query: string): Promise<void> {
-    return invoke('record_search', { query })
+  /** Remember a search (no-op when the workspace is private). */
+  async recordSearch(query: string, workspaceId: WorkspaceId): Promise<void> {
+    return invoke('record_search', { query, workspaceId })
   },
 
   /** Forget a remembered search. */

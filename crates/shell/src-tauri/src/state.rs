@@ -557,7 +557,9 @@ impl AppState {
             Ok(up) => up,
             Err(err) => {
                 self.proxies.lock().await.remove(&workspace_id);
-                log::warn!("workspace {workspace_id} upstream resolve failed: {err}; proxy dropped");
+                log::warn!(
+                    "workspace {workspace_id} upstream resolve failed: {err}; proxy dropped"
+                );
                 return Err(err);
             }
         };
