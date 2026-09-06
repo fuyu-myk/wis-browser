@@ -257,6 +257,18 @@ pub async fn create_tab_webview(
             let ns_failure: Option<NsPageLoadFailure> = None;
 
             let load_failed = ns_failure.is_some();
+            let policy_interrupted = ns_failure.as_ref().is_some_and(|(code, domain, _)| {
+                *code == FRAME_LOAD_INTERRUPTED && domain == "WebKitErrorDomain"
+            });
+            let shown = policy_interrupted
+                .then(|| {
+                    webview
+                        .url()
+                        .ok()
+                        .filter(|url| url.as_str() != "about:blank")
+                })
+                .flatten()
+                .map(|url| (url.to_string(), read_document_title(&webview)));
 
             // A popped-out tab navigating loses its pinned video.
             if matches!(event, PageLoadEvent::Started) {
@@ -270,6 +282,21 @@ pub async fn create_tab_webview(
             tauri::async_runtime::spawn(async move {
                 let state = app_for_state.state::<AppState>();
                 let result = mutate_unit(&app_for_state, &state, |s| {
+                    if policy_interrupted {
+                        return match &shown {
+                            Some((url, title)) => {
+                                let next = s
+                                    .with_tab_loading(tab_id, false)?
+                                    .with_tab_url_synced(tab_id, url)?;
+                                match title {
+                                    Some(title) => next.with_tab_title(tab_id, title.clone()),
+                                    None => Ok(next),
+                                }
+                            }
+                            None => with_blank_tab_dropped(s, tab_id),
+                        };
+                    }
+
                     let failure = ns_failure.as_ref().and_then(|(code, domain, _cert)| {
                         let url = s.tab(tab_id).ok()?.url.to_string();
                         wis_core::LoadError::from_ns_error(domain, *code, url)
@@ -301,8 +328,13 @@ pub async fn create_tab_webview(
                     }
                 })
                 .await;
+
                 if let Err(err) = result {
                     log::warn!("page load update for {tab_id} failed: {err}");
+                }
+                if policy_interrupted && shown.is_none() {
+                    crate::audio::forget_tab(&app_for_state, tab_id);
+                    crate::tab_preview::forget(&app_for_state, &state, tab_id);
                 }
             });
 
@@ -786,4 +818,67 @@ pub async fn set_webview_corner_radius(
     }
 
     Ok(())
+}
+
+/// `WebKitErrorFrameLoadInterruptedByPolicyChange`: the engine abandoned a
+/// provisional navigation on a policy decision (it became a download, or was
+/// cancelled), so nothing commits and the tab keeps showing its current page.
+const FRAME_LOAD_INTERRUPTED: i64 = 102;
+
+/// The webview's live document title (macOS; `None` elsewhere or when empty).
+fn read_document_title<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
+
+        let (tx, rx) = std::sync::mpsc::sync_channel::<String>(1);
+        let _ = webview.with_webview(move |w| unsafe {
+            let wk: *mut AnyObject = w.inner() as *mut AnyObject;
+            if wk.is_null() {
+                return;
+            }
+
+            let title: *mut AnyObject = msg_send![wk, title];
+            if title.is_null() {
+                return;
+            }
+
+            let utf8: *const std::os::raw::c_char = msg_send![title, UTF8String];
+            if utf8.is_null() {
+                return;
+            }
+
+            let _ = tx.send(
+                std::ffi::CStr::from_ptr(utf8)
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        });
+
+        rx.recv_timeout(std::time::Duration::from_millis(100))
+            .ok()
+            .filter(|title| !title.is_empty())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = webview;
+        None
+    }
+}
+
+/// Drop a tab whose only navigation was abandoned before anything rendered:
+/// closed when the workspace has other tabs, else reset to the new-tab page.
+fn with_blank_tab_dropped(
+    s: &wis_core::BrowserState,
+    tab_id: TabId,
+) -> WisResult<wis_core::BrowserState> {
+    let workspace_id = s.tab(tab_id)?.workspace_id;
+    if s.workspace(workspace_id)?.tab_order.len() > 1 {
+        s.with_tab_closed(tab_id)
+    } else {
+        s.with_navigated_tab(tab_id, "about:blank")
+            .map(|(next, _)| next)
+    }
 }
