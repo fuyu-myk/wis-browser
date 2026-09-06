@@ -25,7 +25,7 @@ use webview2_com::{CoTaskMemPWSTR, WebMessageReceivedEventHandler};
 /// at click time, so this runs at document start alongside the feature scripts.
 pub const SHIM_SCRIPT: &str = r#"(function () {
   if (!window.chrome || !window.chrome.webview) return;
-  var names = ['wisOpenInTab', 'wisNavGuard', 'wisPeek', 'wisCosmetic',
+  var names = ['wisOpenInTab', 'wisOpenInTabFg', 'wisNavGuard', 'wisPeek', 'wisCosmetic',
                'wisZap', 'wisMediaPermission', 'wisCapture', 'wisPopout', 'wisFindResult',
                'wisKeybind', 'wisPageText'];
   function forward(name, body) {
@@ -130,6 +130,46 @@ pub fn install_find_only<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>
                         if let Ok(env) = serde_json::from_str::<Envelope>(&raw) {
                             if env.handler == "wisFindResult" {
                                 crate::find::dispatch_message(&label, &env.body);
+                            }
+                        }
+                    }
+                }
+
+                Ok(())
+            },
+        ));
+
+        let mut token = 0_i64;
+        // SAFETY: runs on the UI thread via `with_core_webview2`.
+        let _ = unsafe { core.add_WebMessageReceived(&handler, &mut token) };
+    });
+}
+
+/// Install a link-scoped web-message receiver on a widget panel webview. Only
+/// the two open-in-tab channels are routed, so the panel gains none of the
+/// tab-only channels; the foreground channel is top frame only, since it moves
+/// focus.
+pub fn install_link_open_only<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    crate::win_webview2::with_core_webview2(webview, move |core| {
+        let handler = WebMessageReceivedEventHandler::create(Box::new(
+            move |sender: Option<ICoreWebView2>,
+                  args: Option<ICoreWebView2WebMessageReceivedEventArgs>|
+                  -> windows::core::Result<()> {
+                if let Some(args) = args {
+                    let mut msg = windows::core::PWSTR::null();
+                    // SAFETY: `args` is live for the callback; `CoTaskMemPWSTR`
+                    // takes ownership of the returned buffer and frees it.
+                    if unsafe { args.TryGetWebMessageAsString(&mut msg) }.is_ok() {
+                        let raw = CoTaskMemPWSTR::from(msg).to_string();
+                        if let Ok(env) = serde_json::from_str::<Envelope>(&raw) {
+                            let background = env.handler == crate::link_open::HANDLER_BACKGROUND;
+                            let foreground = env.handler == crate::link_open::HANDLER_FOREGROUND
+                                && is_top_frame(sender.as_ref(), &args);
+
+                            if background || foreground {
+                                if let Some(href) = env.body.as_str() {
+                                    crate::link_open::dispatch_message(&env.handler, href);
+                                }
                             }
                         }
                     }

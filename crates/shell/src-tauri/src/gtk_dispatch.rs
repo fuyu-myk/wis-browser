@@ -53,6 +53,22 @@ pub fn install<R: tauri::Runtime>(
     });
 }
 
+/// Register only the two open-in-tab channels on a widget panel webview, so
+/// the panel gains none of the tab-only channels.
+pub fn install_link_open_only<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    let label = webview.label().to_string();
+    let _ = webview.with_webview(move |w| {
+        let wv = w.inner();
+        let Some(ucm) = wv.user_content_manager() else {
+            log::warn!("gtk_dispatch: panel webview has no user content manager");
+            return;
+        };
+
+        register(&ucm, crate::link_open::HANDLER_BACKGROUND, &label);
+        register(&ucm, crate::link_open::HANDLER_FOREGROUND, &label);
+    });
+}
+
 /// Register only the `wisAiFetch` channel on a hidden AI fetch webview and
 /// route it to the fetch dispatcher. WebKitGTK script messages also carry
 /// no frame identity.
@@ -127,7 +143,7 @@ fn route(name: &str, label: &str, body: &serde_json::Value) {
     };
 
     match name {
-        "wisOpenInTab" => {
+        "wisOpenInTab" | "wisOpenInTabFg" => {
             if let Some(href) = body.as_str() {
                 crate::link_open::dispatch_message(name, href);
             }

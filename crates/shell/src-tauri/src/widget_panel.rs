@@ -405,7 +405,9 @@ pub async fn open_widget_panel(
     // Fluent overlay scrollbars; WebView2 only.
     #[cfg(windows)]
     {
-        builder = builder.scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
+        builder = builder
+            .scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay)
+            .initialization_script(crate::win_dispatch::SHIM_SCRIPT);
     }
 
     // Custom-scheme navigations app handoff.
@@ -523,6 +525,10 @@ pub async fn open_widget_panel(
     crate::edit_keys::install(&child);
 
     crate::link_open::install_panel(&child);
+    #[cfg(windows)]
+    crate::win_dispatch::install_link_open_only(&child);
+    #[cfg(target_os = "linux")]
+    crate::gtk_dispatch::install_link_open_only(&child);
 
     // While the cursor is over the panel, suppress hover on the tabs it covers.
     crate::hover_guard::install_panel_hover_guard(&child, window.label());
