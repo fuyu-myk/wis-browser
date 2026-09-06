@@ -398,6 +398,9 @@ pub async fn open_widget_panel(
     {
         builder = builder.initialization_script(crate::edit_keys::page_script());
     }
+    builder = builder
+        .initialization_script(crate::link_open::page_script())
+        .initialization_script(crate::link_open::panel_page_script());
 
     // Fluent overlay scrollbars; WebView2 only.
     #[cfg(windows)]
@@ -518,6 +521,8 @@ pub async fn open_widget_panel(
 
     // Native replay channel for unconsumed page-first editing combos.
     crate::edit_keys::install(&child);
+
+    crate::link_open::install_panel(&child);
 
     // While the cursor is over the panel, suppress hover on the tabs it covers.
     crate::hover_guard::install_panel_hover_guard(&child, window.label());

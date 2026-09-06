@@ -129,7 +129,7 @@ fn route(name: &str, label: &str, body: &serde_json::Value) {
     match name {
         "wisOpenInTab" => {
             if let Some(href) = body.as_str() {
-                crate::link_open::dispatch_message(href);
+                crate::link_open::dispatch_message(name, href);
             }
         }
         "wisNavGuard" => {

@@ -241,7 +241,7 @@ fn dispatch(label: &str, ephemeral: bool, cosmetic_enabled: bool, top_frame: boo
     match env.handler.as_str() {
         "wisOpenInTab" => {
             if let Some(href) = env.body.as_str() {
-                crate::link_open::dispatch_message(href);
+                crate::link_open::dispatch_message(&env.handler, href);
             }
         }
         "wisNavGuard" => {

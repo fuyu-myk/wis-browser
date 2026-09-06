@@ -52,7 +52,7 @@ Tab webviews route engine new-window requests by intent in `commands/webview.rs`
 
 - `wants_popup` is true when the request **declares geometry** (`window.open` with width/height/left/top, the OAuth-consent shape) or targets `about:blank`. That is **Allowed** as a native wry window using the opener's WKWebView config, sharing the workspace session + proxy and keeping the `window.opener` link OAuth needs.
 - A plain navigation (`target=_blank`, featureless `window.open`) to the opener's **own site** (`same_site`, an eTLD+1 approximation with a small ccSLD table, so `mail.google.com` and `accounts.google.com` are one site) is Denied and navigated **in the current tab**. A **cross-site** plain navigation is Denied and re-emitted as `wis-open-in-tab-fg` (`link_open::OPEN_TAB_FOREGROUND_EVENT`), which the focused window opens as a foreground tab.
-- Widget panels (`widget_panel.rs`) share this routing minus the in-place branch. Security: the allowed popup is a bare wry webview with **no Tauri capability**, so the local-vs-remote boundary holds.
+- Widget panels (`widget_panel.rs`) share this routing minus the in-place branch, and add a page-script rule for plain clicks: cross-site links post `wisOpenInTabFg` (foreground tab), same-site links stay in the panel. Security: the allowed popup is a bare wry webview with **no Tauri capability**, so the local-vs-remote boundary holds.
 
 ## macOS popup shims
 
@@ -67,7 +67,7 @@ The popup is built inside wry (no shell handle, vendor unpatched), so decoration
 
 Cmd/middle-click on a link must open a new **tab**, not a popup, so it is intercepted before `on_new_window` sees it.
 
-- `link_open::page_script` intercepts `Cmd`/`Ctrl`+click and middle-click on `<a href>` (Opt+click stays Peek's), `preventDefault`s WebKit's open-in-new-window, and posts the href to the `wisOpenInTab` handler, which emits `wis-open-in-tab`. The focused window opens a **background** tab (`create_background_tab` -> `with_new_background_tab`). Real `window.open` / `target=_blank` (untouched by the script) still flow through `on_new_window`.
+- `link_open::page_script` intercepts `Cmd`/`Ctrl`+click and middle-click on `<a href>` (Opt+click stays Peek's), `preventDefault`s WebKit's open-in-new-window, and posts the href to the `wisOpenInTab` handler, which emits `wis-open-in-tab` (widget panels also bake it, plus `panel_page_script` posting cross-site plain clicks to `wisOpenInTabFg`; one `OpenInTabHandler` serves both names and picks the event from `message.name`). The focused window opens a **background** tab (`create_background_tab` -> `with_new_background_tab`). Real `window.open` / `target=_blank` (untouched by the script) still flow through `on_new_window`.
 - **Chrome surfaces mirror the contract** (cross-platform, `onAuxClick` -> `create_background_tab`): launchpad tiles and history rows stay on the page; bookmarks-menu rows keep the menu up so several open in a row. Every chrome middle-click target also `preventDefault`s the middle-button **mousedown** (Chromium engages pan/autoscroll then, too early for `auxclick`-time preventDefault). Palette and URL-bar suggestion rows are excluded.
 
 ## Hover guard
