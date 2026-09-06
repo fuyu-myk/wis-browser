@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
+import { ALL_SITE_DATA_KINDS } from '@/lib/clearData'
 import type { WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { currentPlatform } from '@/lib/platform'
@@ -43,7 +44,8 @@ export function SiteDataSection({ workspaceId, workspaceName }: SiteDataSectionP
     onSuccess: refresh,
   })
   const clearAll = useMutation({
-    mutationFn: () => (workspaceId ? commands.clearSiteData(workspaceId) : Promise.resolve()),
+    mutationFn: () =>
+      workspaceId ? commands.clearSiteData(workspaceId, ALL_SITE_DATA_KINDS) : Promise.resolve(),
     onSuccess: refresh,
   })
 

@@ -6,7 +6,7 @@
 //! History is scoped per workspace: dedup is keyed on `(workspace_id, url)`, so
 //! the same page visited in two workspaces keeps independent counts.
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rusqlite::{params, params_from_iter, Connection};
 use uuid::Uuid;
 use wis_core::WorkspaceId;
@@ -169,15 +169,34 @@ pub fn delete_entries(conn: &Connection, ids: &[i64]) -> StorageResult<()> {
 
 /// Remove history rows. Scoped to one workspace when `workspace_id` is set,
 /// otherwise clears everything.
-pub fn clear(conn: &Connection, workspace_id: Option<WorkspaceId>) -> StorageResult<()> {
-    match workspace_id {
-        Some(id) => {
+pub fn clear(
+    conn: &Connection,
+    workspace_id: Option<WorkspaceId>,
+    since: Option<DateTime<Utc>>,
+) -> StorageResult<()> {
+    // `visited_at` is stored as text, so they are comparable as instants
+    // via `datetime()`.
+    match (workspace_id, since) {
+        (Some(id), Some(since)) => {
+            conn.execute(
+                "DELETE FROM history \
+                 WHERE workspace_id = ?1 AND datetime(visited_at) >= datetime(?2)",
+                params![id.as_uuid().to_string(), since],
+            )?;
+        }
+        (Some(id), None) => {
             conn.execute(
                 "DELETE FROM history WHERE workspace_id = ?1",
                 params![id.as_uuid().to_string()],
             )?;
         }
-        None => {
+        (None, Some(since)) => {
+            conn.execute(
+                "DELETE FROM history WHERE datetime(visited_at) >= datetime(?1)",
+                params![since],
+            )?;
+        }
+        (None, None) => {
             conn.execute("DELETE FROM history", [])?;
         }
     }
@@ -189,4 +208,62 @@ fn parse_workspace_id(s: &str) -> Result<WorkspaceId, StorageError> {
     Uuid::parse_str(s)
         .map(WorkspaceId::from)
         .map_err(StorageError::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Duration;
+
+    fn conn() -> Connection {
+        let mut conn = Connection::open_in_memory().expect("in-memory DB");
+        super::super::migrations::run(&mut conn).expect("migrations");
+        conn
+    }
+
+    fn backdate(conn: &Connection, url: &str, by: Duration) {
+        conn.execute(
+            "UPDATE history SET visited_at = ?1 WHERE url = ?2",
+            params![Utc::now() - by, history_key(url)],
+        )
+        .expect("backdate");
+    }
+
+    fn urls(conn: &Connection) -> Vec<String> {
+        query_history(conn, &crate::HistoryQuery::default())
+            .expect("query")
+            .into_iter()
+            .map(|e| e.url)
+            .collect()
+    }
+
+    #[test]
+    fn clear_since_keeps_visits_older_than_the_instant() {
+        let conn = conn();
+        let ws = WorkspaceId::new();
+        record_visit(&conn, ws, "https://old.example/", "Old").unwrap();
+        record_visit(&conn, ws, "https://new.example/", "New").unwrap();
+        backdate(&conn, "https://old.example/", Duration::days(2));
+
+        clear(&conn, None, Some(Utc::now() - Duration::hours(1))).unwrap();
+
+        assert_eq!(urls(&conn), vec!["https://old.example/"]);
+    }
+
+    #[test]
+    fn clear_since_honours_the_workspace_scope() {
+        let conn = conn();
+        let a = WorkspaceId::new();
+        let b = WorkspaceId::new();
+        record_visit(&conn, a, "https://a.example/", "A").unwrap();
+        record_visit(&conn, a, "https://a-old.example/", "A old").unwrap();
+        record_visit(&conn, b, "https://b.example/", "B").unwrap();
+        backdate(&conn, "https://a-old.example/", Duration::days(2));
+
+        clear(&conn, Some(a), Some(Utc::now() - Duration::hours(1))).unwrap();
+
+        let mut left = urls(&conn);
+        left.sort();
+        assert_eq!(left, vec!["https://a-old.example/", "https://b.example/"]);
+    }
 }

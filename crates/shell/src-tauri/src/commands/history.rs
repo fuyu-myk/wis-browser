@@ -19,9 +19,11 @@ pub async fn delete_history(state: State<'_, AppState>, ids: Vec<i64>) -> WisRes
 pub async fn clear_history(
     state: State<'_, AppState>,
     workspace_id: Option<WorkspaceId>,
+    since_unix: Option<i64>,
 ) -> WisResult<()> {
+    let since = wis_core::clear_since(since_unix, chrono::Utc::now())?;
     let storage = state.storage.clone();
-    run_history(move || storage.clear_history(workspace_id)).await
+    run_history(move || storage.clear_history(workspace_id, since)).await
 }
 
 /// Run a blocking storage call off the async runtime, mapping both the join

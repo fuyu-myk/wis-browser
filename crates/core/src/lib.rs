@@ -8,6 +8,7 @@ pub mod ai;
 pub mod app_launch;
 pub mod background;
 pub mod backup;
+pub mod clear;
 pub mod design;
 pub mod download;
 pub mod error;
@@ -38,6 +39,7 @@ pub use ai::{AiProvider, ChatMessage, ChatRequest, Role, SseParser, StreamEvent,
 pub use background::{
     Background, BackgroundDrafts, GradientSpec, GradientStop, ImageBackground, ImageFit,
 };
+pub use clear::clear_since;
 pub use design::{
     ChromeDesign, CloseButton, CornerStyle, Density, FolderStyle, GlassIntensity, GlassScopes,
     TabIndicator, TabShape,

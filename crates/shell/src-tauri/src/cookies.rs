@@ -12,10 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
-use wis_core::{WisResult, WorkspaceId};
-
-#[cfg(any(target_os = "macos", windows))]
-use wis_core::WisError;
+use wis_core::{WisError, WisResult, WorkspaceId};
 
 use crate::state::AppState;
 
@@ -108,22 +105,91 @@ pub async fn delete_site_data(
     Ok(())
 }
 
-/// Wipe all website data (cookies, cache, local/session storage, IndexedDB, …)
-/// for a workspace's persistent store. Private (ephemeral) workspaces keep no
-/// persistent data, so callers may simply skip them.
+/// One separable slice of a workspace's website data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SiteDataKind {
+    Cookies,
+    /// Fetched responses: the HTTP disk and memory caches, the Cache API and
+    /// the application cache.
+    Cache,
+    /// What pages keep for themselves: local and session storage, IndexedDB,
+    /// Web SQL, service worker registrations and the file system API.
+    Storage,
+}
+
+/// The `WKWebsiteDataType` names covered by `kinds`, or `None` when every
+/// kind is asked for, in which case the store's own `allWebsiteDataTypes`
+/// applies and also takes the types this list does not name (media keys,
+/// hash salts, and whatever a newer WebKit adds).
+#[cfg(any(target_os = "macos", test))]
+fn website_data_types(kinds: &[SiteDataKind]) -> Option<Vec<&'static str>> {
+    const COOKIES: &[&str] = &["WKWebsiteDataTypeCookies"];
+    const CACHE: &[&str] = &[
+        "WKWebsiteDataTypeDiskCache",
+        "WKWebsiteDataTypeMemoryCache",
+        "WKWebsiteDataTypeFetchCache",
+        "WKWebsiteDataTypeOfflineWebApplicationCache",
+    ];
+    const STORAGE: &[&str] = &[
+        "WKWebsiteDataTypeLocalStorage",
+        "WKWebsiteDataTypeSessionStorage",
+        "WKWebsiteDataTypeIndexedDBDatabases",
+        "WKWebsiteDataTypeWebSQLDatabases",
+        "WKWebsiteDataTypeServiceWorkerRegistrations",
+        "WKWebsiteDataTypeFileSystem",
+    ];
+
+    let has = |kind: SiteDataKind| kinds.contains(&kind);
+    if has(SiteDataKind::Cookies) && has(SiteDataKind::Cache) && has(SiteDataKind::Storage) {
+        return None;
+    }
+
+    let mut names = Vec::new();
+    if has(SiteDataKind::Cookies) {
+        names.extend_from_slice(COOKIES);
+    }
+    if has(SiteDataKind::Cache) {
+        names.extend_from_slice(CACHE);
+    }
+    if has(SiteDataKind::Storage) {
+        names.extend_from_slice(STORAGE);
+    }
+
+    Some(names)
+}
+
+/// Wipe the given kinds of website data from a workspace's persistent store.
+/// `since_unix` (seconds) keeps records last changed before that instant;
+/// `None` wipes all time. Private (ephemeral) workspaces keep no persistent
+/// data, so callers may simply skip them.
 #[tauri::command]
-pub async fn clear_site_data(app: AppHandle, workspace_id: WorkspaceId) -> WisResult<()> {
+pub async fn clear_site_data(
+    app: AppHandle,
+    workspace_id: WorkspaceId,
+    kinds: Vec<SiteDataKind>,
+    since_unix: Option<i64>,
+) -> WisResult<()> {
+    if kinds.is_empty() {
+        return Err(WisError::InvalidInput {
+            message: "pick at least one kind of site data".to_string(),
+        });
+    }
+
+    let since_unix =
+        wis_core::clear_since(since_unix, chrono::Utc::now())?.map(|at| at.timestamp());
+
     #[cfg(target_os = "macos")]
     {
         let bytes = *workspace_id.as_uuid().as_bytes();
-        clear_site_data_mac(&app, bytes)
+        clear_site_data_mac(&app, bytes, website_data_types(&kinds), since_unix)
             .await
             .map_err(|message| WisError::InvalidInput { message })?;
     }
 
     #[cfg(windows)]
     {
-        imp_win::clear(&app, workspace_id)
+        imp_win::clear(&app, workspace_id, &kinds, since_unix)
             .await
             .map_err(|message| WisError::InvalidInput { message })?;
     }
@@ -135,7 +201,12 @@ pub async fn clear_site_data(app: AppHandle, workspace_id: WorkspaceId) -> WisRe
 }
 
 #[cfg(target_os = "macos")]
-async fn clear_site_data_mac(app: &AppHandle, uuid_bytes: [u8; 16]) -> Result<(), String> {
+async fn clear_site_data_mac(
+    app: &AppHandle,
+    uuid_bytes: [u8; 16],
+    types: Option<Vec<&'static str>>,
+    since_unix: Option<i64>,
+) -> Result<(), String> {
     use block2::RcBlock;
     use objc2::runtime::AnyObject;
     use objc2::{class, msg_send};
@@ -151,8 +222,21 @@ async fn clear_site_data_mac(app: &AppHandle, uuid_bytes: [u8; 16]) -> Result<()
 
         let store: *mut AnyObject =
             msg_send![class!(WKWebsiteDataStore), dataStoreForIdentifier: uuid];
-        let types: *mut AnyObject = msg_send![class!(WKWebsiteDataStore), allWebsiteDataTypes];
-        let since: *mut AnyObject = msg_send![class!(NSDate), distantPast];
+        let types: *mut AnyObject = match &types {
+            None => msg_send![class!(WKWebsiteDataStore), allWebsiteDataTypes],
+            Some(names) => {
+                let set: *mut AnyObject =
+                    msg_send![class!(NSMutableSet), setWithCapacity: names.len()];
+                for name in names {
+                    let _: () = msg_send![set, addObject: ns_string_new(name)];
+                }
+                set
+            }
+        };
+        let since: *mut AnyObject = match since_unix {
+            None => msg_send![class!(NSDate), distantPast],
+            Some(secs) => msg_send![class!(NSDate), dateWithTimeIntervalSince1970: secs as f64],
+        };
 
         // Completion handler signals the awaiting task. WebKit Block_copy's the
         // block, so it outlives this closure.
@@ -641,21 +725,27 @@ async fn restore_session_cookies_mac(
 }
 
 /// Windows site-data via WebView2. All of a workspace's tabs share one profile;
-/// cookies are enumerated through the `ICoreWebView2CookieManager`, and a full
-/// clear goes through the profile's `ClearBrowsingDataAll`. Each COM call runs
-/// on the UI thread via `with_core_webview2`, bridging its async completion
-/// handler back to the awaiting command over a channel.
+/// cookies are enumerated through the `ICoreWebView2CookieManager`, and a
+/// clear goes through the profile's `ClearBrowsingData` (all time) or
+/// `ClearBrowsingDataInTimeRange`, scoped to the asked-for data kinds. Each
+/// COM call runs on the UI thread via `with_core_webview2`, bridging its async
+/// completion handler back to the awaiting command over a channel.
 #[cfg(windows)]
 mod imp_win {
-    use super::AppState;
+    use super::{AppState, SiteDataKind};
 
     use std::sync::mpsc;
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use tauri::{AppHandle, Manager};
     use webview2_com::Microsoft::Web::WebView2::Win32::{
         ICoreWebView2Cookie, ICoreWebView2CookieManager, ICoreWebView2Profile2, ICoreWebView2_13,
-        ICoreWebView2_2,
+        ICoreWebView2_2, COREWEBVIEW2_BROWSING_DATA_KINDS,
+        COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE, COREWEBVIEW2_BROWSING_DATA_KINDS_COOKIES,
+        COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE, COREWEBVIEW2_BROWSING_DATA_KINDS_FILE_SYSTEMS,
+        COREWEBVIEW2_BROWSING_DATA_KINDS_INDEXED_DB,
+        COREWEBVIEW2_BROWSING_DATA_KINDS_LOCAL_STORAGE,
+        COREWEBVIEW2_BROWSING_DATA_KINDS_SERVICE_WORKERS, COREWEBVIEW2_BROWSING_DATA_KINDS_WEB_SQL,
     };
     use webview2_com::{
         ClearBrowsingDataCompletedHandler, CoTaskMemPWSTR, GetCookiesCompletedHandler,
@@ -807,10 +897,47 @@ mod imp_win {
         Ok(())
     }
 
-    pub(super) async fn clear(app: &AppHandle, workspace_id: WorkspaceId) -> Result<(), String> {
+    /// Reaches a little past now so a record changed while the call is in
+    /// flight, or under a clock slightly behind the caller's, still goes.
+    const RANGE_END_SLACK_SECS: f64 = 60.0;
+
+    /// The WebView2 data kinds covered by `kinds`.
+    fn browsing_data_kinds(kinds: &[SiteDataKind]) -> COREWEBVIEW2_BROWSING_DATA_KINDS {
+        let mut flags = COREWEBVIEW2_BROWSING_DATA_KINDS(0);
+        if kinds.contains(&SiteDataKind::Cookies) {
+            flags |= COREWEBVIEW2_BROWSING_DATA_KINDS_COOKIES;
+        }
+        if kinds.contains(&SiteDataKind::Cache) {
+            flags |= COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE
+                | COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE;
+        }
+        if kinds.contains(&SiteDataKind::Storage) {
+            flags |= COREWEBVIEW2_BROWSING_DATA_KINDS_LOCAL_STORAGE
+                | COREWEBVIEW2_BROWSING_DATA_KINDS_INDEXED_DB
+                | COREWEBVIEW2_BROWSING_DATA_KINDS_WEB_SQL
+                | COREWEBVIEW2_BROWSING_DATA_KINDS_FILE_SYSTEMS
+                | COREWEBVIEW2_BROWSING_DATA_KINDS_SERVICE_WORKERS;
+        }
+
+        flags
+    }
+
+    pub(super) async fn clear(
+        app: &AppHandle,
+        workspace_id: WorkspaceId,
+        kinds: &[SiteDataKind],
+        since_unix: Option<i64>,
+    ) -> Result<(), String> {
         let Some(webview) = workspace_webview(app, workspace_id).await else {
             return Err("open a tab in this workspace to clear its data".to_string());
         };
+        let data_kinds = browsing_data_kinds(kinds);
+        let range = since_unix.map(|secs| {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0.0, |d| d.as_secs_f64());
+            (secs as f64, now + RANGE_END_SLACK_SECS)
+        });
 
         let (tx, rx) = mpsc::channel::<bool>();
         crate::win_webview2::with_core_webview2(&webview, move |core| {
@@ -825,7 +952,12 @@ mod imp_win {
                     Ok(())
                 }));
 
-                unsafe { profile2.ClearBrowsingDataAll(&handler) }
+                match range {
+                    None => unsafe { profile2.ClearBrowsingData(data_kinds, &handler) },
+                    Some((start, end)) => unsafe {
+                        profile2.ClearBrowsingDataInTimeRange(data_kinds, start, end, &handler)
+                    },
+                }
             })();
 
             if started.is_err() {
@@ -837,5 +969,56 @@ mod imp_win {
             Some(true) => Ok(()),
             _ => Err("clearing site data failed".to_string()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_kind_defers_to_the_store_s_own_list() {
+        let all = [
+            SiteDataKind::Cookies,
+            SiteDataKind::Cache,
+            SiteDataKind::Storage,
+        ];
+        assert_eq!(website_data_types(&all), None);
+        // Order and repeats do not matter.
+        let shuffled = [
+            SiteDataKind::Storage,
+            SiteDataKind::Cookies,
+            SiteDataKind::Cookies,
+            SiteDataKind::Cache,
+        ];
+        assert_eq!(website_data_types(&shuffled), None);
+    }
+
+    #[test]
+    fn a_subset_names_only_its_own_types() {
+        let names = website_data_types(&[SiteDataKind::Cookies]).expect("a subset");
+        assert_eq!(names, vec!["WKWebsiteDataTypeCookies"]);
+
+        let names =
+            website_data_types(&[SiteDataKind::Cache, SiteDataKind::Storage]).expect("a subset");
+        assert!(names.contains(&"WKWebsiteDataTypeDiskCache"));
+        assert!(names.contains(&"WKWebsiteDataTypeLocalStorage"));
+        assert!(names.contains(&"WKWebsiteDataTypeServiceWorkerRegistrations"));
+        assert!(!names.contains(&"WKWebsiteDataTypeCookies"));
+    }
+
+    #[test]
+    fn kinds_deserialize_from_their_snake_case_names() {
+        let kinds: Vec<SiteDataKind> =
+            serde_json::from_str(r#"["cookies","cache","storage"]"#).expect("known kinds");
+        assert_eq!(
+            kinds,
+            [
+                SiteDataKind::Cookies,
+                SiteDataKind::Cache,
+                SiteDataKind::Storage
+            ]
+        );
+        assert!(serde_json::from_str::<SiteDataKind>(r#""history""#).is_err());
     }
 }

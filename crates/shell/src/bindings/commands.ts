@@ -30,6 +30,7 @@ import type {
   LinkAssessment,
   PaneBranch,
   SiteDataEntry,
+  SiteDataKind,
   PrivacyMode,
   RequestType,
   SplitDir,
@@ -82,17 +83,25 @@ export const commands = {
     return invoke('delete_history', { ids })
   },
 
-  /** Remove browsing history; `workspaceId` scopes the wipe (omit = all). */
-  async clearHistory(workspaceId?: WorkspaceId): Promise<void> {
-    return invoke('clear_history', { workspaceId: workspaceId ?? null })
+  /**
+   * Remove browsing history; `workspaceId` scopes the wipe (omit = all) and
+   * `sinceUnix` (seconds) keeps visits older than that instant (null = all time).
+   */
+  async clearHistory(workspaceId?: WorkspaceId, sinceUnix: number | null = null): Promise<void> {
+    return invoke('clear_history', { workspaceId: workspaceId ?? null, sinceUnix })
   },
 
   /**
-   * Wipe a workspace's cookies, cache and local storage (all site data) from
-   * its persistent WebKit data store.
+   * Wipe the given kinds of site data from a workspace's persistent data
+   * store. `sinceUnix` (seconds) keeps records last changed before that
+   * instant (null = all time). Rejects an empty `kinds`.
    */
-  async clearSiteData(workspaceId: WorkspaceId): Promise<void> {
-    return invoke('clear_site_data', { workspaceId })
+  async clearSiteData(
+    workspaceId: WorkspaceId,
+    kinds: ReadonlyArray<SiteDataKind>,
+    sinceUnix: number | null = null,
+  ): Promise<void> {
+    return invoke('clear_site_data', { workspaceId, kinds, sinceUnix })
   },
 
   /** List the domains with stored site data in a workspace, sorted. */

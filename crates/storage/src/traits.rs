@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use chrono::{DateTime, Utc};
+
 use crate::bookmarks::{Bookmark, BookmarkFolder, BookmarkImport, BookmarkImportStats};
 use crate::credentials::CredentialRecord;
 use crate::downloads::DownloadRecord;
@@ -81,7 +83,12 @@ pub trait Storage: Send + Sync {
     fn delete_history_entries(&self, ids: &[i64]) -> StorageResult<()>;
 
     /// Remove history rows, scoped to `workspace_id` when set, else all of it.
-    fn clear_history(&self, workspace_id: Option<WorkspaceId>) -> StorageResult<()>;
+    /// With `since`, only visits at or after that instant go, while older ones stay.
+    fn clear_history(
+        &self,
+        workspace_id: Option<WorkspaceId>,
+        since: Option<DateTime<Utc>>,
+    ) -> StorageResult<()>;
 
     // -- password vault (see [`crate::credentials`]) -----------------------
 

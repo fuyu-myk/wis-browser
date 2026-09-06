@@ -259,7 +259,7 @@ fn clear_scoped_to_a_workspace_leaves_others() {
     s.record_visit(a, "https://a.example/", "A").unwrap();
     s.record_visit(b, "https://b.example/", "B").unwrap();
 
-    s.clear_history(Some(a)).unwrap();
+    s.clear_history(Some(a), None).unwrap();
     assert!(ws_rows(&s, a).is_empty(), "workspace a cleared");
     assert_eq!(ws_rows(&s, b).len(), 1, "workspace b untouched");
 }
@@ -272,6 +272,34 @@ fn clear_all_removes_everything() {
     s.record_visit(a, "https://a.example/", "A").unwrap();
     s.record_visit(b, "https://b.example/", "B").unwrap();
 
-    s.clear_history(None).unwrap();
+    s.clear_history(None, None).unwrap();
+    assert!(all_rows(&s).is_empty());
+}
+
+#[test]
+fn clear_since_a_future_instant_keeps_everything() {
+    let s = store();
+    let a = WorkspaceId::new();
+    s.record_visit(a, "https://a.example/", "A").unwrap();
+
+    let future = chrono::Utc::now() + chrono::Duration::hours(1);
+    s.clear_history(None, Some(future)).unwrap();
+
+    assert_eq!(
+        all_rows(&s).len(),
+        1,
+        "nothing was visited after a future instant"
+    );
+}
+
+#[test]
+fn clear_since_a_past_instant_removes_recent_visits() {
+    let s = store();
+    let a = WorkspaceId::new();
+    s.record_visit(a, "https://a.example/", "A").unwrap();
+
+    let past = chrono::Utc::now() - chrono::Duration::hours(1);
+    s.clear_history(None, Some(past)).unwrap();
+
     assert!(all_rows(&s).is_empty());
 }

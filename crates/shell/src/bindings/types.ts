@@ -715,6 +715,9 @@ export interface HistoryEntry {
   visit_count: number
 }
 
+/** One separable slice of a workspace's site data; mirrors `SiteDataKind`. */
+export type SiteDataKind = 'cookies' | 'cache' | 'storage'
+
 /** A domain with stored site data (cookies/cache/storage) in a workspace. */
 export interface SiteDataEntry {
   domain: string

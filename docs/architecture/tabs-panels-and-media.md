@@ -84,7 +84,7 @@ This guide elaborates on WIS.md. If anything here conflicts, WIS.md wins.
 
 ## History and cookies
 
-- Per-workspace deduped history with search; dedupe keys on the fragment-stripped URL, so anchor jumps update one row. Native cookie/site-data clear via `WKHTTPCookieStore` + `removeDataOfTypes`. An untitled page's title is the bare site name (`wis_core::tab::placeholder_title`), never the raw URL.
+- Per-workspace deduped history with search; dedupe keys on the fragment-stripped URL, so anchor jumps update one row. Native cookie/site-data clear via `WKHTTPCookieStore` + `removeDataOfTypes:modifiedSince:`. The clear-data dialog picks kinds (cookies, cache, storage map to `WKWebsiteDataType` subsets in `cookies.rs`. Windows maps the same kinds onto `COREWEBVIEW2_BROWSING_DATA_KINDS` and calls `ClearBrowsingData` or `ClearBrowsingDataInTimeRange`. An untitled page's title is the bare site name (`wis_core::tab::placeholder_title`), never the raw URL.
 - Stay logged in across restarts (`cookies.rs`): WebKit keeps session cookies in memory only. A workspace's expiry-less cookies snapshot to `session_cookies` (after each load and on a 60s timer) and restore on the first tab each run, once per workspace via `AppState::restored_cookies`; empty snapshots never overwrite a saved one. Encrypted with ChaCha20-Poly1305 under a dedicated key (`session_key_load_or_create`, not Touch ID gated, so available at launch); if the key is unavailable nothing is persisted. Blast-radius bound: `created_at` stamped once, and a restored session auto-expires after `SESSION_COOKIE_TTL_DAYS` = 14, forcing re-auth; stale snapshots purged at launch. Gated on `persist_sessions`; never ephemeral.
 
 ## Browser identity and default-browser handoff

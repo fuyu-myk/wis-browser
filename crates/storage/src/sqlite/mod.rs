@@ -152,9 +152,13 @@ impl Storage for SqliteStorage {
         history::delete_entries(&conn, ids)
     }
 
-    fn clear_history(&self, workspace_id: Option<wis_core::WorkspaceId>) -> StorageResult<()> {
+    fn clear_history(
+        &self,
+        workspace_id: Option<wis_core::WorkspaceId>,
+        since: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> StorageResult<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
-        history::clear(&conn, workspace_id)
+        history::clear(&conn, workspace_id, since)
     }
 
     fn record_download(&self, record: &crate::downloads::DownloadRecord) -> StorageResult<()> {
