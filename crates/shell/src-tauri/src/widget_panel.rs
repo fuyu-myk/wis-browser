@@ -389,6 +389,7 @@ pub async fn open_widget_panel(
     let blank = Url::parse("about:blank").expect("about:blank is a valid URL");
     let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(blank))
         .focused(true)
+        .disable_drag_drop_handler()
         .proxy_url(proxy_url);
 
     // Unconsumed page-first editing combos (undo/redo/select-all) replay natively

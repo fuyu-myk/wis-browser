@@ -88,6 +88,7 @@ pub async fn create_tab_webview(
         .focused(false)
         .proxy_url(proxy_url)
         .accept_first_mouse(true)
+        .disable_drag_drop_handler()
         // Ride the webview configuration so even an instantly-loading first
         // document (cache, localhost, the restored startup page) gets them.
         .initialization_script(crate::video_popout::page_script())

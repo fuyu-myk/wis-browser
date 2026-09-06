@@ -237,6 +237,11 @@ cannot exercise.
 - Trigger: `Ctrl+click` or middle-click a link.
 - Correct: opens in a new background tab in the current workspace.
 
+### In-page drag and drop
+
+- Trigger: open github.com/\<user\>. Customize your pins and drag a pinned repo to a new slot; then drag a file from Files onto a page `<input type="file">`.
+- Correct: the pin reorders and Save enables; the file attaches. Wis disables wry's drag-drop handler on every webview, so WebKitGTK handles both itself.
+
 ### Save-password capture
 
 - Trigger: submit a login form on any test login page (non-private tab).

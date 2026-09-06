@@ -187,6 +187,7 @@ pub async fn open_peek(
     let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed))
         .focused(true)
         .incognito(true)
+        .disable_drag_drop_handler()
         .proxy_url(proxy_url);
 
     // Custom-scheme navigations app handoff.
