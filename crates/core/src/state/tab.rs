@@ -29,7 +29,9 @@ impl BrowserState {
                     let appended = w.with_tab_appended(tab_id);
                     // A background tab is appended but does not steal focus.
                     if focus {
-                        appended.with_focused_tab(tab_id)
+                        appended
+                            .with_focused_tab(tab_id)
+                            .with_selected_folder(folder)
                     } else {
                         appended
                     }
@@ -68,7 +70,8 @@ impl BrowserState {
     }
 
     /// Append a new tab that is always loose (outside any folder), regardless of
-    /// the selected folder. Used by the explicit "+ New tab" affordance.
+    /// the selected folder, which clears since the loose tab takes focus. Used
+    /// by the explicit "+ New tab" affordance and reopen-closed-tab.
     pub fn with_new_loose_tab(
         &self,
         workspace_id: WorkspaceId,

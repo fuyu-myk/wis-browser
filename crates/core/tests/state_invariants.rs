@@ -613,7 +613,7 @@ fn selected_folder_targets_new_tabs_and_clears_on_delete() {
 }
 
 #[test]
-fn loose_new_tab_ignores_selected_folder() {
+fn loose_new_tab_clears_the_selected_folder() {
     let s0 = BrowserState::new_with_defaults();
     let ws = s0.workspaces[0].id;
     let (s1, folder) = s0
@@ -626,9 +626,9 @@ fn loose_new_tab_ignores_selected_folder() {
     assert_eq!(s3.tab(filed.id).unwrap().folder_id, Some(folder.id));
     let (s4, loose) = s3.with_new_loose_tab(ws, "https://b.example/").unwrap();
     assert_eq!(s4.tab(loose.id).unwrap().folder_id, None);
-    // The new loose tab is focused and the selection is left intact.
+    // The new loose tab is focused, so no folder stays highlighted.
     assert_eq!(s4.workspaces[0].active_tab_id, Some(loose.id));
-    assert_eq!(s4.workspaces[0].selected_folder_id, Some(folder.id));
+    assert_eq!(s4.workspaces[0].selected_folder_id, None);
     assert_clean(&s4);
 }
 
