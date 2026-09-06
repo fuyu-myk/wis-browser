@@ -586,6 +586,7 @@ pub fn run() {
             commands::create_tab,
             commands::create_loose_tab,
             commands::create_background_tab,
+            commands::create_related_tab,
             commands::split_pane,
             commands::split_pane_with,
             commands::replace_pane_leaf,

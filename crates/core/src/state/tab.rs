@@ -58,15 +58,63 @@ impl BrowserState {
         self.with_tab_created(workspace_id, url_str, folder, true)
     }
 
-    /// Like [`Self::with_new_tab`] but the new tab is **not** focused: the opener stays
-    /// active. Backs Cmd/middle-click "open link in a new background tab".
+    /// Like [`Self::with_new_tab`] but the new tab is **not** focused and lands
+    /// beside its opener (see [`Self::with_new_related_tab`]). Backs
+    /// Cmd/middle-click "open link in a new background tab".
     pub fn with_new_background_tab(
         &self,
         workspace_id: WorkspaceId,
         url_str: &str,
     ) -> WisResult<(Self, Tab)> {
+        self.with_new_related_tab(workspace_id, url_str, false)
+    }
+
+    /// Open a tab right after the active tab, behind any tabs already opened from
+    /// it, so a run of link opens keeps link order. Appends like
+    /// [`Self::with_new_tab`] when there is no active tab or the new tab files
+    /// into a different folder than the active one.
+    pub fn with_new_related_tab(
+        &self,
+        workspace_id: WorkspaceId,
+        url_str: &str,
+        focus: bool,
+    ) -> WisResult<(Self, Tab)> {
         let folder = self.workspace(workspace_id)?.selected_folder_id;
-        self.with_tab_created(workspace_id, url_str, folder, false)
+        let position = self.related_insert_index(workspace_id, folder);
+        let (next, tab) = self.with_tab_created(workspace_id, url_str, folder, focus)?;
+        let Some(position) = position else {
+            return Ok((next, tab));
+        };
+        let mut order = next.workspace(workspace_id)?.tab_order.clone();
+
+        order.retain(|t| *t != tab.id);
+        order.insert(position.min(order.len()), tab.id);
+
+        Ok((next.with_tab_order(workspace_id, order)?, tab))
+    }
+
+    fn related_insert_index(
+        &self,
+        workspace_id: WorkspaceId,
+        folder: Option<TabFolderId>,
+    ) -> Option<usize> {
+        let workspace = self.workspace(workspace_id).ok()?;
+        let active = self.tab(workspace.active_tab_id?).ok()?;
+        if active.folder_id != folder {
+            return None;
+        }
+
+        let index = workspace.tab_order.iter().position(|t| *t == active.id)?;
+        let opened_since = workspace.tab_order[index + 1..]
+            .iter()
+            .take_while(|id| {
+                self.tab(**id)
+                    .map(|t| t.folder_id == folder && t.created_at >= active.last_active_at)
+                    .unwrap_or(false)
+            })
+            .count();
+
+        Some(index + 1 + opened_since)
     }
 
     /// Append a new tab that is always loose (outside any folder), regardless of

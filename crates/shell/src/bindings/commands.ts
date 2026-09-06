@@ -398,6 +398,10 @@ export const commands = {
     return invoke('create_background_tab', { workspaceId, url })
   },
 
+  async createRelatedTab(workspaceId: WorkspaceId, url: string): Promise<Tab> {
+    return invoke('create_related_tab', { workspaceId, url })
+  },
+
   /** Set the swipe-nav indicator colour; stored for new tabs and
    *  pushed into every live tab webview. */
   async setSwipeAccent(color: string): Promise<void> {

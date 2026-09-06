@@ -14,9 +14,10 @@ const OPEN_TAB_FOREGROUND_EVENT = 'wis-open-in-tab-fg'
  * tab (`wis-open-in-tab`); an engine new-window request that is a plain
  * navigation (`target=_blank`, featureless `window.open`) -> a new
  * **foreground** tab (`wis-open-in-tab-fg`, denied as a popup in
- * `on_new_window`). Both events are app-wide, so gate on focus: only the
- * window the user clicked in creates the tab, in its own workspace
- * (`get_browser_state` self-heals `active_workspace_id` to this window's).
+ * `on_new_window`). Either way the tab lands beside its opener. Both events
+ * are app-wide, so gate on focus: only the window the user clicked in creates
+ * the tab, in its own workspace (`get_browser_state` self-heals
+ * `active_workspace_id` to this window's).
  */
 export function useOpenInTab(): void {
   const { data: state } = useBrowserState()
@@ -39,7 +40,7 @@ export function useOpenInTab(): void {
       })
     }
     hook(OPEN_IN_TAB_EVENT, (ws, href) => commands.createBackgroundTab(ws, href))
-    hook(OPEN_TAB_FOREGROUND_EVENT, (ws, href) => commands.createTab(ws, href))
+    hook(OPEN_TAB_FOREGROUND_EVENT, (ws, href) => commands.createRelatedTab(ws, href))
     return () => {
       cancelled = true
       unlistens.forEach((fn) => fn())

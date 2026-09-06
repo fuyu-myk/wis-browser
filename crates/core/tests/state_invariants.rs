@@ -728,6 +728,61 @@ fn filing_pinning_and_pane_focus_move_the_selection() {
 }
 
 #[test]
+fn link_opens_land_beside_their_opener_in_link_order() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s2, b) = s1.with_new_tab(ws, "https://b.example/").unwrap();
+    let s3 = s2.with_active_tab(a.id).unwrap();
+
+    // Two background opens from `a` sit right after it, in the order opened.
+    let (s4, l1) = s3
+        .with_new_background_tab(ws, "https://l1.example/")
+        .unwrap();
+    let (s5, l2) = s4
+        .with_new_background_tab(ws, "https://l2.example/")
+        .unwrap();
+    assert_eq!(s5.workspaces[0].tab_order, vec![a.id, l1.id, l2.id, b.id]);
+    assert_eq!(s5.workspaces[0].active_tab_id, Some(a.id));
+    assert_clean(&s5);
+
+    // A foreground open lands after that run and takes focus; the next follows it.
+    let (s6, f1) = s5
+        .with_new_related_tab(ws, "https://f1.example/", true)
+        .unwrap();
+    let (s7, f2) = s6
+        .with_new_related_tab(ws, "https://f2.example/", true)
+        .unwrap();
+    assert_eq!(
+        s7.workspaces[0].tab_order,
+        vec![a.id, l1.id, l2.id, f1.id, f2.id, b.id]
+    );
+    assert_eq!(s7.workspaces[0].active_tab_id, Some(f2.id));
+
+    // Re-focusing `a` starts a fresh run right behind it; Cmd+T still appends.
+    let s8 = s7.with_active_tab(a.id).unwrap();
+    let (s9, l3) = s8
+        .with_new_background_tab(ws, "https://l3.example/")
+        .unwrap();
+    assert_eq!(s9.workspaces[0].tab_order[..2], [a.id, l3.id]);
+    let (s10, t) = s9.with_new_tab(ws, "https://t.example/").unwrap();
+    assert_eq!(s10.workspaces[0].tab_order.last(), Some(&t.id));
+    assert_clean(&s10);
+
+    // A folder selected while a loose tab is active files the open at the folder's end.
+    let (s11, folder) = s10
+        .with_new_tab_folder(ws, "Work".into(), AccentColor::Mint)
+        .unwrap();
+    let s12 = s11.with_selected_tab_folder(ws, Some(folder.id)).unwrap();
+    let (s13, filed) = s12
+        .with_new_background_tab(ws, "https://filed.example/")
+        .unwrap();
+    assert_eq!(s13.tab(filed.id).unwrap().folder_id, Some(folder.id));
+    assert_eq!(s13.workspaces[0].tab_order.last(), Some(&filed.id));
+    assert_clean(&s13);
+}
+
+#[test]
 fn selecting_a_folder_from_another_workspace_is_rejected() {
     let s0 = BrowserState::new_with_defaults();
     let ws = s0.workspaces[0].id;

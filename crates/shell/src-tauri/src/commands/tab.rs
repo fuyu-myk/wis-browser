@@ -38,6 +38,22 @@ pub async fn create_background_tab(
     .await
 }
 
+/// Open a link a page handed to the chrome as a focused tab beside its opener
+/// (the active tab). Backs `target=_blank` / `window.open` plain navigations and
+/// widget-panel cross-site clicks.
+#[tauri::command]
+pub async fn create_related_tab(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    url: String,
+) -> WisResult<Tab> {
+    mutate(&app, &state, |s| {
+        s.with_new_related_tab(workspace_id, &url, true)
+    })
+    .await
+}
+
 /// Split the workspace's focused pane along `dir`, opening `url` in the new
 /// pane and focusing it. Returns the newly created tab. The frontend's webview
 /// reconciler then spins up its native webview and tiles it into the pane.
