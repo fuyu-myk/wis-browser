@@ -80,6 +80,7 @@ impl BrowserState {
             .map(|w| {
                 if w.id == workspace_id {
                     w.with_pane_leaf_swapped(target_leaf, dragged)
+                        .with_selected_folder_of_active(&self.tabs)
                 } else {
                     w.clone()
                 }
@@ -121,6 +122,7 @@ impl BrowserState {
             .map(|w| {
                 if w.id == workspace_id {
                     w.with_pane_split_with(target_tab, dir, place_new_first, moved_tab)
+                        .with_selected_folder_of_active(&self.tabs)
                 } else {
                     w.clone()
                 }

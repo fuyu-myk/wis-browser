@@ -34,7 +34,6 @@ import {
 } from '@/lib/tabMotion'
 import { useWorkspaceSlide } from '@/hooks/useWorkspaceSlide'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
-import { useFolderTarget } from '@/hooks/useFolderTarget'
 import {
   useTabSplit,
   tabDropTarget,
@@ -179,8 +178,6 @@ export function TabList({
     onMutate: (order) => patchFolderOrder(qc, workspaceId, order),
     onSuccess: invalidate,
   })
-  const { syncToTab } = useFolderTarget(workspaceId, selectedFolderId)
-
   const { startTabDrag, draggedRef, openSplitMenu } = useTabSplit({
     workspaceId,
     activeTabId,
@@ -562,7 +559,6 @@ export function TabList({
             return
           }
           setActive.mutate(tab.id)
-          syncToTab(tab)
         }}
         onContextMenu={(e) => openSplitMenu(e, tab.id)}
         onMouseDown={(e) => {
@@ -578,7 +574,6 @@ export function TabList({
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
             setActive.mutate(tab.id)
-            syncToTab(tab)
           }
         }}
       >

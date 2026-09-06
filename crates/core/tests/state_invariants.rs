@@ -633,6 +633,101 @@ fn loose_new_tab_ignores_selected_folder() {
 }
 
 #[test]
+fn folder_selection_follows_the_focused_tab() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, loose) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s2, folder) = s1
+        .with_new_tab_folder(ws, "Work".into(), AccentColor::Mint)
+        .unwrap();
+    let (s3, filed) = s2.with_new_tab(ws, "https://b.example/").unwrap();
+    let s3 = s3
+        .with_tab_assigned_folder(filed.id, Some(folder.id))
+        .unwrap();
+
+    // Focusing a foldered tab selects its folder; focusing a loose tab clears it.
+    let s4 = s3.with_active_tab(filed.id).unwrap();
+    assert_eq!(s4.workspaces[0].selected_folder_id, Some(folder.id));
+    let s5 = s4.with_active_tab(loose.id).unwrap();
+    assert_eq!(s5.workspaces[0].selected_folder_id, None);
+    assert_clean(&s5);
+
+    // Deselecting while a foldered tab is active makes the next tab loose.
+    let s6 = s5
+        .with_active_tab(filed.id)
+        .unwrap()
+        .with_selected_tab_folder(ws, None)
+        .unwrap();
+    let (s7, c) = s6.with_new_tab(ws, "https://c.example/").unwrap();
+    assert_eq!(s7.tab(c.id).unwrap().folder_id, None);
+    assert_clean(&s7);
+}
+
+#[test]
+fn closing_the_active_tab_selects_its_successors_folder() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s2, folder) = s1
+        .with_new_tab_folder(ws, "Work".into(), AccentColor::Mint)
+        .unwrap();
+    let s3 = s2.with_tab_assigned_folder(a.id, Some(folder.id)).unwrap();
+    let (s4, b) = s3.with_new_loose_tab(ws, "https://b.example/").unwrap();
+    let s4 = s4.with_selected_tab_folder(ws, None).unwrap();
+    assert_eq!(s4.workspaces[0].active_tab_id, Some(b.id));
+
+    // Closing the active loose tab lands on `a` and highlights its folder.
+    let s5 = s4.with_tab_closed(b.id).unwrap();
+    assert_eq!(s5.workspaces[0].active_tab_id, Some(a.id));
+    assert_eq!(s5.workspaces[0].selected_folder_id, Some(folder.id));
+    assert_clean(&s5);
+
+    // Closing a background tab leaves the selection alone.
+    let (s6, c) = s5
+        .with_new_background_tab(ws, "https://c.example/")
+        .unwrap();
+    let s7 = s6.with_selected_tab_folder(ws, None).unwrap();
+    let s8 = s7.with_tab_closed(c.id).unwrap();
+    assert_eq!(s8.workspaces[0].active_tab_id, Some(a.id));
+    assert_eq!(s8.workspaces[0].selected_folder_id, None);
+    assert_clean(&s8);
+}
+
+#[test]
+fn filing_pinning_and_pane_focus_move_the_selection() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s2, b) = s1.with_new_tab(ws, "https://b.example/").unwrap();
+    let (s3, folder) = s2
+        .with_new_tab_folder(ws, "Work".into(), AccentColor::Mint)
+        .unwrap();
+    assert_eq!(s3.workspaces[0].active_tab_id, Some(b.id));
+
+    // Filing a background tab leaves the selection; filing the active tab moves it.
+    let s4 = s3.with_tab_assigned_folder(a.id, Some(folder.id)).unwrap();
+    assert_eq!(s4.workspaces[0].selected_folder_id, None);
+    let s5 = s4.with_tab_assigned_folder(b.id, Some(folder.id)).unwrap();
+    assert_eq!(s5.workspaces[0].selected_folder_id, Some(folder.id));
+
+    // Pinning the active tab makes it loose, so the selection clears.
+    let (s6, _) = s5.with_tab_pinned(b.id, true).unwrap();
+    assert_eq!(s6.workspaces[0].selected_folder_id, None);
+    assert_clean(&s6);
+
+    // Pane focus changes follow the newly focused leaf.
+    let s7 = s6
+        .with_pane_split_with(ws, b.id, SplitDir::Horizontal, false, a.id)
+        .unwrap();
+    assert_eq!(s7.workspaces[0].active_tab_id, Some(a.id));
+    assert_eq!(s7.workspaces[0].selected_folder_id, Some(folder.id));
+    let s8 = s7.with_pane_leaf_replaced(ws, a.id, b.id).unwrap();
+    assert_eq!(s8.workspaces[0].active_tab_id, Some(b.id));
+    assert_eq!(s8.workspaces[0].selected_folder_id, None);
+    assert_clean(&s8);
+}
+
+#[test]
 fn selecting_a_folder_from_another_workspace_is_rejected() {
     let s0 = BrowserState::new_with_defaults();
     let ws = s0.workspaces[0].id;

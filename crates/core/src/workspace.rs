@@ -6,6 +6,7 @@ use crate::ids::{TabFolderId, TabId, WorkspaceId};
 use crate::pane::{PaneBranch, PaneNode, SplitDir};
 use crate::privacy::PrivacyMode;
 use crate::proxy::UpstreamProxy;
+use crate::tab::Tab;
 use crate::tab_folder::TabFolder;
 use serde::{Deserialize, Serialize};
 
@@ -48,8 +49,9 @@ pub struct Workspace {
     /// Serde-defaults to empty so existing state loads unchanged.
     #[serde(default)]
     pub tab_folders: Vec<TabFolder>,
-    /// Folder that new tabs are filed into (Cmd+T, bookmarks, etc.). `None`
-    /// means new tabs follow the active tab. Session-only (not persisted).
+    /// Folder that new tabs are filed into (Cmd+T, bookmarks, etc.); `None`
+    /// means loose. Follows the tab being focused and toggles from the folder
+    /// header, derived from the active tab on load.
     #[serde(default)]
     pub selected_folder_id: Option<TabFolderId>,
     pub essentials: Vec<EssentialPin>,
@@ -286,6 +288,16 @@ impl Workspace {
             selected_folder_id: id,
             ..self.clone()
         }
+    }
+
+    /// Point the selection at the active tab's folder (`None` when the active
+    /// tab is loose, pinned, or absent).
+    pub fn with_selected_folder_of_active(&self, tabs: &[Tab]) -> Self {
+        let folder = self
+            .active_tab_id
+            .and_then(|id| tabs.iter().find(|t| t.id == id))
+            .and_then(|t| t.folder_id);
+        self.with_selected_folder(folder)
     }
 
     /// Reassign folder positions to match `order` (folders not listed keep their

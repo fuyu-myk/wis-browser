@@ -164,7 +164,8 @@ impl BrowserState {
     }
 
     /// Move a tab into `folder_id` (or out of any folder when `None`). Assigning
-    /// to a folder unpins the tab, since pinned tabs are always loose.
+    /// to a folder unpins the tab, since pinned tabs are always loose. Filing
+    /// the active tab moves the selection with it.
     pub fn with_tab_assigned_folder(
         &self,
         tab_id: TabId,
@@ -197,11 +198,18 @@ impl BrowserState {
                 }
             })
             .collect();
-        let workspaces = if unpin {
-            self.map_workspace(workspace_id, |w| w.with_pinned(tab_id, false))
-        } else {
-            self.workspaces.clone()
-        };
+        let workspaces = self.map_workspace(workspace_id, |w| {
+            let next = if unpin {
+                w.with_pinned(tab_id, false)
+            } else {
+                w.clone()
+            };
+            if next.active_tab_id == Some(tab_id) {
+                next.with_selected_folder(folder_id)
+            } else {
+                next
+            }
+        });
 
         Ok(Self {
             workspaces,

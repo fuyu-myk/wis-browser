@@ -202,6 +202,29 @@ fn tab_folders_and_membership_survive_round_trip() {
 }
 
 #[test]
+fn folder_selection_is_derived_from_the_active_tab_on_load() {
+    let store = fresh_store();
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").expect("tab a");
+    let (s2, folder) = s1
+        .with_new_tab_folder(ws, "Work".into(), AccentColor::Mint)
+        .expect("folder");
+    let s3 = s2
+        .with_tab_assigned_folder(a.id, Some(folder.id))
+        .expect("assign")
+        .with_selected_tab_folder(ws, None)
+        .expect("deselect");
+
+    store.save_state(&s3).expect("save");
+    let loaded = store.load_state().expect("load").unwrap();
+
+    assert_eq!(loaded.workspaces[0].active_tab_id, Some(a.id));
+    assert_eq!(loaded.workspaces[0].selected_folder_id, Some(folder.id));
+    assert!(loaded.invariant_violations().is_empty());
+}
+
+#[test]
 fn session_cookies_round_trip_overwrite_and_ttl() {
     use wis_core::WorkspaceId;
     let store = fresh_store();

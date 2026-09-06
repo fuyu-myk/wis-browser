@@ -49,25 +49,10 @@ impl BrowserState {
         ))
     }
 
-    /// Folder a new tab in `workspace_id` should inherit: the workspace's
-    /// selected folder, else the active tab's folder (so it lands beside its
-    /// opener), else loose.
-    fn inherited_folder(&self, workspace_id: WorkspaceId) -> Option<TabFolderId> {
-        self.workspace(workspace_id).ok().and_then(|workspace| {
-            workspace.selected_folder_id.or_else(|| {
-                workspace
-                    .active_tab_id
-                    .and_then(|aid| self.tab(aid).ok())
-                    .and_then(|t| t.folder_id)
-            })
-        })
-    }
-
-    /// New tabs file into the workspace's selected folder if one is set;
-    /// otherwise they inherit the active tab's folder, landing beside their
-    /// opener. Used by Cmd+T, link opens, and bookmark opens.
+    /// New tabs file into the workspace's selected folder; with no selection
+    /// they are loose. Used by Cmd+T, link opens, and bookmark opens.
     pub fn with_new_tab(&self, workspace_id: WorkspaceId, url_str: &str) -> WisResult<(Self, Tab)> {
-        let folder = self.inherited_folder(workspace_id);
+        let folder = self.workspace(workspace_id)?.selected_folder_id;
         self.with_tab_created(workspace_id, url_str, folder, true)
     }
 
@@ -78,7 +63,7 @@ impl BrowserState {
         workspace_id: WorkspaceId,
         url_str: &str,
     ) -> WisResult<(Self, Tab)> {
-        let folder = self.inherited_folder(workspace_id);
+        let folder = self.workspace(workspace_id)?.selected_folder_id;
         self.with_tab_created(workspace_id, url_str, folder, false)
     }
 
@@ -96,17 +81,22 @@ impl BrowserState {
         let tab = self.tab(id)?;
         let workspace_id = tab.workspace_id;
 
-        let tabs = self.tabs.iter().filter(|t| t.id != id).cloned().collect();
+        let tabs: Vec<Tab> = self.tabs.iter().filter(|t| t.id != id).cloned().collect();
 
         let workspaces: Vec<Workspace> = self
             .workspaces
             .iter()
             .map(|w| {
-                if w.id == workspace_id {
-                    w.with_tab_removed(id).with_pane_after_removed(id)
-                } else {
-                    w.clone()
+                if w.id != workspace_id {
+                    return w.clone();
                 }
+
+                let next = w.with_tab_removed(id).with_pane_after_removed(id);
+                if w.active_tab_id != Some(id) {
+                    return next;
+                }
+
+                next.with_selected_folder_of_active(&tabs)
             })
             .collect();
 
@@ -172,10 +162,15 @@ impl BrowserState {
             .workspaces
             .iter()
             .map(|w| {
-                if w.id == workspace_id {
-                    w.with_pinned(id, pinned)
+                if w.id != workspace_id {
+                    return w.clone();
+                }
+
+                let next = w.with_pinned(id, pinned);
+                if w.active_tab_id == Some(id) {
+                    next.with_selected_folder_of_active(&tabs)
                 } else {
-                    w.clone()
+                    next
                 }
             })
             .collect();
@@ -354,6 +349,7 @@ impl BrowserState {
             .map(|w| {
                 if w.id == workspace_id {
                     w.with_focused_tab(id)
+                        .with_selected_folder(touched_tab.folder_id)
                 } else {
                     w.clone()
                 }

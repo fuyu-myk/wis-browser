@@ -476,9 +476,14 @@ fn assemble_workspaces(
                 .filter(|t| t.workspace_id == id && t.pinned)
                 .map(|t| t.id)
                 .collect();
+            let selected_folder_id = workspace
+                .active_tab_id
+                .and_then(|active| tabs.iter().find(|t| t.id == active))
+                .and_then(|t| t.folder_id);
             Workspace {
                 tab_order,
                 pinned_tab_ids,
+                selected_folder_id,
                 essentials: essentials.remove(&id).unwrap_or_default(),
                 ..workspace
             }

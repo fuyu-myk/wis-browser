@@ -205,6 +205,9 @@ fn remint_profile(profile: &mut ProfileBackup) {
         tab.loading = false;
         tab.reader = false;
     }
+    for ws in profile.workspaces.iter_mut() {
+        *ws = ws.with_selected_folder_of_active(&profile.tabs);
+    }
 
     for wb in profile.bookmarks.iter_mut() {
         wb.workspace = ws_map.get(&wb.workspace).copied().unwrap_or(wb.workspace);
@@ -355,6 +358,35 @@ mod tests {
         if let Some(active) = ws.active_tab_id {
             assert!(new_tab_ids.contains(&active));
         }
+    }
+
+    #[test]
+    fn remint_profile_derives_selected_folder_from_active_tab() {
+        let state = BrowserState::new_with_defaults();
+        let ws_id = state.active_workspace_id;
+        let (state, a) = state.with_new_tab(ws_id, "https://a.example").unwrap();
+        let (state, folder) = state
+            .with_new_tab_folder(ws_id, "Work".into(), crate::workspace::AccentColor::Mint)
+            .unwrap();
+        let state = state
+            .with_tab_assigned_folder(a.id, Some(folder.id))
+            .unwrap()
+            .with_selected_tab_folder(ws_id, None)
+            .unwrap();
+
+        let payload = BackupPayload {
+            profile: Some(ProfileBackup {
+                workspaces: vec![state.workspaces[0].clone()],
+                tabs: state.tabs.clone(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+        .reminted();
+
+        let ws = &payload.profile.unwrap().workspaces[0];
+        assert_ne!(ws.tab_folders[0].id, folder.id);
+        assert_eq!(ws.selected_folder_id, Some(ws.tab_folders[0].id));
     }
 
     #[test]

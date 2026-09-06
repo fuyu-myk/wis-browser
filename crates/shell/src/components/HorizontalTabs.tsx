@@ -155,7 +155,7 @@ export function HorizontalTabs({
     },
     onSuccess: invalidate,
   })
-  const { setTarget, syncToTab } = useFolderTarget(workspaceId, selectedFolderId)
+  const { setTarget } = useFolderTarget(workspaceId)
   const renameFolder = useMutation({
     mutationFn: (a: { folderId: TabFolderId; name: string }) =>
       commands.renameTabFolder(workspaceId, a.folderId, a.name),
@@ -575,7 +575,6 @@ export function HorizontalTabs({
             return
           }
           setActive.mutate(tab.id)
-          syncToTab(tab)
         }}
         onContextMenu={(e) => openSplitMenu(e, tab.id)}
         onMouseDown={(e) => {
@@ -591,7 +590,6 @@ export function HorizontalTabs({
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
             setActive.mutate(tab.id)
-            syncToTab(tab)
           }
         }}
         title={tab.title}
@@ -652,7 +650,6 @@ export function HorizontalTabs({
           return
         }
         setActive.mutate(tab.id)
-        syncToTab(tab)
       }}
       onContextMenu={(e) => openSplitMenu(e, tab.id)}
     >
@@ -837,8 +834,8 @@ export function HorizontalTabs({
 
   const onStripClick = (e: ReactMouseEvent) => {
     if (selectedFolderId == null) return
-    // Tabs, pinned tabs and folder islands set the target themselves; only a
-    // click on bare strip background clears it.
+    // Tab and pin clicks move the target through set_active_tab and folder
+    // islands set it themselves; only a click on bare strip background clears it.
     if ((e.target as Element).closest('.h-tab, .h-pin-circle, .h-island, .h-island-circle')) return
     setTarget(null)
   }
