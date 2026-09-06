@@ -18,6 +18,41 @@ interface Status {
   text: string
 }
 
+/** Mirrors the clamp in `wis_secrets::generate_password`. */
+const PW_MIN_LENGTH = 8
+const PW_MAX_LENGTH = 128
+const PW_DEFAULT_LENGTH = 20
+
+/**
+ * Class sizes mirroring `wis_secrets::password`. Used only for the strength
+ * hint.
+ */
+const PW_CLASS_SIZES = { lowercase: 26, uppercase: 26, digits: 10, symbols: 14 }
+
+/** Below this an offline attack on a stolen hash is within reach. */
+const PW_WEAK_BITS = 60
+
+/** How much entropy a recipe yields, for the hint beside the button. */
+function entropyBits(
+  length: number,
+  uppercase: boolean,
+  digits: boolean,
+  symbols: boolean,
+): number {
+  let alphabet = PW_CLASS_SIZES.lowercase
+  if (uppercase) alphabet += PW_CLASS_SIZES.uppercase
+  if (digits) alphabet += PW_CLASS_SIZES.digits
+  if (symbols) alphabet += PW_CLASS_SIZES.symbols
+  return Math.round(Math.log2(alphabet) * length)
+}
+
+/** The typed length as a number the generator will accept. */
+function clampLength(raw: string): number {
+  const parsed = Number.parseInt(raw, 10)
+  if (Number.isNaN(parsed)) return PW_DEFAULT_LENGTH
+  return Math.min(Math.max(parsed, PW_MIN_LENGTH), PW_MAX_LENGTH)
+}
+
 function errorMessage(error: unknown): string {
   if (typeof error === 'string') return error
   if (error && typeof error === 'object' && 'message' in error) {
@@ -307,6 +342,11 @@ function AddPasswordForm({ onSaved }: { onSaved: () => void }) {
   const [host, setHost] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [visible, setVisible] = useState(false)
+  const [lengthDraft, setLengthDraft] = useState(String(PW_DEFAULT_LENGTH))
+  const [uppercase, setUppercase] = useState(true)
+  const [digits, setDigits] = useState(true)
+  const [symbols, setSymbols] = useState(true)
 
   const save = useMutation({
     mutationFn: () => commands.vaultSave(host.trim(), username.trim(), password),
@@ -314,9 +354,21 @@ function AddPasswordForm({ onSaved }: { onSaved: () => void }) {
       setHost('')
       setUsername('')
       setPassword('')
+      setVisible(false)
       onSaved()
     },
   })
+
+  const bits = entropyBits(clampLength(lengthDraft), uppercase, digits, symbols)
+
+  const generate = async () => {
+    const generated = await commands
+      .generatePassword(clampLength(lengthDraft), uppercase, digits, symbols)
+      .catch(() => null)
+    if (generated === null) return
+    setPassword(generated)
+    setVisible(true)
+  }
 
   const canSave = host.trim() !== '' && username.trim() !== '' && password !== '' && !save.isPending
 
@@ -348,14 +400,75 @@ function AddPasswordForm({ onSaved }: { onSaved: () => void }) {
       />
       <input
         className="kb-vault-input"
-        type="password"
+        type={visible ? 'text' : 'password'}
         placeholder="Password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
+        spellCheck={false}
+        autoCapitalize="off"
       />
+      <button
+        type="button"
+        className="kb-vault-action"
+        onClick={() => setVisible((v) => !v)}
+        aria-pressed={visible}
+      >
+        {visible ? 'Hide' : 'Show'}
+      </button>
       <button type="submit" className={cx('kb-btn', { 'is-primary': canSave })} disabled={!canSave}>
         Save
       </button>
+      <div className="kb-vault-gen">
+        <span className="kb-vault-gen-label">Generate</span>
+        <input
+          type="number"
+          className="kb-vault-len"
+          min={PW_MIN_LENGTH}
+          max={PW_MAX_LENGTH}
+          value={lengthDraft}
+          onChange={(e) => setLengthDraft(e.target.value)}
+          aria-label="Generated password length"
+        />
+        <ClassChip label="A-Z" title="Uppercase letters" on={uppercase} onToggle={setUppercase} />
+        <ClassChip label="0-9" title="Digits" on={digits} onToggle={setDigits} />
+        <ClassChip label="!#$" title="Symbols" on={symbols} onToggle={setSymbols} />
+        <button type="button" className="kb-btn" onClick={() => void generate()}>
+          Generate
+        </button>
+        <span
+          className={cx('kb-vault-gen-label', { 'is-weak': bits < PW_WEAK_BITS })}
+          title={
+            bits < PW_WEAK_BITS
+              ? 'Short enough to be worth attacking offline. Add length or classes.'
+              : 'Guessing entropy of a password from these settings.'
+          }
+        >
+          {bits} bits
+        </span>
+      </div>
     </form>
+  )
+}
+
+interface ClassChipProps {
+  label: string
+  title: string
+  on: boolean
+  onToggle: (next: boolean) => void
+}
+
+/** One character class the generator may draw from. */
+function ClassChip({ label, title, on, onToggle }: ClassChipProps) {
+  return (
+    <button
+      type="button"
+      className={cx('kb-vault-chip', { 'is-on': on })}
+      title={title}
+      aria-label={title}
+      aria-pressed={on}
+      onClick={() => onToggle(!on)}
+    >
+      {label}
+    </button>
   )
 }

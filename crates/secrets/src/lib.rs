@@ -20,6 +20,13 @@
 //! Plaintext passwords exist only transiently in memory during seal/open and
 //! are never logged or persisted.
 
+pub mod password;
+
+pub use password::{
+    generate_password, PasswordRecipe, DEFAULT_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH,
+    MIN_PASSWORD_LENGTH,
+};
+
 use argon2::Argon2;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};

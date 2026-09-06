@@ -3520,6 +3520,40 @@ body.glass-chrome .kb-content {
 .kb-vault-input:focus { border-color: var(--primary-400); }
 .kb-vault-input::placeholder { color: var(--text-tertiary); }
 
+/* Password generator. */
+.kb-vault-gen { flex: 1 0 100%; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.kb-vault-gen-label { font-size: 12px; color: var(--text-tertiary); }
+.kb-vault-gen-label.is-weak { color: var(--danger); }
+.kb-vault-len {
+  width: 62px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  outline: 0;
+}
+.kb-vault-len:focus { border-color: var(--primary-400); }
+.kb-vault-chip {
+  padding: 5px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.kb-vault-chip:hover { border-color: var(--text-tertiary); }
+.kb-vault-chip.is-on {
+  background: var(--primary-500);
+  border-color: var(--primary-500);
+  color: white;
+}
+
 .kb-vault-panel {
   margin-top: 4px;
   border: 1px solid var(--border);

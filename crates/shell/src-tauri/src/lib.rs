@@ -565,6 +565,7 @@ pub fn run() {
             vault::vault_list,
             vault::vault_save,
             vault::vault_reveal,
+            vault::generate_password,
             vault::vault_delete,
             vault::vault_has_credentials,
             vault::vault_import_csv,

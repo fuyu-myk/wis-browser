@@ -305,6 +305,24 @@ fn suggested_csv_name() -> String {
     )
 }
 
+/// Generate a password with the OS CSPRNG. Deliberately outside the unlock
+/// gate as nothing is read or written, and the value goes only to the chrome
+/// that asked for it. Lowercase letters are always drawn from.
+///
+/// The generator hands back a `Zeroizing` string, but that guarantee ends on
+/// the next line: the returned `String`, its JSON encoding and the JavaScript
+/// string it becomes are ordinary plaintext, exactly like `vault_reveal`.
+#[tauri::command]
+pub fn generate_password(length: u32, uppercase: bool, digits: bool, symbols: bool) -> String {
+    let recipe = wis_secrets::PasswordRecipe {
+        length: length as usize,
+        uppercase,
+        digits,
+        symbols,
+    };
+    wis_secrets::generate_password(&recipe).to_string()
+}
+
 /// Drop the in-memory master key; the vault returns to the locked state.
 #[tauri::command]
 pub async fn vault_lock(state: State<'_, AppState>) -> WisResult<()> {

@@ -141,6 +141,19 @@ export const commands = {
     return invoke('vault_save', { host, username, password })
   },
 
+  /**
+   * Generate a password with the OS CSPRNG. Lowercase letters are always
+   * included and the length is clamped to 8..=128. Needs no vault unlock.
+   */
+  async generatePassword(
+    length: number,
+    uppercase: boolean,
+    digits: boolean,
+    symbols: boolean,
+  ): Promise<string> {
+    return invoke('generate_password', { length, uppercase, digits, symbols })
+  },
+
   /** Decrypt and return one saved password (vault must be unlocked). */
   async vaultReveal(id: number): Promise<string> {
     return invoke('vault_reveal', { id })
