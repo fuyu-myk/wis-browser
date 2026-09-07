@@ -20,8 +20,10 @@
 //! Plaintext passwords exist only transiently in memory during seal/open and
 //! are never logged or persisted.
 
+pub mod breach;
 pub mod password;
 
+pub use breach::{count_in_range, range_split, RANGE_PREFIX_LEN};
 pub use password::{
     generate_password, PasswordRecipe, DEFAULT_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH,
     MIN_PASSWORD_LENGTH,

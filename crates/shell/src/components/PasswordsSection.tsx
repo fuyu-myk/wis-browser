@@ -6,6 +6,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { cx } from '@/lib/cx'
 import { LockIcon, SearchIcon, XIcon } from '@/lib/icons'
 import { isMacOS } from '@/lib/platform'
+import { useBrowserState } from '@/hooks/useBrowserState'
 
 const VAULT_STATUS_KEY = ['vault-status'] as const
 const VAULT_LIST_KEY = ['vault-list'] as const
@@ -70,6 +71,8 @@ function errorMessage(error: unknown): string {
  */
 export function PasswordsSection() {
   const qc = useQueryClient()
+  const { data: browser } = useBrowserState()
+  const workspaceId = browser?.active_workspace_id ?? null
   const [search, setSearch] = useState('')
   const [csvBusy, setCsvBusy] = useState(false)
   const [csvStatus, setCsvStatus] = useState<Status | null>(null)
@@ -148,6 +151,31 @@ export function PasswordsSection() {
     }
   }
 
+  // Row id -> times that password appears in known breaches, from the last
+  // check.
+  const [breaches, setBreaches] = useState<Map<number, number> | null>(null)
+  const [breachStatus, setBreachStatus] = useState<Status | null>(null)
+  const checkBreaches = useMutation({
+    mutationFn: () => {
+      if (workspaceId === null) throw new Error('no workspace to route the check through')
+      return commands.vaultCheckBreaches(workspaceId)
+    },
+    onSuccess: (report) => {
+      setBreaches(new Map(report.breached.map((found) => [found.id, found.count])))
+      setBreachStatus({
+        kind: report.breached.length === 0 ? 'ok' : 'err',
+        text:
+          report.breached.length === 0
+            ? `None of your ${report.checked} saved passwords appear in known breaches.`
+            : `${report.breached.length} of ${report.checked} appear in known breaches. Change those first.`,
+      })
+    },
+    onError: (error: unknown) => {
+      setBreaches(null)
+      setBreachStatus({ kind: 'err', text: errorMessage(error) })
+    },
+  })
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return creds
@@ -191,6 +219,24 @@ export function PasswordsSection() {
             </div>
             <button type="button" className="kb-btn" onClick={() => lock.mutate()}>
               Lock
+            </button>
+          </div>
+
+          <div className="row">
+            <div className="l">
+              <span>Check for breaches</span>
+              <span className={cx({ 'is-error': breachStatus?.kind === 'err' })}>
+                {breachStatus?.text ??
+                  `Looks your passwords up in public breach data without revealing them. Each is hashed here and only the first five characters of the hash are sent. Requests follow this workspace\u2019s network route, and ${BIOMETRIC_NAME} is asked for first.`}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="kb-btn"
+              onClick={() => checkBreaches.mutate()}
+              disabled={checkBreaches.isPending || workspaceId === null}
+            >
+              {checkBreaches.isPending ? 'Checking\u2026' : 'Check'}
             </button>
           </div>
 
@@ -256,7 +302,14 @@ export function PasswordsSection() {
             ) : (
               <ul className="kb-vault-list">
                 {filtered.map((c) => (
-                  <CredentialRow key={c.id} id={c.id} host={c.host} username={c.username} onDelete={() => del.mutate(c.id)} />
+                  <CredentialRow
+                    key={c.id}
+                    id={c.id}
+                    host={c.host}
+                    username={c.username}
+                    breachCount={breaches?.get(c.id) ?? null}
+                    onDelete={() => del.mutate(c.id)}
+                  />
                 ))}
               </ul>
             )}
@@ -284,10 +337,12 @@ interface CredentialRowProps {
   id: number
   host: string
   username: string
+  /** Times this password appears in known breaches, or null when unchecked. */
+  breachCount: number | null
   onDelete: () => void
 }
 
-function CredentialRow({ id, host, username, onDelete }: CredentialRowProps) {
+function CredentialRow({ id, host, username, breachCount, onDelete }: CredentialRowProps) {
   const [revealed, setRevealed] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -319,6 +374,14 @@ function CredentialRow({ id, host, username, onDelete }: CredentialRowProps) {
         <span className="kb-vault-user">{username}</span>
       </div>
       <code className="kb-vault-secret">{revealed ?? '••••••••'}</code>
+      {breachCount !== null && (
+        <span
+          className="kb-vault-breach"
+          title={`This password appears ${breachCount.toLocaleString()} times in known breaches. Consider changing it.`}
+        >
+          Breached
+        </span>
+      )}
       <button type="button" className="kb-vault-action" onClick={() => void reveal()}>
         {revealed !== null ? 'Hide' : 'Show'}
       </button>

@@ -11,8 +11,9 @@
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use wis_core::backup::CredentialBackup;
-use wis_core::{TabId, WisError, WisResult};
+use wis_core::{TabId, WisError, WisResult, WorkspaceId};
 use wis_secrets::EncryptedBlob;
+use zeroize::Zeroizing;
 
 use crate::state::AppState;
 
@@ -392,6 +393,151 @@ pub async fn vault_reveal(state: State<'_, AppState>, id: i64) -> WisResult<Stri
 
     String::from_utf8(plaintext).map_err(|_| WisError::InvalidInput {
         message: "stored password is not valid UTF-8".to_string(),
+    })
+}
+
+/// One saved password found in a public breach data set.
+#[derive(Debug, Serialize)]
+pub struct BreachFinding {
+    pub id: i64,
+    /// Times the password appears across known breaches.
+    pub count: u32,
+}
+
+/// What a breach check found.
+#[derive(Debug, Serialize)]
+pub struct BreachReport {
+    /// Passwords checked.
+    pub checked: u32,
+    /// Collection of breached passwords.
+    pub breached: Vec<BreachFinding>,
+}
+
+/// Maximum vault size before it is checked in parts.
+const MAX_BREACH_CHECKS: usize = 200;
+/// Per-request budget for one prefix lookup.
+const BREACH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+/// Time budget for the whole run.
+const BREACH_TOTAL_BUDGET: std::time::Duration = std::time::Duration::from_secs(90);
+
+/// Check saved passwords against the Pwned Passwords data set, disclosing
+/// none of them.
+///
+/// Each password is hashed locally and only the first five characters of that
+/// hash are sent; the service answers with every hash sharing the prefix and
+/// the match is decided here (see [`wis_secrets::breach`]). The requests go
+/// through the workspace's loopback proxy, so they inherit its encrypted DNS
+/// and its upstream, and a Tor workspace asks over Tor.
+///
+/// Nothing here runs on a timer or at launch. It asks for biometrics even when
+/// the vault is already unlocked to confirm the user's identity and consent.
+#[tauri::command]
+pub async fn vault_check_breaches(
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+) -> WisResult<BreachReport> {
+    authorize_vault(&state, "Check your saved passwords against known breaches").await?;
+
+    let storage = state.storage.clone();
+    let records = run_blocking(move || storage.list_credentials(None)).await?;
+
+    // Hash under the lock, then drop. Nothing but a five-character prefix leaves.
+    let lookups = {
+        let guard = state.vault_key.lock().await;
+        let key = guard.as_ref().ok_or_else(locked)?;
+        let mut lookups: Vec<(i64, String, Zeroizing<String>)> = Vec::new();
+        for record in records.into_iter().take(MAX_BREACH_CHECKS) {
+            let blob = EncryptedBlob {
+                ciphertext: record.ciphertext,
+                nonce: record.nonce,
+            };
+            let Ok(plaintext) = wis_secrets::decrypt(key, &blob) else {
+                continue;
+            };
+            let Ok(password) = String::from_utf8(plaintext) else {
+                continue;
+            };
+            let (prefix, suffix) = wis_secrets::range_split(&password);
+
+            lookups.push((record.id, prefix, Zeroizing::new(suffix)));
+        }
+
+        lookups
+    };
+
+    let proxy_port =
+        state
+            .ensure_proxy_for(workspace_id)
+            .await
+            .map_err(|err| WisError::InvalidInput {
+                message: format!("proxy unavailable: {err:?}"),
+            })?;
+    let client = reqwest::Client::builder()
+        .timeout(BREACH_TIMEOUT)
+        .proxy(
+            reqwest::Proxy::all(format!("http://127.0.0.1:{proxy_port}")).map_err(|err| {
+                WisError::InvalidInput {
+                    message: format!("proxy: {err}"),
+                }
+            })?,
+        )
+        .build()
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("http client: {err}"),
+        })?;
+
+    let checked = u32::try_from(lookups.len()).unwrap_or(u32::MAX);
+
+    let lookup_all = async {
+        let mut ranges: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        let mut breached = Vec::new();
+        for (id, prefix, suffix) in lookups {
+            let body = match ranges.get(&prefix) {
+                Some(body) => body,
+                None => {
+                    let fetched = fetch_range(&client, &prefix).await?;
+                    ranges.entry(prefix).or_insert(fetched)
+                }
+            };
+            let count = wis_secrets::count_in_range(body, &suffix);
+            if count > 0 {
+                breached.push(BreachFinding { id, count });
+            }
+        }
+
+        WisResult::Ok(breached)
+    };
+
+    let breached = tokio::time::timeout(BREACH_TOTAL_BUDGET, lookup_all)
+        .await
+        .map_err(|_| WisError::InvalidInput {
+            message: "the breach check ran out of time before finishing. Try again.".to_string(),
+        })??;
+
+    Ok(BreachReport { checked, breached })
+}
+
+/// Ask for one hash prefix. `Add-Padding` makes every answer a similar size.
+async fn fetch_range(client: &reqwest::Client, prefix: &str) -> WisResult<String> {
+    let response = client
+        .get(format!("https://api.pwnedpasswords.com/range/{prefix}"))
+        .header("Add-Padding", "true")
+        .header(reqwest::header::USER_AGENT, "Wis-Browser")
+        .send()
+        .await
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("breach check could not reach the service: {err}"),
+        })?;
+
+    if !response.status().is_success() {
+        return Err(WisError::InvalidInput {
+            message: format!("breach check answered {}", response.status()),
+        });
+    }
+
+    response.text().await.map_err(|err| WisError::InvalidInput {
+        message: format!("breach check answer could not be read: {err}"),
     })
 }
 

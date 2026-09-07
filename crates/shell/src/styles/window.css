@@ -8299,3 +8299,15 @@ body.motion-off .kb-ai-think-label.is-live {
   from { transform: translateY(-100%); opacity: 0; }
   to { transform: none; opacity: 1; }
 }
+
+/* Breach badge on a saved-password row. */
+.kb-vault-breach {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  cursor: default;
+}

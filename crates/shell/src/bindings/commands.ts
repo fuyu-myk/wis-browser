@@ -25,6 +25,7 @@ import type {
   Decision,
   DownloadId,
   DownloadItem,
+  BreachReport,
   ClosedTabRecord,
   HistoryEntry,
   HistoryQuery,
@@ -82,6 +83,16 @@ export const commands = {
   /** Delete specific history rows by id. */
   async deleteHistory(ids: number[]): Promise<void> {
     return invoke('delete_history', { ids })
+  },
+
+  /**
+   * Check saved passwords against the Pwned Passwords data set. Each password
+   * is hashed on this machine and only the first five characters of the hash
+   * are sent; the match is decided locally. Requests go through the
+   * workspace's proxy. Requires the vault unlocked.
+   */
+  async vaultCheckBreaches(workspaceId: WorkspaceId): Promise<BreachReport> {
+    return invoke('vault_check_breaches', { workspaceId })
   },
 
   /** Recently closed tabs, newest first, for the palette's browsable list. */

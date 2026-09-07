@@ -728,6 +728,21 @@ export interface HistoryEntry {
   visit_count: number
 }
 
+/** One saved password found in a public breach data set. */
+export interface BreachFinding {
+  id: number
+  /** Times the password appears across known breaches. */
+  count: number
+}
+
+/** What a breach check found; mirrors `BreachReport`. */
+export interface BreachReport {
+  /** Passwords checked. */
+  checked: number
+  /** Only the breached ones. */
+  breached: BreachFinding[]
+}
+
 /** Metadata of a closed tab; mirrors `ClosedTabRecord`. */
 export interface ClosedTabRecord {
   id: number
