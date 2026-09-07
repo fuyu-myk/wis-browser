@@ -20,6 +20,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 const SINK_MS = 220
@@ -29,7 +30,10 @@ import type { KeyAction, Tab, UserSettingsPatch } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import {
   effectiveKeymap,
+  historyKey,
   makeActionsSource,
+  makeBookmarksSource,
+  makeHistorySource,
   makeNavigateSource,
   makeSettingsTogglesSource,
   makeTabsSource,
@@ -44,12 +48,35 @@ const KEYACTION_EVENT = 'wis-keyaction'
 const PALETTE_FOCUS_EVENT = 'wis-overlay-palette-focus'
 const PALETTE_CLOSED_EVENT = 'wis-overlay-palette-closed'
 
+/** How much history to pull per search; the source shows the best few. */
+const HISTORY_LIMIT = 30
+/** Minimum query length (characters) before history is matched. */
+const HISTORY_MIN_QUERY = 2
+const HISTORY_SETTLE_MS = 120
+/** Time before bookmarks are considered stale. */
+const BOOKMARKS_STALE_MS = 30_000
+
 interface SectionedItems {
   tabs: PaletteItem[]
+  bookmarks: PaletteItem[]
+  history: PaletteItem[]
   actions: PaletteItem[]
   settings: PaletteItem[]
   open: PaletteItem[]
   flat: PaletteItem[]
+}
+
+/**
+ * Hold a value still until it stops changing, so typing does not fire one
+ * storage search per keystroke.
+ */
+function useSettled<T>(value: T, delayMs: number): T {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettled(value), delayMs)
+    return () => window.clearTimeout(timer)
+  }, [value, delayMs])
+  return settled
 }
 
 export function PaletteSurface() {
@@ -58,7 +85,7 @@ export function PaletteSurface() {
   useThemeApply(state?.settings)
 
   const [query, setQuery] = useState('')
-  const [highlight, setHighlight] = useState(0)
+  const [highlightId, setHighlightId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
 
@@ -70,7 +97,7 @@ export function PaletteSurface() {
     await new Promise((resolve) => setTimeout(resolve, SINK_MS))
     setClosing(false)
     setQuery('')
-    setHighlight(0)
+    setHighlightId(null)
     await commands.hideOverlay('palette').catch(() => undefined)
     await emit(PALETTE_CLOSED_EVENT).catch(() => undefined)
   }, [])
@@ -119,10 +146,47 @@ export function PaletteSurface() {
     await commands.updateSettings(patch).catch(() => undefined)
   }, [])
 
+  const workspaceId = state?.active_workspace_id ?? null
+  const settledQuery = useSettled(query.trim(), HISTORY_SETTLE_MS)
+
+  const { data: bookmarks } = useQuery({
+    queryKey: ['palette-bookmarks', workspaceId],
+    queryFn: () =>
+      workspaceId === null ? Promise.resolve([]) : commands.listBookmarks(workspaceId),
+    enabled: workspaceId !== null,
+    staleTime: BOOKMARKS_STALE_MS,
+  })
+
+  const historyReady = workspaceId !== null && settledQuery.length >= HISTORY_MIN_QUERY
+
+  const { data: history } = useQuery({
+    // Scoped to the workspace.
+    queryKey: ['palette-history', workspaceId, settledQuery],
+    queryFn: () =>
+      commands.getHistory({
+        search: settledQuery,
+        workspace_id: workspaceId,
+        limit: HISTORY_LIMIT,
+      }),
+    enabled: historyReady,
+    // Hold the last results while the next search runs.
+    placeholderData: (previous) => previous,
+  })
+
+  // `placeholderData` fires whenever a key has no data of its own.
+  const historyEntries = historyReady ? (history ?? []) : []
+
+  const bookmarkUrls = useMemo(
+    () => new Set((bookmarks ?? []).map((bookmark) => historyKey(bookmark.url))),
+    [bookmarks],
+  )
+
   const sources = useMemo(() => {
     if (!state) return []
     return [
       makeTabsSource({ state, onActivate: activateTab, onClose: closeTab }),
+      makeBookmarksSource({ bookmarks: bookmarks ?? [], onOpen: openUrl }),
+      makeHistorySource({ entries: historyEntries, exclude: bookmarkUrls, onOpen: openUrl }),
       makeActionsSource({
         keymap: effectiveKeymap(state.settings.keybindings),
         onDispatch: dispatchAction,
@@ -130,34 +194,58 @@ export function PaletteSurface() {
       makeSettingsTogglesSource({ settings: state.settings, onChange: updateSettings }),
       makeNavigateSource({ onOpen: openUrl, settings: state.settings }),
     ]
-  }, [state, activateTab, closeTab, dispatchAction, openUrl, updateSettings])
+  }, [
+    state,
+    activateTab,
+    closeTab,
+    dispatchAction,
+    openUrl,
+    updateSettings,
+    bookmarks,
+    historyEntries,
+    bookmarkUrls,
+  ])
 
   const sectioned: SectionedItems = useMemo(() => {
     const all = sources.flatMap((src) => src(query))
     const tabs = all.filter((it) => it.section === 'tabs')
+    const bookmarks = all.filter((it) => it.section === 'bookmarks')
+    const history = all.filter((it) => it.section === 'history')
     const actions = all.filter((it) => it.section === 'actions')
     const settings = all.filter((it) => it.section === 'settings')
     const open = all.filter((it) => it.section === 'open')
     return {
       tabs,
+      bookmarks,
+      history,
       actions,
       settings,
       open,
-      flat: [...tabs, ...actions, ...settings, ...open],
+      // Pages the user has already committed to first, most-committed
+      // downward.
+      flat: [...tabs, ...bookmarks, ...history, ...actions, ...settings, ...open],
     }
   }, [sources, query])
 
-  useEffect(() => {
-    setHighlight(0)
-  }, [query])
+  const highlight = useMemo(() => {
+    if (highlightId === null) return 0
+    const index = sectioned.flat.findIndex((item) => item.id === highlightId)
+    return index >= 0 ? index : 0
+  }, [highlightId, sectioned.flat])
+
+  const moveHighlight = useCallback(
+    (delta: number) => {
+      const last = sectioned.flat.length - 1
+      if (last < 0) return
+      const next = Math.min(Math.max(highlight + delta, 0), last)
+      setHighlightId(sectioned.flat[next]?.id ?? null)
+    },
+    [highlight, sectioned.flat],
+  )
 
   useEffect(() => {
-    if (sectioned.flat.length === 0) {
-      setHighlight(0)
-    } else if (highlight >= sectioned.flat.length) {
-      setHighlight(sectioned.flat.length - 1)
-    }
-  }, [sectioned.flat.length, highlight])
+    setHighlightId(null)
+  }, [query])
 
   useEffect(() => {
     const container = listRef.current
@@ -212,12 +300,12 @@ export function PaletteSurface() {
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setHighlight((h) => Math.min(sectioned.flat.length - 1, h + 1))
+      moveHighlight(1)
       return
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setHighlight((h) => Math.max(0, h - 1))
+      moveHighlight(-1)
       return
     }
     // Cmd+Backspace: row-scoped secondary action (close tab from palette).
@@ -273,6 +361,38 @@ export function PaletteSurface() {
           {sectioned.tabs.length > 0 && (
             <Section label="Tabs">
               {sectioned.tabs.map((item) => {
+                const idx = sectioned.flat.indexOf(item)
+                return (
+                  <ItemRow
+                    key={item.id}
+                    item={item}
+                    index={idx}
+                    highlighted={idx === highlight}
+                    onActivate={() => activate(item)}
+                  />
+                )
+              })}
+            </Section>
+          )}
+          {sectioned.bookmarks.length > 0 && (
+            <Section label="Bookmarks">
+              {sectioned.bookmarks.map((item) => {
+                const idx = sectioned.flat.indexOf(item)
+                return (
+                  <ItemRow
+                    key={item.id}
+                    item={item}
+                    index={idx}
+                    highlighted={idx === highlight}
+                    onActivate={() => activate(item)}
+                  />
+                )
+              })}
+            </Section>
+          )}
+          {sectioned.history.length > 0 && (
+            <Section label="History">
+              {sectioned.history.map((item) => {
                 const idx = sectioned.flat.indexOf(item)
                 return (
                   <ItemRow

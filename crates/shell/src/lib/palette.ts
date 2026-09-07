@@ -3,15 +3,19 @@
  *
  * A palette source maps a query to a ranked list of items. The panel
  * renders sections in a fixed order; each section sorts internally by
- * score. A future history source plugs in as one more entry with no
- * change to the panel.
+ * score.
+ *
+ * Sources are synchronous, so the two that need stored data (bookmarks and
+ * history) take it as an argument.
  */
 
 import type { ReactNode } from 'react'
 
 import type {
   AccentColor,
+  Bookmark,
   BrowserState,
+  HistoryEntry,
   KeyAction,
   Tab,
   UserSettings,
@@ -20,7 +24,7 @@ import type {
 import { localizeAccelerator, prettyAccelerator } from '@/lib/keybindings'
 import { resolveInput, type SearchSettings } from '@/lib/url'
 
-export type PaletteSection = 'tabs' | 'actions' | 'settings' | 'open'
+export type PaletteSection = 'tabs' | 'bookmarks' | 'history' | 'actions' | 'settings' | 'open'
 
 // Close-tab-from-palette secondary action: rendered per platform (⌘⌫ on
 // macOS, Ctrl+Backspace elsewhere), matching its Cmd/Ctrl+Backspace handler.
@@ -412,6 +416,117 @@ export function makeNavigateSource({ onOpen, settings }: NavigateSourceArgs): Pa
         activate: () => onOpen(resolved.url),
       },
     ]
+  }
+}
+
+/** Rows either page section will contribute. */
+const PAGE_LIMIT = 8
+/** Visits past this stop counting. */
+const VISIT_CAP = 10
+
+/**
+ * Storage strips the fragment before saving a visit, so a bookmark with an
+ * anchor still has to match its own history row. Mirrors `history_key`.
+ */
+export function historyKey(url: string): string {
+  const hash = url.indexOf('#')
+  return hash === -1 ? url : url.slice(0, hash)
+}
+
+/** A stored page either page source can rank. */
+interface RankablePage {
+  id: string
+  url: string
+  title: string
+  /** Times visited; history uses it to favour pages the user returns to. */
+  visits: number
+}
+
+/**
+ * Rank stored pages against the query, matching title and URL separately so
+ * either can be highlighted. Falls back to the URL as the title.
+ */
+function rankPages(
+  pages: readonly RankablePage[],
+  query: string,
+  section: PaletteSection,
+  onOpen: (url: string) => void | Promise<void>,
+): PaletteItem[] {
+  const items: PaletteItem[] = []
+  for (const page of pages) {
+    const title = page.title.trim() === '' ? page.url : page.title
+    const byTitle = fuzzyMatch(title, query)
+    const byUrl = fuzzyMatch(page.url, query)
+    const best = Math.max(byTitle.score, byUrl.score)
+    if (best === 0) continue
+    // Frequency lifts a page by at most half its own match score.
+    const frequency = Math.round((best * Math.min(page.visits, VISIT_CAP)) / (VISIT_CAP * 2))
+    items.push({
+      id: page.id,
+      section,
+      score: best + frequency,
+      title,
+      subtitle: page.url,
+      titleMatches: byTitle.score > 0 ? byTitle.indices : undefined,
+      subtitleMatches: byUrl.score > 0 ? byUrl.indices : undefined,
+      activate: () => onOpen(page.url),
+    })
+  }
+  return items.sort((a, b) => b.score - a.score).slice(0, PAGE_LIMIT)
+}
+
+interface BookmarksSourceArgs {
+  bookmarks: readonly Bookmark[]
+  onOpen: (url: string) => void | Promise<void>
+}
+
+/**
+ * Saved pages. Bookmarks are a bounded set, so the whole list is matched here
+ * rather than queried per keystroke. An empty query yields nothing.
+ */
+export function makeBookmarksSource({ bookmarks, onOpen }: BookmarksSourceArgs): PaletteSource {
+  return (query) => {
+    const trimmed = query.trim()
+    if (trimmed === '') return []
+    const pages = bookmarks.map((bookmark) => ({
+      id: `bookmark:${bookmark.id}`,
+      url: bookmark.url,
+      title: bookmark.title,
+      visits: 0,
+    }))
+    return rankPages(pages, trimmed, 'bookmarks', onOpen)
+  }
+}
+
+interface HistorySourceArgs {
+  entries: readonly HistoryEntry[]
+  /**
+   * Fragment-stripped URLs another section already offers, so a bookmarked
+   * page that is also in history appears once rather than twice. Compare with
+   * `historyKey` on both sides: storage strips the fragment, bookmarks keep
+   * it, so raw strings would never match for an anchored page.
+   */
+  exclude: ReadonlySet<string>
+  onOpen: (url: string) => void | Promise<void>
+}
+
+/**
+ * Pages visited before. The ranking here orders them and marks what matched.
+ * A page visited often outranks one seen once.
+ */
+export function makeHistorySource({ entries, exclude, onOpen }: HistorySourceArgs): PaletteSource {
+  return (query) => {
+    const trimmed = query.trim()
+    if (trimmed === '') return []
+    const pages = entries
+      .filter((entry) => !exclude.has(historyKey(entry.url)))
+      .map((entry) => ({
+        id: `history:${entry.id}`,
+        url: entry.url,
+        title: entry.title,
+        visits: entry.visit_count,
+      }))
+    return rankPages(pages, trimmed, 'history', onOpen)
   }
 }
 

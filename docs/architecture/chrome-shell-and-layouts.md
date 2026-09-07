@@ -14,6 +14,14 @@ The React/TypeScript chrome lives in `crates/shell/src/`. Imports use `@/...` al
 
 State is immutable end to end: `wis-core` mutations are pure `with_*` builders returning a new value, and the frontend re-renders off refetched query snapshots rather than local mutation.
 
+## Command palette sources
+
+`lib/palette.ts` maps a query to ranked items; the surface renders sections in a fixed order and each source sorts its own. Sources are **synchronous**, so the two that need stored data take it as an argument and `PaletteSurface` does the fetching: bookmarks are pulled once per workspace (a bounded set, matched whole client-side), while history is searched in storage per query, held still for 120ms, and only from the second character. Both are scoped to the active workspace, matching the history page's own default. React Query holds the previous results while the next search runs, but `placeholderData` fires for any key without data of its own, disabled or not, so the surface also drops the entries outright below the two-character minimum.
+
+Both sections rank title and URL separately, so either can be highlighted, and fall back to the URL as a title for a page that never reported one. History lifts a page by at most half its own match score for visit count, so a page visited often rises among comparable matches but never above a closer one. Each page section is capped at eight rows.
+
+Section order runs tabs, bookmarks, history, actions, settings, open: pages the user has already committed to first, most-committed downward, then commands, then the type-to-navigate fallback. Because the two new sections load asynchronously and splice in above the others, the keyboard cursor is anchored to a row's **identity** rather than its index.
+
 ## Page-zoom chip
 
 `ZoomIndicator` sits inside the address bar (`UrlBar`), after the input and before its other trailing controls, at their height. It reads the zoom for the active tab's host from settings (`lib/zoom.ts` mirrors the Rust lookup) and shows nothing while the page is at the default zoom. Hiding collapses its own `max-width` instead of unmounting, which gives it an exit as well as an entrance. Each character is keyed by its distance from the *end* plus its own value, so React remounts only the characters that changed: 110% to 120% moves the middle digit alone, 90% to 100% keeps the trailing `0%` still while the new hundreds digit and the changed tens digit arrive, and the per cent sign never moves. A remounted character replays one of two entrances, rising from below when the zoom went up and dropping from above when it went down; the direction is captured in a ref at mount. The global `motion-reduced` and `motion-off` tiers cover the animations without extra rules.
