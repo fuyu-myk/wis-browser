@@ -600,6 +600,8 @@ pub fn run() {
             commands::unsplit_panes,
             commands::close_tab,
             commands::restore_closed_tab,
+            commands::reopen_closed_tab,
+            commands::list_closed_tabs,
             commands::move_tab_to_new_window,
             commands::move_tab_to_workspace,
             commands::tab_hard_reload,

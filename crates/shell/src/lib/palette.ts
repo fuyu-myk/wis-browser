@@ -14,6 +14,7 @@ import type { ReactNode } from 'react'
 import type {
   AccentColor,
   Bookmark,
+  ClosedTabRecord,
   BrowserState,
   HistoryEntry,
   KeyAction,
@@ -24,7 +25,14 @@ import type {
 import { localizeAccelerator, prettyAccelerator } from '@/lib/keybindings'
 import { resolveInput, type SearchSettings } from '@/lib/url'
 
-export type PaletteSection = 'tabs' | 'bookmarks' | 'history' | 'actions' | 'settings' | 'open'
+export type PaletteSection =
+  | 'tabs'
+  | 'closed'
+  | 'bookmarks'
+  | 'history'
+  | 'actions'
+  | 'settings'
+  | 'open'
 
 // Close-tab-from-palette secondary action: rendered per platform (⌘⌫ on
 // macOS, Ctrl+Backspace elsewhere), matching its Cmd/Ctrl+Backspace handler.
@@ -433,13 +441,17 @@ export function historyKey(url: string): string {
   return hash === -1 ? url : url.slice(0, hash)
 }
 
-/** A stored page either page source can rank. */
+/** How many recently closed tabs the palette lists with no query typed. */
+const CLOSED_BROWSE_LIMIT = 5
+
+/** A stored page a page source can rank. */
 interface RankablePage {
   id: string
   url: string
   title: string
   /** Times visited; history uses it to favour pages the user returns to. */
   visits: number
+  open: () => void | Promise<void>
 }
 
 /**
@@ -450,7 +462,6 @@ function rankPages(
   pages: readonly RankablePage[],
   query: string,
   section: PaletteSection,
-  onOpen: (url: string) => void | Promise<void>,
 ): PaletteItem[] {
   const items: PaletteItem[] = []
   for (const page of pages) {
@@ -469,7 +480,7 @@ function rankPages(
       subtitle: page.url,
       titleMatches: byTitle.score > 0 ? byTitle.indices : undefined,
       subtitleMatches: byUrl.score > 0 ? byUrl.indices : undefined,
-      activate: () => onOpen(page.url),
+      activate: page.open,
     })
   }
   return items.sort((a, b) => b.score - a.score).slice(0, PAGE_LIMIT)
@@ -493,20 +504,14 @@ export function makeBookmarksSource({ bookmarks, onOpen }: BookmarksSourceArgs):
       url: bookmark.url,
       title: bookmark.title,
       visits: 0,
+      open: () => onOpen(bookmark.url),
     }))
-    return rankPages(pages, trimmed, 'bookmarks', onOpen)
+    return rankPages(pages, trimmed, 'bookmarks')
   }
 }
 
 interface HistorySourceArgs {
   entries: readonly HistoryEntry[]
-  /**
-   * Fragment-stripped URLs another section already offers, so a bookmarked
-   * page that is also in history appears once rather than twice. Compare with
-   * `historyKey` on both sides: storage strips the fragment, bookmarks keep
-   * it, so raw strings would never match for an anchored page.
-   */
-  exclude: ReadonlySet<string>
   onOpen: (url: string) => void | Promise<void>
 }
 
@@ -514,19 +519,53 @@ interface HistorySourceArgs {
  * Pages visited before. The ranking here orders them and marks what matched.
  * A page visited often outranks one seen once.
  */
-export function makeHistorySource({ entries, exclude, onOpen }: HistorySourceArgs): PaletteSource {
+export function makeHistorySource({ entries, onOpen }: HistorySourceArgs): PaletteSource {
   return (query) => {
     const trimmed = query.trim()
     if (trimmed === '') return []
-    const pages = entries
-      .filter((entry) => !exclude.has(historyKey(entry.url)))
-      .map((entry) => ({
+    const pages = entries.map((entry) => ({
         id: `history:${entry.id}`,
-        url: entry.url,
-        title: entry.title,
-        visits: entry.visit_count,
+      url: entry.url,
+      title: entry.title,
+      visits: entry.visit_count,
+      open: () => onOpen(entry.url),
+    }))
+    return rankPages(pages, trimmed, 'history')
+  }
+}
+
+interface ClosedTabsSourceArgs {
+  entries: readonly ClosedTabRecord[]
+  /** Reopens by row id, so the tab returns with the session it was closed with. */
+  onReopen: (id: number) => void | Promise<void>
+}
+
+/**
+ * Tabs closed recently, newest first. The palette shows the last few closed tabs
+ * when no query is present. A typed query filters and ranks the whole list instead.
+ */
+export function makeClosedTabsSource({ entries, onReopen }: ClosedTabsSourceArgs): PaletteSource {
+  return (query) => {
+    const trimmed = query.trim()
+    if (trimmed === '') {
+      return entries.slice(0, CLOSED_BROWSE_LIMIT).map((entry, index) => ({
+        id: `closed:${entry.id}`,
+        section: 'closed' as const,
+        // Descending.
+        score: CLOSED_BROWSE_LIMIT - index,
+        title: entry.title.trim() === '' ? entry.url : entry.title,
+        subtitle: entry.url,
+        activate: () => onReopen(entry.id),
       }))
-    return rankPages(pages, trimmed, 'history', onOpen)
+    }
+    const pages = entries.map((entry) => ({
+      id: `closed:${entry.id}`,
+      url: entry.url,
+      title: entry.title,
+      visits: 0,
+      open: () => onReopen(entry.id),
+    }))
+    return rankPages(pages, trimmed, 'closed')
   }
 }
 

@@ -728,6 +728,20 @@ export interface HistoryEntry {
   visit_count: number
 }
 
+/** Metadata of a closed tab; mirrors `ClosedTabRecord`. */
+export interface ClosedTabRecord {
+  id: number
+  workspace_id: WorkspaceId
+  url: string
+  /** Title at close; empty when the page never reported one. */
+  title: string
+  folder_id: TabFolderId | null
+  /** Slot in the workspace's tab order at close; -1 means append. */
+  position: number
+  pinned: boolean
+  closed_at: string
+}
+
 /** What media may start without a gesture; mirrors `wis_core::AutoplayPolicy`. */
 export type AutoplayPolicy = 'allow' | 'block_audible' | 'block'
 

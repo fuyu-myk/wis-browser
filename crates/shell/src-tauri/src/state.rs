@@ -30,23 +30,6 @@ use wis_storage::Storage;
 use crate::content_filter::{build_rule_specs_from, RuleSpec};
 use crate::error_compat::WisShellError;
 
-/// A closed tab worth offering to reopen.
-pub struct ClosedTab {
-    pub workspace_id: WorkspaceId,
-    pub url: String,
-    /// The folder the tab lived in at close (`None` = loose).
-    pub folder_id: Option<wis_core::TabFolderId>,
-    /// Position in the workspace's `tab_order` at close (clamped if the
-    /// workspace shrank; `usize::MAX` when unknown = append).
-    pub index: usize,
-    /// Pinned at close; reopen re-pins (pin-strip slot not preserved).
-    pub pinned: bool,
-    /// Serialized WKWebView `interactionState` captured at close, so reopen
-    /// restores history/scroll/forms instead of cold-loading. `None` when the
-    /// webview was already discarded (slept) at close time.
-    pub interaction_state: Option<String>,
-}
-
 /// A window's on-screen geometry in **logical** pixels (the unit the window
 /// builder and `set_position`/`set_size` use), persisted per workspace so a
 /// (re)opened window restores where and how big it last was.
@@ -115,9 +98,10 @@ pub struct AppState {
     /// A login captured from a page, awaiting the user's save/dismiss decision.
     /// The plaintext password lives here only; it never crosses back to a webview.
     pub pending_capture: Mutex<Option<crate::capture::PendingCapture>>,
-    /// Most-recently-closed tabs (newest last), for "reopen closed tab". Capped
-    /// in-memory and per-session; private/ephemeral tabs are never recorded.
-    pub closed_tabs: Mutex<Vec<ClosedTab>>,
+    /// Live sessions (WebKit `interactionState`) of tabs closed in this run,
+    /// keyed by their `closed_tabs` row id. The rows live in storage and
+    /// survive a restart.
+    pub closed_tab_sessions: Mutex<HashMap<i64, String>>,
     /// Interaction-state blobs awaiting a reopened tab's webview creation:
     /// `restore_closed_tab` stashes the blob under the new tab id and
     /// `create_tab_webview` consumes it, restoring the closed tab's session.
@@ -247,7 +231,7 @@ impl AppState {
             proxies: Mutex::new(HashMap::new()),
             vault_key: Mutex::new(None),
             pending_capture: Mutex::new(None),
-            closed_tabs: Mutex::new(Vec::new()),
+            closed_tab_sessions: Mutex::new(HashMap::new()),
             pending_restore_states: Mutex::new(HashMap::new()),
             nav_guard_bypass: Mutex::new(HashSet::new()),
             restored_cookies: Mutex::new(HashSet::new()),

@@ -145,8 +145,8 @@ pub async fn close_tab(
     id: TabId,
     return_to: Option<TabId>,
 ) -> WisResult<()> {
-    /// Newest-first cap on the reopen-closed-tab ring.
-    const CLOSED_RING_CAP: usize = 25;
+    /// How many closed tabs stay reopenable.
+    const CLOSED_TAB_CAP: u32 = 25;
 
     // Record the tab for "reopen closed tab" before it's removed.
     {
@@ -156,24 +156,33 @@ pub async fn close_tab(
                 let url = tab.url.to_string();
                 let workspace = browser.workspace(tab.workspace_id).ok();
                 let ephemeral = workspace.map(|w| w.ephemeral).unwrap_or(true);
-                let index = workspace
+                let position = workspace
                     .and_then(|w| w.tab_order.iter().position(|t| *t == id))
-                    .unwrap_or(usize::MAX);
+                    .and_then(|slot| i64::try_from(slot).ok())
+                    .unwrap_or(APPEND_POSITION);
 
-                (!ephemeral && !url.starts_with("about:")).then_some((
-                    tab.workspace_id,
-                    url,
-                    tab.folder_id,
-                    index,
-                    tab.pinned,
+                let recordable = matches!(tab.url.scheme(), "http" | "https");
+
+                (!ephemeral && recordable).then_some((
+                    wis_storage::ClosedTabRecord {
+                        id: 0,
+                        workspace_id: tab.workspace_id,
+                        url,
+                        title: tab.title.clone(),
+                        folder_id: tab.folder_id,
+                        position,
+                        pinned: tab.pinned,
+                        closed_at: chrono::Utc::now(),
+                    },
                     tab.load_error.is_some(),
                 ))
             })
         };
 
-        if let Some((workspace_id, url, folder_id, index, pinned, load_failed)) = recorded {
-            // Capture the live session (history/scroll/forms) while the
-            // webview still exists, so reopen restores instead of cold-loads.
+        if let Some((record, load_failed)) = recorded {
+            // Capture the live session (history/scroll/forms) while the webview
+            // still exists, so a reopen in this run restores instead of
+            // cold-loading.
             let interaction_state = (!load_failed)
                 .then(|| {
                     app.webviews()
@@ -182,19 +191,32 @@ pub async fn close_tab(
                 })
                 .flatten();
 
-            let mut ring = state.closed_tabs.lock().await;
-            ring.push(crate::state::ClosedTab {
-                workspace_id,
-                url,
-                folder_id,
-                index,
-                pinned,
-                interaction_state,
-            });
+            let storage = state.storage.clone();
+            let recorded_row = tokio::task::spawn_blocking(move || {
+                let row = storage.record_closed_tab(&record)?;
+                storage.prune_closed_tabs(CLOSED_TAB_CAP)?;
+                let live: Vec<i64> = storage
+                    .list_closed_tabs(CLOSED_TAB_CAP)?
+                    .into_iter()
+                    .map(|entry| entry.id)
+                    .collect();
 
-            let overflow = ring.len().saturating_sub(CLOSED_RING_CAP);
-            if overflow > 0 {
-                ring.drain(0..overflow);
+                wis_storage::StorageResult::Ok((row, live))
+            })
+            .await;
+
+            match recorded_row {
+                Ok(Ok((row, live))) => {
+                    let mut sessions = state.closed_tab_sessions.lock().await;
+                    if let Some(blob) = interaction_state {
+                        sessions.insert(row, blob);
+                    }
+                    // Prune the oldest rows.
+                    let live: std::collections::HashSet<i64> = live.into_iter().collect();
+                    sessions.retain(|id, _| live.contains(id));
+                }
+                Ok(Err(err)) => log::warn!("recording a closed tab failed: {err}"),
+                Err(err) => log::warn!("recording a closed tab panicked: {err}"),
             }
         }
     }
@@ -230,81 +252,146 @@ pub async fn close_tab(
     .await
 }
 
-/// Reopen the most-recently-closed tab in its original workspace, activating it.
-/// No-op when the ring is empty or that workspace no longer exists.
+/// Position recorded for a tab whose slot could not be determined; a reopen
+/// appends instead of inserting.
+const APPEND_POSITION: i64 = -1;
+
+/// Reopen the most-recently-closed tab in its original workspace, activating
+/// it. No-op when nothing is left to reopen. Walks backwards past entries
+/// whose workspace has since been deleted.
 #[tauri::command]
 pub async fn restore_closed_tab(app: AppHandle, state: State<'_, AppState>) -> WisResult<()> {
-    // Inert in private workspaces.
-    {
-        let browser = state.browser.lock().await;
-        if browser.active_workspace().ephemeral {
-            return Ok(());
-        }
+    if active_workspace_is_private(&state).await {
+        return Ok(());
     }
 
     loop {
-        let entry = {
-            let mut ring = state.closed_tabs.lock().await;
-            ring.pop()
-        };
+        let storage = state.storage.clone();
+        let entry = run_storage(move || storage.take_latest_closed_tab()).await?;
         let Some(entry) = entry else {
             return Ok(());
         };
-
-        let exists = {
-            let browser = state.browser.lock().await;
-            browser.workspace(entry.workspace_id).is_ok()
-        };
-        if !exists {
-            continue;
+        if reopen_entry(&app, &state, entry).await? {
+            return Ok(());
         }
+    }
+}
 
-        let new_tab_id = mutate(&app, &state, |s| {
-            // Loose creation bypasses the workspace's currently-selected folder.
-            let (next, tab) = s.with_new_loose_tab(entry.workspace_id, &entry.url)?;
-            let tab_id = tab.id;
-            let next = next.with_active_workspace(entry.workspace_id)?;
-
-            // Creation appended the tab; move it back to its recorded slot.
-            let order = reinsert_at(
-                next.workspace(entry.workspace_id)?.tab_order.clone(),
-                tab_id,
-                entry.index,
-            );
-            let next = next.with_tab_order(entry.workspace_id, order)?;
-
-            let next = if entry.pinned {
-                // Re-pin (pinning forces loose, so no folder branch applies).
-                next.with_tab_pinned(tab_id, true)?.0
-            } else {
-                let original_folder_exists = entry.folder_id.is_some_and(|fid| {
-                    next.workspace(entry.workspace_id)
-                        .map(|w| w.tab_folders.iter().any(|f| f.id == fid))
-                        .unwrap_or(false)
-                });
-                if original_folder_exists {
-                    next.with_tab_assigned_folder(tab_id, entry.folder_id)?
-                } else {
-                    next
-                }
-            };
-
-            Ok((next, tab_id))
-        })
-        .await?;
-
-        // Hand the captured session to the webview the frontend is about to
-        // create for the reopened tab (consumed by `create_tab_webview`).
-        if let Some(blob) = entry.interaction_state {
-            state
-                .pending_restore_states
-                .lock()
-                .await
-                .insert(new_tab_id, blob);
-        }
-
+/// Reopen one specific closed tab, chosen from the browsable list. Taking it
+/// removes it, so the same row cannot be reopened twice.
+#[tauri::command]
+pub async fn reopen_closed_tab(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+) -> WisResult<()> {
+    if active_workspace_is_private(&state).await {
         return Ok(());
     }
+
+    let storage = state.storage.clone();
+    let entry = run_storage(move || storage.take_closed_tab(id)).await?;
+    if let Some(entry) = entry {
+        reopen_entry(&app, &state, entry).await?;
+    }
+
+    Ok(())
+}
+
+/// The closed tabs worth offering, newest first.
+#[tauri::command]
+pub async fn list_closed_tabs(
+    state: State<'_, AppState>,
+    limit: u32,
+) -> WisResult<Vec<wis_storage::ClosedTabRecord>> {
+    let storage = state.storage.clone();
+    run_storage(move || storage.list_closed_tabs(limit)).await
+}
+
+/// Private workspaces neither record closed tabs nor reopen them.
+async fn active_workspace_is_private(state: &State<'_, AppState>) -> bool {
+    state.browser.lock().await.active_workspace().ephemeral
+}
+
+/// Run a blocking storage call off the async runtime, mapping both the join
+/// failure and the storage error onto [`WisError::PersistenceFailed`].
+async fn run_storage<T, F>(op: F) -> WisResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> wis_storage::StorageResult<T> + Send + 'static,
+{
+    tokio::task::spawn_blocking(op)
+        .await
+        .map_err(|err| wis_core::WisError::PersistenceFailed {
+            reason: format!("closed-tab task panicked: {err}"),
+        })?
+        .map_err(|err| wis_core::WisError::PersistenceFailed {
+            reason: err.to_string(),
+        })
+}
+
+/// Put one closed tab back where it was. Returns false when its workspace has
+/// since been deleted.
+async fn reopen_entry(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    entry: wis_storage::ClosedTabRecord,
+) -> WisResult<bool> {
+    let exists = {
+        let browser = state.browser.lock().await;
+        browser.workspace(entry.workspace_id).is_ok()
+    };
+    if !exists {
+        return Ok(false);
+    }
+
+    let slot = usize::try_from(entry.position).unwrap_or(usize::MAX);
+    let new_tab_id = mutate(app, state, |s| {
+        // Loose creation bypasses the workspace's currently-selected folder.
+        let (next, tab) = s.with_new_loose_tab(entry.workspace_id, &entry.url)?;
+        let tab_id = tab.id;
+        let next = next.with_active_workspace(entry.workspace_id)?;
+
+        // Creation appended the tab; move it back to its recorded slot.
+        let order = reinsert_at(
+            next.workspace(entry.workspace_id)?.tab_order.clone(),
+            tab_id,
+            slot,
+        );
+        let next = next.with_tab_order(entry.workspace_id, order)?;
+
+        let next = if entry.pinned {
+            // Re-pin (pinning forces loose, so no folder branch applies).
+            next.with_tab_pinned(tab_id, true)?.0
+        } else {
+            let original_folder_exists = entry.folder_id.is_some_and(|fid| {
+                next.workspace(entry.workspace_id)
+                    .map(|w| w.tab_folders.iter().any(|f| f.id == fid))
+                    .unwrap_or(false)
+            });
+            if original_folder_exists {
+                next.with_tab_assigned_folder(tab_id, entry.folder_id)?
+            } else {
+                next
+            }
+        };
+
+        Ok((next, tab_id))
+    })
+    .await?;
+
+    // Hand the session captured at close to the webview the frontend is about
+    // to create (consumed by `create_tab_webview`). Absent after a restart.
+    let blob = state.closed_tab_sessions.lock().await.remove(&entry.id);
+    if let Some(blob) = blob {
+        state
+            .pending_restore_states
+            .lock()
+            .await
+            .insert(new_tab_id, blob);
+    }
+
+    Ok(true)
 }
 
 /// Detach a tab into a brand-new workspace shown in its own OS window. One workspace

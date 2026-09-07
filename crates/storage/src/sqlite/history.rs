@@ -167,6 +167,27 @@ pub fn delete_entries(conn: &Connection, ids: &[i64]) -> StorageResult<()> {
     Ok(())
 }
 
+/// The URLs of the given history rows. Unknown ids are skipped.
+pub fn urls_for(conn: &Connection, ids: &[i64]) -> StorageResult<Vec<String>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let placeholders = std::iter::repeat_n("?", ids.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!("SELECT url FROM history WHERE id IN ({placeholders})");
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(params_from_iter(ids.iter()), |row| row.get::<_, String>(0))?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+
+    Ok(out)
+}
+
 /// Remove history rows. Scoped to one workspace when `workspace_id` is set,
 /// otherwise clears everything.
 pub fn clear(

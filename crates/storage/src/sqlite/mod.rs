@@ -10,6 +10,7 @@
 //! shell can log and fall back to defaults rather than crash.
 
 mod bookmarks;
+mod closed_tabs;
 mod convert;
 mod credentials;
 mod downloads;
@@ -159,6 +160,59 @@ impl Storage for SqliteStorage {
     ) -> StorageResult<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         history::clear(&conn, workspace_id, since)
+    }
+
+    fn history_urls(&self, ids: &[i64]) -> StorageResult<Vec<String>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        history::urls_for(&conn, ids)
+    }
+
+    fn delete_closed_tabs_by_urls(&self, urls: &[String]) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        closed_tabs::delete_by_urls(&conn, urls)
+    }
+
+    fn record_closed_tab(
+        &self,
+        record: &crate::closed_tabs::ClosedTabRecord,
+    ) -> StorageResult<i64> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        closed_tabs::record(&conn, record)
+    }
+
+    fn list_closed_tabs(
+        &self,
+        limit: u32,
+    ) -> StorageResult<Vec<crate::closed_tabs::ClosedTabRecord>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        closed_tabs::list(&conn, limit)
+    }
+
+    fn take_closed_tab(
+        &self,
+        id: i64,
+    ) -> StorageResult<Option<crate::closed_tabs::ClosedTabRecord>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        closed_tabs::take(&conn, id)
+    }
+
+    fn take_latest_closed_tab(&self) -> StorageResult<Option<crate::closed_tabs::ClosedTabRecord>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        closed_tabs::take_latest(&conn)
+    }
+
+    fn prune_closed_tabs(&self, keep: u32) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        closed_tabs::prune(&conn, keep)
+    }
+
+    fn clear_closed_tabs(
+        &self,
+        workspace_id: Option<wis_core::WorkspaceId>,
+        since: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        closed_tabs::clear(&conn, workspace_id, since)
     }
 
     fn record_download(&self, record: &crate::downloads::DownloadRecord) -> StorageResult<()> {

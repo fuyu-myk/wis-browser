@@ -12,7 +12,12 @@ pub async fn get_history(
 #[tauri::command]
 pub async fn delete_history(state: State<'_, AppState>, ids: Vec<i64>) -> WisResult<()> {
     let storage = state.storage.clone();
-    run_history(move || storage.delete_history_entries(&ids)).await
+    run_history(move || {
+        let urls = storage.history_urls(&ids)?;
+        storage.delete_history_entries(&ids)?;
+        storage.delete_closed_tabs_by_urls(&urls)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -23,7 +28,15 @@ pub async fn clear_history(
 ) -> WisResult<()> {
     let since = wis_core::clear_since(since_unix, chrono::Utc::now())?;
     let storage = state.storage.clone();
-    run_history(move || storage.clear_history(workspace_id, since)).await
+
+    run_history(move || {
+        storage.clear_history(workspace_id, since)?;
+        storage.clear_closed_tabs(workspace_id, since)
+    })
+    .await?;
+    state.closed_tab_sessions.lock().await.clear();
+
+    Ok(())
 }
 
 /// Run a blocking storage call off the async runtime, mapping both the join

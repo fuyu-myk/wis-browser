@@ -20,7 +20,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 const SINK_MS = 220
@@ -32,6 +32,7 @@ import {
   effectiveKeymap,
   historyKey,
   makeActionsSource,
+  makeClosedTabsSource,
   makeBookmarksSource,
   makeHistorySource,
   makeNavigateSource,
@@ -55,9 +56,14 @@ const HISTORY_MIN_QUERY = 2
 const HISTORY_SETTLE_MS = 120
 /** Time before bookmarks are considered stale. */
 const BOOKMARKS_STALE_MS = 30_000
+/** How many closed tabs to pull. */
+const CLOSED_TAB_LIMIT = 25
+/** Matched by prefix. */
+const CLOSED_TABS_KEY = ['palette-closed-tabs']
 
 interface SectionedItems {
   tabs: PaletteItem[]
+  closed: PaletteItem[]
   bookmarks: PaletteItem[]
   history: PaletteItem[]
   actions: PaletteItem[]
@@ -91,6 +97,7 @@ export function PaletteSurface() {
 
   const [closing, setClosing] = useState(false)
   const [openNonce, setOpenNonce] = useState(0)
+  const [showing, setShowing] = useState(false)
   const close = useCallback(async () => {
     // Sink back to the bottom edge before the overlay hides.
     setClosing(true)
@@ -98,6 +105,7 @@ export function PaletteSurface() {
     setClosing(false)
     setQuery('')
     setHighlightId(null)
+    setShowing(false)
     await commands.hideOverlay('palette').catch(() => undefined)
     await emit(PALETTE_CLOSED_EVENT).catch(() => undefined)
   }, [])
@@ -119,6 +127,8 @@ export function PaletteSurface() {
 
   // Close the tab in place. The list re-renders without
   // that tab once `browser-state-changed` fires.
+  const queries = useQueryClient()
+
   const closeTab = useCallback(async (tab: Tab) => {
     await commands.closeTab(tab.id).catch(() => undefined)
   }, [])
@@ -142,12 +152,31 @@ export function PaletteSurface() {
     [state, close],
   )
 
+  const reopenClosed = useCallback(
+    async (id: number) => {
+      await commands.reopenClosedTab(id).catch(() => undefined)
+      await close()
+    },
+    [close],
+  )
+
   const updateSettings = useCallback(async (patch: UserSettingsPatch) => {
     await commands.updateSettings(patch).catch(() => undefined)
   }, [])
 
   const workspaceId = state?.active_workspace_id ?? null
   const settledQuery = useSettled(query.trim(), HISTORY_SETTLE_MS)
+
+  // A private window does not record or reopen closed tabs.
+  const workspacePrivate =
+    state?.workspaces.find((ws) => ws.id === state.active_workspace_id)?.ephemeral ?? false
+
+  // Refetched each time the palette opens.
+  const { data: closedTabs } = useQuery({
+    queryKey: [...CLOSED_TABS_KEY, openNonce],
+    queryFn: () => commands.listClosedTabs(CLOSED_TAB_LIMIT),
+    enabled: !workspacePrivate,
+  })
 
   const { data: bookmarks } = useQuery({
     queryKey: ['palette-bookmarks', workspaceId],
@@ -176,17 +205,13 @@ export function PaletteSurface() {
   // `placeholderData` fires whenever a key has no data of its own.
   const historyEntries = historyReady ? (history ?? []) : []
 
-  const bookmarkUrls = useMemo(
-    () => new Set((bookmarks ?? []).map((bookmark) => historyKey(bookmark.url))),
-    [bookmarks],
-  )
-
   const sources = useMemo(() => {
     if (!state) return []
     return [
       makeTabsSource({ state, onActivate: activateTab, onClose: closeTab }),
+      makeClosedTabsSource({ entries: closedTabs ?? [], onReopen: reopenClosed }),
       makeBookmarksSource({ bookmarks: bookmarks ?? [], onOpen: openUrl }),
-      makeHistorySource({ entries: historyEntries, exclude: bookmarkUrls, onOpen: openUrl }),
+      makeHistorySource({ entries: historyEntries, onOpen: openUrl }),
       makeActionsSource({
         keymap: effectiveKeymap(state.settings.keybindings),
         onDispatch: dispatchAction,
@@ -203,27 +228,48 @@ export function PaletteSurface() {
     updateSettings,
     bookmarks,
     historyEntries,
-    bookmarkUrls,
+    closedTabs,
+    reopenClosed,
   ])
+
+  const tabIds = (state?.tabs ?? []).map((tab) => tab.id).join('|')
+  const previousTabIds = useRef(tabIds)
+  useEffect(() => {
+    const before = previousTabIds.current.split('|').filter(Boolean)
+    const after = new Set(tabIds.split('|').filter(Boolean))
+    previousTabIds.current = tabIds
+    // Only while open.
+    if (showing && before.some((id) => !after.has(id))) {
+      void queries.invalidateQueries({ queryKey: CLOSED_TABS_KEY })
+    }
+  }, [tabIds, showing, queries])
 
   const sectioned: SectionedItems = useMemo(() => {
     const all = sources.flatMap((src) => src(query))
     const tabs = all.filter((it) => it.section === 'tabs')
+    const closed = all.filter((it) => it.section === 'closed')
     const bookmarks = all.filter((it) => it.section === 'bookmarks')
-    const history = all.filter((it) => it.section === 'history')
+    // A page shown as closed or bookmarked is dropped from history.
+    const shown = new Set(
+      [...closed, ...bookmarks].map((item) => historyKey(item.subtitle ?? '')),
+    )
+    const history = all
+      .filter((it) => it.section === 'history')
+      .filter((it) => !shown.has(historyKey(it.subtitle ?? '')))
     const actions = all.filter((it) => it.section === 'actions')
     const settings = all.filter((it) => it.section === 'settings')
     const open = all.filter((it) => it.section === 'open')
     return {
       tabs,
+      closed,
       bookmarks,
       history,
       actions,
       settings,
       open,
       // Pages the user has already committed to first, most-committed
-      // downward.
-      flat: [...tabs, ...bookmarks, ...history, ...actions, ...settings, ...open],
+      // downward: open, then just closed, then saved, then merely visited.
+      flat: [...tabs, ...closed, ...bookmarks, ...history, ...actions, ...settings, ...open],
     }
   }, [sources, query])
 
@@ -262,6 +308,7 @@ export function PaletteSurface() {
     let cancelled = false
     void listen<void>(PALETTE_FOCUS_EVENT, () => {
       setOpenNonce((n) => n + 1)
+      setShowing(true)
       void commands.focusSelf().catch(() => undefined)
       const focusInput = () => {
         const el = inputRef.current
@@ -361,6 +408,22 @@ export function PaletteSurface() {
           {sectioned.tabs.length > 0 && (
             <Section label="Tabs">
               {sectioned.tabs.map((item) => {
+                const idx = sectioned.flat.indexOf(item)
+                return (
+                  <ItemRow
+                    key={item.id}
+                    item={item}
+                    index={idx}
+                    highlighted={idx === highlight}
+                    onActivate={() => activate(item)}
+                  />
+                )
+              })}
+            </Section>
+          )}
+          {sectioned.closed.length > 0 && (
+            <Section label="Recently closed">
+              {sectioned.closed.map((item) => {
                 const idx = sectioned.flat.indexOf(item)
                 return (
                   <ItemRow

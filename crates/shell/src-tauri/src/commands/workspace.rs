@@ -47,7 +47,16 @@ pub async fn delete_workspace(
     state: State<'_, AppState>,
     id: WorkspaceId,
 ) -> WisResult<()> {
-    mutate_unit_immediate(&app, &state, |s| s.with_workspace_removed(id)).await
+    mutate_unit_immediate(&app, &state, |s| s.with_workspace_removed(id)).await?;
+
+    let storage = state.storage.clone();
+    if let Err(err) =
+        tokio::task::spawn_blocking(move || storage.clear_closed_tabs(Some(id), None)).await
+    {
+        log::warn!("clearing closed tabs for a deleted workspace panicked: {err}");
+    }
+
+    Ok(())
 }
 
 /// Set or clear a workspace's custom flat dot colour (validated hex).

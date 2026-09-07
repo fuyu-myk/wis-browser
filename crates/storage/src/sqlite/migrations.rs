@@ -57,10 +57,10 @@ const M0002_PANE_TREE: &str = r#"
 ALTER TABLE workspaces ADD COLUMN pane_tree TEXT;
 "#;
 
-// Append-style browsing history, deduplicated by URL: each visit bumps
-// `visit_count` and refreshes `visited_at`/`title`. Independent of
-// `BrowserState` (it is never loaded into the in-memory model). Ephemeral
-// (private) workspaces never write here.
+/// Append-style browsing history, deduplicated by URL: each visit bumps
+/// `visit_count` and refreshes `visited_at`/`title`. Independent of
+/// `BrowserState` (it is never loaded into the in-memory model). Ephemeral
+/// (private) workspaces never write here.
 const M0003_HISTORY: &str = r#"
 CREATE TABLE history (
     id           INTEGER NOT NULL PRIMARY KEY,
@@ -73,11 +73,11 @@ CREATE INDEX idx_history_visited_at ON history(visited_at);
 CREATE INDEX idx_history_url ON history(url);
 "#;
 
-// Scope history per workspace. Dedup becomes (workspace_id, url) so the same
-// page visited in two workspaces keeps an independent count/timestamp. The
-// table is recreated rather than altered because SQLite can't drop the old
-// `url UNIQUE` constraint in place; history introduced in M0003 is recent
-// enough that resetting it on upgrade is acceptable.
+/// Scope history per workspace. Dedup becomes (workspace_id, url) so the same
+/// page visited in two workspaces keeps an independent count/timestamp. The
+/// table is recreated rather than altered because SQLite can't drop the old
+/// `url UNIQUE` constraint in place; history introduced in M0003 is recent
+/// enough that resetting it on upgrade is acceptable.
 const M0004_HISTORY_PER_WORKSPACE: &str = r#"
 DROP TABLE history;
 CREATE TABLE history (
@@ -93,11 +93,11 @@ CREATE INDEX idx_history_ws_visited_at ON history(workspace_id, visited_at);
 CREATE INDEX idx_history_url ON history(url);
 "#;
 
-// Password vault. Only the password is encrypted (AEAD ciphertext + nonce,
-// sealed under the Keychain master key, see `wis-secrets`); host and username
-// are stored in the clear so the list can render and search without unlocking.
-// Deduplicated per (host, username). Independent of `BrowserState` and never
-// touched by "clear browsing data".
+/// Password vault. Only the password is encrypted (AEAD ciphertext + nonce,
+/// sealed under the Keychain master key, see `wis-secrets`); host and username
+/// are stored in the clear so the list can render and search without unlocking.
+/// Deduplicated per (host, username). Independent of `BrowserState` and never
+/// touched by "clear browsing data".
 const M0005_CREDENTIALS: &str = r#"
 CREATE TABLE credentials (
     id           INTEGER NOT NULL PRIMARY KEY,
@@ -112,10 +112,10 @@ CREATE TABLE credentials (
 CREATE INDEX idx_credentials_host ON credentials(host);
 "#;
 
-// Address-bar search history: the non-URL queries the user typed (deduplicated
-// by query text, each repeat bumps `count` and refreshes `searched_at`). Powers
-// the "Search history" section of the URL-bar suggestions. Independent of
-// `BrowserState`; private workspaces never write here.
+/// Address-bar search history: the non-URL queries the user typed (deduplicated
+/// by query text, each repeat bumps `count` and refreshes `searched_at`). Powers
+/// the "Search history" section of the URL-bar suggestions. Independent of
+/// `BrowserState`; private workspaces never write here.
 const M0006_SEARCHES: &str = r#"
 CREATE TABLE searches (
     id           INTEGER NOT NULL PRIMARY KEY,
@@ -126,21 +126,21 @@ CREATE TABLE searches (
 CREATE INDEX idx_searches_searched_at ON searches(searched_at);
 "#;
 
-// Per-workspace upstream proxy (Tor / SOCKS5 / HTTP), stored as JSON. Null =
-// direct connection. Added as a nullable column so existing state loads as-is.
+/// Per-workspace upstream proxy (Tor / SOCKS5 / HTTP), stored as JSON. Null =
+/// direct connection. Added as a nullable column so existing state loads as-is.
 const M0007_UPSTREAM_PROXY: &str = r#"
 ALTER TABLE workspaces ADD COLUMN upstream_proxy TEXT;
 "#;
 
-// Per-tab page-zoom factor (1.0 = 100%). Nullable → existing tabs load at 1.0.
+/// Per-tab page-zoom factor (1.0 = 100%). Nullable → existing tabs load at 1.0.
 const M0008_TAB_ZOOM: &str = r#"
 ALTER TABLE tabs ADD COLUMN zoom REAL;
 "#;
 
-// Per-workspace bookmarks, organised into optional folders. Append-style and
-// independent of `BrowserState`. `folder_id` NULL = unfiled. Ephemeral
-// (private) workspaces never write here. Folders carry no foreign key; deleting
-// a folder re-parents its bookmarks to unfiled in code.
+/// Per-workspace bookmarks, organised into optional folders. Append-style and
+/// independent of `BrowserState`. `folder_id` NULL = unfiled. Ephemeral
+/// (private) workspaces never write here. Folders carry no foreign key; deleting
+/// a folder re-parents its bookmarks to unfiled in code.
 const M0009_BOOKMARKS: &str = r#"
 CREATE TABLE bookmark_folders (
     id           INTEGER NOT NULL PRIMARY KEY,
@@ -164,17 +164,17 @@ CREATE TABLE bookmarks (
 CREATE INDEX idx_bookmarks_ws ON bookmarks(workspace_id, folder_id, position);
 "#;
 
-// Pin flag (independent of folder): a bookmark can be pinned to the quick-access
-// row and live in a folder. `pin_position` orders the pinned row separately
-// from `position` (which orders within a folder / the unfiled list).
+/// Pin flag (independent of folder): a bookmark can be pinned to the quick-access
+/// row and live in a folder. `pin_position` orders the pinned row separately
+/// from `position` (which orders within a folder / the unfiled list).
 const M0010_BOOKMARK_PINNED: &str = r#"
 ALTER TABLE bookmarks ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE bookmarks ADD COLUMN pin_position INTEGER NOT NULL DEFAULT 0;
 "#;
 
-// Persisted session cookies per workspace. Cookies are snapshotted as JSON and
-// restored into the workspace's data store on launch. One row per workspace.
-// Ephemeral (private) workspaces never write here.
+/// Persisted session cookies per workspace. Cookies are snapshotted as JSON and
+/// restored into the workspace's data store on launch. One row per workspace.
+/// Ephemeral (private) workspaces never write here.
 const M0011_SESSION_COOKIES: &str = r#"
 CREATE TABLE session_cookies (
     workspace_id TEXT    NOT NULL PRIMARY KEY,
@@ -183,27 +183,27 @@ CREATE TABLE session_cookies (
 );
 "#;
 
-// `created_at` records when a session was first persisted (it is *not* refreshed
-// on later snapshots), so a persisted login's absolute lifetime can be capped:
-// a stolen snapshot is only useful for a bounded window, and the user re-auths
-// periodically (rotating the token). Pre-existing rows default to the epoch so
-// they expire immediately (also drops any pre-encryption plaintext rows).
+/// `created_at` records when a session was first persisted (it is *not* refreshed
+/// on later snapshots), so a persisted login's absolute lifetime can be capped:
+/// a stolen snapshot is only useful for a bounded window, and the user re-auths
+/// periodically (rotating the token). Pre-existing rows default to the epoch so
+/// they expire immediately (also drops any pre-encryption plaintext rows).
 const M0012_SESSION_COOKIE_AGE: &str = r#"
 ALTER TABLE session_cookies ADD COLUMN created_at TEXT NOT NULL
     DEFAULT '1970-01-01T00:00:00+00:00';
 "#;
 
-// Live-tab folders (distinct from bookmarks). `tab_folders` is a JSON array on
-// the workspace (like `pane_tree`); `tabs.folder_id` records membership. Both
-// nullable so existing state loads as no folders / loose tabs.
+/// Live-tab folders (distinct from bookmarks). `tab_folders` is a JSON array on
+/// the workspace (like `pane_tree`); `tabs.folder_id` records membership. Both
+/// nullable so existing state loads as no folders / loose tabs.
 const M0013_TAB_FOLDERS: &str = r#"
 ALTER TABLE workspaces ADD COLUMN tab_folders TEXT;
 ALTER TABLE tabs ADD COLUMN folder_id TEXT;
 "#;
 
-// Completed-download history (append-only, like `history`, global rather than
-// per workspace). One row per finished download; in-flight/failed/cancelled
-// downloads live only in memory. Private/ephemeral contexts never write here.
+/// Completed-download history (append-only, like `history`, global rather than
+/// per workspace). One row per finished download; in-flight/failed/cancelled
+/// downloads live only in memory. Private/ephemeral contexts never write here.
 const M0014_DOWNLOADS: &str = r#"
 CREATE TABLE downloads (
     id            TEXT    NOT NULL PRIMARY KEY,
@@ -216,35 +216,52 @@ CREATE TABLE downloads (
 CREATE INDEX idx_downloads_completed_at ON downloads(completed_at);
 "#;
 
-// Per-workspace custom background (gradient or imported wallpaper), stored as
-// JSON like `pane_tree`. Nullable so existing state loads as theme-default.
+/// Per-workspace custom background (gradient or imported wallpaper), stored as
+/// JSON like `pane_tree`. Nullable so existing state loads as theme-default.
 const M0015_WORKSPACE_BACKGROUND: &str = r#"
 ALTER TABLE workspaces ADD COLUMN background TEXT;
 "#;
 
-// Custom flat workspace dot colour (overrides the accent preset's swatch).
+/// Custom flat workspace dot colour (overrides the accent preset's swatch).
 const M0016_WORKSPACE_CUSTOM_ACCENT: &str = r#"
 ALTER TABLE workspaces ADD COLUMN custom_accent TEXT;
 "#;
 
-// Per-mode background memory (JSON), so switching background modes restores
-// the previous configuration of each.
+/// Per-mode background memory (JSON), so switching background modes restores
+/// the previous configuration of each.
 const M0017_BACKGROUND_DRAFTS: &str = r#"
 ALTER TABLE workspaces ADD COLUMN background_drafts TEXT;
 "#;
 
-// Per-tab serialized WKWebView `interactionState` (back/forward history, scroll
-// position, form state), so a tab restores its full session across a full
-// restart, not just sleep/wake. One row per tab; independent of `BrowserState`
-// (it is its own table, so it survives `save_state`'s `clear_all`). Ephemeral
-// (private) tabs never write here; orphaned rows (closed tabs) are purged at
-// startup.
+/// Per-tab serialized WKWebView `interactionState` (back/forward history, scroll
+/// position, form state), so a tab restores its full session across a full
+/// restart, not just sleep/wake. One row per tab; independent of `BrowserState`
+/// (it is its own table, so it survives `save_state`'s `clear_all`). Ephemeral
+/// (private) tabs never write here; orphaned rows (closed tabs) are purged at
+/// startup.
 const M0018_TAB_SESSIONS: &str = r#"
 CREATE TABLE tab_sessions (
     tab_id      TEXT NOT NULL PRIMARY KEY,
     data        TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );
+"#;
+
+/// Recently-closed tabs, so "reopen closed tab" and its browsable list survive
+/// a restart. Ephemeral (private) tabs never write here, and clearing browsing
+/// history clears this too.
+const M0019_CLOSED_TABS: &str = r#"
+CREATE TABLE closed_tabs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT    NOT NULL,
+    url          TEXT    NOT NULL,
+    title        TEXT    NOT NULL,
+    folder_id    TEXT,
+    position     INTEGER NOT NULL,
+    pinned       INTEGER NOT NULL,
+    closed_at    TEXT    NOT NULL
+);
+CREATE INDEX idx_closed_tabs_closed_at ON closed_tabs(closed_at);
 "#;
 
 fn all() -> Migrations<'static> {
@@ -267,6 +284,7 @@ fn all() -> Migrations<'static> {
         M::up(M0016_WORKSPACE_CUSTOM_ACCENT),
         M::up(M0017_BACKGROUND_DRAFTS),
         M::up(M0018_TAB_SESSIONS),
+        M::up(M0019_CLOSED_TABS),
     ])
 }
 

@@ -25,6 +25,7 @@ import type {
   Decision,
   DownloadId,
   DownloadItem,
+  ClosedTabRecord,
   HistoryEntry,
   HistoryQuery,
   LinkAssessment,
@@ -81,6 +82,19 @@ export const commands = {
   /** Delete specific history rows by id. */
   async deleteHistory(ids: number[]): Promise<void> {
     return invoke('delete_history', { ids })
+  },
+
+  /** Recently closed tabs, newest first, for the palette's browsable list. */
+  async listClosedTabs(limit: number): Promise<ClosedTabRecord[]> {
+    return invoke('list_closed_tabs', { limit })
+  },
+
+  /**
+   * Reopen one closed tab by row id, restoring the session captured at close.
+   * Reopening it removes it from the list.
+   */
+  async reopenClosedTab(id: number): Promise<void> {
+    return invoke('reopen_closed_tab', { id })
   },
 
   /**

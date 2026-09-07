@@ -5,6 +5,7 @@
 //! (and, later, replaced with an encrypted variant).
 
 pub mod bookmarks;
+pub mod closed_tabs;
 pub mod credentials;
 pub mod downloads;
 pub mod error;
@@ -14,6 +15,7 @@ pub mod sqlite;
 pub mod traits;
 
 pub use bookmarks::{Bookmark, BookmarkFolder, BookmarkImport, BookmarkImportStats};
+pub use closed_tabs::ClosedTabRecord;
 pub use credentials::CredentialRecord;
 pub use downloads::DownloadRecord;
 pub use error::{StorageError, StorageResult};

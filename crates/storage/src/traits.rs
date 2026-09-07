@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 
 use crate::bookmarks::{Bookmark, BookmarkFolder, BookmarkImport, BookmarkImportStats};
+use crate::closed_tabs::ClosedTabRecord;
 use crate::credentials::CredentialRecord;
 use crate::downloads::DownloadRecord;
 use crate::error::StorageResult;
@@ -81,6 +82,9 @@ pub trait Storage: Send + Sync {
 
     /// Delete the history rows with the given ids. Unknown ids are ignored.
     fn delete_history_entries(&self, ids: &[i64]) -> StorageResult<()>;
+
+    /// The URLs of the given history rows.
+    fn history_urls(&self, ids: &[i64]) -> StorageResult<Vec<String>>;
 
     /// Remove history rows, scoped to `workspace_id` when set, else all of it.
     /// With `since`, only visits at or after that instant go, while older ones stay.
@@ -203,6 +207,35 @@ pub trait Storage: Send + Sync {
 
     /// Delete a bookmark by id.
     fn delete_bookmark(&self, id: i64) -> StorageResult<()>;
+
+    // -- recently-closed tabs (see `crate::closed_tabs`) -------------------
+
+    /// Record a closed tab and return its row id. Callers must skip private
+    /// (ephemeral) workspaces; `record.id` is ignored.
+    fn record_closed_tab(&self, record: &ClosedTabRecord) -> StorageResult<i64>;
+
+    /// Closed tabs, newest first, capped at `limit`.
+    fn list_closed_tabs(&self, limit: u32) -> StorageResult<Vec<ClosedTabRecord>>;
+
+    /// Remove one closed tab and return it. `None` when it is already gone.
+    fn take_closed_tab(&self, id: i64) -> StorageResult<Option<ClosedTabRecord>>;
+
+    /// Remove the most recently closed tab and return it.
+    fn take_latest_closed_tab(&self) -> StorageResult<Option<ClosedTabRecord>>;
+
+    /// Remove closed tabs whose URL is one of `urls`.
+    fn delete_closed_tabs_by_urls(&self, urls: &[String]) -> StorageResult<()>;
+
+    /// Drop all but the newest `keep` closed tabs.
+    fn prune_closed_tabs(&self, keep: u32) -> StorageResult<()>;
+
+    /// Remove closed tabs, scoped like [`Storage::clear_history`]: to one
+    /// workspace when set, and to tabs closed at or after `since` when set.
+    fn clear_closed_tabs(
+        &self,
+        workspace_id: Option<WorkspaceId>,
+        since: Option<DateTime<Utc>>,
+    ) -> StorageResult<()>;
 
     // -- downloads (append-only completed-download history; see `crate::downloads`)
 

@@ -20,7 +20,9 @@ State is immutable end to end: `wis-core` mutations are pure `with_*` builders r
 
 Both sections rank title and URL separately, so either can be highlighted, and fall back to the URL as a title for a page that never reported one. History lifts a page by at most half its own match score for visit count, so a page visited often rises among comparable matches but never above a closer one. Each page section is capped at eight rows.
 
-Section order runs tabs, bookmarks, history, actions, settings, open: pages the user has already committed to first, most-committed downward, then commands, then the type-to-navigate fallback. Because the two new sections load asynchronously and splice in above the others, the keyboard cursor is anchored to a row's **identity** rather than its index.
+Recently-closed tabs get a section of their own, and opening the palette lists the last few. Rows reopen by row id rather than by URL, so the tab comes back with the session it was closed with and leaves the list. The list is refetched each time the palette opens, and again whenever a tab id disappears from the browser state while the panel is showing. It watches for a *vanished id*. The panel drops duplicate history rows. Filtering happens over the rows that actually **render**. A private window lists no closed tabs, since it records none and refuses to reopen one.
+
+Section order runs tabs, recently closed, bookmarks, history, actions, settings, open: pages the user has already committed to first, most-committed downward, then commands, then the type-to-navigate fallback. Because the two new sections load asynchronously and splice in above the others, the keyboard cursor is anchored to a row's **identity** rather than its index.
 
 ## Page-zoom chip
 
