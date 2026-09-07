@@ -447,9 +447,18 @@ export const commands = {
     return invoke('tab_hard_reload', { id })
   },
 
-  /** Adjust a tab's page zoom: `'in' | 'out' | 'reset'`. */
+  /**
+   * Adjust the page zoom for the site a tab is showing. The new zoom is
+   * remembered for that host; `'reset'` forgets it. A page with no host is
+   * left alone.
+   */
   async tabZoom(id: TabId, kind: 'in' | 'out' | 'reset'): Promise<void> {
     return invoke('tab_zoom', { id, kind })
+  },
+
+  /** Forget one site's remembered zoom. */
+  async zoomForgetSite(host: string): Promise<void> {
+    return invoke('zoom_forget_site', { host })
   },
 
   async reorderTabs(workspaceId: WorkspaceId, order: TabId[]): Promise<void> {

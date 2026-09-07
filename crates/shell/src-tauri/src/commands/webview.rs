@@ -285,6 +285,13 @@ pub async fn create_tab_webview(
             if matches!(event, PageLoadEvent::Started) {
                 #[cfg(target_os = "linux")]
                 crate::autoplay::apply_for_page_load(&app, &webview, payload.url().as_str());
+                crate::commands::apply_zoom_to_webview(
+                    &webview,
+                    wis_core::zoom_factor(
+                        app.state::<AppState>()
+                            .zoom_percent_for_url(payload.url().as_str()),
+                    ),
+                );
                 crate::video_popout::handle_navigation(&app, &label_for_load);
                 crate::load_progress::start(&app, tab_id);
             }
@@ -631,15 +638,14 @@ pub async fn create_tab_webview(
     // macOS); a no-op elsewhere.
     crate::pane_focus::install_controller(&child);
 
-    // Restore the tab's persisted page zoom (if it isn't the default), and force
-    // the page's `prefers-color-scheme` to match the browser theme.
-    let (zoom, theme) = {
+    // Zoom belongs to the site, so a restored or woken tab takes the zoom of
+    // the page it shows rather than whatever this tab was last set to. Also
+    // force the page's `prefers-color-scheme` to match the browser theme.
+    let theme = {
         let browser = state.browser.lock().await;
-        (
-            browser.tab(tab_id).map(|t| t.zoom).unwrap_or(1.0),
-            browser.settings.theme,
-        )
+        browser.settings.theme
     };
+    let zoom = wis_core::zoom_factor(state.zoom_percent_for_url(parsed.as_str()));
     if (zoom - 1.0).abs() > f64::EPSILON {
         apply_tab_zoom(&app, tab_id, zoom);
     }

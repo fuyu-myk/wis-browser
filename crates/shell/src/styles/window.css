@@ -8237,3 +8237,65 @@ body.motion-off .kb-ai-think-label.is-live {
   font-size: 11.5px;
   color: var(--warning-strong);
 }
+
+/* Page-zoom chip, inside the address bar beside its other trailing controls
+   and the same height as them. Hidden at the default zoom: it collapses its
+   own width, which gives it an exit as well as an entrance. */
+.kb-zoom-chip {
+  --zoom-chip-h: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  height: var(--zoom-chip-h);
+  line-height: var(--zoom-chip-h);
+  max-width: 0;
+  margin-right: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--overlay);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transform: scale(0.85);
+  pointer-events: none;
+  transition:
+    max-width var(--dur-med) var(--ease-standard),
+    margin-right var(--dur-med) var(--ease-standard),
+    padding var(--dur-med) var(--ease-standard),
+    opacity var(--dur-fast) var(--ease-exit),
+    transform var(--dur-med) var(--ease-standard);
+}
+.kb-zoom-chip.is-on {
+  max-width: 64px;
+  margin-right: 4px;
+  padding: 0 8px;
+  opacity: 1;
+  transform: none;
+  transition:
+    max-width var(--dur-med) var(--ease-standard),
+    margin-right var(--dur-med) var(--ease-standard),
+    padding var(--dur-med) var(--ease-standard),
+    opacity var(--dur-fast) var(--ease-standard),
+    transform var(--dur-med) var(--ease-emphasized);
+}
+/* One character each, keyed so only the ones that changed remount and replay.
+   Zooming in rises from below; zooming out drops from above. The chip clips
+   the travel, so a character enters from its own edge. */
+.kb-zoom-char {
+  display: inline-block;
+  height: var(--zoom-chip-h);
+  animation: kb-zoom-rise var(--dur-med) var(--ease-standard);
+}
+.kb-zoom-char.is-falling { animation-name: kb-zoom-fall; }
+@keyframes kb-zoom-rise {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes kb-zoom-fall {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}

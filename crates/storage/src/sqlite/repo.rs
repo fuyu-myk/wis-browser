@@ -196,7 +196,7 @@ fn insert_tab(tx: &Transaction<'_>, tab: &Tab, position: i64) -> StorageResult<(
             tab.muted,
             tab.created_at,
             tab.last_active_at,
-            tab.zoom,
+            None::<f64>,
             tab.folder_id.map(|id| uuid_string(id.into())),
         ],
     )?;
@@ -368,7 +368,6 @@ fn load_tabs(conn: &Connection) -> StorageResult<Vec<Tab>> {
         let id_str: String = row.get(0)?;
         let workspace_id_str: String = row.get(1)?;
         let favicon_hash: Option<String> = row.get(4)?;
-        let zoom: Option<f64> = row.get(9)?;
         let folder_id_str: Option<String> = row.get(10)?;
 
         out.push(Tab {
@@ -389,7 +388,6 @@ fn load_tabs(conn: &Connection) -> StorageResult<Vec<Tab>> {
             load_error: None,
             can_go_back: false,
             can_go_forward: false,
-            zoom: zoom.unwrap_or_else(wis_core::tab::default_zoom),
             created_at: row.get::<_, DateTime<Utc>>(7)?,
             last_active_at: row.get::<_, DateTime<Utc>>(8)?,
         });

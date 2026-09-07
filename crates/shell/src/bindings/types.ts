@@ -263,8 +263,6 @@ export interface Tab {
   /** The page's load failure, when the last navigation failed. In-memory only;
    *  the chrome shows an error page in the tab's place, cleared on next load. */
   load_error: LoadError | null
-  /** Page-zoom factor (1.0 = 100%); persisted per tab. */
-  zoom: number
   created_at: string // ISO 8601 from chrono::DateTime<Utc>
   last_active_at: string
 }
@@ -511,6 +509,10 @@ export interface UserSettings {
   autoplay_policy: AutoplayPolicy
   /** Per-host autoplay overrides, keyed by normalised host. */
   autoplay_site_overrides: Record<string, AutoplayPolicy>
+  /** Page zoom for sites without one of their own, as a whole percentage. */
+  default_zoom_percent: number
+  /** Remembered per-host page zoom, keyed by normalised host. */
+  zoom_site_overrides: Record<string, number>
   media_extensions_enabled: boolean
   /** Float a playing video as an always-on-top mini player on tab switch. */
   video_popout_enabled: boolean
@@ -595,6 +597,8 @@ export interface UserSettingsPatch {
   global_privacy_control?: boolean
   autoplay_policy?: AutoplayPolicy
   autoplay_site_overrides?: Record<string, AutoplayPolicy>
+  default_zoom_percent?: number
+  zoom_site_overrides?: Record<string, number>
   media_extensions_enabled?: boolean
   video_popout_enabled?: boolean
   user_agent_profile?: UaProfile

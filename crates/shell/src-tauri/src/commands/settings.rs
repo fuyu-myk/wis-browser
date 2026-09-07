@@ -42,6 +42,23 @@ pub async fn update_settings(
     if let Some(map) = patch.builtin_search_keywords.take() {
         patch.builtin_search_keywords = Some(wis_core::sanitize_builtin_search_keywords(map));
     }
+
+    if let Some(percent) = patch.default_zoom_percent {
+        patch.default_zoom_percent = Some(wis_core::sane_zoom_percent(percent));
+    }
+    if let Some(map) = patch.zoom_site_overrides.take() {
+        patch.zoom_site_overrides = Some(
+            map.into_iter()
+                .map(|(host, percent)| {
+                    (
+                        wis_core::user_agent::normalize_host(&host),
+                        wis_core::sane_zoom_percent(percent),
+                    )
+                })
+                .collect(),
+        );
+    }
+
     if let Some(map) = patch.autoplay_site_overrides.take() {
         patch.autoplay_site_overrides = Some(
             map.into_iter()
@@ -59,6 +76,7 @@ pub async fn update_settings(
     let persistence_disabled = patch.persist_sessions == Some(false);
     let fraud_warning_changed = patch.fraud_warning_enabled;
     let gpc_changed = patch.global_privacy_control;
+    let zoom_touched = patch.default_zoom_percent.is_some() || patch.zoom_site_overrides.is_some();
     let autoplay_touched =
         patch.autoplay_policy.is_some() || patch.autoplay_site_overrides.is_some();
     let media_extensions_changed = patch.media_extensions_enabled;
@@ -116,6 +134,11 @@ pub async fn update_settings(
     if let Some(enabled) = gpc_changed {
         state.refresh_all_proxy_policies().await;
         crate::gpc::apply_to_all_remote(&app, enabled);
+    }
+
+    if zoom_touched {
+        state.refresh_zoom_cache().await;
+        crate::zoom::apply_to_all_tabs(&app);
     }
 
     if autoplay_touched {

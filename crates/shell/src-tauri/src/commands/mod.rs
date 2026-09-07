@@ -372,6 +372,14 @@ pub(crate) fn apply_tab_zoom(app: &AppHandle, id: TabId, factor: f64) {
     let Some(webview) = app.webviews().get(&label).cloned() else {
         return;
     };
+    apply_zoom_to_webview(&webview, factor);
+}
+
+/// Push a zoom factor into one live webview.
+pub(crate) fn apply_zoom_to_webview<R: tauri::Runtime>(
+    webview: &tauri::webview::Webview<R>,
+    factor: f64,
+) {
     #[cfg(target_os = "macos")]
     {
         use objc2::msg_send;
@@ -387,7 +395,7 @@ pub(crate) fn apply_tab_zoom(app: &AppHandle, id: TabId, factor: f64) {
     // The controller's `ZoomFactor` is the user-facing (Ctrl +/-) page zoom,
     // the analog of WKWebView's `setPageZoom:`.
     #[cfg(windows)]
-    crate::win_webview2::with_controller(&webview, move |controller| {
+    crate::win_webview2::with_controller(webview, move |controller| {
         // SAFETY: runs on the UI thread via `with_controller`.
         let _ = unsafe { controller.SetZoomFactor(factor) };
     });

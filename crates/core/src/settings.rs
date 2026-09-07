@@ -116,6 +116,12 @@ pub struct UserSettings {
     /// Per-host autoplay overrides, keyed by normalised host.
     #[serde(default)]
     pub autoplay_site_overrides: HashMap<String, AutoplayPolicy>,
+    /// Page zoom for sites without one of their own, as a whole percentage.
+    #[serde(default = "default_zoom_percent")]
+    pub default_zoom_percent: u16,
+    /// Remembered per-host page zoom, keyed by normalised host.
+    #[serde(default)]
+    pub zoom_site_overrides: HashMap<String, u16>,
     /// Enable WebKit Media Source + Encrypted Media Extensions on remote
     /// pages (adaptive streaming + the FairPlay key system). On by default
     /// (MSE is off in embedded WKWebView, breaking many video sites);
@@ -301,6 +307,10 @@ fn default_global_privacy_control() -> bool {
     true
 }
 
+fn default_zoom_percent() -> u16 {
+    crate::zoom::DEFAULT_ZOOM_PERCENT
+}
+
 fn default_video_popout_enabled() -> bool {
     true
 }
@@ -396,6 +406,8 @@ impl Default for UserSettings {
             global_privacy_control: true,
             autoplay_policy: AutoplayPolicy::default(),
             autoplay_site_overrides: HashMap::new(),
+            default_zoom_percent: default_zoom_percent(),
+            zoom_site_overrides: HashMap::new(),
             media_extensions_enabled: true,
             video_popout_enabled: true,
             user_agent_profile: UaProfile::default(),
@@ -489,6 +501,10 @@ pub struct UserSettingsPatch {
     pub autoplay_policy: Option<AutoplayPolicy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub autoplay_site_overrides: Option<HashMap<String, AutoplayPolicy>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_zoom_percent: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zoom_site_overrides: Option<HashMap<String, u16>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media_extensions_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -611,6 +627,12 @@ impl UserSettings {
             autoplay_site_overrides: patch
                 .autoplay_site_overrides
                 .unwrap_or_else(|| self.autoplay_site_overrides.clone()),
+            default_zoom_percent: patch
+                .default_zoom_percent
+                .unwrap_or(self.default_zoom_percent),
+            zoom_site_overrides: patch
+                .zoom_site_overrides
+                .unwrap_or_else(|| self.zoom_site_overrides.clone()),
             media_extensions_enabled: patch
                 .media_extensions_enabled
                 .unwrap_or(self.media_extensions_enabled),

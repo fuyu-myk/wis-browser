@@ -49,16 +49,8 @@ pub struct Tab {
     /// `None`.
     #[serde(default)]
     pub load_error: Option<crate::load_error::LoadError>,
-    /// Persisted page-zoom factor (1.0 = 100%).
-    #[serde(default = "default_zoom")]
-    pub zoom: f64,
     pub created_at: DateTime<Utc>,
     pub last_active_at: DateTime<Utc>,
-}
-
-/// Default page-zoom factor (100%).
-pub fn default_zoom() -> f64 {
-    1.0
 }
 
 /// Placeholder title for a page that has not reported one: the bare site name
@@ -88,7 +80,6 @@ impl Tab {
             load_error: None,
             can_go_back: false,
             can_go_forward: false,
-            zoom: default_zoom(),
             created_at: now,
             last_active_at: now,
         }
@@ -132,13 +123,6 @@ impl Tab {
     pub fn with_muted(&self, muted: bool) -> Self {
         Self {
             muted,
-            ..self.clone()
-        }
-    }
-
-    pub fn with_zoom(&self, zoom: f64) -> Self {
-        Self {
-            zoom,
             ..self.clone()
         }
     }

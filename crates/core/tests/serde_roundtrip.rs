@@ -129,6 +129,8 @@ fn settings_patch_round_trips_when_all_fields_set() {
         fraud_warning_enabled: Some(false),
         global_privacy_control: Some(false),
         autoplay_policy: Some(wis_core::AutoplayPolicy::Allow),
+        default_zoom_percent: Some(110),
+        zoom_site_overrides: Some(HashMap::from([("docs.example".to_string(), 125)])),
         autoplay_site_overrides: Some(HashMap::from([(
             "video.example".to_string(),
             wis_core::AutoplayPolicy::Block,

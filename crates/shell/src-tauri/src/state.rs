@@ -162,6 +162,9 @@ pub struct AppState {
     /// Sync mirror of the autoplay setting and its per-host overrides, read
     /// per navigation on the main thread.
     pub autoplay: std::sync::RwLock<crate::autoplay::AutoplayCache>,
+    /// Sync mirror of the page-zoom setting and its per-host overrides, read
+    /// per navigation on the main thread.
+    pub zoom: std::sync::RwLock<crate::zoom::ZoomCache>,
     /// Camera/microphone requests awaiting the user's decision in the prompt
     /// overlay, keyed by a monotonic request id (`media_seq`).
     pub pending_media: std::sync::Mutex<HashMap<u64, crate::permissions::PendingMedia>>,
@@ -219,6 +222,10 @@ impl AppState {
             policy: browser.settings.autoplay_policy,
             overrides: browser.settings.autoplay_site_overrides.clone(),
         };
+        let initial_zoom = crate::zoom::ZoomCache {
+            default_percent: browser.settings.default_zoom_percent,
+            overrides: browser.settings.zoom_site_overrides.clone(),
+        };
         let initial_app_launch_permissions = browser.settings.app_launch_permissions.clone();
         // The main window starts on the persisted active workspace.
         let initial_active_workspace = browser.active_workspace_id;
@@ -254,6 +261,7 @@ impl AppState {
             media_permissions: std::sync::RwLock::new(initial_media_permissions),
             media_permissions_session: std::sync::RwLock::new(HashMap::new()),
             autoplay: std::sync::RwLock::new(initial_autoplay),
+            zoom: std::sync::RwLock::new(initial_zoom),
             pending_media: std::sync::Mutex::new(HashMap::new()),
             media_seq: std::sync::atomic::AtomicU64::new(0),
             app_launch_permissions: std::sync::RwLock::new(initial_app_launch_permissions),
@@ -402,6 +410,22 @@ impl AppState {
     pub fn refresh_autoplay_cache(&self, cache: crate::autoplay::AutoplayCache) {
         let mut guard = self.autoplay.write().expect("autoplay poisoned");
         *guard = cache;
+    }
+
+    /// Re-read the page-zoom cache from the current settings.
+    pub async fn refresh_zoom_cache(&self) {
+        let browser = self.browser.lock().await;
+        let mut guard = self.zoom.write().expect("zoom poisoned");
+        *guard = crate::zoom::ZoomCache {
+            default_percent: browser.settings.default_zoom_percent,
+            overrides: browser.settings.zoom_site_overrides.clone(),
+        };
+    }
+
+    /// The zoom percentage for the page at `url`.
+    pub fn zoom_percent_for_url(&self, url: &str) -> u16 {
+        let cache = self.zoom.read().expect("zoom poisoned");
+        crate::zoom::percent_for_url(&cache, url)
     }
 
     /// The autoplay policy for the page at `url`.

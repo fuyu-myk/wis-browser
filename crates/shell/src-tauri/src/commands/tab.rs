@@ -469,30 +469,86 @@ pub async fn tab_hard_reload(app: AppHandle, id: TabId) -> WisResult<()> {
     Ok(())
 }
 
-/// Adjust a tab's page zoom. `kind` is `"in"`, `"out"`, or `"reset"`. The new
-/// factor is computed from the persisted zoom, stored on the tab,
-/// then applied to the live webview.
+/// Adjust the page zoom for the site a tab is showing. The new percentage is
+/// remembered for that host, so every tab on it and every later visit match;
+/// `Reset` drops the host's own zoom to follow the default again. A page with
+/// no host is left alone.
+///
+/// The whole read-step-write runs inside the transition, which holds the
+/// browser lock.
 #[tauri::command]
 pub async fn tab_zoom(
     app: AppHandle,
     state: State<'_, AppState>,
     id: TabId,
-    kind: String,
+    kind: wis_core::ZoomStep,
 ) -> WisResult<()> {
-    let current = {
-        let browser = state.browser.lock().await;
-        browser.tab(id).map(|t| t.zoom).unwrap_or(1.0)
+    let host = {
+        let live = app
+            .webviews()
+            .get(&format!("tab-{}", id.as_uuid()))
+            .and_then(|webview| webview.url().ok());
+        let url = match live {
+            Some(url) => url,
+            None => state.browser.lock().await.tab(id)?.url.clone(),
+        };
+        wis_core::user_agent::normalize_host(url.host_str().unwrap_or_default())
     };
-    let next = match kind.as_str() {
-        "in" => (current * 1.1).min(3.0),
-        "out" => (current / 1.1).max(0.5),
-        _ => 1.0,
-    };
-    // Snap to 3 d.p. to minimize float drift.
-    let next = (next * 1000.0).round() / 1000.0;
+    if host.is_empty() {
+        return Ok(());
+    }
 
-    mutate_unit(&app, &state, |s| s.with_tab_zoom(id, next)).await?;
-    apply_tab_zoom(&app, id, next);
+    let factor = mutate(&app, &state, move |s| {
+        let default_percent = s.settings.default_zoom_percent;
+        let current = wis_core::zoom_percent_for_host(
+            &host,
+            &s.settings.zoom_site_overrides,
+            default_percent,
+        );
+        let next = wis_core::stepped_zoom_percent(current, kind, default_percent);
+
+        let mut overrides = s.settings.zoom_site_overrides.clone();
+        if kind == wis_core::ZoomStep::Reset {
+            overrides.remove(&host);
+        } else {
+            overrides.insert(host, next);
+        }
+
+        let next_state = s.with_settings(wis_core::UserSettingsPatch {
+            zoom_site_overrides: Some(overrides),
+            ..Default::default()
+        });
+
+        Ok((next_state, wis_core::zoom_factor(next)))
+    })
+    .await?;
+
+    state.refresh_zoom_cache().await;
+    apply_tab_zoom(&app, id, factor);
+
+    Ok(())
+}
+
+/// Forget one site's zoom.
+#[tauri::command]
+pub async fn zoom_forget_site(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    host: String,
+) -> WisResult<()> {
+    let host = wis_core::user_agent::normalize_host(&host);
+    mutate_unit(&app, &state, move |s| {
+        let mut overrides = s.settings.zoom_site_overrides.clone();
+        overrides.remove(&host);
+        Ok(s.with_settings(wis_core::UserSettingsPatch {
+            zoom_site_overrides: Some(overrides),
+            ..Default::default()
+        }))
+    })
+    .await?;
+
+    state.refresh_zoom_cache().await;
+    crate::zoom::apply_to_all_tabs(&app);
 
     Ok(())
 }

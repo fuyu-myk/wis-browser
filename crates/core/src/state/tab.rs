@@ -284,15 +284,6 @@ impl BrowserState {
         Ok(self.replace_tab(id, &updated))
     }
 
-    pub fn with_tab_zoom(&self, id: TabId, zoom: f64) -> WisResult<Self> {
-        let current = self.tab(id)?;
-        if current.zoom == zoom {
-            return Ok(self.clone());
-        }
-
-        Ok(self.replace_tab(id, &current.with_zoom(zoom)))
-    }
-
     /// Toggle a tab's `loading` flag. Idempotent when the value doesn't change.
     pub fn with_tab_loading(&self, id: TabId, loading: bool) -> WisResult<Self> {
         let current = self.tab(id)?;

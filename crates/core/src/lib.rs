@@ -35,6 +35,7 @@ pub mod user_agent;
 pub mod userscript;
 pub mod widget;
 pub mod workspace;
+pub mod zoom;
 
 pub use ai::{AiProvider, ChatMessage, ChatRequest, Role, SseParser, StreamEvent, ThinkingMode};
 pub use autoplay::{autoplay_policy_for_host, AutoplayPolicy};
@@ -76,3 +77,7 @@ pub use theme::{CustomTheme, ModeTokens, ThemeFile, ThemeTokens, THEME_FILE_VERS
 pub use user_agent::{ua_for_host, UaPlatform, UaProfile};
 pub use widget::{Widget, WidgetGroup, WidgetKind};
 pub use workspace::{AccentColor, EssentialPin, Workspace};
+pub use zoom::{
+    sane_zoom_percent, stepped_zoom_percent, zoom_factor, zoom_percent_for_host, ZoomStep,
+    DEFAULT_ZOOM_PERCENT, MAX_ZOOM_PERCENT, MIN_ZOOM_PERCENT, ZOOM_LADDER,
+};

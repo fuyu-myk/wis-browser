@@ -69,6 +69,7 @@ mod win_focus;
 #[cfg(windows)]
 mod win_webview2;
 mod windows;
+mod zoom;
 
 use std::sync::Arc;
 
@@ -603,6 +604,7 @@ pub fn run() {
             commands::move_tab_to_workspace,
             commands::tab_hard_reload,
             commands::tab_zoom,
+            commands::zoom_forget_site,
             commands::reorder_tabs,
             commands::pin_tab,
             commands::create_tab_folder,

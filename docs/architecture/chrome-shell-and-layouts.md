@@ -14,6 +14,10 @@ The React/TypeScript chrome lives in `crates/shell/src/`. Imports use `@/...` al
 
 State is immutable end to end: `wis-core` mutations are pure `with_*` builders returning a new value, and the frontend re-renders off refetched query snapshots rather than local mutation.
 
+## Page-zoom chip
+
+`ZoomIndicator` sits inside the address bar (`UrlBar`), after the input and before its other trailing controls, at their height. It reads the zoom for the active tab's host from settings (`lib/zoom.ts` mirrors the Rust lookup) and shows nothing while the page is at the default zoom. Hiding collapses its own `max-width` instead of unmounting, which gives it an exit as well as an entrance. Each character is keyed by its distance from the *end* plus its own value, so React remounts only the characters that changed: 110% to 120% moves the middle digit alone, 90% to 100% keeps the trailing `0%` still while the new hundreds digit and the changed tens digit arrive, and the per cent sign never moves. A remounted character replays one of two entrances, rising from below when the zoom went up and dropping from above when it went down; the direction is captured in a ref at mount. The global `motion-reduced` and `motion-off` tiers cover the animations without extra rules.
+
 ## Render performance
 
 Refetch and re-render are coalesced so unrelated state churn stays cheap:
