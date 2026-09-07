@@ -445,6 +445,9 @@ export function useTabWebviews({
   // this only fires when membership actually changes. Audibility changes also
   // re-run it: a playing tab is exempt while it sounds, and must be reaped as
   // soon as it goes silent (pause, mute, media end), not a sweep-tick later.
+  // So does the active tab: collapsing the folder the current tab sits in
+  // leaves it exempt below, and it must be reaped the moment the user moves
+  // away.
   const forceSleepKey = useMemo(
     () => Array.from(forceSleepTabIds ?? []).sort().join(','),
     [forceSleepTabIds],
@@ -470,7 +473,7 @@ export function useTabWebviews({
       changed = true
     }
     if (changed) recomputeDiscarded()
-  }, [forceSleepKey, audibleKey, recomputeDiscarded, sleepWebview])
+  }, [forceSleepKey, audibleKey, activeTabId, recomputeDiscarded, sleepWebview])
 
   // After a popout restore lands, the webview is hidden in the main window.
   useEffect(() => {

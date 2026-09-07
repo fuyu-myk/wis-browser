@@ -809,3 +809,52 @@ fn assigning_a_folder_from_another_workspace_is_rejected() {
     let err = s3.with_tab_assigned_folder(a.id, Some(folder2.id));
     assert!(matches!(err, Err(WisError::InvalidInput { .. })));
 }
+
+#[test]
+fn activating_a_tab_opens_the_folder_that_was_hiding_it() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, inside) = s0.with_new_tab(ws, "https://inside.example/").unwrap();
+    let (s2, outside) = s1.with_new_tab(ws, "https://outside.example/").unwrap();
+    let (s3, folder) = s2
+        .with_new_tab_folder(ws, "Work".to_string(), AccentColor::Azur)
+        .unwrap();
+    let s4 = s3
+        .with_tab_assigned_folder(inside.id, Some(folder.id))
+        .unwrap()
+        .with_active_tab(outside.id)
+        .unwrap()
+        .with_tab_folder_collapsed(ws, folder.id, true)
+        .unwrap();
+    assert!(
+        s4.workspaces[0].tab_folders[0].collapsed,
+        "the folder starts collapsed"
+    );
+
+    let s5 = s4.with_active_tab(inside.id).unwrap();
+
+    assert!(
+        !s5.workspaces[0].tab_folders[0].collapsed,
+        "activating a tab inside it must open the folder"
+    );
+    assert_clean(&s5);
+}
+
+#[test]
+fn activating_a_loose_tab_leaves_folders_as_they_were() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, loose) = s0.with_new_tab(ws, "https://loose.example/").unwrap();
+    let (s2, folder) = s1
+        .with_new_tab_folder(ws, "Work".to_string(), AccentColor::Azur)
+        .unwrap();
+    let s3 = s2.with_tab_folder_collapsed(ws, folder.id, true).unwrap();
+
+    let s4 = s3.with_active_tab(loose.id).unwrap();
+
+    assert!(
+        s4.workspaces[0].tab_folders[0].collapsed,
+        "a tab outside the folder must not open it"
+    );
+    assert_clean(&s4);
+}

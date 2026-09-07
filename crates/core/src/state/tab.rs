@@ -390,8 +390,13 @@ impl BrowserState {
             .iter()
             .map(|w| {
                 if w.id == workspace_id {
-                    w.with_focused_tab(id)
-                        .with_selected_folder(touched_tab.folder_id)
+                    let focused = w
+                        .with_focused_tab(id)
+                        .with_selected_folder(touched_tab.folder_id);
+                    match touched_tab.folder_id {
+                        Some(folder_id) => focused.with_folder_collapsed(folder_id, false),
+                        None => focused,
+                    }
                 } else {
                     w.clone()
                 }
