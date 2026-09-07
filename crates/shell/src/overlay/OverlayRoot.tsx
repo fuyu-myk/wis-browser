@@ -17,6 +17,7 @@ import { IslandMenuSurface } from '@/overlay/surfaces/IslandMenuSurface'
 import { NavGuardSurface } from '@/overlay/surfaces/NavGuardSurface'
 import { PaletteSurface } from '@/overlay/surfaces/PaletteSurface'
 import { TabContextMenuSurface } from '@/overlay/surfaces/TabContextMenuSurface'
+import { PageMenuSurface } from '@/overlay/surfaces/PageMenuSurface'
 import { TabPreviewSurface } from '@/overlay/surfaces/TabPreviewSurface'
 import { PeekSurface } from '@/overlay/surfaces/PeekSurface'
 import { AppLaunchSurface } from '@/overlay/surfaces/AppLaunchSurface'
@@ -42,6 +43,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'find') return <FindSurface />
   if (surface === 'palette') return <PaletteSurface />
   if (surface === 'tabmenu') return <TabContextMenuSurface />
+  if (surface === 'pagemenu') return <PageMenuSurface />
   if (surface === 'tabpreview') return <TabPreviewSurface />
   if (surface === 'islandmenu') return <IslandMenuSurface />
   if (surface === 'cleardata') return <ClearDataSurface />

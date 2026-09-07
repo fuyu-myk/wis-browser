@@ -305,6 +305,8 @@ function HistoryRow({
       <button
         type="button"
         className="kb-history-link"
+        data-menu-url={entry.url}
+        data-menu-label={title}
         onClick={selectMode ? onToggle : onOpen}
         onMouseDown={(e) => {
           if (e.button === 1) e.preventDefault()

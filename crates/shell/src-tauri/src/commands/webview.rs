@@ -102,6 +102,7 @@ pub async fn create_tab_webview(
         .initialization_script(crate::video_popout::page_script())
         .initialization_script(crate::peek::page_script())
         .initialization_script(crate::link_open::page_script())
+        .initialization_script(crate::page_menu::page_script())
         // Global Privacy Control's page signal, in every frame.
         .initialization_script_for_all_frames(crate::gpc::page_script(global_privacy_control))
         // Swipe back/forward: publish the indicator colour, then the gesture+UI.
@@ -584,6 +585,9 @@ pub async fn create_tab_webview(
 
     // AI page-text channel (inert until the chrome requests extraction).
     crate::page_text::install(&child);
+
+    // Right-click: report the target so the chrome can draw its own menu.
+    crate::page_menu::install(&child);
 
     // Cmd/middle-click -> open link in a new background tab.
     crate::link_open::install(&child);

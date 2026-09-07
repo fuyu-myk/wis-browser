@@ -338,6 +338,8 @@ function QuickLinkBubble({
     <button
       type="button"
       data-key={tile.url}
+      data-menu-url={tile.url}
+      data-menu-label={tile.label}
       className={cx('kb-quicklink', { 'is-dragsource': isSource })}
       style={{ transform }}
       onClick={() => onActivate(tile.url)}

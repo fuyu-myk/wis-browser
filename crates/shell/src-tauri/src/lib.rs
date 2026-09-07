@@ -38,6 +38,7 @@ mod memory;
 mod menu;
 mod navguard;
 mod overlay;
+mod page_menu;
 mod page_text;
 mod pane_focus;
 mod panels;
@@ -389,6 +390,7 @@ pub fn run() {
 
             // App handle for the AI page-text channel's native handler.
             page_text::set_app_handle(app.handle().clone());
+            page_menu::set_app_handle(app.handle().clone());
 
             // App handle for the assistant's web-fetch dispatchers.
             #[cfg(any(windows, target_os = "linux"))]
