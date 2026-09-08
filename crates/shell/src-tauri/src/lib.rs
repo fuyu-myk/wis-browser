@@ -38,6 +38,7 @@ mod memory;
 mod menu;
 mod navguard;
 mod overlay;
+mod page_image;
 mod page_menu;
 mod page_text;
 mod pane_focus;
@@ -49,6 +50,7 @@ mod print;
 mod reader;
 mod save_coalescer;
 mod screenshot;
+mod selection_color;
 mod state;
 mod suggest;
 mod swipe_nav;
@@ -649,6 +651,7 @@ pub fn run() {
             default_browser::set_default_browser,
             default_browser::drain_external_urls,
             clipboard::copy_text,
+            clipboard::clean_link,
             memory::list_webview_memory,
             commands::start_element_picker,
             commands::import_userscript,
@@ -664,6 +667,9 @@ pub fn run() {
             find::tab_find_clear,
             print::print_active_tab,
             screenshot::capture_to_clipboard,
+            page_image::copy_image,
+            page_menu::clear_menu_selection,
+            page_image::save_image_as,
             screenshot::save_last_screenshot,
             peek::open_peek,
             peek::set_peek_bounds,
@@ -688,6 +694,7 @@ pub fn run() {
             widget_panel::set_widget_panel_muted,
             widget_panel::widget_panel_muted,
             windows::new_window,
+            windows::open_url_in_new_window,
             windows::free_workspaces,
             windows::restore_session_windows,
             swipe_nav::set_swipe_accent,

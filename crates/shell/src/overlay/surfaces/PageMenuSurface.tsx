@@ -18,11 +18,13 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { commands } from '@/bindings/commands'
+import type { AccentColor } from '@/bindings/types'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
 import { cx } from '@/lib/cx'
 import { menusGlass } from '@/lib/glass'
+import { showRemoteToast } from '@/lib/toast'
 import {
   PAGE_MENU_ACK_EVENT,
   PAGE_MENU_DONE_EVENT,
@@ -31,11 +33,18 @@ import {
   type PageMenuTarget,
 } from '@/lib/pageMenu'
 import { currentPlatform } from '@/lib/platform'
+import { useAiAvailable } from '@/hooks/useAiAvailable'
+import { nextAccent } from '@/lib/accents'
+import { AI_ASK_EVENT } from '@/lib/aiAsk'
 import { activeEngine, isWebUrl } from '@/lib/url'
 
 /** Kept off the window edges. */
 const MARGIN = 8
 const MENU_WIDTH = 232
+/** A selection past this is not a search query any engine would accept. */
+const MAX_SEARCH_CHARS = 2000
+/** Longer than this, an error is reported as its plainer fallback. */
+const MAX_TOAST_CHARS = 120
 /** Peek is opened by the event its own surface listens for. */
 const PEEK_OPEN_EVENT = 'wis-peek-open'
 
@@ -55,6 +64,9 @@ export function PageMenuSurface() {
   const [cursor, setCursor] = useState(0)
   const cardRef = useRef<HTMLDivElement | null>(null)
   const itemsRef = useRef<Array<HTMLButtonElement | null>>([])
+  const busyRef = useRef(false)
+  const workspacesRef = useRef<Array<{ accent: AccentColor }>>([])
+  workspacesRef.current = state?.workspaces ?? []
 
   const close = useCallback(async () => {
     const tabId = target?.tabId ?? null
@@ -94,7 +106,7 @@ export function PageMenuSurface() {
     }
   }, [])
 
-  const rows = useRows(target, close)
+  const rows = useRows(target, close, busyRef, workspacesRef)
   const firstEnabled = useMemo(() => {
     const index = rows.findIndex((row) => !row.disabled)
     return index >= 0 ? index : 0
@@ -214,12 +226,18 @@ export function PageMenuSurface() {
 }
 
 /**
- * The rows for a target, grouped link, then image, then selection, then page.
+ * The rows for a target, grouped link, image, media, selection, then page.
  * Every row is one existing command.
  */
-function useRows(target: PageMenuTarget | null, close: () => Promise<void>): Row[] {
+function useRows(
+  target: PageMenuTarget | null,
+  close: () => Promise<void>,
+  busyRef: React.MutableRefObject<boolean>,
+  workspacesRef: React.MutableRefObject<Array<{ accent: AccentColor }>>,
+): Row[] {
   const { data: state } = useBrowserState()
   const settings = state?.settings
+  const aiReady = useAiAvailable(settings?.ai)
 
   return useMemo(() => {
     if (!target) return []
@@ -234,6 +252,49 @@ function useRows(target: PageMenuTarget | null, close: () => Promise<void>): Row
         if (!target.isActiveTab) await commands.setActiveTab(target.tabId).catch(() => undefined)
         await work()
       })
+    const afterOnce = (work: () => Promise<unknown>) =>
+      after(async () => {
+        if (busyRef.current) return
+        busyRef.current = true
+        try {
+          await work()
+        } finally {
+          busyRef.current = false
+        }
+      })
+
+    const reportFailure = (fallback: string) => (error: unknown) => {
+      const detail =
+        typeof error === 'object' &&
+        error !== null &&
+        'message' in error &&
+        typeof (error as { message: unknown }).message === 'string'
+          ? (error as { message: string }).message
+          : null
+      const message = detail && detail.length <= MAX_TOAST_CHARS ? detail : fallback
+      void showRemoteToast(target.window, message)
+    }
+
+    const windowName = (href: string) => {
+      const text = target.linkText?.trim()
+      if (text) return text
+      try {
+        return new URL(href).hostname || 'New Space'
+      } catch {
+        return 'New Space'
+      }
+    }
+    const openInWindow = (href: string, isPrivate: boolean) =>
+      afterOnce(() =>
+        commands
+          .openUrlInNewWindow(
+            href,
+            windowName(href),
+            nextAccent(workspacesRef.current.map((w) => w.accent)),
+            isPrivate,
+          )
+          .catch(reportFailure('Opening a new window failed')),
+      )
 
     const link = target.linkHref && isWebUrl(target.linkHref) ? target.linkHref : null
     if (link) {
@@ -265,11 +326,54 @@ function useRows(target: PageMenuTarget | null, close: () => Promise<void>): Row
             }),
           ),
         },
+        ...(target.ephemeral
+          ? []
+          : [
+              {
+                id: 'link-window',
+                label: 'Open link in new window',
+                run: openInWindow(link, false),
+              },
+            ]),
+        {
+          id: 'link-private',
+          label: 'Open link in new private window',
+          run: openInWindow(link, true),
+        },
         {
           id: 'link-copy',
           label: 'Copy link address',
           run: after(() => commands.copyText(link)),
         },
+        ...(target.cleanLink
+          ? [
+              {
+                id: 'link-copy-clean',
+                label: `Copy clean link (${target.cleanRemoved.length} removed)`,
+                run: after(() => commands.copyText(target.cleanLink as string)),
+              },
+            ]
+          : []),
+        ...(target.ephemeral
+          ? []
+          : [
+              {
+                id: 'link-bookmark',
+                label: 'Bookmark link',
+                run: after(() =>
+                  commands
+                    .addBookmark({
+                      workspaceId: target.workspaceId,
+                      folderId: null,
+                      url: link,
+                      title: target.linkText?.trim() || link,
+                      faviconHash: null,
+                      pinned: false,
+                    })
+                    .catch(reportFailure('Bookmarking the link failed')),
+                ),
+              },
+            ]),
       )
     }
 
@@ -282,9 +386,47 @@ function useRows(target: PageMenuTarget | null, close: () => Promise<void>): Row
           run: afterHere(() => commands.createRelatedTab(target.workspaceId, image)),
         },
         {
+          id: 'image-save',
+          label: 'Save image as…',
+          run: after(() =>
+            commands
+              .saveImageAs(target.workspaceId, image)
+              .catch(reportFailure('Saving the image failed')),
+          ),
+        },
+        {
+          id: 'image-copy-image',
+          label: 'Copy image',
+          run: after(() =>
+            commands
+              .copyImage(target.workspaceId, image)
+              .then(() => showRemoteToast(target.window, 'Image copied'))
+              .catch(reportFailure('Copying the image failed')),
+          ),
+        },
+        {
           id: 'image-copy',
           label: 'Copy image address',
           run: after(() => commands.copyText(image)),
+        },
+      )
+    }
+
+    // Saving media is not offered; TODO: implement fetch URL entry point.
+    const media =
+      target.mediaSrc && isWebUrl(target.mediaSrc) && target.mediaKind ? target.mediaSrc : null
+    if (media) {
+      const noun = target.mediaKind === 'audio' ? 'audio' : 'video'
+      rows.push(
+        {
+          id: 'media-tab',
+          label: `Open ${noun} in new tab`,
+          run: afterHere(() => commands.createRelatedTab(target.workspaceId, media)),
+        },
+        {
+          id: 'media-copy',
+          label: `Copy ${noun} address`,
+          run: after(() => commands.copyText(media)),
         },
       )
     }
@@ -297,7 +439,10 @@ function useRows(target: PageMenuTarget | null, close: () => Promise<void>): Row
           id: 'selection-search',
           label: `Search ${engine.label} for “${ellipsis(selection)}”`,
           run: afterHere(() =>
-            commands.createRelatedTab(target.workspaceId, engine.search(selection)),
+            commands.createRelatedTab(
+              target.workspaceId,
+              engine.search(selection.slice(0, MAX_SEARCH_CHARS)),
+            ),
           ),
         },
         {
@@ -305,6 +450,21 @@ function useRows(target: PageMenuTarget | null, close: () => Promise<void>): Row
           label: 'Copy',
           run: after(() => commands.copyText(selection)),
         },
+        ...(aiReady
+          ? [
+              {
+                id: 'selection-ask',
+                label: 'Ask the assistant',
+                run: after(() =>
+                  emit(AI_ASK_EVENT, {
+                    window: target.window,
+                    seq: target.seq,
+                    question: selection,
+                  }),
+                ),
+              },
+            ]
+          : []),
       )
     }
 
@@ -336,7 +496,7 @@ function useRows(target: PageMenuTarget | null, close: () => Promise<void>): Row
     )
 
     return rows
-  }, [target, settings, close])
+  }, [target, settings, aiReady, close, busyRef, workspacesRef])
 }
 
 /** Selected text in a row label, short enough to stay on one line. */

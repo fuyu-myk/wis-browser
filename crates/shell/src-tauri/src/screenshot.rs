@@ -202,6 +202,30 @@ pub async fn capture_to_clipboard(
     }
 }
 
+/// Put image bytes on the clipboard as an image, for callers outside the
+/// screenshot flow. macOS accepts whatever `NSImage` decodes; the arboard
+/// path decodes PNG only, so its callers screen the format first.
+pub(crate) async fn copy_image_bytes(app: &AppHandle, bytes: Vec<u8>) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        imp::copy_image_to_pasteboard(app, bytes).await
+    }
+
+    #[cfg(any(windows, target_os = "linux"))]
+    {
+        let _ = app;
+        tokio::task::spawn_blocking(move || copy_png_to_clipboard(&bytes))
+            .await
+            .unwrap_or(false)
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
+    {
+        let _ = (app, bytes);
+        false
+    }
+}
+
 /// Save the most recent screenshot (already on the clipboard) to a file chosen
 /// via the native save panel. Backs the toast's "Save" button; `None` when
 /// nothing has been captured yet or the panel is cancelled.

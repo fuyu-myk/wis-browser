@@ -15,7 +15,7 @@ const AI_KEY_EVENT = 'wis-ai-key-changed'
  *
  * The key event keeps every window in step with a key saved in any of them.
  */
-export function useAiAvailable(ai: AiSettings): boolean {
+export function useAiAvailable(ai: AiSettings | undefined): boolean {
   const supported = !isFeatureUnavailableHere('ai_assistant')
   const [keyPresent, setKeyPresent] = useState(false)
 
@@ -42,5 +42,5 @@ export function useAiAvailable(ai: AiSettings): boolean {
     }
   }, [supported])
 
-  return supported && aiActivated(ai, keyPresent)
+  return supported && ai !== undefined && aiActivated(ai, keyPresent)
 }

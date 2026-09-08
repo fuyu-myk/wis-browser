@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import type { AiAskRequest } from '@/lib/aiAsk'
 
 import type { BrowserState, TabId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
@@ -11,6 +12,8 @@ import { TabWebViewHost } from '@/components/TabWebViewHost'
 interface ContentProps {
   state: BrowserState
   aiOpen: boolean
+  /** A question from the page menu, seeded into the panel on arrival. */
+  aiAsk: AiAskRequest | null
   onCloseAi: () => void
   onOpenSettings: () => void
   onDiscardedChange?: (discarded: Set<TabId>) => void
@@ -19,6 +22,7 @@ interface ContentProps {
 export function Content({
   state,
   aiOpen,
+  aiAsk,
   onCloseAi,
   onOpenSettings,
   onDiscardedChange,
@@ -58,6 +62,7 @@ export function Content({
       {aiMountedRef.current && (
         <AiPanel
           open={aiOpen}
+          ask={aiAsk}
           side={aiSide}
           workspaceId={activeWorkspace?.id ?? null}
           page={page}

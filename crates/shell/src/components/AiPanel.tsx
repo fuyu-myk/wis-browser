@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
+import type { AiAskRequest } from '@/lib/aiAsk'
 
 import { commands } from '@/bindings/commands'
 import type { WorkspaceId } from '@/bindings/types'
@@ -11,9 +12,11 @@ import {
   type AiTurn,
   type ThinkSegment,
   type ToolSegment,
+  selectionContent,
 } from '@/lib/ai'
 import { cx } from '@/lib/cx'
 import { ChevronDownIcon, FileIcon, PlusIcon, SendIcon, StopIcon, XIcon } from '@/lib/icons'
+import { showToast } from '@/lib/toast'
 import { useAiChat, type AiPageSource } from '@/hooks/useAiChat'
 
 import { AiMarkdown } from '@/components/AiMarkdown'
@@ -27,8 +30,21 @@ const STICK_THRESHOLD_PX = 40
 /** Lines the composer grows to before it starts scrolling instead. */
 const COMPOSER_MAX_LINES = 3
 
+/** How long a handed-off question waits for the panel to become able to send. */
+const ASK_WAIT_MS = 5000
+
+/** A queued prompt waiting for the assistant panel to be ready. */
+interface PendingAsk {
+  text: string
+  /** When waiting stops being plausible and the fallback takes over. */
+  until: number
+  late: boolean
+}
+
 interface AiPanelProps {
   open: boolean
+  /** A question sent from elsewhere, e.g. the page menu's "ask" row. */
+  ask?: AiAskRequest | null
   /** Docked opposite the sidebar so the two chrome columns never crowd. */
   side: 'left' | 'right'
   workspaceId: WorkspaceId | null
@@ -56,6 +72,7 @@ function readStoredWidth(): number {
  */
 export function AiPanel({
   open,
+  ask,
   side,
   workspaceId,
   page,
@@ -129,6 +146,44 @@ export function AiPanel({
     },
     [busy, modelReady, workspaceId, chat, page],
   )
+
+  // A question from elsewhere. Keyed on the request's sequence.
+  const askedRef = useRef(0)
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+  const [pendingAsk, setPendingAsk] = useState<PendingAsk | null>(null)
+  useEffect(() => {
+    if (!ask || ask.seq <= askedRef.current) return
+    askedRef.current = ask.seq
+    void commands.focusSelf().catch(() => undefined)
+    composerRef.current?.focus()
+    setPendingAsk({ text: ask.question, until: Date.now() + ASK_WAIT_MS, late: false })
+  }, [ask])
+
+  useEffect(() => {
+    if (!pendingAsk) return
+
+    if (modelReady && workspaceId !== null && !busy) {
+      setPendingAsk(null)
+      void submit(selectionContent(pendingAsk.text), false)
+      return
+    }
+
+    const left = pendingAsk.until - Date.now()
+    if (pendingAsk.late || left <= 0) {
+      setPendingAsk(null)
+      if (draftRef.current.trim() === '') setDraft(pendingAsk.text)
+      else if (busy) showToast('The assistant is still answering, so your draft was kept.')
+      else showToast('The assistant cannot answer that yet, so your draft was kept.')
+      return
+    }
+
+    const timer = window.setTimeout(
+      () => setPendingAsk((current) => (current ? { ...current, late: true } : null)),
+      left,
+    )
+    return () => window.clearTimeout(timer)
+  }, [pendingAsk, modelReady, workspaceId, busy, submit])
 
   // The composer is cleared only once the exchange is in the transcript: a
   // page read can still fail, and the typed question must survive that.

@@ -728,6 +728,13 @@ export interface HistoryEntry {
   visit_count: number
 }
 
+/** A link with its tracking parameters removed; mirrors `CleanedLink`. */
+export interface CleanedLink {
+  url: string
+  /** Names that were removed. Empty means the link came back untouched. */
+  removed: string[]
+}
+
 /** One saved password found in a public breach data set. */
 export interface BreachFinding {
   id: number

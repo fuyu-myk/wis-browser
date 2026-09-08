@@ -32,6 +32,7 @@ export interface PageMenuReport {
   linkText: string | null
   imageSrc: string | null
   mediaKind: string | null
+  mediaSrc: string | null
   selection: string | null
 }
 
@@ -66,7 +67,17 @@ export interface PageMenuTarget {
   linkHref: string | null
   linkText: string | null
   imageSrc: string | null
+  /** `'video'` or `'audio'` when the click landed on a media element. */
+  mediaKind: string | null
+  /** That element's resolved source, which a `<source>` child may have chosen. */
+  mediaSrc: string | null
   selection: string | null
   canGoBack: boolean
   canGoForward: boolean
+  /** The link with its tracking parameters stripped, when any were found. */
+  cleanLink: string | null
+  /** Names that stripping would remove; empty means the link is already clean. */
+  cleanRemoved: string[]
+  /** A private workspace saves nothing, so some rows do not apply. */
+  ephemeral: boolean
 }

@@ -31,6 +31,11 @@ import {
   type PageMenuReport,
   type PageMenuTarget,
 } from '@/lib/pageMenu'
+import {
+  clearSelectionPaint,
+  MAX_SELECTION_CHARS,
+  paintSelection,
+} from '@/lib/selectionPaint'
 import { isWindowFocused } from '@/lib/windowFocus'
 
 /** The page reports a right-click in a tab webview. */
@@ -45,6 +50,18 @@ const MENU_WIDTH = 232
 const MENU_INITIAL_HEIGHT = 420
 /** Kept off the window edges. */
 const MARGIN = 8
+
+/**
+ * What a link would look like with its tracking parameters gone. One round
+ * trip per menu, only when a link was hit, and a failure never blocks the
+ * menu.
+ */
+async function cleanOf(href: string | null): Promise<{ url: string | null; removed: string[] }> {
+  if (!href) return { url: null, removed: [] }
+  const cleaned = await commands.cleanLink(href).catch(() => null)
+  if (!cleaned || cleaned.removed.length === 0) return { url: null, removed: [] }
+  return { url: cleaned.url, removed: cleaned.removed }
+}
 /** How long a press inside a page waits before it dismisses. */
 const PANE_DISMISS_DELAY_MS = 120
 
@@ -57,13 +74,30 @@ export function usePageMenu(): void {
   const seqRef = useRef(0)
   const ackRef = useRef(0)
   const dismissTimerRef = useRef<number | null>(null)
+  /** The tab whose page is showing a stand-in highlight, if any. */
+  const paintedTabRef = useRef<TabId | null>(null)
+
+  /**
+   * Drop both stand-in highlights.
+   *
+   * Every way the menu can close has to call this, and the menu closes two
+   * ways: the chrome dismissing it, and the surface reporting that it closed
+   * itself after a row ran or Escape was pressed.
+   */
+  const releasePaint = useCallback(() => {
+    clearSelectionPaint()
+    const painted = paintedTabRef.current
+    paintedTabRef.current = null
+    if (painted) void commands.clearMenuSelection(painted).catch(() => undefined)
+  }, [])
 
   const dismiss = useCallback(async () => {
     if (!openRef.current) return
     openRef.current = false
     pendingRef.current = null
+    releasePaint()
     await commands.hideOverlay('pagemenu').catch(() => undefined)
-  }, [])
+  }, [releasePaint])
 
   const openTarget = useCallback(
     async (target: PageMenuTarget) => {
@@ -90,15 +124,25 @@ export function usePageMenu(): void {
       if (!browser) return
 
       const tabId = report.tabId as TabId
+      const dropPaint = () => {
+        if (report.selection) void commands.clearMenuSelection(tabId).catch(() => undefined)
+      }
+
       const tab = browser.tabs.find((candidate) => candidate.id === tabId)
-      if (!tab) return
+      if (!tab) {
+        dropPaint()
+        return
+      }
 
       // The pane hosting this tab's webview, in the coordinate space
       // `setOverlayBounds` consumes.
       const pane = document
         .querySelector(`[data-pane-leaf="${CSS.escape(report.tabId)}"]`)
         ?.getBoundingClientRect()
-      if (!pane) return
+      if (!pane) {
+        dropPaint()
+        return
+      }
 
       // Whether the clicked pane is already the one that acts.
       const workspace = browser.workspaces.find((w) => w.id === tab.workspace_id)
@@ -107,6 +151,10 @@ export function usePageMenu(): void {
       const x = pane.x + report.x * scale
       const y = pane.y + report.y * scale
       const host = document.querySelector('.kb-content-host')?.getBoundingClientRect()
+
+      const clean = await cleanOf(report.linkHref)
+
+      paintedTabRef.current = report.selection ? tabId : null
 
       seqRef.current += 1
       const target: PageMenuTarget = {
@@ -125,9 +173,14 @@ export function usePageMenu(): void {
         linkHref: report.linkHref,
         linkText: report.linkText,
         imageSrc: report.imageSrc,
+        mediaKind: report.mediaKind,
+        mediaSrc: report.mediaSrc,
         selection: report.selection,
         canGoBack: tab.can_go_back,
         canGoForward: tab.can_go_forward,
+        cleanLink: clean.url,
+        cleanRemoved: clean.removed,
+        ephemeral: workspace?.ephemeral ?? false,
       }
 
       await openTarget(target)
@@ -176,6 +229,7 @@ export function usePageMenu(): void {
     void listen<void>(PAGE_MENU_DONE_EVENT, () => {
       openRef.current = false
       pendingRef.current = null
+      releasePaint()
     }).then((fn) => {
       if (cancelled) fn()
       else unlisten = fn
@@ -184,7 +238,7 @@ export function usePageMenu(): void {
       cancelled = true
       unlisten?.()
     }
-  }, [])
+  }, [releasePaint])
 
   useEffect(() => {
     const onContextMenu = (event: MouseEvent) => {
@@ -208,33 +262,44 @@ export function usePageMenu(): void {
         stated?.getAttribute(MENU_LABEL_ATTR) ||
         null
       const imageSrc = node.closest('img')?.currentSrc ?? null
-      const selection = window.getSelection()?.toString().trim() || null
+      clearSelectionPaint()
+      const live = window.getSelection()
+      const selection = live?.toString().trim().slice(0, MAX_SELECTION_CHARS) || null
 
       if (!linkHref && !imageSrc && !selection) return
       event.preventDefault()
+      if (selection && live) paintSelection(live)
 
       const host = document.querySelector('.kb-content-host')?.getBoundingClientRect()
       seqRef.current += 1
-      void openTarget({
-        kind: 'chrome',
-        seq: seqRef.current,
-        isActiveTab: true,
-        window: getCurrentWindow().label,
-        tabId,
-        workspaceId: workspace.id,
-        x: event.clientX,
-        y: event.clientY,
-        winW: window.innerWidth,
-        winH: window.innerHeight,
-        peekX: host ? event.clientX - host.left : -1,
-        peekY: host ? event.clientY - host.top : -1,
-        linkHref,
-        linkText,
-        imageSrc,
-        selection,
-        canGoBack: false,
-        canGoForward: false,
-      })
+      const seq = seqRef.current
+      void cleanOf(linkHref).then((clean) =>
+        openTarget({
+          kind: 'chrome',
+          seq,
+          isActiveTab: true,
+          window: getCurrentWindow().label,
+          tabId,
+          workspaceId: workspace.id,
+          x: event.clientX,
+          y: event.clientY,
+          winW: window.innerWidth,
+          winH: window.innerHeight,
+          peekX: host ? event.clientX - host.left : -1,
+          peekY: host ? event.clientY - host.top : -1,
+          linkHref,
+          linkText,
+          imageSrc,
+          mediaKind: null,
+          mediaSrc: null,
+          selection,
+          canGoBack: false,
+          canGoForward: false,
+          cleanLink: clean.url,
+          cleanRemoved: clean.removed,
+          ephemeral: workspace.ephemeral,
+        }),
+      )
     }
     window.addEventListener('contextmenu', onContextMenu)
     return () => window.removeEventListener('contextmenu', onContextMenu)

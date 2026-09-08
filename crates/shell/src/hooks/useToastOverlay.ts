@@ -11,13 +11,17 @@
 
 import { useEffect, useRef } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { useOverlay } from '@/hooks/useOverlay'
 import {
   TOAST_CLOSED_EVENT,
   TOAST_READY_EVENT,
+  TOAST_REMOTE_EVENT,
   TOAST_REQUEST_EVENT,
   TOAST_SHOW_EVENT,
+  showToast,
+  type RemoteToastRequest,
   type ToastRequest,
 } from '@/lib/toast'
 
@@ -51,6 +55,15 @@ export function useToastOverlay(): void {
       })()
     }
     window.addEventListener(TOAST_REQUEST_EVENT, onRequest)
+
+    void listen<RemoteToastRequest>(TOAST_REMOTE_EVENT, (event) => {
+      if (!event.payload?.message) return
+      if (event.payload.window !== getCurrentWindow().label) return
+      showToast(event.payload.message)
+    }).then((fn) => {
+      if (cancelled) fn()
+      else unlistens.push(fn)
+    })
 
     void listen<void>(TOAST_READY_EVENT, () => {
       if (messageRef.current)

@@ -6,6 +6,13 @@
 use tauri::AppHandle;
 use wis_core::{WisError, WisResult};
 
+/// Strip a link's tracking parameters. See [`wis_core::link_clean`] for
+/// what it will and will not take out.
+#[tauri::command]
+pub async fn clean_link(url: String) -> wis_core::CleanedLink {
+    wis_core::clean_link(&url)
+}
+
 /// Copy plain text to the system clipboard.
 #[tauri::command]
 pub async fn copy_text(app: AppHandle, text: String) -> WisResult<()> {

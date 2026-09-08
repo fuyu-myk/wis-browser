@@ -103,7 +103,7 @@ pub fn origin_hash_for_url(url: &Url) -> Option<String> {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum Format {
+pub(crate) enum Format {
     Png,
     Ico,
     Svg,
@@ -113,7 +113,7 @@ enum Format {
 }
 
 impl Format {
-    fn extension(self) -> &'static str {
+    pub(crate) fn extension(self) -> &'static str {
         match self {
             Self::Png => "png",
             Self::Ico => "ico",
@@ -137,7 +137,7 @@ impl Format {
 }
 
 /// Identify an image format by its magic bytes.
-fn sniff_format(bytes: &[u8]) -> Option<Format> {
+pub(crate) fn sniff_format(bytes: &[u8]) -> Option<Format> {
     if bytes.len() >= 8 && &bytes[..8] == b"\x89PNG\r\n\x1a\n" {
         return Some(Format::Png);
     }
@@ -388,7 +388,6 @@ async fn ensure_favicon_cached(
         .user_agent(wis_core::user_agent::compatibility_user_agent(
             wis_core::UaPlatform::host(),
         ))
-        .danger_accept_invalid_certs(true)
         .proxy(proxy)
         .build()
         .map_err(|err| format!("build client: {err}"))?;

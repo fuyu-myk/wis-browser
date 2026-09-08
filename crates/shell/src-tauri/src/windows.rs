@@ -20,7 +20,7 @@ use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
-use wis_core::{WisError, WisResult, WorkspaceId};
+use wis_core::{AccentColor, WisError, WisResult, WorkspaceId};
 
 use crate::state::AppState;
 
@@ -246,6 +246,49 @@ pub async fn new_window(
     }
 
     spawn_window(&app, &state, workspace_id).await
+}
+
+/// Open `url` in a brand-new window of its own workspace. The workspace and
+/// its first tab are created in one transition. A window that fails to build
+/// will be removed by the rollback.
+///
+/// `private` makes the workspace ephemeral; a link from a private workspace
+/// should pass `true` so it does not escape into a persisted one.
+#[tauri::command]
+pub async fn open_url_in_new_window(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    url: String,
+    name: String,
+    accent: AccentColor,
+    private: bool,
+) -> WisResult<String> {
+    let workspace_id = crate::commands::mutate(&app, &state, |s| {
+        let (next, workspace) = if private {
+            s.with_new_private_workspace(name.clone(), accent)
+        } else {
+            s.with_new_workspace(name.clone(), accent)
+        };
+        let (next, _tab) = next.with_new_loose_tab(workspace.id, &url)?;
+        Ok((next, workspace.id))
+    })
+    .await?;
+
+    match spawn_window(&app, &state, workspace_id).await {
+        Ok(label) => Ok(label),
+        Err(err) => {
+            if let Err(rollback) = crate::commands::mutate_unit_immediate(&app, &state, |s| {
+                s.with_workspace_removed(workspace_id)
+            })
+            .await
+            {
+                log::warn!(
+                    "open_url_in_new_window: rolling back {workspace_id} failed: {rollback:?}"
+                );
+            }
+            Err(err)
+        }
+    }
 }
 
 /// Reopen the multi-window layout saved at the previous exit: a separate window

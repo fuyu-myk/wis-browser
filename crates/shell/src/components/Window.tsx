@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import type { BrowserState, Tab, TabId, UserSettings } from '@/bindings/types'
@@ -24,6 +24,7 @@ import { useKeybindCapture } from '@/hooks/useKeybindCapture'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 import { useSwipeAccentSync } from '@/hooks/useSwipeAccentSync'
 import { useAiAvailable } from '@/hooks/useAiAvailable'
+import { useAiAsk } from '@/hooks/useAiAsk'
 import { useWorkspaceBackground } from '@/hooks/useWorkspaceBackground'
 
 import { Content } from '@/components/Content'
@@ -91,9 +92,17 @@ export function Window({ state, settings }: WindowProps) {
   useSwipeAccentSync(settings)
 
   const aiAvailable = useAiAvailable(settings.ai)
+  const aiAsk = useAiAsk()
   useEffect(() => {
     if (!aiAvailable) setAiOpen(false)
   }, [aiAvailable])
+
+  const openedAskRef = useRef(0)
+  useEffect(() => {
+    if (!aiAsk || aiAsk.seq <= openedAskRef.current) return
+    openedAskRef.current = aiAsk.seq
+    if (aiAvailable) setAiOpen(true)
+  }, [aiAsk, aiAvailable])
 
   // Warm the favicon cache for sidebar widgets on startup (and when the set
   // changes).
@@ -158,6 +167,7 @@ export function Window({ state, settings }: WindowProps) {
       <Content
         state={state}
         aiOpen={aiOpen}
+        aiAsk={aiAsk}
         onCloseAi={() => setAiOpen(false)}
         onOpenSettings={openSettings}
         onDiscardedChange={onDiscardedChange}

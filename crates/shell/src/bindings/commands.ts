@@ -26,6 +26,7 @@ import type {
   DownloadId,
   DownloadItem,
   BreachReport,
+  CleanedLink,
   ClosedTabRecord,
   HistoryEntry,
   HistoryQuery,
@@ -499,6 +500,14 @@ export const commands = {
     return invoke('copy_text', { text })
   },
 
+  /**
+   * Strip a link's tracking parameters. An unparseable or non-web link
+   * comes back untouched with nothing removed.
+   */
+  async cleanLink(url: string): Promise<CleanedLink> {
+    return invoke('clean_link', { url })
+  },
+
   /** Per-webview WebContent process memory footprints (task manager). */
   async listWebviewMemory(): Promise<WebviewMemory[]> {
     return invoke('list_webview_memory')
@@ -752,6 +761,24 @@ export const commands = {
   /** Save the most recent screenshot to a chosen file. Null if none / cancelled. */
   async saveLastScreenshot(): Promise<string | null> {
     return invoke('save_last_screenshot')
+  },
+
+  /**
+   * Fetch the image at `src` through the workspace's proxy and write it
+   * wherever the save panel points. `null` when the panel is cancelled.
+   */
+  async saveImageAs(workspaceId: WorkspaceId, src: string): Promise<string | null> {
+    return invoke('save_image_as', { workspaceId, src })
+  },
+
+  /** Fetch the image at `src` and put it on the clipboard as an image. */
+  async copyImage(workspaceId: WorkspaceId, src: string): Promise<void> {
+    return invoke('copy_image', { workspaceId, src })
+  },
+
+  /** Drop the highlight the page menu left behind in a tab. */
+  async clearMenuSelection(tabId: TabId): Promise<void> {
+    return invoke('clear_menu_selection', { tabId })
   },
 
   /**
@@ -1076,6 +1103,19 @@ export const commands = {
    */
   async newWindow(workspaceId: WorkspaceId): Promise<string> {
     return invoke('new_window', { workspaceId })
+  },
+
+  /**
+   * Open `url` in a new window of its own workspace, created with its first
+   * tab in one step. `private` makes that workspace ephemeral.
+   */
+  async openUrlInNewWindow(
+    url: string,
+    name: string,
+    accent: AccentColor,
+    isPrivate: boolean,
+  ): Promise<string> {
+    return invoke('open_url_in_new_window', { url, name, accent, private: isPrivate })
   },
 
   /** Persistent workspaces not currently shown by any window, for the New
