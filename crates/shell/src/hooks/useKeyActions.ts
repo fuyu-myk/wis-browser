@@ -274,6 +274,13 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
     case 'pop_out_video':
       // `TabWebViewHost` owns the video-popout controller and handles this.
       return
+    case 'inspect': {
+      const id = ctx.state?.workspaces.find(
+        (w) => w.id === ctx.state?.active_workspace_id,
+      )?.active_tab_id
+      if (id) void commands.inspectTab(id).catch(() => undefined)
+      return
+    }
     case 'open_command_palette':
       if (isPeekOpen()) return
       window.dispatchEvent(new CustomEvent(COMMAND_PALETTE_OPEN_EVENT))

@@ -6,7 +6,7 @@ This guide elaborates on WIS.md. If anything here conflicts, WIS.md wins.
 
 The trust boundary is **local vs remote content**, not the window.
 
-- `capabilities/default.json` has no `remote` block, so it grants commands only to local app webviews (chrome + `overlay-*`, loading the bundled `index.html`) on windows matching glob `["main", "win-*"]`. Tab pages (`tab-<uuid>`), Peek (`peek-page-<window>`), and engine-popup windows load remote URLs and match no command-granting capability, so a page can never call a Tauri command. The one exception, `capabilities/tab-devtools.json`, grants only the devtools-toggle to `tab-*`.
+- `capabilities/default.json` has no `remote` block, so it grants commands only to local app webviews (chrome + `overlay-*`, loading the bundled `index.html`) on windows matching glob `["main", "win-*"]`. Tab pages (`tab-<uuid>`), Peek (`peek-page-<window>`), and engine-popup windows load remote URLs and match no command-granting capability, so a page can never call a Tauri command, without exception.
 - Consequence for every feature here: page-facing gates (media, vault autofill, navguard) run **app to page** via `evaluateJavaScript` / `eval`; the page posts to narrow `WKScriptMessageHandler`s, never invoking commands. Pages cannot read the vault.
 
 ## wis-secrets crypto

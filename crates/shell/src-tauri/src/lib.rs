@@ -16,6 +16,7 @@ mod content_filter;
 mod cookies;
 mod cosmetic;
 mod default_browser;
+mod devtools;
 mod downloads;
 mod edit_keys;
 mod error_compat;
@@ -38,6 +39,7 @@ mod memory;
 mod menu;
 mod navguard;
 mod overlay;
+mod page_archive;
 mod page_image;
 mod page_menu;
 mod page_text;
@@ -667,6 +669,8 @@ pub fn run() {
             find::tab_find_clear,
             print::print_active_tab,
             screenshot::capture_to_clipboard,
+            devtools::inspect_tab,
+            page_archive::save_page_archive,
             page_image::copy_image,
             page_menu::clear_menu_selection,
             page_image::save_image_as,

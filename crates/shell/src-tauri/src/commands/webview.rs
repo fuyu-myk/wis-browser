@@ -93,6 +93,7 @@ pub async fn create_tab_webview(
         .expect("loopback proxy URL is valid");
 
     let mut builder = WebviewBuilder::new(label, WebviewUrl::External(initial_url))
+        .devtools(!ephemeral)
         .focused(false)
         .proxy_url(proxy_url)
         .accept_first_mouse(true)

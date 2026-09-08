@@ -296,6 +296,8 @@ function useRows(
           .catch(reportFailure('Opening a new window failed')),
       )
 
+    const pageTab = state?.tabs.find((tab) => tab.id === target.tabId)
+
     const link = target.linkHref && isWebUrl(target.linkHref) ? target.linkHref : null
     if (link) {
       rows.push(
@@ -493,10 +495,29 @@ function useRows(
         label: 'Print…',
         run: after(() => commands.printActiveTab(target.tabId)),
       },
+      {
+        id: 'page-save',
+        label: 'Save page…',
+        run: after(() =>
+          commands
+            .savePageArchive(target.tabId, pageTab?.title ?? '', pageTab?.url ?? '')
+            .catch(reportFailure('Saving the page failed')),
+        ),
+      },
+      // Private tabs are built without devtools, so this is a no-op.
+      ...(target.ephemeral
+        ? []
+        : [
+            {
+              id: 'page-inspect',
+              label: 'Inspect',
+              run: after(() => commands.inspectTab(target.tabId)),
+            },
+          ]),
     )
 
     return rows
-  }, [target, settings, aiReady, close, busyRef, workspacesRef])
+  }, [target, state, settings, aiReady, close, busyRef, workspacesRef])
 }
 
 /** Selected text in a row label, short enough to stay on one line. */

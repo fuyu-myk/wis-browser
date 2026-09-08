@@ -104,6 +104,9 @@ pub enum KeyAction {
     /// Float the active tab's video as the popout mini player (toggles back
     /// when it is already popped). Unbound by default.
     PopOutVideo,
+    /// Open the web inspector on the active tab. Private workspaces build
+    /// their webviews without devtools, so it does nothing there.
+    Inspect,
     /// Capture the visible tab content (copies to the clipboard; the success
     /// toast offers Save). Unbound by default.
     CaptureVisible,
@@ -178,6 +181,7 @@ impl KeyAction {
             Self::ToggleSidebar => "toggle_sidebar",
             Self::ElementPicker => "element_picker",
             Self::PopOutVideo => "pop_out_video",
+            Self::Inspect => "inspect",
             Self::CaptureVisible => "capture_visible",
             Self::CaptureRegion => "capture_region",
             Self::CaptureWindow => "capture_window",
@@ -197,7 +201,7 @@ impl KeyAction {
     }
 }
 
-const ALL_ACTIONS: [KeyAction; 61] = [
+const ALL_ACTIONS: [KeyAction; 62] = [
     KeyAction::NewTab,
     KeyAction::NewWorkspace,
     KeyAction::CloseTab,
@@ -256,6 +260,7 @@ const ALL_ACTIONS: [KeyAction; 61] = [
     KeyAction::ToggleSidebar,
     KeyAction::ElementPicker,
     KeyAction::PopOutVideo,
+    KeyAction::Inspect,
     KeyAction::CaptureVisible,
     KeyAction::CaptureRegion,
     KeyAction::CaptureWindow,
@@ -341,6 +346,7 @@ pub fn default_keymap_for(mac: bool) -> HashMap<KeyAction, String> {
         (KeyAction::ToggleSidebar, "Cmd+S"),
         (KeyAction::ElementPicker, "Cmd+Shift+X"),
         (KeyAction::PopOutVideo, "Cmd+Shift+O"),
+        (KeyAction::Inspect, "Alt+Cmd+I"),
     ];
     pairs
         .iter()

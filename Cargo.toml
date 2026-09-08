@@ -40,7 +40,13 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Tauri
-tauri = { version = "2.11.2", features = ["macos-private-api", "unstable", "macos-proxy", "image-png"] }
+tauri = { version = "2.11.2", features = [
+    "macos-private-api",
+    "unstable",
+    "macos-proxy",
+    "image-png",
+    "devtools",
+] }
 tauri-build = "2.6.2"
 tauri-plugin-log = "2"
 # In-app updater: verifies signed update bundles against the embedded public

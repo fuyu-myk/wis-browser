@@ -72,7 +72,7 @@ wis-browser-app  (crates/shell/src-tauri)  - Tauri shell, IPC commands, AppState
 
 ### Capability boundary
 
-**The security boundary is local vs remote content, not just the window.** The `default` capability grants commands only to local app webviews (chrome + `overlay-*`) on the `["main", "win-*"]` glob; tab pages and the Peek preview load remote URLs and match no command-granting capability, so they can never call a command (sole exception: `tab-devtools.json` grants only the devtools toggle). Detail: `docs/architecture/security-vault-and-permissions.md`.
+**The security boundary is local vs remote content, not just the window.** The `default` capability grants commands only to local app webviews (chrome + `overlay-*`) on the `["main", "win-*"]` glob; tab pages and the Peek preview load remote URLs and match no command-granting capability, so they can never call a command. That holds without exception: `tab-devtools.json` used to grant the devtools toggle to `tab-*`, and was removed when Inspect moved to a command the chrome calls. Detail: `docs/architecture/security-vault-and-permissions.md`.
 
 ### Frontend (React / TypeScript)
 

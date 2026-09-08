@@ -164,6 +164,7 @@ const DEFAULT_KEYMAP_MAC: Partial<Record<KeyAction, string>> = {
   toggle_sidebar: 'Cmd+S',
   element_picker: 'Cmd+Shift+X',
   pop_out_video: 'Cmd+Shift+O',
+  inspect: 'Alt+Cmd+I',
 }
 
 // Host-platform defaults: Windows/Linux swap `Cmd` for `Ctrl` (mirrors
@@ -235,6 +236,7 @@ const ACTION_LABELS: Record<KeyAction, string> = {
   toggle_sidebar: 'Toggle floating sidebar',
   element_picker: 'Hide element (picker)',
   pop_out_video: 'Pop out video',
+  inspect: 'Inspect',
   capture_visible: 'Capture screenshot',
   capture_region: 'Capture selected region',
   capture_window: 'Capture window',

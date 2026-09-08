@@ -233,6 +233,7 @@ fn build_menu(
             KeyAction::PopOutVideo,
             "Pop Out Video",
         )?)
+        .item(&action_item(app, keymap, KeyAction::Inspect, "Inspect")?)
         .separator()
         .item(&action_item(
             app,

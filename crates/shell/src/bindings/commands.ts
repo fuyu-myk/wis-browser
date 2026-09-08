@@ -776,6 +776,22 @@ export const commands = {
     return invoke('copy_image', { workspaceId, src })
   },
 
+  /**
+   * Have the engine write a complete single-file archive of a tab's loaded
+   * page, wherever the save panel points. `null` when it is cancelled.
+   * Saved as `.webarchive` on macOS, and `.mhtml` elsewhere.
+   */
+  async savePageArchive(id: TabId, title: string, url: string): Promise<string | null> {
+    return invoke('save_page_archive', { id, title, url })
+  },
+
+  /**
+   * Open the web inspector on a tab.
+   */
+  async inspectTab(id: TabId): Promise<void> {
+    return invoke('inspect_tab', { id })
+  },
+
   /** Drop the highlight the page menu left behind in a tab. */
   async clearMenuSelection(tabId: TabId): Promise<void> {
     return invoke('clear_menu_selection', { tabId })
