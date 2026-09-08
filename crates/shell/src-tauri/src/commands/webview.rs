@@ -492,6 +492,8 @@ pub async fn create_tab_webview(
             message: format!("add_child failed: {err}"),
         })?;
 
+    crate::pane_container::wrap(&child);
+
     // Restore stacking above the freshly added tab webview:
     // tabs < widget panels < overlays.
     crate::widget_panel::promote_panels_to_front(&app, &window_label);
@@ -757,6 +759,10 @@ pub async fn set_tab_webview_bounds(
     let Some(webview) = app.webviews().get(&label).cloned() else {
         return Ok(());
     };
+    if crate::pane_container::set_bounds(&webview, x, y, width, height) {
+        return Ok(());
+    }
+
     webview
         .set_position(tauri::LogicalPosition::new(x, y))
         .map_err(|err| WisError::InvalidInput {
@@ -808,7 +814,7 @@ pub async fn set_webview_corner_radius(
         })?;
 
     #[cfg(target_os = "macos")]
-    {
+    if !crate::pane_container::set_corner_radius(&webview, radius) {
         use objc2::msg_send;
         use objc2::runtime::AnyObject;
 

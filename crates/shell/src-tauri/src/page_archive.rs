@@ -159,12 +159,12 @@ mod imp {
             return None;
         }
 
-        let bytes: *const u8 = msg_send![data, bytes];
+        let bytes: *const std::ffi::c_void = msg_send![data, bytes];
         if bytes.is_null() {
             return None;
         }
 
-        Some(std::slice::from_raw_parts(bytes, length).to_vec())
+        Some(std::slice::from_raw_parts(bytes.cast::<u8>(), length).to_vec())
     }
 }
 

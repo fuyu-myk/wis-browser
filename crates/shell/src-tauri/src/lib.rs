@@ -43,6 +43,7 @@ mod page_archive;
 mod page_image;
 mod page_menu;
 mod page_text;
+mod pane_container;
 mod pane_focus;
 mod panels;
 mod peek;
