@@ -43,6 +43,7 @@ mod overlay;
 mod page_archive;
 mod page_image;
 mod page_menu;
+mod page_source;
 mod page_text;
 mod pane_container;
 mod pane_focus;
@@ -412,6 +413,7 @@ pub fn run() {
             // App handle for the AI page-text channel's native handler.
             page_text::set_app_handle(app.handle().clone());
             page_menu::set_app_handle(app.handle().clone());
+            page_source::set_app_handle(app.handle().clone());
 
             // App handle for the assistant's web-fetch dispatchers.
             #[cfg(any(windows, target_os = "linux"))]
@@ -690,6 +692,8 @@ pub fn run() {
             page_archive::save_page_archive,
             page_image::copy_image,
             page_menu::clear_menu_selection,
+            page_source::capture_page_source,
+            page_source::page_source,
             page_image::save_image_as,
             screenshot::save_last_screenshot,
             peek::open_peek,

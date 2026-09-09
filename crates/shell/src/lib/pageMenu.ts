@@ -80,4 +80,6 @@ export interface PageMenuTarget {
   cleanRemoved: string[]
   /** A private workspace saves nothing, so some rows do not apply. */
   ephemeral: boolean
+  /** Reader mode rewrote the document, so a capture would be Wis's markup. */
+  reader: boolean
 }

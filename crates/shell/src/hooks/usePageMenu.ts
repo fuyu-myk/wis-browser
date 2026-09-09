@@ -163,6 +163,7 @@ export function usePageMenu(): void {
       seqRef.current += 1
       const target: PageMenuTarget = {
         kind: 'page',
+        reader: tab.reader,
         seq: seqRef.current,
         isActiveTab: workspace?.active_tab_id === tabId,
         window: getCurrentWindow().label,
@@ -280,6 +281,7 @@ export function usePageMenu(): void {
       void cleanOf(linkHref).then((clean) =>
         openTarget({
           kind: 'chrome',
+          reader: false,
           seq,
           isActiveTab: true,
           window: getCurrentWindow().label,

@@ -27,7 +27,7 @@ pub const SHIM_SCRIPT: &str = r#"(function () {
   if (!window.chrome || !window.chrome.webview) return;
   var names = ['wisOpenInTab', 'wisOpenInTabFg', 'wisNavGuard', 'wisPeek', 'wisCosmetic',
                'wisZap', 'wisMediaPermission', 'wisCapture', 'wisPopout', 'wisFindResult',
-               'wisKeybind', 'wisPageText', 'wisPageMenu'];
+               'wisKeybind', 'wisPageText', 'wisPageMenu', 'wisPageSource'];
   function forward(name, body) {
     try {
       window.chrome.webview.postMessage(
@@ -311,6 +311,15 @@ fn dispatch(label: &str, ephemeral: bool, cosmetic_enabled: bool, top_frame: boo
         }
         "wisPageText" => {
             crate::page_text::dispatch_message(label, str_field("text"), str_field("title"));
+        }
+        "wisPageSource" if top_frame => {
+            if let Some(parsed) = env
+                .body
+                .as_str()
+                .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+            {
+                crate::page_source::dispatch_message(label, &parsed);
+            }
         }
         "wisPageMenu" if top_frame => {
             if let Some(parsed) = env

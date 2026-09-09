@@ -148,6 +148,8 @@ pub async fn close_tab(
     /// How many closed tabs stay reopenable.
     const CLOSED_TAB_CAP: u32 = 25;
 
+    crate::page_source::forget(id);
+
     // Record the tab for "reopen closed tab" before it's removed.
     {
         let recorded = {

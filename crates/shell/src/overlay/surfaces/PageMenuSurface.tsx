@@ -36,7 +36,7 @@ import { currentPlatform } from '@/lib/platform'
 import { useAiAvailable } from '@/hooks/useAiAvailable'
 import { nextAccent } from '@/lib/accents'
 import { AI_ASK_EVENT } from '@/lib/aiAsk'
-import { activeEngine, isWebUrl } from '@/lib/url'
+import { activeEngine, isWebUrl, sourceUrlFor } from '@/lib/url'
 
 /** Kept off the window edges. */
 const MARGIN = 8
@@ -495,6 +495,26 @@ function useRows(
         label: 'Print…',
         run: after(() => commands.printActiveTab(target.tabId)),
       },
+      ...(target.reader
+        ? []
+        : [
+            {
+              id: 'page-source',
+              label: 'View source',
+              run: afterOnce(async () => {
+                let captured = true
+                await commands.capturePageSource(target.tabId).catch((error: unknown) => {
+                  captured = false
+                  reportFailure('Reading the page source failed')(error)
+                })
+                if (!captured) return
+                await commands.createRelatedTab(
+                  target.workspaceId,
+                  sourceUrlFor(pageTab?.url ?? '', target.tabId),
+                )
+              }),
+            },
+          ]),
       {
         id: 'page-save',
         label: 'Save page…',

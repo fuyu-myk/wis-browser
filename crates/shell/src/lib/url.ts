@@ -193,8 +193,28 @@ export function resolveNewTabUrl(settings: UserSettings | undefined): string {
 export const SETTINGS_URL = 'about:settings'
 export const HISTORY_URL = 'about:history'
 export const DOWNLOADS_URL = 'about:downloads'
+export const SOURCE_URL = 'about:source'
+
+/** A source tab's URL: the page it shows, and the tab captured from. */
+export function sourceUrlFor(target: string, tab: string): string {
+  return `${SOURCE_URL}?url=${encodeURIComponent(target)}&tab=${encodeURIComponent(tab)}`
+}
+
+/**
+ * What a source tab shows, or null when `url` is not one. Matched by prefix.
+ */
+export function sourceTargetOf(url: string): { url: string; tab: string } | null {
+  if (url !== SOURCE_URL && !url.startsWith(`${SOURCE_URL}?`)) return null
+  try {
+    const params = new URL(url).searchParams
+    return { url: params.get('url') ?? '', tab: params.get('tab') ?? '' }
+  } catch {
+    return null
+  }
+}
 
 export function tabDisplayName(tab: { title: string; url: string }): string {
+  if (sourceTargetOf(tab.url) !== null) return 'Page source'
   if (tab.title && tab.title !== tab.url) {
     return shortTitle(tab.title, tab.url)
   }

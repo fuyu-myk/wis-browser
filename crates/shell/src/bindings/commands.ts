@@ -49,6 +49,7 @@ import type {
   VaultStatus,
   WidgetId,
   Workspace,
+  PageSource,
   WorkspaceId,
   WebviewMemory,
   Userscript,
@@ -790,6 +791,19 @@ export const commands = {
    */
   async inspectTab(id: TabId): Promise<void> {
     return invoke('inspect_tab', { id })
+  },
+
+  /**
+   * Capture `id`'s document and hold it for `sourceTab`. The capture is
+   * the live DOM, not the bytes the server sent.
+   */
+  async capturePageSource(id: TabId): Promise<void> {
+    return invoke('capture_page_source', { id })
+  },
+
+  /** The capture taken from a tab, or null once it has been dropped. */
+  async pageSource(tab: TabId): Promise<PageSource | null> {
+    return invoke('page_source', { tab })
   },
 
   /** Drop the highlight the page menu left behind in a tab. */

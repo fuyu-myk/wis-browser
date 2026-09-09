@@ -90,6 +90,7 @@ const SWIPE_NAV_JS: &str = r#"(function () {
   function build(dir) {
     if (!host) {
       host = document.createElement('div');
+      host.id = '__wisSwipeNav';
       host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;pointer-events:none;';
       var sh = host.attachShadow({ mode: 'open' });
       var st = document.createElement('style');

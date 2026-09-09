@@ -729,6 +729,15 @@ export interface HistoryEntry {
   visit_count: number
 }
 
+/** A captured document, held for the source tab displaying it. */
+export interface PageSource {
+  url: string
+  /** Concatenated, these are the capture. */
+  chunks: string[]
+  byteLen: number
+  truncated: boolean
+}
+
 /** A link with its tracking parameters removed; mirrors `CleanedLink`. */
 export interface CleanedLink {
   url: string

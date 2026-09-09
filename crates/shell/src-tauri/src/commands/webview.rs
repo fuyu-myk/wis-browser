@@ -592,6 +592,7 @@ pub async fn create_tab_webview(
 
     // AI page-text channel (inert until the chrome requests extraction).
     crate::page_text::install(&child);
+    crate::page_source::install(&child);
 
     // Right-click: report the target so the chrome can draw its own menu.
     crate::page_menu::install(&child);
