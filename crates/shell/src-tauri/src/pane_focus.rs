@@ -10,6 +10,8 @@ use tauri::AppHandle;
 
 #[cfg(target_os = "macos")]
 use tauri::Emitter;
+#[cfg(target_os = "macos")]
+use tauri::Manager;
 
 /// Emitted with a tab id (bare uuid string, matching `Tab.id`) when the user
 /// clicks inside that tab's webview.
@@ -41,13 +43,56 @@ unsafe impl objc2::Encode for NSPoint {
     );
 }
 
+/// The tab webview `view` belongs to, as `(uuid, webview)`. `None` when the
+/// view is outside one, which includes a responder that is not a view.
+#[cfg(target_os = "macos")]
+unsafe fn owning_tab(
+    view: *mut objc2::runtime::AnyObject,
+) -> Option<(String, *mut objc2::runtime::AnyObject)> {
+    use objc2::msg_send;
+    use objc2::runtime::{AnyObject, Bool};
+    use std::ffi::CStr;
+    use std::os::raw::c_char;
+
+    let ns_view = objc2::class!(NSView);
+    let wk_class = objc2::class!(WKWebView);
+    let mut view = view;
+    while !view.is_null() {
+        let is_view: Bool = msg_send![view, isKindOfClass: ns_view];
+        if !is_view.as_bool() {
+            return None;
+        }
+
+        let is_wk: Bool = msg_send![view, isKindOfClass: wk_class];
+        if is_wk.as_bool() {
+            let ident: *mut AnyObject = msg_send![view, accessibilityIdentifier];
+            if ident.is_null() {
+                return None;
+            }
+
+            let utf8: *const c_char = msg_send![ident, UTF8String];
+            if utf8.is_null() {
+                return None;
+            }
+
+            let name = CStr::from_ptr(utf8).to_str().ok()?;
+
+            return name
+                .strip_prefix(LABEL_PREFIX)
+                .map(|uuid| (uuid.to_string(), view));
+        }
+
+        view = msg_send![view, superview];
+    }
+
+    None
+}
+
 #[cfg(target_os = "macos")]
 pub fn install(app: &AppHandle) {
     use block2::RcBlock;
     use objc2::msg_send;
     use objc2::runtime::{AnyObject, Bool};
-    use std::ffi::CStr;
-    use std::os::raw::c_char;
 
     // NSEventMaskLeftMouseDown = 1 << NSEventTypeLeftMouseDown(1).
     const MASK_LEFT_MOUSE_DOWN: u64 = 1 << 1;
@@ -73,27 +118,23 @@ pub fn install(app: &AppHandle) {
                 return event;
             }
 
-            let wk_class = objc2::class!(WKWebView);
-            let mut view = hit;
-            while !view.is_null() {
-                let is_wk: Bool = msg_send![view, isKindOfClass: wk_class];
-                if is_wk.as_bool() {
-                    let ident: *mut AnyObject = msg_send![view, accessibilityIdentifier];
-                    if !ident.is_null() {
-                        let utf8: *const c_char = msg_send![ident, UTF8String];
-                        if !utf8.is_null() {
-                            if let Ok(s) = CStr::from_ptr(utf8).to_str() {
-                                if let Some(uuid) = s.strip_prefix(LABEL_PREFIX) {
-                                    let _ = app.emit(PANE_FOCUS_EVENT, uuid.to_string());
-                                }
-                            }
-                        }
+            let Some((uuid, pane)) = owning_tab(hit) else {
+                return event;
+            };
+            let _ = app.emit(PANE_FOCUS_EVENT, uuid.clone());
+
+            // Moving between panes. The press is still delivered, but the page
+            // is told to take the default off this one.
+            let responder: *mut AnyObject = msg_send![window, firstResponder];
+            if let Some((from, _)) = owning_tab(responder) {
+                if from != uuid {
+                    let _: Bool = msg_send![window, makeFirstResponder: pane];
+                    if let Some(webview) = app.webviews().get(&format!("{LABEL_PREFIX}{uuid}")) {
+                        let _ = webview.eval(
+                            "window.__wisKeepSelectionOnce && window.__wisKeepSelectionOnce();",
+                        );
                     }
-
-                    break;
                 }
-
-                view = msg_send![view, superview];
             }
         }
 

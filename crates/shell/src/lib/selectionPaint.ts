@@ -37,7 +37,9 @@ function rule(declarations: string): string {
  * `Highlight` already tracks the document's colour scheme and carries the
  * engine's own alpha, so the chrome needs no branch of its own.
  */
-const PAINT = rule('background-color:Highlight')
+const SUPPRESS = '::selection{background-color:transparent}'
+
+const PAINT = SUPPRESS + rule('background-color:Highlight')
 
 function styleNode(): HTMLStyleElement {
   const found = document.getElementById(STYLE_ID)

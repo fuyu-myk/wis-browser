@@ -118,3 +118,61 @@ pub(crate) fn is_remote(label: &str) -> bool {
         || label.starts_with("widget-panel-")
         || label.starts_with("peek-page")
 }
+
+/// Keep a page's selection alive when it stops being first responder.
+///
+/// `WebViewImpl::resignFirstResponder` calls `clearSelection()` on the page
+/// unless this is set. With it set the selection survives and WebKit paints
+/// it in the unfocused grey, returning to the accent when the pane is
+/// focused again.
+///
+/// `WKWebView` has no setter for it, so the page ref is fetched and the C
+/// entry point called. Both are SPI and both are guarded.
+///
+/// Every navigation resets the flag, so this is armed once a load has
+/// finished. Measured: armed before a load, or while one is in flight, the
+/// selection is still destroyed on blur; armed after each load, it holds.
+pub fn keep_inactive_selection<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::runtime::AnyObject;
+        use objc2::{msg_send, sel};
+
+        #[repr(C)]
+        struct OpaqueWKPage {
+            _private: [u8; 0],
+        }
+
+        unsafe impl objc2::RefEncode for OpaqueWKPage {
+            const ENCODING_REF: objc2::Encoding =
+                objc2::Encoding::Pointer(&objc2::Encoding::Struct("OpaqueWKPage", &[]));
+        }
+
+        extern "C" {
+            fn WKPageSetMaintainsInactiveSelection(page: *mut OpaqueWKPage, maintains: bool);
+        }
+
+        let _ = webview.with_webview(|w| unsafe {
+            let wk: *mut AnyObject = w.inner() as *mut AnyObject;
+            if wk.is_null() {
+                return;
+            }
+
+            let known: bool =
+                msg_send![wk, respondsToSelector: sel!(_pageRefForTransitionToWKWebView)];
+            if !known {
+                return;
+            }
+
+            let page: *mut OpaqueWKPage = msg_send![wk, _pageRefForTransitionToWKWebView];
+            if page.is_null() {
+                return;
+            }
+
+            WKPageSetMaintainsInactiveSelection(page, true);
+        });
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = webview;
+}

@@ -136,7 +136,9 @@ const PAGE_MENU_JS: &str = r#"(function () {
   function rule(decls) {
     return '::highlight(' + HIGHLIGHT + '){' + decls + '}';
   }
-  var PAINT = rule('__WIS_SEL_FALLBACK__') + rule('__WIS_SEL_PREFERRED__');
+  var SUPPRESS = '::selection{background-color:transparent}';
+  var PAINT =
+    SUPPRESS + rule('__WIS_SEL_FALLBACK__') + rule('__WIS_SEL_PREFERRED__');
 
   function styleNode() {
     var style = document.getElementById(STYLE_ID);
@@ -181,6 +183,26 @@ const PAGE_MENU_JS: &str = r#"(function () {
   }
 
   window.__wisMenuClearPaint = clearSelectionPaint;
+
+  // Armed from `pane_focus.rs` for the press that moves focus to this pane.
+  var keepSelectionOnce = false;
+  window.__wisKeepSelectionOnce = function () {
+    keepSelectionOnce = true;
+  };
+  window.addEventListener('mousedown', function (e) {
+    if (!keepSelectionOnce) return;
+    keepSelectionOnce = false;
+    if (e.button !== 0) return;
+    try {
+      var sel = window.getSelection();
+      if (sel && sel.rangeCount && !sel.getRangeAt(0).collapsed) e.preventDefault();
+    } catch (err) {}
+  }, true);
+
+  // The highlight outlives the menu.
+  window.addEventListener('pointerdown', function (e) {
+    if (e.button === 0) clearSelectionPaint();
+  }, true);
 
   window.addEventListener('contextmenu', function (e) {
     if (e.defaultPrevented) return;

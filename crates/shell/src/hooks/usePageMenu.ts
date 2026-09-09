@@ -74,30 +74,33 @@ export function usePageMenu(): void {
   const seqRef = useRef(0)
   const ackRef = useRef(0)
   const dismissTimerRef = useRef<number | null>(null)
-  /** The tab whose page is showing a stand-in highlight, if any. */
-  const paintedTabRef = useRef<TabId | null>(null)
+  /** Tabs whose pages are showing a stand-in highlight. One per pane. */
+  const paintedTabsRef = useRef<Set<TabId>>(new Set())
+
+  const releaseTab = useCallback((tabId: TabId) => {
+    if (!paintedTabsRef.current.delete(tabId)) return
+    void commands.clearMenuSelection(tabId).catch(() => undefined)
+  }, [])
 
   /**
-   * Drop both stand-in highlights.
-   *
-   * Every way the menu can close has to call this, and the menu closes two
-   * ways: the chrome dismissing it, and the surface reporting that it closed
-   * itself after a row ran or Escape was pressed.
+   * The stand-in only covers the moment the menu holds focus. WebKit keeps the
+   * real selection alive and paints it itself.
    */
-  const releasePaint = useCallback(() => {
+  const releaseAll = useCallback(() => {
     clearSelectionPaint()
-    const painted = paintedTabRef.current
-    paintedTabRef.current = null
-    if (painted) void commands.clearMenuSelection(painted).catch(() => undefined)
+    for (const tabId of paintedTabsRef.current) {
+      void commands.clearMenuSelection(tabId).catch(() => undefined)
+    }
+    paintedTabsRef.current.clear()
   }, [])
 
   const dismiss = useCallback(async () => {
     if (!openRef.current) return
     openRef.current = false
     pendingRef.current = null
-    releasePaint()
+    releaseAll()
     await commands.hideOverlay('pagemenu').catch(() => undefined)
-  }, [releasePaint])
+  }, [releaseAll])
 
   const openTarget = useCallback(
     async (target: PageMenuTarget) => {
@@ -125,7 +128,7 @@ export function usePageMenu(): void {
 
       const tabId = report.tabId as TabId
       const dropPaint = () => {
-        if (report.selection) void commands.clearMenuSelection(tabId).catch(() => undefined)
+        if (report.selection) releaseTab(tabId)
       }
 
       const tab = browser.tabs.find((candidate) => candidate.id === tabId)
@@ -154,7 +157,8 @@ export function usePageMenu(): void {
 
       const clean = await cleanOf(report.linkHref)
 
-      paintedTabRef.current = report.selection ? tabId : null
+      if (report.selection) paintedTabsRef.current.add(tabId)
+      else releaseTab(tabId)
 
       seqRef.current += 1
       const target: PageMenuTarget = {
@@ -185,7 +189,7 @@ export function usePageMenu(): void {
 
       await openTarget(target)
     },
-    [openTarget],
+    [openTarget, releaseTab],
   )
 
   useEffect(() => {
@@ -229,7 +233,7 @@ export function usePageMenu(): void {
     void listen<void>(PAGE_MENU_DONE_EVENT, () => {
       openRef.current = false
       pendingRef.current = null
-      releasePaint()
+      releaseAll()
     }).then((fn) => {
       if (cancelled) fn()
       else unlisten = fn
@@ -238,7 +242,7 @@ export function usePageMenu(): void {
       cancelled = true
       unlisten?.()
     }
-  }, [releasePaint])
+  }, [releaseAll])
 
   useEffect(() => {
     const onContextMenu = (event: MouseEvent) => {

@@ -370,6 +370,10 @@ pub async fn create_tab_webview(
                 });
             }
 
+            if matches!(event, PageLoadEvent::Finished) {
+                crate::webview_prefs::keep_inactive_selection(&webview);
+            }
+
             if matches!(event, PageLoadEvent::Finished) && !load_failed {
                 // Re-apply the live swipe-nav colour.
                 let color = app
