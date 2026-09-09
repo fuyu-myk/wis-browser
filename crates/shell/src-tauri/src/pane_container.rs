@@ -97,16 +97,44 @@ mod imp {
         }
     }
 
-    /// A plain `NSView` subclass, existing only so a container can be told
-    /// apart from the content view it sits in.
+    /// A interaction on a container with no content falls through to whatever
+    /// is underneath. A hidden tab's container still covers its pane rect, and
+    /// a bare `NSView` still answers a hit test, so it would otherwise swallow
+    /// presses meant for the rendered chrome page.
+    unsafe extern "C" fn hit_test(
+        this: &AnyObject,
+        _cmd: objc2::runtime::Sel,
+        point: NSPoint,
+    ) -> *mut AnyObject {
+        let webview = webview_in(this as *const AnyObject as *mut AnyObject);
+        if webview.is_null() {
+            return std::ptr::null_mut();
+        }
+
+        let hidden: Bool = msg_send![webview, isHidden];
+        if hidden.as_bool() {
+            return std::ptr::null_mut();
+        }
+
+        msg_send![super(this, class!(NSView)), hitTest: point]
+    }
+
+    /// An `NSView` subclass, so a container can be told apart from the content
+    /// view it sits in as well as decline interactions.
     fn container_class() -> Option<&'static objc2::runtime::AnyClass> {
         use std::sync::Once;
         static REGISTER: Once = Once::new();
 
         REGISTER.call_once(|| {
-            if let Some(builder) =
+            if let Some(mut builder) =
                 objc2::declare::ClassBuilder::new("WisPaneContainer", class!(NSView))
             {
+                unsafe {
+                    builder.add_method(
+                        objc2::sel!(hitTest:),
+                        hit_test as unsafe extern "C" fn(_, _, _) -> _,
+                    );
+                }
                 builder.register();
             }
         });
@@ -165,6 +193,37 @@ mod imp {
         }
     }
 
+    /// The tab webview inside `view`, when `view` is a container.
+    unsafe fn webview_in(view: *mut AnyObject) -> *mut AnyObject {
+        let Some(class) = container_class() else {
+            return std::ptr::null_mut();
+        };
+        let is_wrapper: Bool = msg_send![view, isKindOfClass: class];
+        if !is_wrapper.as_bool() {
+            return std::ptr::null_mut();
+        }
+
+        let subviews: *mut AnyObject = msg_send![view, subviews];
+        if subviews.is_null() {
+            return std::ptr::null_mut();
+        }
+
+        let count: usize = msg_send![subviews, count];
+        for index in 0..count {
+            let child: *mut AnyObject = msg_send![subviews, objectAtIndex: index];
+            if child.is_null() {
+                continue;
+            }
+
+            let is_wk: Bool = msg_send![child, isKindOfClass: class!(WKWebView)];
+            if is_wk.as_bool() {
+                return child;
+            }
+        }
+
+        std::ptr::null_mut()
+    }
+
     pub unsafe fn wrap(wk: *mut AnyObject) {
         if wk.is_null() || !container_of(wk).is_null() || !wants_wrapping(wk) {
             return;
@@ -187,7 +246,13 @@ mod imp {
             return;
         }
 
-        let _: () = msg_send![superview, addSubview: container];
+        const BELOW: isize = -1;
+        let _: () = msg_send![
+            superview,
+            addSubview: container,
+            positioned: BELOW,
+            relativeTo: wk,
+        ];
         let _: () = msg_send![container, addSubview: wk];
         let _: () = msg_send![wk, setFrame: rect(0.0, 0.0, frame.size.width, frame.size.height)];
         let _: () = msg_send![wk, setAutoresizingMask: WIDTH_SIZABLE | HEIGHT_SIZABLE];
