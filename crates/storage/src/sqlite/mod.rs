@@ -22,7 +22,7 @@ mod searches;
 use std::path::Path;
 use std::sync::Mutex;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 use wis_core::BrowserState;
 
 use crate::error::{StorageError, StorageResult};
@@ -82,6 +82,22 @@ impl SqliteStorage {
         conn.execute_batch(&format!("VACUUM INTO '{target}'"))?;
         Ok(())
     }
+}
+
+/// Report whether the database file at `path` passes SQLite's own integrity
+/// check.
+///
+/// A file that is `ok` still holds every row it ever held, so callers must
+/// never discard it. Anything else counts as not intact.
+pub fn is_intact(path: &Path) -> bool {
+    let Ok(conn) = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY) else {
+        return false;
+    };
+
+    matches!(
+        conn.query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0)),
+        Ok(result) if result == "ok"
+    )
 }
 
 impl Storage for SqliteStorage {

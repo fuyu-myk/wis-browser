@@ -19,7 +19,7 @@ Persistence is normalized tables, not a JSON blob, so a single field change does
 - `save_state` (`crates/storage/src/sqlite/repo.rs::save`) writes the document graph across `workspaces`, `tabs`, `essentials`, `settings`, `meta` in one transaction. It is replace-the-world: `clear_all` deletes those tables then re-inserts, so the persisted set always matches the in-memory graph exactly (no orphan rows). Ephemeral (private) workspaces are filtered out here, so they never touch disk.
 - Append-style stores are their own tables, so they survive `save_state`'s `clear_all`: `history` (per-workspace, deduped by url), `credentials` (ciphertext + nonce), `searches`, `bookmarks` (+ `bookmark_folders`), `session_cookies` (per-workspace encrypted snapshot, absolute TTL keyed on `created_at`), `downloads` (completed only), `tab_sessions` (per-tab history/scroll).
 - The `meta` table holds scalars that must outlive the document rewrite: `active_workspace_id`, `windowed_workspaces`, `window_geometry`. `save_windowed_workspaces` upserts into `meta` rather than going through `save_state`, so a window-set change never rewrites the whole graph.
-- Migrations are append-only `M0001..M0018` (`crates/storage/src/sqlite/migrations.rs`, `rusqlite_migration`). Never edit a shipped migration; add the next number. JSON columns carry shapes SQL cannot: `pane_tree`, `tab_folders`, `background`, `background_drafts`. A workspace's `selected_folder_id` is not stored; `assemble_workspaces` derives it from the active tab's folder, like `tab_order` and `pinned_tab_ids`.
+- Migrations are append-only `M0001..M0019` (`crates/storage/src/sqlite/migrations.rs`, `rusqlite_migration`). Never edit a shipped migration; add the next number. JSON columns carry shapes SQL cannot: `pane_tree`, `tab_folders`, `background`, `background_drafts`. A workspace's `selected_folder_id` is not stored; `assemble_workspaces` derives it from the active tab's folder, like `tab_order` and `pinned_tab_ids`.
 
 ## The IPC mutate pattern
 
@@ -40,7 +40,14 @@ Every mutation snapshots the full state, so a naive design would fsync on every 
 - Destructive transitions bypass the debounce (`Persist::Immediate`): losing a close or delete in a 200 ms window would surprise, and they are rare enough that an immediate fsync costs nothing.
 - Quitting flushes: `SaveCoalescer::flush` runs in the Tauri `RunEvent::ExitRequested/Exit` hook, so the pending debounce window is written before exit.
 - Crash resilience layers on top. WAL + `synchronous=NORMAL` cannot corrupt the file; only the most recent commit is at risk on power loss, bounded by the backup. `backup_to` (`crates/storage/src/sqlite/mod.rs`) writes a standalone copy via `VACUUM INTO` (one self-contained file, no `-wal`/`-shm` sidecars, consistent even with WAL active).
-- `open_storage_resilient` (`crates/shell/src-tauri/src/lib.rs`) refreshes `wis.db.bak` on every healthy launch. If the primary DB fails to open it removes the WAL/SHM sidecars, renames the primary to `wis.db.corrupt-<epoch>`, restores from `wis.db.bak`, and starts fresh if that too fails. Launch is never blocked and a session is never silently wiped. `hydrate_state` additionally re-seeds a tab into any workspace that loaded with none.
+- `open_storage_resilient` (`crates/shell/src-tauri/src/lib.rs`) only ever sets a profile aside when SQLite itself says the file is damaged (`wis_storage::is_intact`, a read-only `PRAGMA integrity_check`). Every other failure leaves the file untouched:
+  - **Busy or locked** (`StorageError::is_transient`): retried 5 times, 200ms apart. Another process may hold the file during launch.
+  - **Newer than this build** (`StorageError::ProfileTooNew`, mapped from `rusqlite_migration`'s `DatabaseTooFarAhead`): the profile is intact but unreadable here, so Wis shows a native error and quits.
+  - **Intact but unopenable**: same refusal. The rows are fine; something else needs fixing.
+  - **Genuinely corrupt**: renamed to `wis.db.corrupt-<epoch>` and its `-wal`/`-shm` sidecars are renamed alongside it, never deleted. Recovery then restores `wis.db.bak`, falling back to a fresh profile.
+- `wis.db.bak` is refreshed only when `hydrate_state` reports `StateOrigin::Disk`, so an empty first-run profile can never overwrite the last known-good copy.
+- `hydrate_state` re-seeds a tab into any workspace that loaded with none.
+- Dev builds run under their own identifier (`app.myk.wisdev`, `crates/shell/src-tauri/tauri.dev.conf.json`, applied by `make dev`) so `make dev` and an installed `Wis.app` never shares a profile directory.
 
 ## Encrypted profile backup
 

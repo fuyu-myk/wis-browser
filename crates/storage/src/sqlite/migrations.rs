@@ -4,9 +4,9 @@
 //! migration that has already been released: write a new one instead.
 
 use rusqlite::Connection;
-use rusqlite_migration::{Migrations, M};
+use rusqlite_migration::{MigrationDefinitionError, Migrations, M};
 
-use crate::error::StorageResult;
+use crate::error::{StorageError, StorageResult};
 
 const M0001_INITIAL: &str = r#"
 CREATE TABLE workspaces (
@@ -264,41 +264,95 @@ CREATE TABLE closed_tabs (
 CREATE INDEX idx_closed_tabs_closed_at ON closed_tabs(closed_at);
 "#;
 
+/// Every migration, in order. The index of the last entry is the schema
+/// version a fresh database lands on.
+const ALL: &[&str] = &[
+    M0001_INITIAL,
+    M0002_PANE_TREE,
+    M0003_HISTORY,
+    M0004_HISTORY_PER_WORKSPACE,
+    M0005_CREDENTIALS,
+    M0006_SEARCHES,
+    M0007_UPSTREAM_PROXY,
+    M0008_TAB_ZOOM,
+    M0009_BOOKMARKS,
+    M0010_BOOKMARK_PINNED,
+    M0011_SESSION_COOKIES,
+    M0012_SESSION_COOKIE_AGE,
+    M0013_TAB_FOLDERS,
+    M0014_DOWNLOADS,
+    M0015_WORKSPACE_BACKGROUND,
+    M0016_WORKSPACE_CUSTOM_ACCENT,
+    M0017_BACKGROUND_DRAFTS,
+    M0018_TAB_SESSIONS,
+    M0019_CLOSED_TABS,
+];
+
 fn all() -> Migrations<'static> {
-    Migrations::new(vec![
-        M::up(M0001_INITIAL),
-        M::up(M0002_PANE_TREE),
-        M::up(M0003_HISTORY),
-        M::up(M0004_HISTORY_PER_WORKSPACE),
-        M::up(M0005_CREDENTIALS),
-        M::up(M0006_SEARCHES),
-        M::up(M0007_UPSTREAM_PROXY),
-        M::up(M0008_TAB_ZOOM),
-        M::up(M0009_BOOKMARKS),
-        M::up(M0010_BOOKMARK_PINNED),
-        M::up(M0011_SESSION_COOKIES),
-        M::up(M0012_SESSION_COOKIE_AGE),
-        M::up(M0013_TAB_FOLDERS),
-        M::up(M0014_DOWNLOADS),
-        M::up(M0015_WORKSPACE_BACKGROUND),
-        M::up(M0016_WORKSPACE_CUSTOM_ACCENT),
-        M::up(M0017_BACKGROUND_DRAFTS),
-        M::up(M0018_TAB_SESSIONS),
-        M::up(M0019_CLOSED_TABS),
-    ])
+    Migrations::new(ALL.iter().copied().map(M::up).collect())
+}
+
+/// Newest schema version this build understands.
+pub fn supported_version() -> usize {
+    ALL.len()
+}
+
+/// Schema version currently stamped on `conn`.
+pub fn schema_version(conn: &Connection) -> StorageResult<usize> {
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    Ok(version.max(0) as usize)
 }
 
 pub fn run(conn: &mut Connection) -> StorageResult<()> {
-    all().to_latest(conn)?;
-    Ok(())
+    match all().to_latest(conn) {
+        Ok(()) => Ok(()),
+        Err(rusqlite_migration::Error::MigrationDefinition(
+            MigrationDefinitionError::DatabaseTooFarAhead,
+        )) => Err(StorageError::ProfileTooNew {
+            found: schema_version(conn)?,
+            supported: supported_version(),
+        }),
+        Err(err) => Err(err.into()),
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::all;
+    use super::{all, run, schema_version, supported_version};
+    use crate::error::StorageError;
+    use rusqlite::Connection;
 
     #[test]
     fn migrations_validate() {
         all().validate().expect("migrations must be valid");
+    }
+
+    #[test]
+    fn fresh_database_lands_on_supported_version() {
+        let mut conn = Connection::open_in_memory().expect("open in-memory db");
+        run(&mut conn).expect("migrate fresh db");
+
+        assert_eq!(
+            schema_version(&conn).expect("read version"),
+            supported_version()
+        );
+    }
+
+    #[test]
+    fn database_from_newer_build_reports_profile_too_new() {
+        let mut conn = Connection::open_in_memory().expect("open in-memory db");
+        run(&mut conn).expect("migrate fresh db");
+
+        let ahead = supported_version() + 1;
+        conn.pragma_update(None, "user_version", ahead as i64)
+            .expect("stamp a newer schema version");
+
+        match run(&mut conn) {
+            Err(StorageError::ProfileTooNew { found, supported }) => {
+                assert_eq!(found, ahead);
+                assert_eq!(supported, supported_version());
+            }
+            other => panic!("expected ProfileTooNew, got {other:?}"),
+        }
     }
 }

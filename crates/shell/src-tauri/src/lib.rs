@@ -21,6 +21,7 @@ mod downloads;
 mod edit_keys;
 mod error_compat;
 mod external;
+mod fatal_dialog;
 mod favicons;
 mod file_io;
 mod find;
@@ -83,7 +84,7 @@ use tauri::Manager;
 use wis_core::BrowserState;
 use wis_network::filter_lists;
 use wis_network::TrackerBlocker;
-use wis_storage::{SqliteStorage, Storage};
+use wis_storage::{SqliteStorage, Storage, StorageError};
 
 use state::AppState;
 
@@ -144,9 +145,24 @@ pub fn run() {
             let db_path = data_dir.join("wis.db");
 
             log::info!("opening database at {}", db_path.display());
-            let storage = open_storage_resilient(&data_dir, &db_path);
+            let storage = match open_storage_resilient(&data_dir, &db_path) {
+                Ok(storage) => storage,
+                Err(fault) => {
+                    let message = fault.user_message(&db_path);
+                    log::error!("refusing to launch: {message}");
+                    fatal_dialog::show("Wis cannot open this profile", &message);
+                    std::process::exit(1);
+                }
+            };
 
-            let browser_state = hydrate_state(&storage);
+            let (browser_state, origin) = hydrate_state(&storage);
+
+            if origin == StateOrigin::Disk {
+                if let Err(err) = storage.backup_to(&data_dir.join("wis.db.bak")) {
+                    log::warn!("session backup failed (non-fatal): {err}");
+                }
+            }
+
             let storage: Arc<dyn Storage> = Arc::new(storage);
 
             // Pick the initial filter list: cached EasyPrivacy if fresh,
@@ -781,68 +797,152 @@ pub fn run() {
         });
 }
 
-/// Open the state DB resiliently so a corrupt store never blocks launch or
-/// silently wipes the session:
-///  1. Open the primary DB; on success, refresh a known-good backup
-///     (`wis.db.bak`) capturing the session at this launch.
-///  2. If the primary won't open (corruption), set it aside, restore from the
-///     backup, and reopen.
-///  3. If there's no usable backup, start fresh (the corrupt file is kept as
-///     `wis.db.corrupt-<ts>`).
-fn open_storage_resilient(data_dir: &std::path::Path, db_path: &std::path::Path) -> SqliteStorage {
-    let backup = data_dir.join("wis.db.bak");
+/// A profile that refuses to launch over, because launching would either lose
+/// data or pretend a broken profile is fine.
+enum ProfileFault {
+    /// Written by a build newer than this one.
+    TooNew { found: usize, supported: usize },
+    /// Passes SQLite's integrity check but still would not open.
+    Unreadable(String),
+}
 
-    match SqliteStorage::open(db_path) {
-        Ok(storage) => {
-            if let Err(err) = storage.backup_to(&backup) {
-                log::warn!("session backup failed (non-fatal): {err}");
-            }
-            storage
-        }
-        Err(open_err) => {
-            log::error!("state DB failed to open ({open_err}); attempting recovery");
-            let _ = std::fs::remove_file(data_dir.join("wis.db-wal"));
-            let _ = std::fs::remove_file(data_dir.join("wis.db-shm"));
-            let stamp = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            let _ = std::fs::rename(db_path, data_dir.join(format!("wis.db.corrupt-{stamp}")));
-
-            if backup.exists() && std::fs::copy(&backup, db_path).is_ok() {
-                if let Ok(storage) = SqliteStorage::open(db_path) {
-                    log::warn!("recovered previous session from backup");
-                    return storage;
-                }
-                log::error!("backup recovery failed; starting fresh");
-                let _ = std::fs::remove_file(db_path);
-            }
-
-            SqliteStorage::open(db_path).expect("fresh state DB must open")
+impl ProfileFault {
+    /// Message shown to the user before the app quits. Actionable without a
+    /// console.
+    fn user_message(&self, db_path: &std::path::Path) -> String {
+        match self {
+            Self::TooNew { found, supported } => format!(
+                "This profile was created by a newer version of Wis \
+                 (profile format v{found}; this build understands v{supported}).\n\n\
+                 Your data is safe and untouched. Update Wis, or launch the newer \
+                 build, to open it.\n\n{}",
+                db_path.display()
+            ),
+            Self::Unreadable(err) => format!(
+                "Wis could not open your profile, but the file is undamaged. \
+                 \n\n{err}\n\n{}",
+                db_path.display()
+            ),
         }
     }
+}
+
+/// A locked database is transient and undamaged: another process may hold it
+/// for a moment during launch. Retry before concluding anything.
+const OPEN_ATTEMPTS: usize = 5;
+const OPEN_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
+
+fn open_with_retry(db_path: &std::path::Path) -> Result<SqliteStorage, StorageError> {
+    for attempt in 1..=OPEN_ATTEMPTS {
+        match SqliteStorage::open(db_path) {
+            Err(err) if err.is_transient() && attempt < OPEN_ATTEMPTS => {
+                log::warn!("state DB busy ({err}); retrying ({attempt}/{OPEN_ATTEMPTS})");
+                std::thread::sleep(OPEN_RETRY_DELAY);
+            }
+            other => return other,
+        }
+    }
+
+    unreachable!("loop returns on its final attempt")
+}
+
+/// Move `wis.db` and its WAL sidecars aside under a shared timestamp.
+///
+/// The sidecars travel *with* the database rather than being deleted: a WAL can
+/// hold committed transactions that have not been checkpointed yet.
+fn set_aside(data_dir: &std::path::Path, db_path: &std::path::Path) -> String {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let target = format!("wis.db.corrupt-{stamp}");
+
+    for suffix in ["-wal", "-shm"] {
+        let sidecar = data_dir.join(format!("wis.db{suffix}"));
+        if sidecar.exists() {
+            let _ = std::fs::rename(&sidecar, data_dir.join(format!("{target}{suffix}")));
+        }
+    }
+    let _ = std::fs::rename(db_path, data_dir.join(&target));
+
+    target
+}
+
+/// Open the state DB resiliently. A profile is only ever set aside when SQLite
+/// itself says the file is damaged; every other failure leaves the file
+/// untouched:
+///  1. Open the primary DB, retrying while it is merely busy.
+///  2. A profile from a newer build, or an intact-but-unopenable one, is a
+///     [`ProfileFault`]: report it and let the caller refuse to launch.
+///  3. Only genuine corruption sets the file aside (with its WAL sidecars) and
+///     restores from `wis.db.bak`, falling back to a fresh profile.
+fn open_storage_resilient(
+    data_dir: &std::path::Path,
+    db_path: &std::path::Path,
+) -> Result<SqliteStorage, ProfileFault> {
+    let open_err = match open_with_retry(db_path) {
+        Ok(storage) => return Ok(storage),
+        Err(err) => err,
+    };
+
+    if let StorageError::ProfileTooNew { found, supported } = open_err {
+        log::error!("profile is from a newer build (v{found} > v{supported}); leaving it alone");
+        return Err(ProfileFault::TooNew { found, supported });
+    }
+
+    if db_path.exists() && wis_storage::is_intact(db_path) {
+        log::error!("state DB failed to open ({open_err}) but is intact; leaving it alone");
+        return Err(ProfileFault::Unreadable(open_err.to_string()));
+    }
+
+    log::error!("state DB is corrupt ({open_err}); attempting recovery");
+    let set_aside_as = set_aside(data_dir, db_path);
+    log::warn!("corrupt profile kept as {set_aside_as}");
+
+    let backup = data_dir.join("wis.db.bak");
+    if backup.exists() && std::fs::copy(&backup, db_path).is_ok() {
+        match open_with_retry(db_path) {
+            Ok(storage) => {
+                log::warn!("recovered previous session from backup");
+                return Ok(storage);
+            }
+            Err(err) => log::error!("backup recovery failed ({err}); starting fresh"),
+        }
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    open_with_retry(db_path).map_err(|err| ProfileFault::Unreadable(err.to_string()))
+}
+
+/// Where the hydrated state came from.
+///
+/// Only a profile that actually loaded is worth backing up.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StateOrigin {
+    Disk,
+    Fresh,
 }
 
 /// Load persisted state, falling back to defaults on corruption or absence.
 /// Logs the chosen path so a user can tell from the dev console whether their
 /// data survived a restart.
-fn hydrate_state(storage: &SqliteStorage) -> BrowserState {
-    let state = match storage.load_state() {
+fn hydrate_state(storage: &SqliteStorage) -> (BrowserState, StateOrigin) {
+    let (state, origin) = match storage.load_state() {
         Ok(Some(state)) => {
             log::info!(
                 "hydrated state from disk: {} workspaces, {} tabs",
                 state.workspaces.len(),
                 state.tabs.len(),
             );
-            state
+            (state, StateOrigin::Disk)
         }
         Ok(None) => {
             log::info!("no persisted state found, starting with defaults");
-            BrowserState::new_first_run()
+            (BrowserState::new_first_run(), StateOrigin::Fresh)
         }
         Err(err) => {
             log::warn!("failed to load persisted state ({err}); starting with defaults");
-            BrowserState::new_first_run()
+            (BrowserState::new_first_run(), StateOrigin::Fresh)
         }
     };
 
@@ -875,7 +975,7 @@ fn hydrate_state(storage: &SqliteStorage) -> BrowserState {
         }
     }
 
-    healed
+    (healed, origin)
 }
 
 /// Disable the window shadow so the liquid-glass chrome does not briefly flash a
@@ -895,4 +995,123 @@ fn apply_transparent_chrome_webview(app: &tauri::App) {
         return;
     };
     disable_chrome_window_shadow(&window);
+}
+
+#[cfg(test)]
+mod profile_open_tests {
+    use super::{open_storage_resilient, set_aside, ProfileFault};
+    use std::fs;
+    use std::path::PathBuf;
+    use wis_storage::SqliteStorage;
+
+    fn temp_data_dir(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("wis-profile-open-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create temp data dir");
+        dir
+    }
+
+    /// Stamp `user_version` straight into the SQLite header (bytes 60..64,
+    /// big-endian), standing in for a profile written by a newer build. The
+    /// header carries no checksum, so an in-place edit is safe.
+    fn stamp_schema_version(db: &std::path::Path, version: u32) {
+        let mut bytes = fs::read(db).expect("read DB");
+        bytes[60..64].copy_from_slice(&version.to_be_bytes());
+        fs::write(db, &bytes).expect("write stamped DB");
+    }
+
+    /// Set-aside database files, excluding their `-wal`/`-shm` sidecars.
+    fn set_aside_files(dir: &std::path::Path) -> Vec<String> {
+        fs::read_dir(dir)
+            .expect("read data dir")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| {
+                name.starts_with("wis.db.corrupt-")
+                    && !name.ends_with("-wal")
+                    && !name.ends_with("-shm")
+            })
+            .collect()
+    }
+
+    #[test]
+    fn healthy_profile_opens() {
+        let dir = temp_data_dir("healthy");
+        let db = dir.join("wis.db");
+        drop(SqliteStorage::open(&db).expect("create DB"));
+
+        assert!(open_storage_resilient(&dir, &db).is_ok());
+        assert!(set_aside_files(&dir).is_empty());
+    }
+
+    #[test]
+    fn profile_from_newer_build_is_never_set_aside() {
+        let dir = temp_data_dir("too-new");
+        let db = dir.join("wis.db");
+        drop(SqliteStorage::open(&db).expect("create DB"));
+        stamp_schema_version(&db, 9_999);
+        let before = fs::read(&db).expect("read DB");
+
+        match open_storage_resilient(&dir, &db) {
+            Err(ProfileFault::TooNew { found, .. }) => assert_eq!(found, 9_999),
+            Err(ProfileFault::Unreadable(err)) => panic!("expected TooNew, got Unreadable: {err}"),
+            Ok(_) => panic!("expected the open to be refused"),
+        }
+
+        // The whole point: the profile is still there, byte for byte.
+        assert!(set_aside_files(&dir).is_empty(), "profile was set aside");
+        assert_eq!(fs::read(&db).expect("read DB"), before);
+    }
+
+    #[test]
+    fn set_aside_moves_the_wal_sidecars_instead_of_deleting_them() {
+        let dir = temp_data_dir("sidecars");
+        let db = dir.join("wis.db");
+        fs::write(&db, b"database").expect("write DB");
+        fs::write(dir.join("wis.db-wal"), b"pending commits").expect("write WAL");
+        fs::write(dir.join("wis.db-shm"), b"shared memory").expect("write SHM");
+
+        let target = set_aside(&dir, &db);
+
+        // A WAL can hold committed transactions the main file never received,
+        // so it has to travel with the database rather than be deleted.
+        assert_eq!(
+            fs::read(dir.join(format!("{target}-wal"))).expect("read kept WAL"),
+            b"pending commits"
+        );
+        assert_eq!(
+            fs::read(dir.join(format!("{target}-shm"))).expect("read kept SHM"),
+            b"shared memory"
+        );
+        assert_eq!(
+            fs::read(dir.join(&target)).expect("read kept DB"),
+            b"database"
+        );
+
+        assert!(!db.exists());
+        assert!(!dir.join("wis.db-wal").exists());
+        assert!(!dir.join("wis.db-shm").exists());
+    }
+
+    #[test]
+    fn corrupt_profile_is_set_aside_and_launch_continues() {
+        let dir = temp_data_dir("corrupt");
+        let db = dir.join("wis.db");
+        drop(SqliteStorage::open(&db).expect("create DB"));
+
+        let mut bytes = fs::read(&db).expect("read DB");
+        bytes[0..16].copy_from_slice(b"not-a-sqlite-db!");
+        fs::write(&db, &bytes).expect("write garbled DB");
+
+        assert!(
+            open_storage_resilient(&dir, &db).is_ok(),
+            "a corrupt profile should still start fresh"
+        );
+        assert_eq!(
+            set_aside_files(&dir).len(),
+            1,
+            "the corrupt profile should be kept, not deleted"
+        );
+    }
 }

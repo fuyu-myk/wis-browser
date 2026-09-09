@@ -21,5 +21,5 @@ pub use downloads::DownloadRecord;
 pub use error::{StorageError, StorageResult};
 pub use history::{HistoryEntry, HistoryQuery};
 pub use searches::SearchEntry;
-pub use sqlite::SqliteStorage;
+pub use sqlite::{is_intact, SqliteStorage};
 pub use traits::Storage;

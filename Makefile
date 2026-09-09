@@ -19,9 +19,10 @@ endif
 install:
 	cd crates/shell && pnpm install
 
-## dev: Launch the Tauri app in development mode
+## dev: Launch the Tauri app in development mode (separate profile, see
+## tauri.dev.conf.json)
 dev:
-	cd crates/shell && pnpm tauri dev
+	cd crates/shell && pnpm tauri dev --config src-tauri/tauri.dev.conf.json
 
 ## build: Production build of the Tauri app
 build:
