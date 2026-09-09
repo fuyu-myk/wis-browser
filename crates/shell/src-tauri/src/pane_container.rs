@@ -234,7 +234,7 @@ mod imp {
 
     /// Round the container, so the corner survives WebKit resizing the webview
     /// inside it while the inspector is docked.
-    /// 
+    ///
     /// Rounds the webview as well as its container.
     pub unsafe fn set_corner_radius(wk: *mut AnyObject, radius: f64) {
         RADIUS.store(radius.to_bits(), std::sync::atomic::Ordering::Relaxed);

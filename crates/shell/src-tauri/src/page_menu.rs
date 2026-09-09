@@ -220,6 +220,13 @@ const PAGE_MENU_JS: &str = r#"(function () {
       if (selection) paintSelection(sel);
     } catch (err) {}
 
+    // Parked for devtools.rs.
+    try {
+      var node = path[0] || e.target;
+      window.__wisInspectTarget =
+        (node && typeof WeakRef === 'function') ? new WeakRef(node) : node;
+    } catch (err) {}
+
     post({
       x: e.clientX,
       y: e.clientY,
