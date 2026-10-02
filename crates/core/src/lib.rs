@@ -24,6 +24,7 @@ pub mod netscape;
 pub mod new_tab;
 pub mod pane;
 pub mod password_csv;
+pub mod password_offer;
 pub mod privacy;
 pub mod proxy;
 pub mod search;
@@ -64,6 +65,7 @@ pub use new_tab::{
 };
 pub use pane::{PaneBranch, PaneNode, SplitDir};
 pub use password_csv::{parse_password_csv, to_password_csv, ParsedCredential, ParsedCredentials};
+pub use password_offer::PasswordOffer;
 pub use privacy::{PerSitePolicy, PrivacyMode};
 pub use proxy::UpstreamProxy;
 pub use search::{

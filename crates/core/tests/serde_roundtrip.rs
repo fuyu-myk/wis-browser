@@ -93,6 +93,7 @@ fn settings_patch_omits_none_fields_when_serialised() {
 #[test]
 fn settings_patch_round_trips_when_all_fields_set() {
     let patch = UserSettingsPatch {
+        password_offer: Some(wis_core::PasswordOffer::Always),
         layout: Some(LayoutMode::TopTabs),
         top_tabs_rail_side: Some(wis_core::RailSide::Right),
         top_tabs_max_expanded_folders: Some(3),

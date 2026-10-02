@@ -41,6 +41,7 @@ pub fn install<R: tauri::Runtime>(
         register(&ucm, "wisKeybind", &label);
         register(&ucm, "wisPageText", &label);
         register(&ucm, "wisPageSource", &label);
+        register(&ucm, "wisSignup", &label);
         register(&ucm, "wisPageMenu", &label);
 
         // Cosmetic filtering + the element-picker zapper.
@@ -171,6 +172,9 @@ fn route(name: &str, label: &str, body: &serde_json::Value) {
         }
         "wisPageText" => {
             crate::page_text::dispatch_message(label, str_field("text"), str_field("title"));
+        }
+        "wisSignup" => {
+            crate::signup::dispatch_message(label);
         }
         "wisPageSource" => {
             if let Some(parsed) = body

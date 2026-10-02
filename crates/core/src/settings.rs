@@ -138,6 +138,9 @@ pub struct UserSettings {
     /// settings to the fix automatically.
     #[serde(default)]
     pub user_agent_profile: UaProfile,
+    /// Whether a signup form is offered a generated password.
+    #[serde(default)]
+    pub password_offer: crate::PasswordOffer,
     /// Per-host user agent overrides for sites that still special-case a
     /// particular browser. Keyed by `www.`-stripped host.
     #[serde(default)]
@@ -411,6 +414,7 @@ impl Default for UserSettings {
             media_extensions_enabled: true,
             video_popout_enabled: true,
             user_agent_profile: UaProfile::default(),
+            password_offer: crate::PasswordOffer::default(),
             ua_site_overrides: HashMap::new(),
             media_permissions: HashMap::new(),
             app_launch_permissions: HashMap::new(),
@@ -511,6 +515,7 @@ pub struct UserSettingsPatch {
     pub video_popout_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_agent_profile: Option<UaProfile>,
+    pub password_offer: Option<crate::PasswordOffer>,
     /// Replaces the whole override map when present (the frontend holds the
     /// full map). `None` keeps the current map.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -642,6 +647,7 @@ impl UserSettings {
             user_agent_profile: patch
                 .user_agent_profile
                 .unwrap_or_else(|| self.user_agent_profile.clone()),
+            password_offer: patch.password_offer.unwrap_or(self.password_offer),
             ua_site_overrides: patch
                 .ua_site_overrides
                 .unwrap_or_else(|| self.ua_site_overrides.clone()),

@@ -56,6 +56,7 @@ mod reader;
 mod save_coalescer;
 mod screenshot;
 mod selection_color;
+mod signup;
 mod state;
 mod suggest;
 mod swipe_nav;
@@ -409,6 +410,7 @@ pub fn run() {
             capture::set_app_handle(app.handle().clone());
             #[cfg(target_os = "macos")]
             autoplay::install_hook(app.handle().clone());
+            signup::set_app_handle(app.handle().clone());
 
             // App handle for the AI page-text channel's native handler.
             page_text::set_app_handle(app.handle().clone());
@@ -692,6 +694,7 @@ pub fn run() {
             page_archive::save_page_archive,
             page_image::copy_image,
             page_menu::clear_menu_selection,
+            signup::fill_generated_password,
             page_source::capture_page_source,
             page_source::page_source,
             page_image::save_image_as,

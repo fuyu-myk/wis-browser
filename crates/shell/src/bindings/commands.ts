@@ -806,6 +806,11 @@ export const commands = {
     return invoke('page_source', { tab })
   },
 
+  /** Put a generated password into a tab's empty password fields. */
+  async fillGeneratedPassword(tabId: TabId, password: string): Promise<void> {
+    return invoke('fill_generated_password', { tabId, password })
+  },
+
   /** Drop the highlight the page menu left behind in a tab. */
   async clearMenuSelection(tabId: TabId): Promise<void> {
     return invoke('clear_menu_selection', { tabId })

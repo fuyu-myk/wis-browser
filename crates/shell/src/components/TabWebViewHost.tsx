@@ -9,6 +9,7 @@ import { isWindowFocused } from '@/lib/windowFocus'
 import { useAppLaunchOverlay } from '@/hooks/useAppLaunchOverlay'
 import { useOverlay } from '@/hooks/useOverlay'
 import { usePermissionOverlay } from '@/hooks/usePermissionOverlay'
+import { useSignupOffer } from '@/hooks/useSignupOffer'
 import { useTabAudio } from '@/hooks/useTabAudio'
 import { useTabWebviews, type Bounds, type WebviewLayout } from '@/hooks/useTabWebviews'
 import { useVideoPopout } from '@/hooks/useVideoPopout'
@@ -31,6 +32,7 @@ interface TabWebViewHostProps {
 export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   usePermissionOverlay(hostRef)
+  useSignupOffer(hostRef, state.settings)
   useAppLaunchOverlay(hostRef)
   const findOverlay = useOverlay('find')
   const findOpenRef = useRef(false)

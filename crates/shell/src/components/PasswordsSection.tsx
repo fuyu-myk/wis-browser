@@ -6,7 +6,9 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { cx } from '@/lib/cx'
 import { LockIcon, SearchIcon, XIcon } from '@/lib/icons'
 import { isMacOS } from '@/lib/platform'
-import { useBrowserState } from '@/hooks/useBrowserState'
+import { useBrowserState, BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import { Segmented } from '@/components/controls'
+import type { PasswordOffer } from '@/bindings/types'
 
 const VAULT_STATUS_KEY = ['vault-status'] as const
 const VAULT_LIST_KEY = ['vault-list'] as const
@@ -63,6 +65,12 @@ function errorMessage(error: unknown): string {
   return 'unknown error'
 }
 
+const OFFER_OPTIONS = [
+  { value: 'ask' as const, label: 'Ask' },
+  { value: 'always' as const, label: 'Always' },
+  { value: 'never' as const, label: 'Never' },
+] satisfies ReadonlyArray<{ value: PasswordOffer; label: string }>
+
 /**
  * Settings → Passwords: a biometric-gated vault (Touch ID / Windows Hello).
  * Locked by default; once unlocked, lists saved logins with reveal/copy/delete
@@ -105,6 +113,12 @@ export function PasswordsSection() {
   const del = useMutation({
     mutationFn: (id: number) => commands.vaultDelete(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: VAULT_LIST_KEY }),
+  })
+
+  const offer = browser?.settings.password_offer ?? 'ask'
+  const setOffer = useMutation({
+    mutationFn: (next: PasswordOffer) => commands.updateSettings({ password_offer: next }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
   })
 
   const importCsv = async () => {
@@ -220,6 +234,25 @@ export function PasswordsSection() {
             <button type="button" className="kb-btn" onClick={() => lock.mutate()}>
               Lock
             </button>
+          </div>
+
+          <div className="row">
+            <div className="l">
+              <span>Offer a strong password on signup</span>
+              <span>
+                {offer === 'always'
+                  ? 'Filled into empty password fields without asking.'
+                  : offer === 'never'
+                    ? 'Never offered. Generate one here instead.'
+                    : 'Offered when a signup form takes focus.'}
+              </span>
+            </div>
+            <Segmented
+              value={offer}
+              onChange={(next) => setOffer.mutate(next)}
+              options={OFFER_OPTIONS}
+              ariaLabel="Offer a strong password on signup"
+            />
           </div>
 
           <div className="row">

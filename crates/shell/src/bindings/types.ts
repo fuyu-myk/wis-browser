@@ -519,6 +519,7 @@ export interface UserSettings {
   video_popout_enabled: boolean
   /** Default user agent presented to remote pages. */
   user_agent_profile: UaProfile
+  password_offer: PasswordOffer
   /** Per-host user agent overrides, keyed by `www.`-stripped host. */
   ua_site_overrides: Record<string, UaProfile>
   /** Remembered camera/mic consent, keyed `"<kind>|<origin>"` (true = allow). */
@@ -603,6 +604,7 @@ export interface UserSettingsPatch {
   media_extensions_enabled?: boolean
   video_popout_enabled?: boolean
   user_agent_profile?: UaProfile
+  password_offer?: PasswordOffer
   /** Replaces the whole override map when present. */
   ua_site_overrides?: Record<string, UaProfile>
   /** Replaces the whole remembered-permissions map when present. */
@@ -737,6 +739,9 @@ export interface PageSource {
   byteLen: number
   truncated: boolean
 }
+
+/** Whether a signup form is offered a generated password. */
+export type PasswordOffer = 'ask' | 'always' | 'never'
 
 /** A link with its tracking parameters removed; mirrors `CleanedLink`. */
 export interface CleanedLink {
