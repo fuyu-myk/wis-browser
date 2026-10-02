@@ -6,6 +6,7 @@
 // side. Passing snake_case from JS silently fails to deserialise.
 
 import { Channel, invoke } from '@tauri-apps/api/core'
+import type { CaptureInfo } from '@/lib/vaultMenu'
 import type {
   AiFetchResponse,
   AiSearchResult,
@@ -255,7 +256,7 @@ export const commands = {
   },
 
   /** The pending captured login (host + username, no password), or null. */
-  async capturePending(): Promise<{ host: string; username: string } | null> {
+  async capturePending(): Promise<CaptureInfo | null> {
     return invoke('capture_pending')
   },
 

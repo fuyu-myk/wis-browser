@@ -8448,3 +8448,10 @@ body.motion-off .kb-ai-think-label.is-live {
   gap: 8px;
   margin-top: 2px;
 }
+
+.kb-vaultmenu-save-warn {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.78;
+}

@@ -35,12 +35,18 @@ pub struct PendingCapture {
     pub host: String,
     pub username: String,
     pub password: Zeroizing<String>,
+    /// Wis filled this password, so nothing but this prompt holds it.
+    pub generated: bool,
+    /// Saving replaces a password already stored under this username.
+    pub replaces: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
 struct CaptureEvent {
     host: String,
     username: String,
+    generated: bool,
+    replaces: bool,
 }
 
 /// The pending capture's display fields (no password), for a surface that
@@ -49,6 +55,8 @@ struct CaptureEvent {
 pub struct CaptureInfo {
     host: String,
     username: String,
+    generated: bool,
+    replaces: bool,
 }
 
 /// App handle for the native message handler to reach the async runtime.
@@ -108,7 +116,9 @@ async fn intake(app: AppHandle, host: String, username: String, password: String
             .ok()
             .and_then(Result::ok)
             .unwrap_or_default();
-    if existing.iter().any(|c| c.username == username) {
+    let replaces = existing.iter().any(|c| c.username == username);
+    let generated = crate::signup::is_generated(&host, &password);
+    if !should_offer(replaces, generated) {
         return;
     }
 
@@ -118,10 +128,26 @@ async fn intake(app: AppHandle, host: String, username: String, password: String
             host: host.clone(),
             username: username.clone(),
             password: Zeroizing::new(password),
+            generated,
+            replaces,
         });
     }
 
-    let _ = app.emit(CAPTURE_EVENT, CaptureEvent { host, username });
+    let _ = app.emit(
+        CAPTURE_EVENT,
+        CaptureEvent {
+            host,
+            username,
+            generated,
+            replaces,
+        },
+    );
+}
+
+/// Whether a captured login is offered for saving. One already saved under
+/// that username is skipped, except when the password is one Wis generated.
+fn should_offer(already_saved: bool, generated: bool) -> bool {
+    generated || !already_saved
 }
 
 /// Encrypt and save the pending captured login. Requires the vault to be
@@ -148,6 +174,8 @@ pub async fn capture_save(state: State<'_, AppState>) -> WisResult<()> {
         })?
     };
 
+    crate::signup::forget_generated(&pending.host);
+
     let storage = state.storage.clone();
     let host = pending.host.clone();
     let username = pending.username.clone();
@@ -169,7 +197,9 @@ pub async fn capture_save(state: State<'_, AppState>) -> WisResult<()> {
 /// Discard the pending captured login (user clicked "Not now").
 #[tauri::command]
 pub async fn capture_dismiss(state: State<'_, AppState>) -> WisResult<()> {
-    *state.pending_capture.lock().await = None;
+    if let Some(pending) = state.pending_capture.lock().await.take() {
+        crate::signup::forget_generated(&pending.host);
+    }
     Ok(())
 }
 
@@ -181,6 +211,8 @@ pub async fn capture_pending(state: State<'_, AppState>) -> WisResult<Option<Cap
     Ok(guard.as_ref().map(|p| CaptureInfo {
         host: p.host.clone(),
         username: p.username.clone(),
+        generated: p.generated,
+        replaces: p.replaces,
     }))
 }
 
@@ -293,7 +325,7 @@ const CAPTURE_JS: &str = r#"(function () {
       ((el.getAttribute && el.getAttribute('aria-label')) || '') + ' ' +
       ((el.getAttribute && el.getAttribute('data-a-target')) || '') + ' ' +
       (el.value || ''))).toLowerCase();
-    return /log\s?in|sign\s?in|sign\s?on|log\s?on|continue|submit|next|done|confirm/.test(label);
+    return /log\s?in|sign\s?in|sign\s?on|log\s?on|sign\s?up|register|create\s+(an\s+)?account|join|continue|submit|next|done|confirm/.test(label);
   }
 
   // Remember the latest password/username as they're typed.
@@ -520,4 +552,32 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
     imp::install(webview);
     #[cfg(not(target_os = "macos"))]
     let _ = webview;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_new_login_is_offered() {
+        assert!(should_offer(false, false));
+    }
+
+    #[test]
+    fn a_login_already_saved_is_not_offered_again() {
+        assert!(!should_offer(true, false));
+    }
+
+    /// A password Wis generated is new by construction, so a saved username
+    /// means a password change. Skipping it would keep the old password
+    /// saved and the new one nowhere.
+    #[test]
+    fn a_generated_password_is_offered_even_over_a_saved_login() {
+        assert!(should_offer(true, true));
+    }
+
+    #[test]
+    fn a_generated_password_for_a_new_login_is_offered() {
+        assert!(should_offer(false, true));
+    }
 }

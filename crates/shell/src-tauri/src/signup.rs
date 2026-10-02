@@ -142,6 +142,17 @@ pub async fn fill_generated_password(
                 message: format!("no webview labelled {label}"),
             })?;
 
+    if let Some(host) = webview
+        .url()
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_string))
+    {
+        GENERATED
+            .lock()
+            .expect("signup generated poisoned")
+            .record(&host, &password);
+    }
+
     let literal = serde_json::to_string(&password).unwrap_or_else(|_| "\"\"".to_string());
     let script = format!(
         r#"(function(){{
@@ -259,5 +270,126 @@ mod macos {
                 msg_send![class!(NSString), stringWithUTF8String: c.as_ptr()];
             let _: () = msg_send![controller, addScriptMessageHandler: &*handler, name: name];
         });
+    }
+}
+
+/// Hashes of the passwords Wis filled, by host. The save prompt after a signup
+/// reads it to tell a password only Wis has seen from one the user typed.
+#[derive(Default)]
+pub(crate) struct Generated {
+    entries: Vec<(String, [u8; 32])>,
+}
+
+impl Generated {
+    /// A handful of signups in flight is plenty; the oldest go first.
+    pub(crate) const CAP: usize = 16;
+
+    fn key(host: &str) -> String {
+        let host = host.to_ascii_lowercase();
+        host.strip_prefix("www.").unwrap_or(&host).to_string()
+    }
+
+    fn digest(password: &str) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+        Sha256::digest(password.as_bytes()).into()
+    }
+
+    pub(crate) fn record(&mut self, host: &str, password: &str) {
+        let host = Self::key(host);
+        self.entries.retain(|(known, _)| *known != host);
+        self.entries.push((host, Self::digest(password)));
+        if self.entries.len() > Self::CAP {
+            self.entries.remove(0);
+        }
+    }
+
+    pub(crate) fn matches(&self, host: &str, password: &str) -> bool {
+        let host = Self::key(host);
+        let digest = Self::digest(password);
+        self.entries
+            .iter()
+            .any(|(known, hash)| *known == host && *hash == digest)
+    }
+
+    pub(crate) fn forget(&mut self, host: &str) {
+        let host = Self::key(host);
+        self.entries.retain(|(known, _)| *known != host);
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+static GENERATED: std::sync::Mutex<Generated> = std::sync::Mutex::new(Generated {
+    entries: Vec::new(),
+});
+
+/// Whether `password` is one Wis filled on `host`.
+pub(crate) fn is_generated(host: &str, password: &str) -> bool {
+    GENERATED
+        .lock()
+        .expect("signup generated poisoned")
+        .matches(host, password)
+}
+
+/// Stop treating `host`'s filled password as pending, once its save prompt is
+/// answered either way.
+pub(crate) fn forget_generated(host: &str) {
+    GENERATED
+        .lock()
+        .expect("signup generated poisoned")
+        .forget(host);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_filled_password_is_recognised_on_the_same_host() {
+        let mut generated = Generated::default();
+        generated.record("github.com", "s3cret-generated");
+        assert!(generated.matches("github.com", "s3cret-generated"));
+    }
+
+    #[test]
+    fn a_typed_password_is_not_mistaken_for_a_generated_one() {
+        let mut generated = Generated::default();
+        generated.record("github.com", "s3cret-generated");
+        assert!(!generated.matches("github.com", "something-i-typed"));
+    }
+
+    #[test]
+    fn a_password_is_only_recognised_on_the_host_it_was_filled_on() {
+        let mut generated = Generated::default();
+        generated.record("github.com", "s3cret-generated");
+        assert!(!generated.matches("evil.example", "s3cret-generated"));
+    }
+
+    #[test]
+    fn www_and_case_do_not_split_a_host() {
+        let mut generated = Generated::default();
+        generated.record("www.GitHub.com", "s3cret-generated");
+        assert!(generated.matches("github.com", "s3cret-generated"));
+    }
+
+    #[test]
+    fn forgetting_a_host_drops_what_was_filled_there() {
+        let mut generated = Generated::default();
+        generated.record("github.com", "s3cret-generated");
+        generated.forget("github.com");
+        assert!(!generated.matches("github.com", "s3cret-generated"));
+    }
+
+    #[test]
+    fn the_store_is_bounded() {
+        let mut generated = Generated::default();
+        for i in 0..100 {
+            generated.record(&format!("site{i}.example"), "pw");
+        }
+        assert!(generated.len() <= Generated::CAP);
+        assert!(generated.matches("site99.example", "pw"), "the newest survive");
     }
 }

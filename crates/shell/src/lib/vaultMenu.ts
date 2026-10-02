@@ -18,6 +18,10 @@ export const CAPTURE_LOGIN_EVENT = 'wis-capture-login'
 export interface CaptureInfo {
   host: string
   username: string
+  /** Wis filled this password, so nothing but this prompt holds it. */
+  generated: boolean
+  /** Saving replaces a password already stored under this username. */
+  replaces: boolean
 }
 
 /** Where to place the card within the full-window overlay (window coords). */

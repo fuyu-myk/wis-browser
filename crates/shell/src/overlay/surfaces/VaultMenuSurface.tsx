@@ -164,11 +164,18 @@ export function VaultMenuSurface() {
             <>
           <div className="kb-vaultmenu-save">
             <div className="kb-vaultmenu-save-text">
-              <div className="kb-vaultmenu-save-title">Save password?</div>
+              <div className="kb-vaultmenu-save-title">
+                {pending.replaces ? 'Update saved password?' : 'Save password?'}
+              </div>
               <div className="kb-vaultmenu-save-sub">
                 {pending.username ? `${pending.username} · ` : ''}
                 {pending.host}
               </div>
+              {pending.generated && (
+                <div className="kb-vaultmenu-save-warn">
+                  Wis generated this password and has not saved it anywhere else.
+                </div>
+              )}
             </div>
             <div className="kb-vaultmenu-save-actions">
               <button type="button" className="kb-vaultmenu-btn" onClick={onDismiss} disabled={busy}>
@@ -180,7 +187,7 @@ export function VaultMenuSurface() {
                 onClick={() => void onSave()}
                 disabled={busy}
               >
-                Save
+                {pending.replaces ? 'Update' : 'Save'}
               </button>
             </div>
           </div>
