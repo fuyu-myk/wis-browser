@@ -28,9 +28,6 @@ const CARD_W = 340
 const CARD_H = 190
 const MARGIN = 14
 
-/** Matches the generator's default in Settings. */
-const RECIPE = { length: 20, uppercase: true, digits: true, symbols: true }
-
 export interface SignupOffer {
   tabId: TabId
   host: string
@@ -41,6 +38,9 @@ interface SignupField {
   window: string
   tabId: string
   host: string
+  /** The field's `passwordrules`, so the password fits what the site takes. */
+  rules: string | null
+  maxLength: number | null
 }
 
 export function useSignupOffer(
@@ -77,7 +77,7 @@ export function useSignupOffer(
 
       void (async () => {
         const password = await commands
-          .generatePassword(RECIPE.length, RECIPE.uppercase, RECIPE.digits, RECIPE.symbols)
+          .generatePasswordForField(event.payload.rules, event.payload.maxLength)
           .catch(() => null)
         if (!password || cancelled) return
 

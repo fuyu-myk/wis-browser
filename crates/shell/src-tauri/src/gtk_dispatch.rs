@@ -174,7 +174,12 @@ fn route(name: &str, label: &str, body: &serde_json::Value) {
             crate::page_text::dispatch_message(label, str_field("text"), str_field("title"));
         }
         "wisSignup" => {
-            crate::signup::dispatch_message(label);
+            if let Some(parsed) = body
+                .as_str()
+                .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+            {
+                crate::signup::dispatch_message(label, &parsed);
+            }
         }
         "wisPageSource" => {
             if let Some(parsed) = body

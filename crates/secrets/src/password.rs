@@ -20,7 +20,7 @@ const DIGITS: &[u8] = b"0123456789";
 ///
 /// `+ - = @` stay in even though a spreadsheet reads a cell starting with one
 /// as a formula.
-const SYMBOLS: &[u8] = b"!#$%&*+-=?@^_~";
+pub const DEFAULT_SYMBOLS: &[u8] = b"!#$%&*+-=?@^_~";
 
 /// Which characters a generated password may draw from. Lowercase letters are
 /// always included, so the alphabet is never empty.
@@ -45,16 +45,16 @@ impl Default for PasswordRecipe {
 
 impl PasswordRecipe {
     /// The classes this recipe draws from, lowercase always first.
-    fn classes(&self) -> Vec<&'static [u8]> {
-        let mut classes = vec![LOWERCASE];
+    fn classes<'a>(&self, symbols: &'a [u8]) -> Vec<&'a [u8]> {
+        let mut classes: Vec<&'a [u8]> = vec![LOWERCASE];
         if self.uppercase {
             classes.push(UPPERCASE);
         }
         if self.digits {
             classes.push(DIGITS);
         }
-        if self.symbols {
-            classes.push(SYMBOLS);
+        if self.symbols && !symbols.is_empty() {
+            classes.push(symbols);
         }
 
         classes
@@ -65,10 +65,21 @@ impl PasswordRecipe {
 /// ..=[`MAX_PASSWORD_LENGTH`], and every selected class contributes at least
 /// one character.
 pub fn generate_password(recipe: &PasswordRecipe) -> Zeroizing<String> {
+    generate_password_from(recipe, DEFAULT_SYMBOLS)
+}
+
+/// [`generate_password`], drawing symbols from `symbols` rather than the
+/// default set. Anything but ASCII punctuation in `symbols` is ignored.
+pub fn generate_password_from(recipe: &PasswordRecipe, symbols: &[u8]) -> Zeroizing<String> {
+    let symbols: Vec<u8> = symbols
+        .iter()
+        .copied()
+        .filter(u8::is_ascii_punctuation)
+        .collect();
     let length = recipe
         .length
         .clamp(MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH);
-    let classes = recipe.classes();
+    let classes = recipe.classes(&symbols);
     let alphabet: Vec<u8> = classes.concat();
     let mut rng = rand::rngs::OsRng;
 
@@ -130,7 +141,7 @@ mod tests {
             assert!(pw.chars().any(|c| c.is_ascii_uppercase()), "{}", *pw);
             assert!(pw.chars().any(|c| c.is_ascii_digit()), "{}", *pw);
             assert!(
-                pw.bytes().any(|b| SYMBOLS.contains(&b)),
+                pw.bytes().any(|b| DEFAULT_SYMBOLS.contains(&b)),
                 "no symbol in {}",
                 *pw
             );
@@ -173,12 +184,12 @@ mod tests {
         assert_eq!(LOWERCASE.len(), 26);
         assert_eq!(UPPERCASE.len(), 26);
         assert_eq!(DIGITS.len(), 10);
-        assert_eq!(SYMBOLS.len(), 14);
+        assert_eq!(DEFAULT_SYMBOLS.len(), 14);
     }
 
     #[test]
     fn no_character_sits_in_two_classes() {
-        let all = [LOWERCASE, UPPERCASE, DIGITS, SYMBOLS].concat();
+        let all = [LOWERCASE, UPPERCASE, DIGITS, DEFAULT_SYMBOLS].concat();
         let mut unique = all.clone();
         unique.sort_unstable();
         unique.dedup();

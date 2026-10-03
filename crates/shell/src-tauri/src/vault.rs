@@ -324,6 +324,16 @@ pub fn generate_password(length: u32, uppercase: bool, digits: bool, symbols: bo
     wis_secrets::generate_password(&recipe).to_string()
 }
 
+/// Generate a password the field's own `passwordrules` and `maxlength` allow,
+/// so the site does not reject it on submit. Rules that cannot be read leave
+/// the default recipe in place.
+#[tauri::command]
+pub fn generate_password_for_field(rules: Option<String>, max_length: Option<u32>) -> String {
+    let fitted =
+        wis_secrets::recipe_for_rules(rules.as_deref(), max_length.map(|max| max as usize));
+    wis_secrets::generate_password_from(&fitted.recipe, &fitted.symbols).to_string()
+}
+
 /// Drop the in-memory master key; the vault returns to the locked state.
 #[tauri::command]
 pub async fn vault_lock(state: State<'_, AppState>) -> WisResult<()> {

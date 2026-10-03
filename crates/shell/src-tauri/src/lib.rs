@@ -601,6 +601,7 @@ pub fn run() {
             vault::vault_export_csv,
             vault::autofill_candidates,
             vault::autofill_fill,
+            vault::generate_password_for_field,
             suggest::get_url_suggestions,
             suggest::record_search,
             suggest::delete_search,

@@ -314,7 +314,13 @@ fn dispatch(label: &str, ephemeral: bool, cosmetic_enabled: bool, top_frame: boo
             crate::page_text::dispatch_message(label, str_field("text"), str_field("title"));
         }
         "wisSignup" if top_frame => {
-            crate::signup::dispatch_message(label);
+            if let Some(parsed) = env
+                .body
+                .as_str()
+                .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+            {
+                crate::signup::dispatch_message(label, &parsed);
+            }
         }
         "wisPageSource" if top_frame => {
             if let Some(parsed) = env

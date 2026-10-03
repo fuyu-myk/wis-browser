@@ -32,6 +32,28 @@ struct SignupEvent {
     window: String,
     tab_id: String,
     host: String,
+    /// The field's `passwordrules`, so the password fits what the site takes.
+    rules: Option<String>,
+    max_length: Option<u32>,
+}
+
+/// Far past any real rules string; the page is untrusted.
+const MAX_RULES_BYTES: usize = 1024;
+
+/// The field's constraints as the page reported them, bounded and cleaned.
+fn field_constraints(
+    rules: Option<&str>,
+    max_length: Option<i64>,
+) -> (Option<String>, Option<u32>) {
+    let rules = rules
+        .map(str::trim)
+        .filter(|rules| !rules.is_empty() && rules.len() <= MAX_RULES_BYTES)
+        .map(str::to_string);
+    let max_length = max_length
+        .filter(|max| *max > 0)
+        .and_then(|max| u32::try_from(max).ok());
+
+    (rules, max_length)
 }
 
 pub fn page_script() -> &'static str {
@@ -42,13 +64,17 @@ const SIGNUP_JS: &str = r#"(function () {
   if (window.__wisSignupInstalled) return;
   window.__wisSignupInstalled = true;
 
-  function post() {
+  function post(el) {
+    var body = {
+      rules: (el.getAttribute && el.getAttribute('passwordrules')) || '',
+      maxLength: el.maxLength > 0 ? el.maxLength : 0
+    };
     try {
       var h = window.webkit && window.webkit.messageHandlers;
       if (h && h.wisSignup) {
-        h.wisSignup.postMessage({});
+        h.wisSignup.postMessage(body);
       } else if (window.wisSignup && window.wisSignup.postMessage) {
-        window.wisSignup.postMessage('{}');
+        window.wisSignup.postMessage(JSON.stringify(body));
       }
     } catch (e) {}
   }
@@ -85,12 +111,12 @@ const SIGNUP_JS: &str = r#"(function () {
 
   document.addEventListener('focusin', function (e) {
     if (window.top !== window.self) return;
-    if (qualifies(e.target)) post();
+    if (qualifies(e.target)) post(e.target);
   }, true);
 })();"#;
 
 /// Tell the chrome that a signup field in `label`'s tab took focus.
-fn announce(label: &str) {
+fn announce(label: &str, rules: Option<String>, max_length: Option<u32>) {
     let Some(app) = APP.get() else {
         return;
     };
@@ -112,6 +138,8 @@ fn announce(label: &str) {
         window: webview.window().label().to_string(),
         tab_id: tab_id.to_string(),
         host,
+        rules,
+        max_length,
     };
     if let Err(err) = app.emit(SIGNUP_EVENT, payload) {
         log::warn!("emit {SIGNUP_EVENT} failed: {err}");
@@ -119,8 +147,12 @@ fn announce(label: &str) {
 }
 
 #[cfg(any(windows, target_os = "linux"))]
-pub(crate) fn dispatch_message(label: &str) {
-    announce(label);
+pub(crate) fn dispatch_message(label: &str, body: &serde_json::Value) {
+    let (rules, max_length) = field_constraints(
+        body.get("rules").and_then(serde_json::Value::as_str),
+        body.get("maxLength").and_then(serde_json::Value::as_i64),
+    );
+    announce(label, rules, max_length);
 }
 
 /// Put `password` into every password field of a signup form.
@@ -196,7 +228,70 @@ mod macos {
         class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass,
     };
 
-    use super::announce;
+    use std::ffi::CStr;
+    use std::os::raw::c_char;
+
+    use super::{announce, field_constraints};
+
+    unsafe fn ns_string(s: &str) -> *mut AnyObject {
+        let c = CString::new(s).unwrap_or_default();
+        msg_send![class!(NSString), stringWithUTF8String: c.as_ptr()]
+    }
+
+    unsafe fn field(dict: *mut AnyObject, key: &str) -> *mut AnyObject {
+        msg_send![dict, objectForKey: ns_string(key)]
+    }
+
+    unsafe fn string_field(dict: *mut AnyObject, key: &str) -> Option<String> {
+        let value = field(dict, key);
+        if value.is_null() {
+            return None;
+        }
+        let is_str: bool = msg_send![value, isKindOfClass: class!(NSString)];
+        if !is_str {
+            return None;
+        }
+        let utf8: *const c_char = msg_send![value, UTF8String];
+        if utf8.is_null() {
+            return None;
+        }
+
+        Some(CStr::from_ptr(utf8).to_string_lossy().into_owned())
+    }
+
+    unsafe fn number_field(dict: *mut AnyObject, key: &str) -> Option<f64> {
+        let value = field(dict, key);
+        if value.is_null() {
+            return None;
+        }
+        let is_num: bool = msg_send![value, isKindOfClass: class!(NSNumber)];
+        if !is_num {
+            return None;
+        }
+        let number: f64 = msg_send![value, doubleValue];
+
+        Some(number)
+    }
+
+    /// The field constraints the page posted, or none when the body is not
+    /// the dictionary the script sends.
+    pub(super) unsafe fn read_body(message: *mut AnyObject) -> (Option<String>, Option<u32>) {
+        let body: *mut AnyObject = msg_send![message, body];
+        if body.is_null() {
+            return (None, None);
+        }
+        let is_dict: bool = msg_send![body, isKindOfClass: class!(NSDictionary)];
+        if !is_dict {
+            return (None, None);
+        }
+
+        let rules = string_field(body, "rules");
+        let max_length = number_field(body, "maxLength")
+            .filter(|n| n.is_finite())
+            .map(|n| n as i64);
+
+        field_constraints(rules.as_deref(), max_length)
+    }
 
     struct HandlerIvars {
         label: String,
@@ -235,7 +330,8 @@ mod macos {
                     }
                 }
 
-                announce(&label);
+                let (rules, max_length) = unsafe { read_body(message) };
+                announce(&label, rules, max_length);
             }
         }
     );
@@ -384,12 +480,39 @@ mod tests {
     }
 
     #[test]
+    fn real_rules_pass_through() {
+        let (rules, max) = field_constraints(Some(" minlength: 15; "), Some(64));
+        assert_eq!(rules.as_deref(), Some("minlength: 15;"));
+        assert_eq!(max, Some(64));
+    }
+
+    #[test]
+    fn an_absent_attribute_and_an_unset_maxlength_are_none() {
+        assert_eq!(field_constraints(Some(""), Some(0)), (None, None));
+        assert_eq!(field_constraints(None, Some(-1)), (None, None));
+    }
+
+    #[test]
+    fn an_oversized_rules_string_from_the_page_is_dropped() {
+        let huge = "required: upper;".repeat(200);
+        assert_eq!(field_constraints(Some(&huge), None).0, None);
+    }
+
+    #[test]
+    fn a_maxlength_past_u32_is_dropped_rather_than_wrapped() {
+        assert_eq!(field_constraints(None, Some(i64::MAX)).1, None);
+    }
+
+    #[test]
     fn the_store_is_bounded() {
         let mut generated = Generated::default();
         for i in 0..100 {
             generated.record(&format!("site{i}.example"), "pw");
         }
         assert!(generated.len() <= Generated::CAP);
-        assert!(generated.matches("site99.example", "pw"), "the newest survive");
+        assert!(
+            generated.matches("site99.example", "pw"),
+            "the newest survive"
+        );
     }
 }

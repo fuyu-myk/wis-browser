@@ -22,12 +22,14 @@
 
 pub mod breach;
 pub mod password;
+pub mod password_rules;
 
 pub use breach::{count_in_range, range_split, RANGE_PREFIX_LEN};
 pub use password::{
-    generate_password, PasswordRecipe, DEFAULT_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH,
-    MIN_PASSWORD_LENGTH,
+    generate_password, generate_password_from, PasswordRecipe, DEFAULT_PASSWORD_LENGTH,
+    DEFAULT_SYMBOLS, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH,
 };
+pub use password_rules::{recipe_for_rules, RulesRecipe};
 
 use argon2::Argon2;
 use chacha20poly1305::aead::{Aead, KeyInit};

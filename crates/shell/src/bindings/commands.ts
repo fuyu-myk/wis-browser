@@ -807,6 +807,14 @@ export const commands = {
     return invoke('page_source', { tab })
   },
 
+  /**
+   * Generate a password the field's own `passwordrules` and `maxlength`
+   * allow, so the site does not reject it on submit.
+   */
+  async generatePasswordForField(rules: string | null, maxLength: number | null): Promise<string> {
+    return invoke('generate_password_for_field', { rules, maxLength })
+  },
+
   /** Put a generated password into a tab's empty password fields. */
   async fillGeneratedPassword(tabId: TabId, password: string): Promise<void> {
     return invoke('fill_generated_password', { tabId, password })
