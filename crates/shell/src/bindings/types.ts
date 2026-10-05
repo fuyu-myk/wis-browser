@@ -740,6 +740,12 @@ export interface PageSource {
   truncated: boolean
 }
 
+/** A password field a tab's page reported focusing, and what it accepts. */
+export interface SignupFieldInfo {
+  rules: string | null
+  maxLength: number | null
+}
+
 /** Whether a signup form is offered a generated password. */
 export type PasswordOffer = 'ask' | 'always' | 'never'
 

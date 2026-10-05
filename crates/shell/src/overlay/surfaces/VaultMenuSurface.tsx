@@ -15,7 +15,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
-import type { CredentialSummary } from '@/bindings/types'
+import type { CredentialSummary, SignupFieldInfo } from '@/bindings/types'
+import { LockIcon } from '@/lib/icons'
 import { cx } from '@/lib/cx'
 import { SETTINGS_URL } from '@/lib/url'
 import {
@@ -55,19 +56,22 @@ export function VaultMenuSurface() {
 
   const [pending, setPending] = useState<CaptureInfo | null>(null)
   const [candidates, setCandidates] = useState<CredentialSummary[]>([])
+  const [passwordField, setPasswordField] = useState<SignupFieldInfo | null>(null)
   const [busy, setBusy] = useState(false)
   const [anchor, setAnchor] = useState<VaultMenuAnchor | null>(null)
 
   const load = useCallback(async () => {
-    const [cands, pend] = await Promise.all([
+    const [cands, pend, field] = await Promise.all([
       host
         ? commands.autofillCandidates(host).catch(() => [] as CredentialSummary[])
         : Promise.resolve([] as CredentialSummary[]),
       commands.capturePending().catch(() => null),
+      tabId ? commands.signupField(tabId).catch(() => null) : Promise.resolve(null),
     ])
     setCandidates(cands)
     setPending(pend)
-  }, [host])
+    setPasswordField(field)
+  }, [host, tabId])
 
   useEffect(() => {
     void load()
@@ -134,6 +138,24 @@ export function VaultMenuSurface() {
     if (candidates.length === 0) close()
   }
 
+  // Generated to the field's own rules, the same as the offer would have been.
+  const fillStrongPassword = async () => {
+    if (!tabId || !passwordField) return
+    setBusy(true)
+    try {
+      const password = await commands.generatePasswordForField(
+        passwordField.rules,
+        passwordField.maxLength,
+      )
+      await commands.fillGeneratedPassword(tabId, password)
+      close()
+    } catch {
+      // Nothing was filled, so the menu stays where it is.
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const onManage = () => {
     close()
     if (!workspaceId) return
@@ -149,7 +171,7 @@ export function VaultMenuSurface() {
 
   if (!anchor) return null
 
-  const hasContent = !!pending || (!!host && candidates.length > 0)
+  const hasContent = !!pending || (!!host && candidates.length > 0) || !!passwordField
 
   return (
     <div className="kb-vaultmenu-backdrop" onMouseDown={close}>
@@ -214,7 +236,25 @@ export function VaultMenuSurface() {
         </button>
       ))}
 
-          {candidates.length > 0 && <div className="kb-vaultmenu-sep" />}
+          {passwordField && (
+            <button
+              type="button"
+              className="kb-vaultmenu-row"
+              role="menuitem"
+              disabled={busy}
+              onClick={() => void fillStrongPassword()}
+            >
+              <span className="kb-vaultmenu-ico" aria-hidden>
+                <LockIcon />
+              </span>
+              <span className="kb-vaultmenu-text">
+                <span className="kb-vaultmenu-user">Use a strong password</span>
+                <span className="kb-vaultmenu-meta">Generated to fit this field</span>
+              </span>
+            </button>
+          )}
+
+          {(candidates.length > 0 || passwordField) && <div className="kb-vaultmenu-sep" />}
           <button type="button" className="kb-vaultmenu-manage" role="menuitem" onClick={onManage}>
             Manage passwords
           </button>

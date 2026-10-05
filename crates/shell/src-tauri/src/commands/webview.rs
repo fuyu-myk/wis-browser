@@ -286,6 +286,7 @@ pub async fn create_tab_webview(
 
             // A popped-out tab navigating loses its pinned video.
             if matches!(event, PageLoadEvent::Started) {
+                crate::signup::forget_field(&tab_id.as_uuid().to_string());
                 #[cfg(target_os = "linux")]
                 crate::autoplay::apply_for_page_load(&app, &webview, payload.url().as_str());
                 crate::commands::apply_zoom_to_webview(

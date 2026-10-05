@@ -149,6 +149,7 @@ pub async fn close_tab(
     const CLOSED_TAB_CAP: u32 = 25;
 
     crate::page_source::forget(id);
+    crate::signup::forget_field(&id.as_uuid().to_string());
 
     // Record the tab for "reopen closed tab" before it's removed.
     {

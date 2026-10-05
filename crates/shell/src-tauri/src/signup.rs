@@ -35,6 +35,44 @@ struct SignupEvent {
     /// The field's `passwordrules`, so the password fits what the site takes.
     rules: Option<String>,
     max_length: Option<u32>,
+    /// It looks like a signup, so the offer is shown unprompted.
+    qualifies: bool,
+}
+
+/// The password field last focused in a tab, for "Use a strong password".
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldInfo {
+    rules: Option<String>,
+    max_length: Option<u32>,
+}
+
+static FIELDS: std::sync::Mutex<Option<std::collections::HashMap<String, FieldInfo>>> =
+    std::sync::Mutex::new(None);
+
+fn remember_field(tab_id: &str, field: FieldInfo) {
+    FIELDS
+        .lock()
+        .expect("signup fields poisoned")
+        .get_or_insert_with(Default::default)
+        .insert(tab_id.to_string(), field);
+}
+
+/// Drop what a tab's page reported, when it navigates or closes.
+pub(crate) fn forget_field(tab_id: &str) {
+    if let Some(fields) = FIELDS.lock().expect("signup fields poisoned").as_mut() {
+        fields.remove(tab_id);
+    }
+}
+
+/// The password field last focused in `tab_id`'s page, if it is still there.
+#[tauri::command]
+pub fn signup_field(tab_id: wis_core::TabId) -> Option<FieldInfo> {
+    FIELDS
+        .lock()
+        .expect("signup fields poisoned")
+        .as_ref()
+        .and_then(|fields| fields.get(&tab_id.as_uuid().to_string()).cloned())
 }
 
 /// Far past any real rules string; the page is untrusted.
@@ -64,8 +102,9 @@ const SIGNUP_JS: &str = r#"(function () {
   if (window.__wisSignupInstalled) return;
   window.__wisSignupInstalled = true;
 
-  function post(el) {
+  function post(el, signup) {
     var body = {
+      qualifies: signup,
       rules: (el.getAttribute && el.getAttribute('passwordrules')) || '',
       maxLength: el.maxLength > 0 ? el.maxLength : 0
     };
@@ -98,6 +137,12 @@ const SIGNUP_JS: &str = r#"(function () {
     return false;
   }
 
+  function eligible(el) {
+    if (!el || el.type !== 'password' || el.disabled || el.readOnly) return false;
+    var declared = (el.autocomplete || el.getAttribute('autocomplete') || '').toLowerCase();
+    return declared.indexOf('current-password') === -1;
+  }
+
   function qualifies(el) {
     if (!el || el.type !== 'password' || el.disabled || el.readOnly) return false;
     var declared = (el.autocomplete || el.getAttribute('autocomplete') || '').toLowerCase();
@@ -111,12 +156,12 @@ const SIGNUP_JS: &str = r#"(function () {
 
   document.addEventListener('focusin', function (e) {
     if (window.top !== window.self) return;
-    if (qualifies(e.target)) post(e.target);
+    if (eligible(e.target)) post(e.target, qualifies(e.target));
   }, true);
 })();"#;
 
 /// Tell the chrome that a signup field in `label`'s tab took focus.
-fn announce(label: &str, rules: Option<String>, max_length: Option<u32>) {
+fn announce(label: &str, rules: Option<String>, max_length: Option<u32>, qualifies: bool) {
     let Some(app) = APP.get() else {
         return;
     };
@@ -134,12 +179,20 @@ fn announce(label: &str, rules: Option<String>, max_length: Option<u32>) {
         return;
     };
 
+    remember_field(
+        tab_id,
+        FieldInfo {
+            rules: rules.clone(),
+            max_length,
+        },
+    );
     let payload = SignupEvent {
         window: webview.window().label().to_string(),
         tab_id: tab_id.to_string(),
         host,
         rules,
         max_length,
+        qualifies,
     };
     if let Err(err) = app.emit(SIGNUP_EVENT, payload) {
         log::warn!("emit {SIGNUP_EVENT} failed: {err}");
@@ -152,7 +205,11 @@ pub(crate) fn dispatch_message(label: &str, body: &serde_json::Value) {
         body.get("rules").and_then(serde_json::Value::as_str),
         body.get("maxLength").and_then(serde_json::Value::as_i64),
     );
-    announce(label, rules, max_length);
+    let qualifies = body
+        .get("qualifies")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    announce(label, rules, max_length, qualifies);
 }
 
 /// Put `password` into every password field of a signup form.
@@ -259,6 +316,20 @@ mod macos {
         Some(CStr::from_ptr(utf8).to_string_lossy().into_owned())
     }
 
+    unsafe fn bool_field(dict: *mut AnyObject, key: &str) -> bool {
+        let value = field(dict, key);
+        if value.is_null() {
+            return false;
+        }
+        let is_num: bool = msg_send![value, isKindOfClass: class!(NSNumber)];
+        if !is_num {
+            return false;
+        }
+        let flag: bool = msg_send![value, boolValue];
+
+        flag
+    }
+
     unsafe fn number_field(dict: *mut AnyObject, key: &str) -> Option<f64> {
         let value = field(dict, key);
         if value.is_null() {
@@ -275,14 +346,14 @@ mod macos {
 
     /// The field constraints the page posted, or none when the body is not
     /// the dictionary the script sends.
-    pub(super) unsafe fn read_body(message: *mut AnyObject) -> (Option<String>, Option<u32>) {
+    pub(super) unsafe fn read_body(message: *mut AnyObject) -> (Option<String>, Option<u32>, bool) {
         let body: *mut AnyObject = msg_send![message, body];
         if body.is_null() {
-            return (None, None);
+            return (None, None, false);
         }
         let is_dict: bool = msg_send![body, isKindOfClass: class!(NSDictionary)];
         if !is_dict {
-            return (None, None);
+            return (None, None, false);
         }
 
         let rules = string_field(body, "rules");
@@ -290,7 +361,8 @@ mod macos {
             .filter(|n| n.is_finite())
             .map(|n| n as i64);
 
-        field_constraints(rules.as_deref(), max_length)
+        let (rules, max_length) = field_constraints(rules.as_deref(), max_length);
+        (rules, max_length, bool_field(body, "qualifies"))
     }
 
     struct HandlerIvars {
@@ -330,8 +402,8 @@ mod macos {
                     }
                 }
 
-                let (rules, max_length) = unsafe { read_body(message) };
-                announce(&label, rules, max_length);
+                let (rules, max_length, qualifies) = unsafe { read_body(message) };
+                announce(&label, rules, max_length, qualifies);
             }
         }
     );

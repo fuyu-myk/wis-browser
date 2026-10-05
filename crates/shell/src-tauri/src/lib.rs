@@ -696,6 +696,7 @@ pub fn run() {
             page_image::copy_image,
             page_menu::clear_menu_selection,
             signup::fill_generated_password,
+            signup::signup_field,
             page_source::capture_page_source,
             page_source::page_source,
             page_image::save_image_as,

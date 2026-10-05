@@ -19,7 +19,7 @@ import { commands } from '@/bindings/commands'
 import type { TabId, UserSettings } from '@/bindings/types'
 import { useOverlay } from '@/hooks/useOverlay'
 
-const FIELD_EVENT = 'wis-signup-field'
+export const SIGNUP_FIELD_EVENT = 'wis-signup-field'
 export const SIGNUP_SHOW_EVENT = 'wis-signup-show'
 export const SIGNUP_CLOSE_EVENT = 'wis-signup-close'
 export const SIGNUP_READY_EVENT = 'wis-signup-ready'
@@ -41,6 +41,8 @@ interface SignupField {
   /** The field's `passwordrules`, so the password fits what the site takes. */
   rules: string | null
   maxLength: number | null
+  /** It looks like a signup. Other password fields only enable the key button. */
+  qualifies: boolean
 }
 
 export function useSignupOffer(
@@ -68,8 +70,9 @@ export function useSignupOffer(
       }
     }
 
-    void listen<SignupField>(FIELD_EVENT, (event) => {
+    void listen<SignupField>(SIGNUP_FIELD_EVENT, (event) => {
       if (event.payload.window !== getCurrentWindow().label) return
+      if (!event.payload.qualifies) return
       const offer = settingsRef.current?.password_offer ?? 'ask'
       if (offer === 'never') return
       // One prompt per focus run.

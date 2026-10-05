@@ -32,6 +32,7 @@ import {
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { WisMark } from '@/components/WisMark'
 import { FOCUS_URLBAR_EVENT } from '@/hooks/useKeyActions'
+import { SIGNUP_FIELD_EVENT } from '@/hooks/useSignupOffer'
 import { useOpenTabActions } from '@/hooks/useOpenTabActions'
 import { useOverlay } from '@/hooks/useOverlay'
 import { useUrlbarSuggest } from '@/hooks/useUrlbarSuggest'
@@ -54,6 +55,7 @@ function hostOf(tab: Tab | null): string | null {
 }
 
 const VAULT_HAS_KEY = 'vault-has'
+const SIGNUP_FIELD_KEY = 'signup-field'
 
 /**
  * Key button in the address bar, shown when a login is saved for the current
@@ -78,9 +80,18 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
     staleTime: 30_000,
   })
 
+  // A focused password field that is not a sign-in one makes "Use a strong
+  // password" available, which is the way in when signup detection misses.
+  const tabId = activeTab?.id ?? null
+  const { data: passwordField } = useQuery({
+    queryKey: [SIGNUP_FIELD_KEY, tabId],
+    queryFn: () => (tabId ? commands.signupField(tabId) : Promise.resolve(null)),
+    enabled: tabId !== null,
+  })
+
   // A pending capture keeps the prompt alive regardless of the current page host.
   const hasPending = pendingHost !== null
-  const visible = hasPending || (host != null && hasCreds === true)
+  const visible = hasPending || (host != null && hasCreds === true) || passwordField != null
 
   const anchorRect = useCallback(() => {
     const el = btnRef.current
@@ -116,6 +127,23 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
   useEffect(() => {
     void commands.ensureOverlay('vaultmenu').catch(() => undefined)
   }, [])
+
+  useEffect(() => {
+    let un: UnlistenFn | null = null
+    let cancelled = false
+    void listen(SIGNUP_FIELD_EVENT, () => {
+      void qc.invalidateQueries({ queryKey: [SIGNUP_FIELD_KEY] })
+    }).then((fn) => (cancelled ? fn() : (un = fn)))
+    return () => {
+      cancelled = true
+      un?.()
+    }
+  }, [qc])
+
+  // A navigation drops the page's fields, so the answer goes stale with it.
+  useEffect(() => {
+    void qc.invalidateQueries({ queryKey: [SIGNUP_FIELD_KEY] })
+  }, [activeTab?.url, qc])
 
   // Recover an outstanding capture (e.g. after a post-login navigation re-renders
   // this bar).
