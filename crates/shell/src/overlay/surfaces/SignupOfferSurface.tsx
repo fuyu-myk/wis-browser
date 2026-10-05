@@ -17,6 +17,7 @@ import {
   SIGNUP_CLOSE_EVENT,
   SIGNUP_READY_EVENT,
   SIGNUP_SHOW_EVENT,
+  SIGNUP_WHEEL_EVENT,
   type SignupOffer,
 } from '@/hooks/useSignupOffer'
 import { cx } from '@/lib/cx'
@@ -44,6 +45,12 @@ export function SignupOfferSurface() {
       cancelled = true
       unlisten?.()
     }
+  }, [])
+
+  useEffect(() => {
+    const onWheel = () => void emit(SIGNUP_WHEEL_EVENT)
+    window.addEventListener('wheel', onWheel, { passive: true })
+    return () => window.removeEventListener('wheel', onWheel)
   }, [])
 
   const decide = (accepted: boolean) => {

@@ -18,6 +18,14 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 const SIGNUP_EVENT: &str = "wis-signup-field";
+/// The anchored field moved, because the page scrolled or resized.
+const SIGNUP_MOVE_EVENT: &str = "wis-signup-move";
+/// The tab's page went, by navigation or close, taking its fields with it.
+const SIGNUP_GONE_EVENT: &str = "wis-signup-gone";
+/// Focus moved on from the field an offer was open for.
+const SIGNUP_LEAVE_EVENT: &str = "wis-signup-leave";
+/// The page started scrolling under an open offer; a move follows once it settles.
+const SIGNUP_SCROLL_EVENT: &str = "wis-signup-scroll";
 
 static APP: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
 
@@ -37,6 +45,159 @@ struct SignupEvent {
     max_length: Option<u32>,
     /// It looks like a signup, so the offer is shown unprompted.
     qualifies: bool,
+    /// Where the field is, so the offer can sit beside it.
+    rect: Option<FieldRect>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SignupMoveEvent {
+    tab_id: String,
+    rect: FieldRect,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SignupGoneEvent {
+    tab_id: String,
+}
+
+/// A field's box in its page's own CSS pixels, with the viewport width the
+/// chrome measures its zoom against.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FieldRect {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    view_width: f64,
+}
+
+/// Past any real page. These end up as overlay bounds, so the page is not
+/// trusted to keep them sane.
+const MAX_COORD: f64 = 1_000_000.0;
+
+fn field_rect(
+    x: Option<f64>,
+    y: Option<f64>,
+    width: Option<f64>,
+    height: Option<f64>,
+    view_width: Option<f64>,
+) -> Option<FieldRect> {
+    let (x, y, width, height, view_width) = (x?, y?, width?, height?, view_width?);
+    let parts = [x, y, width, height, view_width];
+    if parts
+        .iter()
+        .any(|part| !part.is_finite() || part.abs() > MAX_COORD)
+    {
+        return None;
+    }
+    if width < 0.0 || height < 0.0 || view_width <= 0.0 {
+        return None;
+    }
+
+    Some(FieldRect {
+        x,
+        y,
+        width,
+        height,
+        view_width,
+    })
+}
+
+#[derive(Debug)]
+enum Report {
+    Leave,
+    Scroll,
+    Focus {
+        rules: Option<String>,
+        max_length: Option<u32>,
+        qualifies: bool,
+        rect: Option<FieldRect>,
+    },
+    Move(FieldRect),
+}
+
+/// What the page sent. Read through accessors, so one parser serves both the
+/// macOS dictionary and the JSON the other platforms deliver.
+fn read_report(
+    text: impl Fn(&str) -> Option<String>,
+    number: impl Fn(&str) -> Option<f64>,
+    flag: impl Fn(&str) -> bool,
+) -> Option<Report> {
+    let rect = field_rect(
+        number("x"),
+        number("y"),
+        number("width"),
+        number("height"),
+        number("viewWidth"),
+    );
+    match text("kind").as_deref() {
+        Some("move") => return rect.map(Report::Move),
+        Some("leave") => return Some(Report::Leave),
+        Some("scroll") => return Some(Report::Scroll),
+        _ => {}
+    }
+
+    let (rules, max_length) = field_constraints(
+        text("rules").as_deref(),
+        number("maxLength")
+            .filter(|n| n.is_finite())
+            .map(|n| n as i64),
+    );
+
+    Some(Report::Focus {
+        rules,
+        max_length,
+        qualifies: flag("qualifies"),
+        rect,
+    })
+}
+
+fn dispatch(label: &str, report: Report) {
+    match report {
+        Report::Focus {
+            rules,
+            max_length,
+            qualifies,
+            rect,
+        } => announce(label, rules, max_length, qualifies, rect),
+        Report::Move(rect) => announce_move(label, rect),
+        Report::Leave => announce_tab(label, SIGNUP_LEAVE_EVENT),
+        Report::Scroll => announce_tab(label, SIGNUP_SCROLL_EVENT),
+    }
+}
+
+fn announce_tab(label: &str, event: &str) {
+    let Some(app) = APP.get() else {
+        return;
+    };
+    let Some(tab_id) = label.strip_prefix("tab-") else {
+        return;
+    };
+    let payload = SignupGoneEvent {
+        tab_id: tab_id.to_string(),
+    };
+    if let Err(err) = app.emit(event, payload) {
+        log::warn!("emit {event} failed: {err}");
+    }
+}
+
+fn announce_move(label: &str, rect: FieldRect) {
+    let Some(app) = APP.get() else {
+        return;
+    };
+    let Some(tab_id) = label.strip_prefix("tab-") else {
+        return;
+    };
+    let payload = SignupMoveEvent {
+        tab_id: tab_id.to_string(),
+        rect,
+    };
+    if let Err(err) = app.emit(SIGNUP_MOVE_EVENT, payload) {
+        log::warn!("emit {SIGNUP_MOVE_EVENT} failed: {err}");
+    }
 }
 
 /// The password field last focused in a tab, for "Use a strong password".
@@ -58,10 +219,35 @@ fn remember_field(tab_id: &str, field: FieldInfo) {
         .insert(tab_id.to_string(), field);
 }
 
-/// Drop what a tab's page reported, when it navigates or closes.
+/// Drop what a tab's page reported, when it navigates or closes, and tell the
+/// chrome so an offer anchored to that page goes with it.
 pub(crate) fn forget_field(tab_id: &str) {
-    if let Some(fields) = FIELDS.lock().expect("signup fields poisoned").as_mut() {
-        fields.remove(tab_id);
+    let removed = FIELDS
+        .lock()
+        .expect("signup fields poisoned")
+        .as_mut()
+        .and_then(|fields| fields.remove(tab_id))
+        .is_some();
+    if !removed {
+        return;
+    }
+
+    if let Some(app) = APP.get() {
+        let payload = SignupGoneEvent {
+            tab_id: tab_id.to_string(),
+        };
+        if let Err(err) = app.emit(SIGNUP_GONE_EVENT, payload) {
+            log::warn!("emit {SIGNUP_GONE_EVENT} failed: {err}");
+        }
+    }
+}
+
+/// Stop the page reporting where its offer's field is, once the offer closes.
+#[tauri::command]
+pub fn release_signup_field(app: AppHandle, tab_id: wis_core::TabId) {
+    let label = format!("tab-{}", tab_id.as_uuid());
+    if let Some(webview) = app.webviews().get(&label) {
+        let _ = webview.eval("window.__wisSignupRelease && window.__wisSignupRelease();");
     }
 }
 
@@ -102,12 +288,10 @@ const SIGNUP_JS: &str = r#"(function () {
   if (window.__wisSignupInstalled) return;
   window.__wisSignupInstalled = true;
 
-  function post(el, signup) {
-    var body = {
-      qualifies: signup,
-      rules: (el.getAttribute && el.getAttribute('passwordrules')) || '',
-      maxLength: el.maxLength > 0 ? el.maxLength : 0
-    };
+  var anchored = null;
+  var settle = null;
+
+  function send(body) {
     try {
       var h = window.webkit && window.webkit.messageHandlers;
       if (h && h.wisSignup) {
@@ -116,6 +300,27 @@ const SIGNUP_JS: &str = r#"(function () {
         window.wisSignup.postMessage(JSON.stringify(body));
       }
     } catch (e) {}
+  }
+
+  function measured(el, kind) {
+    var r = el.getBoundingClientRect();
+    return {
+      kind: kind,
+      x: r.left,
+      y: r.top,
+      width: r.width,
+      height: r.height,
+      viewWidth: window.innerWidth
+    };
+  }
+
+  function post(el, signup) {
+    var body = measured(el, 'focus');
+    body.qualifies = signup;
+    body.rules = (el.getAttribute && el.getAttribute('passwordrules')) || '';
+    body.maxLength = el.maxLength > 0 ? el.maxLength : 0;
+    anchored = signup ? el : null;
+    send(body);
   }
 
   function passwordCount(root) {
@@ -156,12 +361,49 @@ const SIGNUP_JS: &str = r#"(function () {
 
   document.addEventListener('focusin', function (e) {
     if (window.top !== window.self) return;
+    // Moving to anything else in the page closes the offer.
+    if (anchored && e.target !== anchored) {
+      anchored = null;
+      send({ kind: 'leave' });
+    }
     if (eligible(e.target)) post(e.target, qualifies(e.target));
   }, true);
+
+  function moved(e) {
+    if (!anchored) return;
+    var scroller = e && e.target;
+    if (scroller && scroller !== document && scroller.contains && !scroller.contains(anchored)) return;
+    if (settle === null) send({ kind: 'scroll' });
+    else clearTimeout(settle);
+    settle = setTimeout(function () {
+      settle = null;
+      if (!anchored) return;
+      if (!anchored.isConnected) {
+        anchored = null;
+        send({ kind: 'leave' });
+        return;
+      }
+      send(measured(anchored, 'move'));
+    }, 150);
+  }
+
+  window.addEventListener('scroll', moved, { capture: true, passive: true });
+  window.addEventListener('resize', moved, { passive: true });
+  window.__wisSignupRelease = function () {
+    anchored = null;
+    clearTimeout(settle);
+    settle = null;
+  };
 })();"#;
 
 /// Tell the chrome that a signup field in `label`'s tab took focus.
-fn announce(label: &str, rules: Option<String>, max_length: Option<u32>, qualifies: bool) {
+fn announce(
+    label: &str,
+    rules: Option<String>,
+    max_length: Option<u32>,
+    qualifies: bool,
+    rect: Option<FieldRect>,
+) {
     let Some(app) = APP.get() else {
         return;
     };
@@ -193,6 +435,7 @@ fn announce(label: &str, rules: Option<String>, max_length: Option<u32>, qualifi
         rules,
         max_length,
         qualifies,
+        rect,
     };
     if let Err(err) = app.emit(SIGNUP_EVENT, payload) {
         log::warn!("emit {SIGNUP_EVENT} failed: {err}");
@@ -201,15 +444,22 @@ fn announce(label: &str, rules: Option<String>, max_length: Option<u32>, qualifi
 
 #[cfg(any(windows, target_os = "linux"))]
 pub(crate) fn dispatch_message(label: &str, body: &serde_json::Value) {
-    let (rules, max_length) = field_constraints(
-        body.get("rules").and_then(serde_json::Value::as_str),
-        body.get("maxLength").and_then(serde_json::Value::as_i64),
+    let report = read_report(
+        |key| {
+            body.get(key)
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        },
+        |key| body.get(key).and_then(serde_json::Value::as_f64),
+        |key| {
+            body.get(key)
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false)
+        },
     );
-    let qualifies = body
-        .get("qualifies")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
-    announce(label, rules, max_length, qualifies);
+    if let Some(report) = report {
+        dispatch(label, report);
+    }
 }
 
 /// Put `password` into every password field of a signup form.
@@ -288,7 +538,7 @@ mod macos {
     use std::ffi::CStr;
     use std::os::raw::c_char;
 
-    use super::{announce, field_constraints};
+    use super::{dispatch, read_report, Report};
 
     unsafe fn ns_string(s: &str) -> *mut AnyObject {
         let c = CString::new(s).unwrap_or_default();
@@ -344,25 +594,23 @@ mod macos {
         Some(number)
     }
 
-    /// The field constraints the page posted, or none when the body is not
-    /// the dictionary the script sends.
-    pub(super) unsafe fn read_body(message: *mut AnyObject) -> (Option<String>, Option<u32>, bool) {
+    /// What the page posted, or none when the body is not the dictionary the
+    /// script sends.
+    pub(super) unsafe fn read_body(message: *mut AnyObject) -> Option<Report> {
         let body: *mut AnyObject = msg_send![message, body];
         if body.is_null() {
-            return (None, None, false);
+            return None;
         }
         let is_dict: bool = msg_send![body, isKindOfClass: class!(NSDictionary)];
         if !is_dict {
-            return (None, None, false);
+            return None;
         }
 
-        let rules = string_field(body, "rules");
-        let max_length = number_field(body, "maxLength")
-            .filter(|n| n.is_finite())
-            .map(|n| n as i64);
-
-        let (rules, max_length) = field_constraints(rules.as_deref(), max_length);
-        (rules, max_length, bool_field(body, "qualifies"))
+        read_report(
+            |key| unsafe { string_field(body, key) },
+            |key| unsafe { number_field(body, key) },
+            |key| unsafe { bool_field(body, key) },
+        )
     }
 
     struct HandlerIvars {
@@ -402,8 +650,9 @@ mod macos {
                     }
                 }
 
-                let (rules, max_length, qualifies) = unsafe { read_body(message) };
-                announce(&label, rules, max_length, qualifies);
+                if let Some(report) = unsafe { read_body(message) } {
+                    dispatch(&label, report);
+                }
             }
         }
     );
@@ -573,6 +822,110 @@ mod tests {
     #[test]
     fn a_maxlength_past_u32_is_dropped_rather_than_wrapped() {
         assert_eq!(field_constraints(None, Some(i64::MAX)).1, None);
+    }
+
+    fn report_from(fields: &[(&str, &str)]) -> Option<Report> {
+        let map: std::collections::HashMap<&str, &str> = fields.iter().copied().collect();
+        read_report(
+            |key| map.get(key).map(|value| value.to_string()),
+            |key| map.get(key).and_then(|value| value.parse().ok()),
+            |key| map.get(key) == Some(&"true"),
+        )
+    }
+
+    const RECT: [(&str, &str); 5] = [
+        ("x", "120"),
+        ("y", "340.5"),
+        ("width", "300"),
+        ("height", "40"),
+        ("viewWidth", "1280"),
+    ];
+
+    #[test]
+    fn a_focus_carries_the_fields_constraints_and_where_it_is() {
+        let mut fields = RECT.to_vec();
+        fields.extend([
+            ("kind", "focus"),
+            ("qualifies", "true"),
+            ("rules", "maxlength: 16;"),
+            ("maxLength", "64"),
+        ]);
+        let Some(Report::Focus {
+            rules,
+            max_length,
+            qualifies,
+            rect,
+        }) = report_from(&fields)
+        else {
+            panic!("expected a focus report");
+        };
+        assert_eq!(rules.as_deref(), Some("maxlength: 16;"));
+        assert_eq!(max_length, Some(64));
+        assert!(qualifies);
+        assert_eq!(rect.map(|r| (r.x, r.y)), Some((120.0, 340.5)));
+    }
+
+    #[test]
+    fn a_focus_without_a_usable_rect_still_reports_the_field() {
+        let Some(Report::Focus { rect, .. }) = report_from(&[("kind", "focus")]) else {
+            panic!("expected a focus report");
+        };
+        assert!(
+            rect.is_none(),
+            "the offer falls back to the top of the pane"
+        );
+    }
+
+    #[test]
+    fn a_move_with_a_rect_is_a_move() {
+        let mut fields = RECT.to_vec();
+        fields.push(("kind", "move"));
+        assert!(matches!(report_from(&fields), Some(Report::Move(_))));
+    }
+
+    #[test]
+    fn a_leave_needs_nothing_else() {
+        assert!(matches!(report_from(&[("kind", "leave")]), Some(Report::Leave)));
+    }
+
+    #[test]
+    fn a_scroll_needs_nothing_else() {
+        assert!(matches!(report_from(&[("kind", "scroll")]), Some(Report::Scroll)));
+    }
+
+    #[test]
+    fn a_move_without_a_rect_is_dropped() {
+        assert!(report_from(&[("kind", "move"), ("x", "1")]).is_none());
+    }
+
+    #[test]
+    fn non_finite_coordinates_are_refused() {
+        assert!(field_rect(Some(f64::NAN), Some(0.0), Some(1.0), Some(1.0), Some(800.0)).is_none());
+        assert!(field_rect(
+            Some(0.0),
+            Some(f64::INFINITY),
+            Some(1.0),
+            Some(1.0),
+            Some(800.0)
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn a_negative_size_or_no_viewport_is_refused() {
+        assert!(field_rect(Some(0.0), Some(0.0), Some(-1.0), Some(1.0), Some(800.0)).is_none());
+        assert!(field_rect(Some(0.0), Some(0.0), Some(1.0), Some(1.0), Some(0.0)).is_none());
+    }
+
+    /// The page is untrusted, and these end up as overlay bounds.
+    #[test]
+    fn an_absurd_magnitude_is_refused() {
+        assert!(field_rect(Some(1e12), Some(0.0), Some(1.0), Some(1.0), Some(800.0)).is_none());
+    }
+
+    #[test]
+    fn a_field_scrolled_above_the_viewport_is_still_a_rect() {
+        assert!(field_rect(Some(10.0), Some(-500.0), Some(1.0), Some(1.0), Some(800.0)).is_some());
     }
 
     #[test]

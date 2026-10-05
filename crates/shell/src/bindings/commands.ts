@@ -816,6 +816,11 @@ export const commands = {
     return invoke('generate_password_for_field', { rules, maxLength })
   },
 
+  /** Stop a tab's page reporting where its offer's field is, once the offer closes. */
+  async releaseSignupField(tabId: TabId): Promise<void> {
+    return invoke('release_signup_field', { tabId })
+  },
+
   /** The password field last focused in a tab's page, while it is still there. */
   async signupField(tabId: TabId): Promise<SignupFieldInfo | null> {
     return invoke('signup_field', { tabId })

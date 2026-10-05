@@ -32,7 +32,7 @@ interface TabWebViewHostProps {
 export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   usePermissionOverlay(hostRef)
-  useSignupOffer(hostRef, state.settings)
+  useSignupOffer(hostRef, state)
   useAppLaunchOverlay(hostRef)
   const findOverlay = useOverlay('find')
   const findOpenRef = useRef(false)
