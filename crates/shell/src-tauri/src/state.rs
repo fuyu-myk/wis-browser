@@ -690,21 +690,11 @@ impl AppState {
         ))
     }
 
-    /// Drop all running proxies. Next call to [`ensure_proxy_for`] for a
-    /// workspace rebuilds its proxy from the current settings/mode.
-    pub async fn clear_proxies(&self) {
-        let mut proxies = self.proxies.lock().await;
-        let count = proxies.len();
-        proxies.clear();
-        if count > 0 {
-            log::info!("cleared {count} proxy(ies); next request rebuilds them");
-        }
-    }
-
     /// Swap in a new filter list. Rebuilds the [`TrackerBlocker`] (host-level
     /// blocking used by the proxy) and the per-mode WebKit content-rule
-    /// specs (engine-level blocking), then drops every running proxy so the
-    /// next request picks up the new policy. Live tab webviews still hold
+    /// specs (engine-level blocking), then re-points every running proxy at
+    /// the new blocker in place. Dropping them instead would strand the open
+    /// tabs, which keep the port they were built with. Live tab webviews still hold
     /// the previous rule list attached by [`crate::content_filter`]; the
     /// caller is responsible for re-attaching the new specs to active tabs.
     /// Returns the number of bytes in the new filter text for diagnostics.
@@ -750,7 +740,7 @@ impl AppState {
             let mut guard = self.content_rules.write().expect("content_rules poisoned");
             *guard = rules;
         }
-        self.clear_proxies().await;
+        self.refresh_all_proxy_policies().await;
 
         log::info!("filter engine rebuilt from {size} bytes of filter text");
         Ok(size)
@@ -952,16 +942,22 @@ mod tests {
         assert!(port_a > 0);
     }
 
+    /// Open tabs keep the port they were built with, so a rebuild that
+    /// dropped the proxy would leave them refused on every new connection.
     #[tokio::test]
-    async fn clear_proxies_forces_rebuild_on_next_ensure() {
+    async fn a_filter_rebuild_keeps_each_proxy_on_its_port() {
         let state = app_state_for_test();
         let ws_id = state.browser.lock().await.active_workspace_id;
-        let _ = state.ensure_proxy_for(ws_id).await.expect("start");
-        state.clear_proxies().await;
-        assert!(
-            state.proxies.lock().await.is_empty(),
-            "clear_proxies must drop all entries"
-        );
-        let _new_port = state.ensure_proxy_for(ws_id).await.expect("rebind");
+        let port = state.ensure_proxy_for(ws_id).await.expect("start");
+
+        state
+            .rebuild_filter_engine("||example.test^\n".to_string())
+            .await
+            .expect("rebuild succeeds");
+
+        assert_eq!(state.ensure_proxy_for(ws_id).await.expect("again"), port);
+        tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .expect("the open tabs' port still accepts connections");
     }
 }

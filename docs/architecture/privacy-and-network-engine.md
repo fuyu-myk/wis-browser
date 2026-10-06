@@ -20,7 +20,7 @@ This guide elaborates on WIS.md. If anything here conflicts, WIS.md wins.
 
 ## Idle teardown
 
-- Proxies are lazy and per-workspace: `AppState::ensure_proxy_for` (`crates/shell/src-tauri/src/state.rs:448`) spawns one on the first webview creation for a workspace and is idempotent thereafter. A 60s sweep in `lib.rs` (near `crates/shell/src-tauri/src/lib.rs:408`) drops a workspace's `ProxyServer` once it has had no live tab webviews for `PROXY_IDLE_SECS` (10 minutes). The active workspace is exempt, since Peek and widget panels always attach to it and would otherwise race a teardown. Dropping the server frees its sockets and tasks; the next webview creation respawns it.
+- Proxies are lazy and per-workspace: `AppState::ensure_proxy_for` (`crates/shell/src-tauri/src/state.rs:448`) spawns one on the first webview creation for a workspace and is idempotent thereafter. A 60s sweep in `lib.rs` (near `crates/shell/src-tauri/src/lib.rs:408`) drops a workspace's `ProxyServer` once it has had no live tab webviews for `PROXY_IDLE_SECS` (10 minutes). The active workspace is exempt, since Peek and widget panels always attach to it and would otherwise race a teardown. Dropping the server frees its sockets and tasks; the next webview creation respawns it. Nothing else drops a live workspace's proxy: an open tab keeps the port it was built with, so a filter-list rebuild re-points each proxy at the new blocker in place (`refresh_all_proxy_policies`) rather than restarting it. On macOS a system wake also severs every proxy's open tunnels (`wake.rs`), since one that died during sleep would otherwise hang its page until a kernel timeout.
 
 ## Tor
 
