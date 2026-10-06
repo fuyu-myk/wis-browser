@@ -74,7 +74,7 @@ Cmd/middle-click on a link must open a new **tab**, not a popup, so it is interc
 
 An overlaying webview or floating window over a tab does not stop the covered tab `WKWebView` from updating CSS `:hover`, so `hover_guard.rs` suppresses it (macOS).
 
-- Each covering surface carries a tracking area; while the cursor is over it, the covered window's tab pages get a scoped stylesheet disabling `pointer-events`, removed on leave.
+- Each covering surface carries a tracking area; while the cursor is over it, the covered window's tab pages get a scoped stylesheet disabling `pointer-events`, removed on leave. The areas are active always, not only in the key window: a leave lost while the window was not key, as across a sleep, left every tab ignoring clicks until it reloaded. A system wake also lifts every guard (`wake.rs`).
 - Scope: the widget panel (same-window child, `install_panel_hover_guard`), the video popout window (suppresses the origin window's other tabs), and engine `window.open` popups (free-floating, suppress **every** window's tabs via `arm_popup_suppression`).
 
 ## Capability boundary and window styling

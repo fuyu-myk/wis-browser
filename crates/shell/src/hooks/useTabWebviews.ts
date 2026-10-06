@@ -408,10 +408,19 @@ export function useTabWebviews({
 
   // Idle sweep: discard background webviews hidden past the threshold.
   useEffect(() => {
+    let lastTick = Date.now()
     const interval = setInterval(() => {
+      const now = Date.now()
+      // Time the system slept is not time hidden.
+      const gap = now - lastTick - SWEEP_INTERVAL_MS
+      lastTick = now
+      if (gap > SWEEP_INTERVAL_MS) {
+        for (const [id, since] of hiddenSinceRef.current) {
+          hiddenSinceRef.current.set(id, since + gap)
+        }
+      }
       if (!sleepEnabledRef.current) return
       const map = webviewsRef.current
-      const now = Date.now()
       const thresholdMs = Math.max(1, sleepMinutesRef.current) * 60_000
       let changed = false
       for (const [id, wv] of Array.from(map.entries())) {

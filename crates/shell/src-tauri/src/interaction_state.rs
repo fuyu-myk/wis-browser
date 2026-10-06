@@ -83,6 +83,16 @@ pub fn read<R: tauri::Runtime>(_webview: &tauri::webview::Webview<R>) -> Option<
     None
 }
 
+/// [`read`] for async callers: it waits up to 500 ms on the main thread, which
+/// would otherwise hold a runtime worker the proxies share.
+pub async fn read_async(webview: Option<tauri::Webview>) -> Option<String> {
+    let webview = webview?;
+    tauri::async_runtime::spawn_blocking(move || read(&webview))
+        .await
+        .ok()
+        .flatten()
+}
+
 /// Apply a previously read interaction state to a fresh webview. The restore
 /// triggers its own navigation, so callers create the webview on
 /// `about:blank` first. Best-effort: failures just leave the blank page and

@@ -124,7 +124,7 @@ async fn capture_and_store(app: &AppHandle, state: &AppState, tab_id: TabId) {
             let Some(webview) = app.webviews().get(&label).cloned() else {
                 return;
             };
-            let Some(blob) = crate::interaction_state::read(&webview) else {
+            let Some(blob) = crate::interaction_state::read_async(Some(webview)).await else {
                 return;
             };
             let _ =

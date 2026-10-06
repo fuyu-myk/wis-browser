@@ -135,18 +135,24 @@ pub async fn set_pane_ratio(
 }
 
 /// Close a tab. `return_to` (the window's MRU previous tab) is activated in
-/// the same transition when this is a plain close of the active tab; split
-/// closes keep core's collapse + surviving-pane focus, and a stale or
-/// cross-workspace target falls back to core's tab_order neighbor pick.
+/// the same transition when this is a plain close of the active tab; a stale
+/// or cross-workspace target falls back to core's tab_order neighbor pick.
+/// Closing a pane in a split shows the most recent tab of `recent` not
+/// already in a pane in its place.
 #[tauri::command]
 pub async fn close_tab(
     app: AppHandle,
     state: State<'_, AppState>,
     id: TabId,
     return_to: Option<TabId>,
+    recent: Option<Vec<TabId>>,
 ) -> WisResult<()> {
     /// How many closed tabs stay reopenable.
     const CLOSED_TAB_CAP: u32 = 25;
+    /// Far past the window's own history.
+    const RECENT_CAP: usize = 64;
+
+    let recent: Vec<TabId> = recent.unwrap_or_default().into_iter().take(RECENT_CAP).collect();
 
     crate::page_source::forget(id);
     crate::signup::forget_field(&id.as_uuid().to_string());
@@ -186,13 +192,14 @@ pub async fn close_tab(
             // Capture the live session (history/scroll/forms) while the webview
             // still exists, so a reopen in this run restores instead of
             // cold-loading.
-            let interaction_state = (!load_failed)
-                .then(|| {
-                    app.webviews()
-                        .get(&format!("tab-{}", id.as_uuid()))
-                        .and_then(crate::interaction_state::read)
-                })
-                .flatten();
+            let interaction_state = if load_failed {
+                None
+            } else {
+                crate::interaction_state::read_async(
+                    app.webviews().get(&format!("tab-{}", id.as_uuid())).cloned(),
+                )
+                .await
+            };
 
             let storage = state.storage.clone();
             let recorded_row = tokio::task::spawn_blocking(move || {
@@ -233,7 +240,7 @@ pub async fn close_tab(
             .workspace(workspace_id)
             .map(|w| w.active_tab_id == Some(id) && w.pane_tree.is_none())
             .unwrap_or(false);
-        let next = s.with_tab_closed(id)?;
+        let next = s.with_tab_closed_keeping_split(id, &recent)?;
 
         let Some(target) = return_to else {
             return Ok(next);
@@ -411,10 +418,12 @@ pub async fn move_tab_to_new_window(
     name: String,
     accent: AccentColor,
 ) -> WisResult<()> {
-    let captured = app
-        .webviews()
-        .get(&format!("tab-{}", tab_id.as_uuid()))
-        .and_then(crate::interaction_state::read);
+    let captured = crate::interaction_state::read_async(
+        app.webviews()
+            .get(&format!("tab-{}", tab_id.as_uuid()))
+            .cloned(),
+    )
+    .await;
 
     let (url, source_ephemeral) = {
         let browser = state.browser.lock().await;
@@ -470,10 +479,12 @@ pub async fn move_tab_to_workspace(
     tab_id: TabId,
     workspace_id: WorkspaceId,
 ) -> WisResult<()> {
-    let captured = app
-        .webviews()
-        .get(&format!("tab-{}", tab_id.as_uuid()))
-        .and_then(crate::interaction_state::read);
+    let captured = crate::interaction_state::read_async(
+        app.webviews()
+            .get(&format!("tab-{}", tab_id.as_uuid()))
+            .cloned(),
+    )
+    .await;
 
     let url = {
         let browser = state.browser.lock().await;

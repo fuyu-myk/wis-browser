@@ -99,6 +99,13 @@ fn disarm_popup_suppression() {
     set_all_tabs_suppressed(false);
 }
 
+/// Lift every guard, for when an exit event may have been lost, as across a
+/// sleep.
+pub fn release_all() {
+    POPUP_SUPPRESS_ARMED.store(false, Ordering::Relaxed);
+    set_all_tabs_suppressed(false);
+}
+
 /// Safety net called by the engine-popup poll when no popup remains live (idempotent).
 pub fn release_popup_suppression_if_idle() {
     if POPUP_SUPPRESS_ARMED.swap(false, Ordering::Relaxed) {
@@ -124,10 +131,10 @@ mod imp {
         class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass,
     };
 
-    // NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect.
-    const TRACKING_OPTS: usize = 0x01 | 0x20 | 0x200;
-    // ActiveAlways.
-    const POPUP_TRACKING_OPTS: usize = 0x01 | 0x80 | 0x200;
+    // NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways | NSTrackingInVisibleRect.
+    // Active always, so the exit that lifts the guard still arrives when the
+    // window is not key.
+    const TRACKING_OPTS: usize = 0x01 | 0x80 | 0x200;
     const OBJC_ASSOCIATION_RETAIN_NONATOMIC: usize = 1;
     static PANEL_ASSOC_KEY: u8 = 0;
     static POPUP_ASSOC_KEY: u8 = 0;
@@ -259,7 +266,7 @@ mod imp {
         let area: *mut AnyObject = msg_send![
             area,
             initWithRect: rect,
-            options: POPUP_TRACKING_OPTS,
+            options: TRACKING_OPTS,
             owner: &*handler,
             userInfo: std::ptr::null_mut::<AnyObject>(),
         ];

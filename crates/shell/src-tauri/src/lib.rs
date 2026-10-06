@@ -65,6 +65,7 @@ mod tab_session;
 mod themes;
 mod vault;
 mod video_popout;
+mod wake;
 mod wallpapers;
 mod webview_close;
 mod webview_prefs;
@@ -446,6 +447,8 @@ pub fn run() {
 
             // App handle for the popup hover-guard.
             hover_guard::set_app_handle(app.handle().clone());
+
+            wake::install(app.handle());
 
             // App handle for the camera/microphone consent message handler.
             permissions::set_app_handle(app.handle().clone());

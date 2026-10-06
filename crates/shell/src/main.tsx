@@ -13,6 +13,7 @@ import '@/styles/window.css'
 // Host OS for platform-conditional styling. Static for the session.
 document.body.setAttribute('data-platform', currentPlatform())
 
+// Queries and mutations are IPC to the backend, never the network.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -20,9 +21,11 @@ const queryClient = new QueryClient({
       refetchOnReconnect: false,
       staleTime: Infinity,
       retry: 0,
+      networkMode: 'always',
     },
     mutations: {
       retry: 0,
+      networkMode: 'always',
     },
   },
 })
