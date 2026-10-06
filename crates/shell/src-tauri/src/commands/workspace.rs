@@ -47,7 +47,23 @@ pub async fn delete_workspace(
     state: State<'_, AppState>,
     id: WorkspaceId,
 ) -> WisResult<()> {
+    let tabs: Vec<TabId> = state
+        .browser
+        .lock()
+        .await
+        .workspace(id)
+        .map(|w| w.tab_order.clone())
+        .unwrap_or_default();
+
     mutate_unit_immediate(&app, &state, |s| s.with_workspace_removed(id)).await?;
+
+    // What `close_tab` drops for each tab it closes.
+    for tab in tabs {
+        crate::page_source::forget(tab);
+        crate::signup::forget_field(&tab.as_uuid().to_string());
+        crate::audio::forget_tab(&app, tab);
+        crate::tab_preview::forget(&app, &state, tab);
+    }
 
     let storage = state.storage.clone();
     if let Err(err) =
