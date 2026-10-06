@@ -48,6 +48,9 @@ pub enum KeyAction {
     OpenHistory,
     ClearBrowsingData,
     NewPrivateWindow,
+    /// Go to this window's private workspace, creating one if there is none,
+    /// or from a private workspace back to the one before it.
+    TogglePrivateWorkspace,
     NewWindow,
     /// Split the focused pane horizontally (side-by-side), opening a new tab in
     /// the new pane.
@@ -151,6 +154,7 @@ impl KeyAction {
             Self::OpenHistory => "open_history",
             Self::ClearBrowsingData => "clear_browsing_data",
             Self::NewPrivateWindow => "new_private_window",
+            Self::TogglePrivateWorkspace => "toggle_private_workspace",
             Self::NewWindow => "new_window",
             Self::SplitPaneHorizontal => "split_pane_horizontal",
             Self::SplitPaneVertical => "split_pane_vertical",
@@ -201,7 +205,7 @@ impl KeyAction {
     }
 }
 
-const ALL_ACTIONS: [KeyAction; 62] = [
+const ALL_ACTIONS: [KeyAction; 63] = [
     KeyAction::NewTab,
     KeyAction::NewWorkspace,
     KeyAction::CloseTab,
@@ -230,6 +234,7 @@ const ALL_ACTIONS: [KeyAction; 62] = [
     KeyAction::OpenHistory,
     KeyAction::ClearBrowsingData,
     KeyAction::NewPrivateWindow,
+    KeyAction::TogglePrivateWorkspace,
     KeyAction::NewWindow,
     KeyAction::SplitPaneHorizontal,
     KeyAction::SplitPaneVertical,
@@ -317,7 +322,7 @@ pub fn default_keymap_for(mac: bool) -> HashMap<KeyAction, String> {
         (KeyAction::OpenSettings, "Cmd+,"),
         (KeyAction::OpenHistory, "Cmd+Shift+H"),
         (KeyAction::ClearBrowsingData, "Cmd+Shift+Backspace"),
-        (KeyAction::NewPrivateWindow, "Cmd+Shift+N"),
+        (KeyAction::TogglePrivateWorkspace, "Cmd+Shift+N"),
         (KeyAction::SplitPaneHorizontal, "Cmd+D"),
         (KeyAction::SplitPaneVertical, "Cmd+Shift+D"),
         (KeyAction::ClosePane, "Alt+Cmd+W"),
@@ -381,9 +386,11 @@ mod tests {
     #[test]
     fn default_keymap_includes_every_action_except_reserved() {
         // These ship unbound on purpose: `FocusUrlBarAlt`/`SwitchToTab9` are
-        // spare slots and `FocusNextPane` is covered by the directional pane binds.
+        // spare slots, `FocusNextPane` is covered by the directional pane binds,
+        // and `NewPrivateWindow` gave its key to the private-workspace toggle.
         const UNBOUND: &[KeyAction] = &[
             KeyAction::FocusUrlBarAlt,
+            KeyAction::NewPrivateWindow,
             KeyAction::FocusNextPane,
             KeyAction::SwitchToTab9,
             KeyAction::CaptureVisible,
@@ -410,6 +417,10 @@ mod tests {
         assert_eq!(mac.get(&KeyAction::Print).unwrap(), "Cmd+P");
         assert_eq!(mac.get(&KeyAction::NewTab).unwrap(), "Cmd+T");
         assert_eq!(mac.get(&KeyAction::ClosePane).unwrap(), "Alt+Cmd+W");
+        assert_eq!(
+            mac.get(&KeyAction::TogglePrivateWorkspace).unwrap(),
+            "Cmd+Shift+N"
+        );
     }
 
     #[test]

@@ -138,6 +138,7 @@ export type KeyAction =
   | 'open_history'
   | 'clear_browsing_data'
   | 'new_private_window'
+  | 'toggle_private_workspace'
   | 'new_window'
   | 'split_pane_horizontal'
   | 'split_pane_vertical'

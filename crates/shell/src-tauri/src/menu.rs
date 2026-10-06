@@ -128,6 +128,12 @@ fn build_menu(
             KeyAction::NewPrivateWindow,
             "New Private Window",
         )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::TogglePrivateWorkspace,
+            "Toggle Private Workspace",
+        )?)
         .separator()
         .item(&action_item(app, keymap, KeyAction::CloseTab, "Close Tab")?)
         .separator()

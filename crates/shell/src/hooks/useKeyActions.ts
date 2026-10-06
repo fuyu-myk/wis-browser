@@ -60,6 +60,9 @@ export function useKeyActions(): void {
   const activeTab = tabs.find((t) => t.id === activeWorkspace?.active_tab_id) ?? null
 
   const newWorkspaceInFlight = useRef(false)
+  // Where toggle_private_workspace returns to from a private workspace.
+  const lastRegularWorkspace = useRef<WorkspaceId | null>(null)
+  if (activeWorkspace && !activeWorkspace.ephemeral) lastRegularWorkspace.current = activeWorkspace.id
 
   // Track the *previous* active tab (lib/tabMru) so Switch-to-last-tab jumps
   // ping-pong style and closing the active tab returns to it (tabClose.ts).
@@ -102,6 +105,7 @@ export function useKeyActions(): void {
         qcRef.current.invalidateQueries({ queryKey: BROWSER_STATE_KEY }),
       requestRename: requestRenameRef.current,
       newWorkspaceInFlight,
+      lastRegularWorkspace: lastRegularWorkspace.current,
     })
   }
 
@@ -147,6 +151,7 @@ interface DispatchContext {
   invalidate: () => void
   requestRename: (id: WorkspaceId) => void
   newWorkspaceInFlight: { current: boolean }
+  lastRegularWorkspace: WorkspaceId | null
 }
 
 async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
@@ -437,6 +442,36 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       if (!settings || settings.layout === 'top_tabs') return
       await commands.updateSettings({ sidebar_collapsible: !settings.sidebar_collapsible })
       ctx.invalidate()
+      return
+    }
+    case 'toggle_private_workspace': {
+      const st = ctx.state
+      if (!st || !ctx.activeWorkspace) return
+      if (ctx.activeWorkspace.ephemeral) {
+        const back =
+          st.workspaces.find((w) => w.id === ctx.lastRegularWorkspace && !w.ephemeral) ??
+          st.workspaces.find((w) => !w.ephemeral)
+        if (back) await commands.setActiveWorkspace(back.id)
+        ctx.invalidate()
+        return
+      }
+      const existing = [...st.workspaces].reverse().find((w) => w.ephemeral)
+      if (existing) {
+        await commands.setActiveWorkspace(existing.id)
+        ctx.invalidate()
+        return
+      }
+      if (ctx.newWorkspaceInFlight.current) return
+      ctx.newWorkspaceInFlight.current = true
+      try {
+        const accent = nextAccent(st.workspaces.map((w) => w.accent))
+        const ws = await commands.createPrivateWorkspace('Private', accent)
+        await commands.createTab(ws.id, NEW_TAB_URL)
+        await commands.setActiveWorkspace(ws.id)
+        ctx.invalidate()
+      } finally {
+        ctx.newWorkspaceInFlight.current = false
+      }
       return
     }
     case 'restore_closed_tab': {

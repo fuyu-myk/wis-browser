@@ -44,6 +44,7 @@ const RESERVED_ACTIONS: &[KeyAction] = &[
     KeyAction::RestoreClosedTab,
     KeyAction::NewWindow,
     KeyAction::NewPrivateWindow,
+    KeyAction::TogglePrivateWorkspace,
     KeyAction::NewWorkspace,
     KeyAction::NextTab,
     KeyAction::PreviousTab,
