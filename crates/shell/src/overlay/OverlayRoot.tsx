@@ -21,6 +21,7 @@ import { PageMenuSurface } from '@/overlay/surfaces/PageMenuSurface'
 import { TabPreviewSurface } from '@/overlay/surfaces/TabPreviewSurface'
 import { PeekSurface } from '@/overlay/surfaces/PeekSurface'
 import { AppLaunchSurface } from '@/overlay/surfaces/AppLaunchSurface'
+import { SavedLoginsSurface } from '@/overlay/surfaces/SavedLoginsSurface'
 import { SignupOfferSurface } from '@/overlay/surfaces/SignupOfferSurface'
 import { PermissionSurface } from '@/overlay/surfaces/PermissionSurface'
 import { ScreenshotRegionSurface } from '@/overlay/surfaces/ScreenshotRegionSurface'
@@ -54,6 +55,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'navguard') return <NavGuardSurface />
   if (surface === 'permission') return <PermissionSurface />
   if (surface === 'signup') return <SignupOfferSurface />
+  if (surface === 'logins') return <SavedLoginsSurface />
   if (surface === 'applaunch') return <AppLaunchSurface />
   if (surface === 'bookmarks') return <BookmarksMenuSurface />
   if (surface === 'downloads') return <DownloadsMenuSurface />

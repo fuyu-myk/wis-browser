@@ -11,13 +11,13 @@ import { emit, listen } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import { Switch } from '@/components/controls'
+import { useWheelStepsAside } from '@/hooks/useAnchoredCard'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useThemeApply } from '@/hooks/useThemeApply'
 import {
   SIGNUP_CLOSE_EVENT,
   SIGNUP_READY_EVENT,
   SIGNUP_SHOW_EVENT,
-  SIGNUP_WHEEL_EVENT,
   type SignupOffer,
 } from '@/hooks/useSignupOffer'
 import { cx } from '@/lib/cx'
@@ -26,6 +26,7 @@ import { menusGlass } from '@/lib/glass'
 export function SignupOfferSurface() {
   const { data: state } = useBrowserState()
   useThemeApply(state?.settings)
+  useWheelStepsAside('signup')
 
   const [offer, setOffer] = useState<SignupOffer | null>(null)
   const [remember, setRemember] = useState(false)
@@ -45,12 +46,6 @@ export function SignupOfferSurface() {
       cancelled = true
       unlisten?.()
     }
-  }, [])
-
-  useEffect(() => {
-    const onWheel = () => void emit(SIGNUP_WHEEL_EVENT)
-    window.addEventListener('wheel', onWheel, { passive: true })
-    return () => window.removeEventListener('wheel', onWheel)
   }, [])
 
   const decide = (accepted: boolean) => {

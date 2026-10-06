@@ -8449,6 +8449,40 @@ body.motion-off .kb-ai-think-label.is-live {
   margin-top: 2px;
 }
 
+/* Sizes in step with CARD in useSavedLogins.ts. */
+.kb-logins-card {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: 100vh;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--kb-menu-bg, rgba(32, 32, 38, 0.96));
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.34);
+  font-size: 13px;
+}
+
+.kb-logins-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.kb-logins-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.kb-logins-row {
+  height: 36px;
+  padding: 0 8px;
+}
+
 .kb-vaultmenu-save-warn {
   margin-top: 4px;
   font-size: 11px;

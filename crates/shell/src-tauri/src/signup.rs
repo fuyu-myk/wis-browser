@@ -1,5 +1,6 @@
 //! Signup detection: tell the chrome when a new-password field takes focus,
-//! so it can offer a generated password.
+//! so it can offer a generated password, and when a sign-in field does, so it
+//! can offer the logins saved for the site.
 //!
 //! Focus is the trigger: it is both the moment the offer is useful and
 //! cheaper than watching the DOM.
@@ -10,6 +11,10 @@
 //! the sign-in side gets marked and the register side is left as it is. A field
 //! marked `current-password` never qualifies.
 //!
+//! A sign-in field is a password field that does not qualify, or the username
+//! before one. On a username-first page, with no password field yet, only a
+//! field declared `autocomplete="username"` counts.
+//!
 //! Text heuristics are deliberately absent.
 //!
 //! The tab and host are read natively from the webview, never from the page.
@@ -18,6 +23,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 const SIGNUP_EVENT: &str = "wis-signup-field";
+const LOGIN_EVENT: &str = "wis-login-field";
 /// The anchored field moved, because the page scrolled or resized.
 const SIGNUP_MOVE_EVENT: &str = "wis-signup-move";
 /// The tab's page went, by navigation or close, taking its fields with it.
@@ -47,6 +53,15 @@ struct SignupEvent {
     qualifies: bool,
     /// Where the field is, so the offer can sit beside it.
     rect: Option<FieldRect>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LoginEvent {
+    window: String,
+    tab_id: String,
+    host: String,
+    rect: FieldRect,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -117,6 +132,7 @@ enum Report {
         rect: Option<FieldRect>,
     },
     Move(FieldRect),
+    Login(FieldRect),
 }
 
 /// What the page sent. Read through accessors, so one parser serves both the
@@ -135,6 +151,7 @@ fn read_report(
     );
     match text("kind").as_deref() {
         Some("move") => return rect.map(Report::Move),
+        Some("login") => return rect.map(Report::Login),
         Some("leave") => return Some(Report::Leave),
         Some("scroll") => return Some(Report::Scroll),
         _ => {}
@@ -162,8 +179,14 @@ fn dispatch(label: &str, report: Report) {
             max_length,
             qualifies,
             rect,
-        } => announce(label, rules, max_length, qualifies, rect),
+        } => {
+            announce(label, rules, max_length, qualifies, rect);
+            if let (false, Some(rect)) = (qualifies, rect) {
+                announce_login(label, rect);
+            }
+        }
         Report::Move(rect) => announce_move(label, rect),
+        Report::Login(rect) => announce_login(label, rect),
         Report::Leave => announce_tab(label, SIGNUP_LEAVE_EVENT),
         Report::Scroll => announce_tab(label, SIGNUP_SCROLL_EVENT),
     }
@@ -220,16 +243,10 @@ fn remember_field(tab_id: &str, field: FieldInfo) {
 }
 
 /// Drop what a tab's page reported, when it navigates or closes, and tell the
-/// chrome so an offer anchored to that page goes with it.
+/// chrome so a card anchored to that page goes with it.
 pub(crate) fn forget_field(tab_id: &str) {
-    let removed = FIELDS
-        .lock()
-        .expect("signup fields poisoned")
-        .as_mut()
-        .and_then(|fields| fields.remove(tab_id))
-        .is_some();
-    if !removed {
-        return;
+    if let Some(fields) = FIELDS.lock().expect("signup fields poisoned").as_mut() {
+        fields.remove(tab_id);
     }
 
     if let Some(app) = APP.get() {
@@ -319,7 +336,7 @@ const SIGNUP_JS: &str = r#"(function () {
     body.qualifies = signup;
     body.rules = (el.getAttribute && el.getAttribute('passwordrules')) || '';
     body.maxLength = el.maxLength > 0 ? el.maxLength : 0;
-    anchored = signup ? el : null;
+    anchored = el;
     send(body);
   }
 
@@ -359,14 +376,60 @@ const SIGNUP_JS: &str = r#"(function () {
     return signInFieldElsewhere(el);
   }
 
+  function textual(el) {
+    if (!el || el.tagName !== 'INPUT' || el.disabled || el.readOnly) return false;
+    var t = (el.type || 'text').toLowerCase();
+    return t === 'text' || t === 'email' || t === 'tel';
+  }
+
+  // A password field that is not for a signup.
+  // With no password field around, as on a username-first page, only a field
+  // declared with 'username' counts.
+  function signIn(el) {
+    if (el && el.type === 'password') return !el.disabled && !el.readOnly && !qualifies(el);
+    if (!textual(el)) return false;
+    var pw = null;
+    try {
+      pw = (el.form || document).querySelector('input[type=password]');
+    } catch (e) {}
+    if (pw) return !!(el.compareDocumentPosition(pw) & 4) && !qualifies(pw);
+    return (el.getAttribute('autocomplete') || '').toLowerCase().indexOf('username') !== -1;
+  }
+
+  function leave() {
+    anchored = null;
+    clearTimeout(settle);
+    settle = null;
+    send({ kind: 'leave' });
+  }
+
   document.addEventListener('focusin', function (e) {
     if (window.top !== window.self) return;
     // Moving to anything else in the page closes the offer.
-    if (anchored && e.target !== anchored) {
-      anchored = null;
-      send({ kind: 'leave' });
+    if (anchored && e.target !== anchored) leave();
+    report(e.target);
+  }, true);
+
+  function report(el) {
+    if (eligible(el)) {
+      post(el, qualifies(el));
+    } else if (signIn(el)) {
+      anchored = el;
+      send(measured(el, 'login'));
     }
-    if (eligible(e.target)) post(e.target, qualifies(e.target));
+  }
+
+  document.addEventListener('pointerdown', function (e) {
+    if (anchored && e.target !== anchored) leave();
+    if (!anchored && window.top === window.self && e.target === document.activeElement) {
+      report(e.target);
+    }
+  }, true);
+  document.addEventListener('keydown', function (e) {
+    if (anchored && e.target === anchored && e.key === 'Escape') leave();
+  }, true);
+  document.addEventListener('input', function (e) {
+    if (anchored && e.target === anchored && e.isTrusted) leave();
   }, true);
 
   function moved(e) {
@@ -379,8 +442,7 @@ const SIGNUP_JS: &str = r#"(function () {
       settle = null;
       if (!anchored) return;
       if (!anchored.isConnected) {
-        anchored = null;
-        send({ kind: 'leave' });
+        leave();
         return;
       }
       send(measured(anchored, 'move'));
@@ -396,6 +458,31 @@ const SIGNUP_JS: &str = r#"(function () {
   };
 })();"#;
 
+/// Where a report came from: the app, the tab id, its window and the page's
+/// host, all read from the webview.
+struct Source<'a> {
+    app: &'static AppHandle,
+    tab_id: &'a str,
+    window: String,
+    host: String,
+}
+
+fn source(label: &str) -> Option<Source<'_>> {
+    let app = APP.get()?;
+    let tab_id = label.strip_prefix("tab-")?;
+    let webview = app.webviews().get(label).cloned()?;
+    let host = webview
+        .url()
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_string))?;
+    Some(Source {
+        app,
+        tab_id,
+        window: webview.window().label().to_string(),
+        host,
+    })
+}
+
 /// Tell the chrome that a signup field in `label`'s tab took focus.
 fn announce(
     label: &str,
@@ -404,19 +491,12 @@ fn announce(
     qualifies: bool,
     rect: Option<FieldRect>,
 ) {
-    let Some(app) = APP.get() else {
-        return;
-    };
-    let Some(tab_id) = label.strip_prefix("tab-") else {
-        return;
-    };
-    let Some(webview) = app.webviews().get(label).cloned() else {
-        return;
-    };
-    let Some(host) = webview
-        .url()
-        .ok()
-        .and_then(|url| url.host_str().map(str::to_string))
+    let Some(Source {
+        app,
+        tab_id,
+        window,
+        host,
+    }) = source(label)
     else {
         return;
     };
@@ -429,7 +509,7 @@ fn announce(
         },
     );
     let payload = SignupEvent {
-        window: webview.window().label().to_string(),
+        window,
         tab_id: tab_id.to_string(),
         host,
         rules,
@@ -439,6 +519,29 @@ fn announce(
     };
     if let Err(err) = app.emit(SIGNUP_EVENT, payload) {
         log::warn!("emit {SIGNUP_EVENT} failed: {err}");
+    }
+}
+
+/// Tell the chrome that a sign-in field in `label`'s tab took focus.
+fn announce_login(label: &str, rect: FieldRect) {
+    let Some(Source {
+        app,
+        tab_id,
+        window,
+        host,
+    }) = source(label)
+    else {
+        return;
+    };
+
+    let payload = LoginEvent {
+        window,
+        tab_id: tab_id.to_string(),
+        host,
+        rect,
+    };
+    if let Err(err) = app.emit(LOGIN_EVENT, payload) {
+        log::warn!("emit {LOGIN_EVENT} failed: {err}");
     }
 }
 
@@ -886,6 +989,14 @@ mod tests {
     #[test]
     fn a_leave_needs_nothing_else() {
         assert!(matches!(report_from(&[("kind", "leave")]), Some(Report::Leave)));
+    }
+
+    #[test]
+    fn a_login_needs_a_rect() {
+        let mut fields = RECT.to_vec();
+        fields.push(("kind", "login"));
+        assert!(matches!(report_from(&fields), Some(Report::Login(_))));
+        assert!(report_from(&[("kind", "login")]).is_none());
     }
 
     #[test]

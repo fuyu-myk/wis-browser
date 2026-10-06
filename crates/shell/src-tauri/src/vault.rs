@@ -665,21 +665,42 @@ fn strip_www(host: &str) -> &str {
     host.strip_prefix("www.").unwrap_or(host)
 }
 
-/// JS that fills the page's password field and the nearest preceding text/email
-/// field, dispatching input/change so frameworks notice. `user`/`pass` are
-/// already JSON string literals.
+/// JS that fills a password field and the nearest text/email field before it,
+/// dispatching input/change so frameworks notice. It starts from the focused
+/// field when that is for a sign-in, so a username-first page gets its
+/// username and a page with two forms fills the one in use; otherwise the
+/// page's first password field. `user`/`pass` are already JSON string literals.
 fn fill_script(user: &str, pass: &str) -> String {
     format!(
         r#"(function(){{
   try {{
-    var pw = document.querySelector('input[type=password]:not([disabled]):not([readonly])');
-    if (!pw) return;
-    var inputs = Array.prototype.slice.call(document.querySelectorAll('input'));
-    var idx = inputs.indexOf(pw);
+    var PW = 'input[type=password]:not([disabled]):not([readonly])';
+    function kind(el) {{
+      if (!el || el.tagName !== 'INPUT' || el.disabled || el.readOnly) return '';
+      return (el.type || 'text').toLowerCase();
+    }}
+    function textual(el) {{
+      var k = kind(el);
+      return k === 'text' || k === 'email' || k === 'tel';
+    }}
+    var active = document.activeElement;
+    var pw = kind(active) === 'password' ? active : null;
     var user = null;
-    for (var i = idx - 1; i >= 0; i--) {{
-      var t = (inputs[i].type || 'text').toLowerCase();
-      if (t === 'text' || t === 'email' || t === 'tel') {{ user = inputs[i]; break; }}
+    if (textual(active)) {{
+      var near = (active.form || document).querySelector(PW);
+      var named = /username/i.test(active.getAttribute('autocomplete') || '');
+      if (near ? active.compareDocumentPosition(near) & 4 : named) {{
+        user = active;
+        pw = near;
+      }}
+    }}
+    if (!pw && !user) pw = document.querySelector(PW);
+    if (!pw && !user) return;
+    if (pw && !user) {{
+      var inputs = Array.prototype.slice.call(document.querySelectorAll('input'));
+      for (var i = inputs.indexOf(pw) - 1; i >= 0; i--) {{
+        if (textual(inputs[i])) {{ user = inputs[i]; break; }}
+      }}
     }}
     function setVal(el, val) {{
       var d = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value');
@@ -688,7 +709,7 @@ fn fill_script(user: &str, pass: &str) -> String {
       el.dispatchEvent(new Event('change', {{ bubbles: true }}));
     }}
     if (user) setVal(user, {user});
-    setVal(pw, {pass});
+    if (pw) setVal(pw, {pass});
   }} catch (e) {{}}
 }})();"#,
         user = user,

@@ -9,6 +9,7 @@ import { isWindowFocused } from '@/lib/windowFocus'
 import { useAppLaunchOverlay } from '@/hooks/useAppLaunchOverlay'
 import { useOverlay } from '@/hooks/useOverlay'
 import { usePermissionOverlay } from '@/hooks/usePermissionOverlay'
+import { useSavedLogins } from '@/hooks/useSavedLogins'
 import { useSignupOffer } from '@/hooks/useSignupOffer'
 import { useTabAudio } from '@/hooks/useTabAudio'
 import { useTabWebviews, type Bounds, type WebviewLayout } from '@/hooks/useTabWebviews'
@@ -32,7 +33,6 @@ interface TabWebViewHostProps {
 export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   usePermissionOverlay(hostRef)
-  useSignupOffer(hostRef, state)
   useAppLaunchOverlay(hostRef)
   const findOverlay = useOverlay('find')
   const findOpenRef = useRef(false)
@@ -246,6 +246,10 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     window.addEventListener('pointerup', onUp)
     return () => window.removeEventListener('pointerup', onUp)
   }, [draggingTab])
+
+  const webviewsHidden = resizing || draggingTab != null || paneAnim
+  useSignupOffer(hostRef, state, webviewsHidden)
+  useSavedLogins(state, webviewsHidden)
 
   const handlePaneDrop = useCallback(
     (targetTabId: TabId, movedTabId: TabId, side: PaneSide) => {
