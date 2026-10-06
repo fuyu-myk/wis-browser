@@ -433,10 +433,11 @@ export const commands = {
    * Close a tab. `returnTo` (the window's MRU previous tab, see lib/tabMru)
    * is activated in the same transition when this is a plain close of the
    * active tab; the backend ignores it for split-pane closes and stale or
-   * cross-workspace targets.
+   * cross-workspace targets. Closing a pane in a split shows the first of
+   * `recent` (most recent first) not already in a pane in its place.
    */
-  async closeTab(id: TabId, returnTo: TabId | null = null): Promise<void> {
-    return invoke('close_tab', { id, returnTo })
+  async closeTab(id: TabId, returnTo: TabId | null = null, recent: TabId[] = []): Promise<void> {
+    return invoke('close_tab', { id, returnTo, recent })
   },
 
   /** Reopen the most-recently-closed tab (in its original workspace). */

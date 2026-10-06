@@ -68,6 +68,81 @@ fn pane_split_close_unsplit_preserve_invariants() {
     assert_clean(&s5);
 }
 
+/// `a` and `c` open, `c` in the background, then `a` split against a new `b`,
+/// which takes focus.
+fn split_with_a_spare_tab() -> (BrowserState, [wis_core::TabId; 3]) {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s2, c) = s1.with_new_tab(ws, "https://c.example/").unwrap();
+    let s3 = s2.with_active_tab(a.id).unwrap();
+    let (s4, b) = s3
+        .with_pane_split(ws, SplitDir::Horizontal, false, "https://b.example/")
+        .unwrap();
+    assert_eq!(s4.workspaces[0].active_tab_id, Some(b.id));
+    (s4, [a.id, b.id, c.id])
+}
+
+#[test]
+fn closing_a_split_pane_refills_it_and_keeps_the_split() {
+    let (s, [a, b, c]) = split_with_a_spare_tab();
+
+    let next = s.with_tab_closed_keeping_split(b, &[b, a, c]).unwrap();
+    assert_clean(&next);
+    let leaves = next.workspaces[0].pane_tree.as_ref().unwrap().leaves();
+    assert_eq!(leaves, vec![a, c], "the spare tab takes the closed pane's place");
+    assert_eq!(next.workspaces[0].active_tab_id, Some(c));
+    assert!(next.tab(b).is_err());
+}
+
+#[test]
+fn the_refill_is_the_most_recent_tab_not_in_a_pane() {
+    let (s, [a, b, c]) = split_with_a_spare_tab();
+    let ws = s.workspaces[0].id;
+    let (s, d) = s.with_new_background_tab(ws, "https://d.example/").unwrap();
+
+    let next = s.with_tab_closed_keeping_split(b, &[b, a, d.id, c]).unwrap();
+    let leaves = next.workspaces[0].pane_tree.as_ref().unwrap().leaves();
+    assert_eq!(leaves, vec![a, d.id], "recency wins over tab order");
+}
+
+#[test]
+fn closing_an_unfocused_pane_keeps_focus_where_it_is() {
+    let (s, [a, b, c]) = split_with_a_spare_tab();
+
+    let next = s.with_tab_closed_keeping_split(a, &[]).unwrap();
+    assert_clean(&next);
+    let leaves = next.workspaces[0].pane_tree.as_ref().unwrap().leaves();
+    assert_eq!(leaves, vec![c, b], "with no history, the nearest tab in order");
+    assert_eq!(next.workspaces[0].active_tab_id, Some(b));
+}
+
+#[test]
+fn a_split_with_no_spare_tab_collapses_as_before() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, a) = s0.with_new_tab(ws, "https://a.example/").unwrap();
+    let (s2, b) = s1
+        .with_pane_split(ws, SplitDir::Horizontal, false, "https://b.example/")
+        .unwrap();
+
+    let next = s2.with_tab_closed_keeping_split(b.id, &[b.id, a.id]).unwrap();
+    assert_clean(&next);
+    assert!(next.workspaces[0].pane_tree.is_none());
+    assert_eq!(next.workspaces[0].active_tab_id, Some(a.id));
+}
+
+#[test]
+fn closing_a_tab_outside_the_split_leaves_the_split_alone() {
+    let (s, [a, b, c]) = split_with_a_spare_tab();
+
+    let next = s.with_tab_closed_keeping_split(c, &[c, b, a]).unwrap();
+    assert_clean(&next);
+    let leaves = next.workspaces[0].pane_tree.as_ref().unwrap().leaves();
+    assert_eq!(leaves, vec![a, b]);
+    assert_eq!(next.workspaces[0].active_tab_id, Some(b));
+}
+
 #[test]
 fn center_drop_replaces_a_placeholder_pane_and_closes_it() {
     // Right-click-the-active-tab split leaves an `about:blank` placeholder in the

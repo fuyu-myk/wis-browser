@@ -10,7 +10,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
 import { onTabClosing, TAB_EXIT_MS } from '@/lib/tabClose'
-import { closeReturnTarget, noteTabClosed } from '@/lib/tabMru'
+import { closeReturnTarget, noteTabClosed, recentTabs } from '@/lib/tabMru'
 import {
   COMPACT_MEMBER_TAB_MAX,
   COMPACT_MINIMUM_CURRENT_TAB_SIZE,
@@ -125,7 +125,7 @@ export function HorizontalTabs({
     mutationFn: (id: TabId) => {
       const returnTo = closeReturnTarget(id)
       noteTabClosed(id)
-      return commands.closeTab(id, returnTo)
+      return commands.closeTab(id, returnTo, recentTabs())
     },
     onSuccess: invalidate,
   })
@@ -235,7 +235,7 @@ export function HorizontalTabs({
       beginClose(id)
       const returnTo = closeReturnTarget(id)
       noteTabClosed(id)
-      void commands.closeTab(id, returnTo).catch(() => undefined)
+      void commands.closeTab(id, returnTo, recentTabs()).catch(() => undefined)
     },
     [beginClose],
   )

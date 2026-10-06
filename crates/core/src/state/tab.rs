@@ -158,6 +158,41 @@ impl BrowserState {
         })
     }
 
+    /// Close `id`, and if it is a pane in a split, show another tab in its
+    /// place so the split stays: the first of `recent` (most recent first) in
+    /// the same workspace and not already in a pane, else the nearest such tab
+    /// in tab order. With none, the pane collapses as in [`Self::with_tab_closed`].
+    pub fn with_tab_closed_keeping_split(&self, id: TabId, recent: &[TabId]) -> WisResult<Self> {
+        let workspace = self.workspace(self.tab(id)?.workspace_id)?;
+        let Some(tree) = workspace.pane_tree.as_ref().filter(|tree| tree.contains(id)) else {
+            return self.with_tab_closed(id);
+        };
+        let order = &workspace.tab_order;
+        let free = |tab: &&TabId| **tab != id && !tree.contains(**tab) && order.contains(tab);
+        let at = order.iter().position(|tab| *tab == id).unwrap_or(0);
+        let nearest = order[..at].iter().rev().chain(&order[at..]).find(free);
+        let Some(refill) = recent.iter().find(free).or(nearest).copied() else {
+            return self.with_tab_closed(id);
+        };
+
+        let swapped = workspace.with_pane_leaf_swapped(id, refill);
+        let swapped = match workspace.active_tab_id {
+            Some(focused) if focused != id => swapped.with_active_tab(focused),
+            _ => swapped.with_selected_folder_of_active(&self.tabs),
+        };
+        let workspaces: Vec<Workspace> = self
+            .workspaces
+            .iter()
+            .map(|w| if w.id == swapped.id { swapped.clone() } else { w.clone() })
+            .collect();
+
+        Self {
+            workspaces,
+            ..self.clone()
+        }
+        .with_tab_closed(id)
+    }
+
     pub fn with_tab_order(&self, workspace_id: WorkspaceId, order: Vec<TabId>) -> WisResult<Self> {
         let workspace = self.workspace(workspace_id)?;
 

@@ -14,7 +14,7 @@ import { emit, listen } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { TabId } from '@/bindings/types'
-import { closeReturnTarget, noteTabClosed } from '@/lib/tabMru'
+import { closeReturnTarget, noteTabClosed, recentTabs } from '@/lib/tabMru'
 
 export const TAB_CLOSING_EVENT = 'wis-tab-closing'
 export const TAB_EXIT_MS = 180
@@ -24,7 +24,7 @@ export function closeTabAnimated(id: TabId): void {
   void emit(TAB_CLOSING_EVENT, id).catch(() => undefined)
   const returnTo = closeReturnTarget(id)
   noteTabClosed(id)
-  void commands.closeTab(id, returnTo).catch(() => undefined)
+  void commands.closeTab(id, returnTo, recentTabs()).catch(() => undefined)
 }
 
 /**

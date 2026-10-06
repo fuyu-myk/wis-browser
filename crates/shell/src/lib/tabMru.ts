@@ -1,9 +1,9 @@
 /**
- * Most-recently-used tab tracking for this window: which tab was active
- * before the current one. Feeds Switch-to-last-tab (ping-pong) and the
- * close-time return, so closing the active tab lands on the previously used
- * tab instead of the tab_order neighbor core would pick (new tabs append at
- * the end, so the neighbor is rarely the opener).
+ * Most-recently-used tab tracking for this window. Feeds Switch-to-last-tab
+ * (ping-pong) and the close-time return, so closing the active tab lands on
+ * the previously used tab instead of the tab_order neighbor core would pick
+ * (new tabs append at the end, so the neighbor is rarely the opener), and
+ * picks the tab that takes a closed split pane's place.
  *
  * Module state is per-window by construction: each OS window runs its own
  * chrome webview and JS context.
@@ -16,20 +16,17 @@ interface ActiveTabEntry {
   workspaceId: WorkspaceId
 }
 
-let current: ActiveTabEntry | null = null
-let previous: ActiveTabEntry | null = null
+const HISTORY_CAP = 32
+
+/** Most recent first: the active tab, then the one before it, and so on. */
+let history: ActiveTabEntry[] = []
 
 /** Record an activation; no-op when the active tab is unchanged. */
 export function noteActiveTab(id: TabId | null, workspaceId: WorkspaceId | null): void {
   if (!id || !workspaceId) return
-  if (current?.id === id) {
-    // Same tab moved to another workspace: refresh so the same-workspace
-    // guard in closeReturnTarget compares live data.
-    if (current.workspaceId !== workspaceId) current = { id, workspaceId }
-    return
-  }
-  previous = current
-  current = { id, workspaceId }
+  // A refresh too when the same tab moved to another workspace, so the
+  // same-workspace guard in closeReturnTarget compares live data.
+  history = [{ id, workspaceId }, ...history.filter((e) => e.id !== id)].slice(0, HISTORY_CAP)
 }
 
 /**
@@ -37,8 +34,7 @@ export function noteActiveTab(id: TabId | null, workspaceId: WorkspaceId | null)
  * closeTabAnimated: workspace deletion, bulk closes, other windows).
  */
 export function pruneTabMru(isLive: (id: TabId) => boolean): void {
-  if (previous && !isLive(previous.id)) previous = null
-  if (current && !isLive(current.id)) current = null
+  history = history.filter((e) => isLive(e.id))
 }
 
 /**
@@ -46,13 +42,17 @@ export function pruneTabMru(isLive: (id: TabId) => boolean): void {
  * target after it is gone.
  */
 export function noteTabClosed(id: TabId): void {
-  if (previous?.id === id) previous = null
-  if (current?.id === id) current = null
+  history = history.filter((e) => e.id !== id)
 }
 
 /** The tab active before the current one (Switch-to-last-tab target). */
 export function previousTab(): TabId | null {
-  return previous?.id ?? null
+  return history[1]?.id ?? null
+}
+
+/** This window's tabs, most recently active first. */
+export function recentTabs(): TabId[] {
+  return history.map((e) => e.id)
 }
 
 /**
@@ -63,6 +63,7 @@ export function previousTab(): TabId | null {
  * tab_order neighbor as before.
  */
 export function closeReturnTarget(id: TabId): TabId | null {
+  const [current, previous] = history
   if (current?.id !== id) return null
   if (!previous || previous.id === id) return null
   if (previous.workspaceId !== current.workspaceId) return null
