@@ -9,7 +9,7 @@
  * plays an indeterminate ramp toward 90% off `loading` alone.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import type { Tab } from '@/bindings/types'
@@ -52,19 +52,19 @@ export function LoadProgressBar({ activeTab }: LoadProgressBarProps) {
   const hideTimer = useRef<number | undefined>(undefined)
 
   // Stable helpers: touch only refs and setState, safe inside [] effects.
-  const clearHideTimer = () => {
+  const clearHideTimer = useCallback(() => {
     if (hideTimer.current !== undefined) {
       window.clearTimeout(hideTimer.current)
       hideTimer.current = undefined
     }
-  }
-  const begin = () => {
+  }, [])
+  const begin = useCallback(() => {
     if (phaseRef.current === 'active') return
     clearHideTimer()
     phaseRef.current = 'active'
     setFrac(START_FRAC)
     setVisible(true)
-  }
+  }, [clearHideTimer])
   const finish = () => {
     if (phaseRef.current !== 'active') return
     phaseRef.current = 'finishing'
@@ -86,7 +86,7 @@ export function LoadProgressBar({ activeTab }: LoadProgressBarProps) {
     phaseRef.current = loading ? 'active' : 'idle'
     setVisible(loading)
     setFrac(loading ? START_FRAC : 0)
-  })
+  }, [id, loading, clearHideTimer])
 
   // Load start/finish transitions observed through the state flag.
   const prevLoading = useRef(loading)
@@ -118,7 +118,7 @@ export function LoadProgressBar({ activeTab }: LoadProgressBarProps) {
       cancelled = true
       unlisten?.()
     }
-  }, [])
+  }, [begin])
 
   // Event-activated loads whose `loading` was never observed true complete
   // on event silence instead of a flag transition.
@@ -141,7 +141,7 @@ export function LoadProgressBar({ activeTab }: LoadProgressBarProps) {
     return () => window.clearInterval(iv)
   }, [loading, id])
 
-  useEffect(() => clearHideTimer, [])
+  useEffect(() => clearHideTimer, [clearHideTimer])
 
   return (
     <div className={cx('kb-urlpill-progress', { 'is-visible': visible })} aria-hidden>

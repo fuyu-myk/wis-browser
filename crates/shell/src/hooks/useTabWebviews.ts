@@ -378,7 +378,6 @@ export function useTabWebviews({
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Destroy webviews whose tab was actually closed (gone from every workspace).

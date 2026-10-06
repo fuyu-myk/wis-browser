@@ -71,6 +71,10 @@ jobs:
         working-directory: crates/shell
         run: pnpm build
 
+      - name: Lint frontend
+        working-directory: crates/shell
+        run: pnpm lint
+
       - name: Rustfmt
         run: cargo fmt --all -- --check
 

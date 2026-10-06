@@ -311,7 +311,6 @@ export function BackgroundEditor({ ws }: BackgroundEditorProps) {
       <ul className="kb-ws-bg-stops">
         {draft.stops.map((stop, i) => (
           // Index keys are fine: stops are positional and the list is tiny.
-          // eslint-disable-next-line react/no-array-index-key
           <li key={i} className="kb-ws-bg-stop">
             <ColorPicker
               value={stop.color}

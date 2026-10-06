@@ -203,7 +203,7 @@ export function PaletteSurface() {
   })
 
   // `placeholderData` fires whenever a key has no data of its own.
-  const historyEntries = historyReady ? (history ?? []) : []
+  const historyEntries = useMemo(() => (historyReady ? (history ?? []) : []), [historyReady, history])
 
   const sources = useMemo(() => {
     if (!state) return []

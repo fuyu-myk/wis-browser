@@ -305,7 +305,7 @@ export function useWidgetPanel(): {
         hideGrip()
       }
     },
-    [clearTimer, hideGrip],
+    [clearTimer, hideGrip, cancelPanelAnim],
   )
 
   /** Destroy every live panel (workspace switch, unmount). */
@@ -321,7 +321,7 @@ export function useWidgetPanel(): {
     }
     setPanelRect(null)
     hideGrip()
-  }, [hideGrip])
+  }, [hideGrip, cancelPanelAnim])
 
   /** Arm the idle-destroy timer for a panel that just became hidden. */
   const armIdleTimer = useCallback(
@@ -524,7 +524,6 @@ export function useWidgetPanel(): {
       showChrome,
       hideGrip,
       animatePanelIn,
-      cancelPanelAnim,
     ],
   )
 
@@ -623,7 +622,7 @@ export function useWidgetPanel(): {
       cancelled = true
       for (const un of unlisteners) un()
     }
-  }, [showGrip, showHeader, showChrome, pushHeaderState])
+  }, [showGrip, showHeader, showChrome, pushHeaderState, cancelPanelAnim])
 
   // Dismiss on chrome interaction outside the widget dock.
   useEffect(() => {

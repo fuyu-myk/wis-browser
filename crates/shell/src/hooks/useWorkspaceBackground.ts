@@ -16,6 +16,8 @@ export function useWorkspaceBackground(workspace: Workspace | null | undefined):
   const css = bg ? backgroundCss(bg) : null
   const image = bg && 'image' in bg ? bg.image : null
   const fit = image ? fitCss(image.fit) : null
+  const fitSize = fit?.size
+  const fitRepeat = fit?.repeat
   const blur = image ? Math.min(40, Math.max(0, image.blur)) : 0
 
   useEffect(() => {
@@ -35,9 +37,9 @@ export function useWorkspaceBackground(workspace: Workspace | null | undefined):
     // Liquid glass makes the launchpad transparent; a custom background
     // explicitly set by the user wins over that (see window.css).
     body.classList.add('has-custom-bg')
-    if (fit) {
-      body.style.setProperty('--wp-bg-size', fit.size)
-      body.style.setProperty('--wp-bg-repeat', fit.repeat)
+    if (fitSize !== undefined && fitRepeat !== undefined) {
+      body.style.setProperty('--wp-bg-size', fitSize)
+      body.style.setProperty('--wp-bg-repeat', fitRepeat)
       body.style.setProperty('--wp-blur', `${blur}px`)
       body.classList.add('has-custom-img')
     } else {
@@ -47,5 +49,5 @@ export function useWorkspaceBackground(workspace: Workspace | null | undefined):
       body.classList.remove('has-custom-img')
     }
     return clear
-  }, [css, fit?.size, fit?.repeat, blur])
+  }, [css, fitSize, fitRepeat, blur])
 }

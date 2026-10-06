@@ -84,7 +84,7 @@ export function TabContextMenuSurface() {
       cancelled = true
       unlisten?.()
     }
-  }, [])
+  }, [qc])
 
   const movedTab = state?.tabs.find((t) => t.id === target?.movedTabId)
   const folders = [...(activeWorkspace?.tab_folders ?? [])].sort((a, b) => a.position - b.position)

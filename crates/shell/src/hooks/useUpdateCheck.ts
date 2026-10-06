@@ -40,6 +40,7 @@ export function useUpdateCheck(): void {
         await update.downloadAndInstall()
         await relaunch()
       } catch (err) {
+        // eslint-disable-next-line no-console
         console.warn('update check failed', err)
       }
     })()

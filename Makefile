@@ -48,9 +48,10 @@ fmt:
 fmt-check:
 	cargo fmt --all -- --check
 
-## lint: Run clippy with warnings as errors
+## lint: Run clippy with warnings as errors, then ESLint on the frontend
 lint:
 	cargo clippy --workspace --all-targets -- -D warnings
+	cd crates/shell && pnpm lint
 
 ## clean: Remove build artefacts
 clean:

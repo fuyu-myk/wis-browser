@@ -119,6 +119,7 @@ export function PeekSurface() {
           if (!navAssessedRef.current) setAssessment(a)
         })
         .catch((err: unknown) => {
+          // eslint-disable-next-line no-console
           console.error('open peek', err)
         })
     } else {

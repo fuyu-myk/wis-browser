@@ -66,7 +66,6 @@ export function SourcePage({ from, target }: SourcePageProps) {
       {source ? (
         <div className="kb-source-body">
           {source.chunks.map((chunk, index) => (
-            // eslint-disable-next-line react/no-array-index-key
             <pre className="kb-source-chunk" key={index}>
               {chunk}
             </pre>

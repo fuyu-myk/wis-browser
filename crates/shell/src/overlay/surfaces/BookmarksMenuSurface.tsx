@@ -388,7 +388,7 @@ export function BookmarksMenuSurface() {
   }
 
   const folderList = folders.data ?? []
-  const allBookmarks = bookmarks.data ?? []
+  const allBookmarks = useMemo(() => bookmarks.data ?? [], [bookmarks.data])
   // Pinned quick-access bubbles, ordered by pin_position. Pinning is independent
   // of folder membership, so a pinned bookmark also still appears in its folder.
   const pinned = useMemo(
