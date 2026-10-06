@@ -152,7 +152,11 @@ pub async fn close_tab(
     /// Far past the window's own history.
     const RECENT_CAP: usize = 64;
 
-    let recent: Vec<TabId> = recent.unwrap_or_default().into_iter().take(RECENT_CAP).collect();
+    let recent: Vec<TabId> = recent
+        .unwrap_or_default()
+        .into_iter()
+        .take(RECENT_CAP)
+        .collect();
 
     crate::page_source::forget(id);
     crate::signup::forget_field(&id.as_uuid().to_string());
@@ -196,7 +200,9 @@ pub async fn close_tab(
                 None
             } else {
                 crate::interaction_state::read_async(
-                    app.webviews().get(&format!("tab-{}", id.as_uuid())).cloned(),
+                    app.webviews()
+                        .get(&format!("tab-{}", id.as_uuid()))
+                        .cloned(),
                 )
                 .await
             };

@@ -988,7 +988,10 @@ mod tests {
 
     #[test]
     fn a_leave_needs_nothing_else() {
-        assert!(matches!(report_from(&[("kind", "leave")]), Some(Report::Leave)));
+        assert!(matches!(
+            report_from(&[("kind", "leave")]),
+            Some(Report::Leave)
+        ));
     }
 
     #[test]
@@ -1001,7 +1004,10 @@ mod tests {
 
     #[test]
     fn a_scroll_needs_nothing_else() {
-        assert!(matches!(report_from(&[("kind", "scroll")]), Some(Report::Scroll)));
+        assert!(matches!(
+            report_from(&[("kind", "scroll")]),
+            Some(Report::Scroll)
+        ));
     }
 
     #[test]

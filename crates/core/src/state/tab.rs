@@ -164,7 +164,11 @@ impl BrowserState {
     /// in tab order. With none, the pane collapses as in [`Self::with_tab_closed`].
     pub fn with_tab_closed_keeping_split(&self, id: TabId, recent: &[TabId]) -> WisResult<Self> {
         let workspace = self.workspace(self.tab(id)?.workspace_id)?;
-        let Some(tree) = workspace.pane_tree.as_ref().filter(|tree| tree.contains(id)) else {
+        let Some(tree) = workspace
+            .pane_tree
+            .as_ref()
+            .filter(|tree| tree.contains(id))
+        else {
             return self.with_tab_closed(id);
         };
         let order = &workspace.tab_order;
@@ -183,7 +187,13 @@ impl BrowserState {
         let workspaces: Vec<Workspace> = self
             .workspaces
             .iter()
-            .map(|w| if w.id == swapped.id { swapped.clone() } else { w.clone() })
+            .map(|w| {
+                if w.id == swapped.id {
+                    swapped.clone()
+                } else {
+                    w.clone()
+                }
+            })
             .collect();
 
         Self {

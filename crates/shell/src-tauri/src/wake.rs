@@ -29,7 +29,10 @@ fn on_wake(app: &AppHandle) {
         for server in proxies.values() {
             server.sever_open_connections();
         }
-        log::info!("woke from sleep; cut the tunnels of {} proxies", proxies.len());
+        log::info!(
+            "woke from sleep; cut the tunnels of {} proxies",
+            proxies.len()
+        );
     });
 }
 
