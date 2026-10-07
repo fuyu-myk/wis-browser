@@ -132,13 +132,16 @@ pub async fn tab_find_string(
     }
 
     // Windows: drive the JS find engine (CSS Custom Highlight API). The engine
-    // rides the tab builder as an init script.
+    // rides the tab builder as an init script. The accent is read per search,
+    // so a change in Settings shows on the next one.
     #[cfg(windows)]
     {
         let _ = label;
         let q = serde_json::to_string(&query).unwrap_or_else(|_| "\"\"".to_string());
+        let colors = serde_json::to_string(&find_colors(accent_rgb()))
+            .unwrap_or_else(|_| "null".to_string());
         let js = format!(
-            "window.__wisFindSearch && window.__wisFindSearch({q}, {backwards}, {case_sensitive});"
+            "window.__wisFindSearch && window.__wisFindSearch({q}, {backwards}, {case_sensitive}, {colors});"
         );
         let _ = webview.eval(&js);
     }
@@ -204,7 +207,10 @@ pub async fn tab_find_clear(app: AppHandle, window: tauri::Window, id: TabId) ->
     Ok(())
 }
 
-fn clear_webview(webview: &tauri::webview::Webview) -> WisResult<()> {
+/// Drop a webview's find highlights. Also run as a page starts navigating,
+/// while the old document is still current, so its matches cannot come back
+/// with it from the back-forward cache.
+pub(crate) fn clear_webview(webview: &tauri::webview::Webview) -> WisResult<()> {
     #[cfg(target_os = "macos")]
     {
         webview
@@ -246,6 +252,72 @@ fn clear_webview(webview: &tauri::webview::Webview) -> WisResult<()> {
     }
 
     Ok(())
+}
+
+/// What the Windows engine paints matches with: the accent, tinted for every
+/// match and solid for the current one.
+#[cfg(any(windows, test))]
+#[derive(Debug, PartialEq, Eq, Serialize)]
+struct FindColors {
+    #[serde(rename = "match")]
+    matches: String,
+    current: String,
+    /// The current match's text, whichever of black and white reads on it.
+    text: String,
+}
+
+#[cfg(any(windows, test))]
+fn find_colors((red, green, blue): (u8, u8, u8)) -> FindColors {
+    // WCAG relative luminance. Black and white contrast equally at 0.179.
+    let linear = |channel: u8| {
+        let c = f64::from(channel) / 255.0;
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let luminance = 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue);
+
+    FindColors {
+        matches: format!("rgba({red}, {green}, {blue}, 0.35)"),
+        current: format!("rgb({red}, {green}, {blue})"),
+        text: if luminance > 0.25 { "#000" } else { "#fff" }.to_string(),
+    }
+}
+
+/// The desktop accent, as Explorer uses it. Blink paints its own blue for the
+/// CSS `Highlight` keyword, so the page cannot be asked.
+#[cfg(windows)]
+fn accent_rgb() -> (u8, u8, u8) {
+    use windows::core::w;
+    use windows::Win32::Foundation::ERROR_SUCCESS;
+    use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+
+    /// Windows' own default accent.
+    const DEFAULT: (u8, u8, u8) = (0, 120, 212);
+
+    let mut value: u32 = 0;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    // SAFETY: `value` outlives the call and `size` is its exact size;
+    // RRF_RT_REG_DWORD refuses any value that is not a 4-byte DWORD.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!(r"Software\Microsoft\Windows\DWM"),
+            w!("AccentColor"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some((&mut value as *mut u32).cast()),
+            Some(&mut size),
+        )
+    };
+    if status != ERROR_SUCCESS {
+        return DEFAULT;
+    }
+
+    // Stored as 0xAABBGGRR.
+    (value as u8, (value >> 8) as u8, (value >> 16) as u8)
 }
 
 #[cfg(target_os = "macos")]
@@ -484,14 +556,18 @@ const FIND_ENGINE_JS: &str = r#"(function () {
   function ciLower(s) {
     return s.replace(/[A-Z]/g, function (c) { return c.toLowerCase(); });
   }
-  function ensureStyle() {
-    if (document.getElementById('wis-find-style')) return;
-    var st = document.createElement('style');
-    st.id = 'wis-find-style';
-    st.textContent =
-      '::highlight(wis-find){background:#ffe08a;color:#000}' +
-      '::highlight(wis-find-current){background:#ff9800;color:#000}';
-    (document.head || document.documentElement).appendChild(st);
+  var DEFAULT_COLORS = { match: 'rgba(0, 120, 212, 0.35)', current: 'rgb(0, 120, 212)', text: '#fff' };
+  function ensureStyle(c) {
+    var st = document.getElementById('wis-find-style');
+    if (!st) {
+      st = document.createElement('style');
+      st.id = 'wis-find-style';
+      (document.head || document.documentElement).appendChild(st);
+    }
+    var css =
+      '::highlight(wis-find){background:' + c.match + '}' +
+      '::highlight(wis-find-current){background:' + c.current + ';color:' + c.text + '}';
+    if (st.textContent !== css) st.textContent = css;
   }
   function post(found, total, index) {
     try {
@@ -570,8 +646,8 @@ const FIND_ENGINE_JS: &str = r#"(function () {
     }
     return ranges;
   }
-  window.__wisFindSearch = function (query, backwards, caseSensitive) {
-    ensureStyle();
+  window.__wisFindSearch = function (query, backwards, caseSensitive, colors) {
+    ensureStyle(colors || DEFAULT_COLORS);
     var ci = !caseSensitive;
     if (query && query === state.query && ci === state.ci && state.ranges.length > 0) {
       state.index += backwards ? -1 : 1;
@@ -620,4 +696,33 @@ pub(crate) fn dispatch_message(label: &str, body: &serde_json::Value) {
     let total = body.get("total").and_then(|v| v.as_i64()).unwrap_or(-1);
     let index = body.get("index").and_then(|v| v.as_i64()).unwrap_or(-1);
     emit_result(label, query, found, total, index);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_match_is_a_tint_and_the_current_one_solid() {
+        let colors = find_colors((0, 120, 212));
+        assert_eq!(colors.matches, "rgba(0, 120, 212, 0.35)");
+        assert_eq!(colors.current, "rgb(0, 120, 212)");
+    }
+
+    #[test]
+    fn a_dark_accent_takes_white_text_and_a_light_one_black() {
+        assert_eq!(find_colors((0, 120, 212)).text, "#fff");
+        assert_eq!(find_colors((16, 16, 16)).text, "#fff");
+        assert_eq!(find_colors((255, 185, 0)).text, "#000");
+        assert_eq!(find_colors((247, 99, 12)).text, "#000");
+        assert_eq!(find_colors((240, 240, 240)).text, "#000");
+    }
+
+    #[test]
+    fn the_engine_reads_the_colours_by_these_names() {
+        let json = serde_json::to_value(find_colors((1, 2, 3))).unwrap();
+        for key in ["match", "current", "text"] {
+            assert!(json.get(key).is_some(), "missing {key}");
+        }
+    }
 }

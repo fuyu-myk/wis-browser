@@ -5,9 +5,13 @@
  *
  * `show` accepts a `DOMRect`-like object so callers can pass any anchor's
  * `getBoundingClientRect()` straight through.
+ *
+ * The returned object is stable for a given name, so it is safe as an effect
+ * dependency: an effect that re-ran on every render would re-subscribe its
+ * Tauri listeners each time and could drop events in the gap.
  */
 
-import { useCallback, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 
 import { commands } from '@/bindings/commands'
 
@@ -42,5 +46,5 @@ export function useOverlay(name: string): UseOverlayReturn {
     await commands.hideOverlay(name)
   }, [name])
 
-  return { show, hide }
+  return useMemo(() => ({ show, hide }), [show, hide])
 }

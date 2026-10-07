@@ -16,6 +16,7 @@ Native tab webviews (`tab-<uuid>`) composite **above** the chrome webview, so HT
 Overlays are **per-window** and routed by URL, not label.
 
 - Label is `overlay-<window>-<name>`, so each OS window owns its own find bar/palette. `overlay.rs::ensure_overlay` builds it from the calling window; `set_overlay_bounds` / `size_overlay` / `hide_overlay` resolve it the same way.
+- The chrome drives one through `useOverlay(name)`, whose `{ show, hide }` is stable for the name. It used to be a fresh object every render, so the hooks listing it re-subscribed their Tauri listeners on every render of their host and could drop events in the gap (it took out the signup offer once).
 - `main.tsx` picks the surface from the **URL query** (`index.html?surface=<name>`), not the label, so the window prefix never affects routing. Chrome loads `index.html` with no query and renders the full App; `overlay/OverlayRoot.tsx` dispatches to a surface in `overlay/surfaces/`.
 - A surface focuses itself with `focus_self` (calling webview becomes first responder, no label), so it works on any window.
 - The `wis-asset` wallpaper protocol answers chrome surfaces only (`main`, `win-*`, any `overlay-*`), so tab/widget pages get 403.

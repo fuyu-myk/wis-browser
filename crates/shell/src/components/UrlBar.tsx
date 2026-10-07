@@ -70,7 +70,7 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
   const overlay = useOverlay('vaultmenu')
   const btnRef = useRef<HTMLButtonElement>(null)
   const openRef = useRef(false)
-  const autoOpenRef = useRef(false)
+  const [autoOpen, setAutoOpen] = useState(false)
   const [pendingHost, setPendingHost] = useState<string | null>(null)
 
   const { data: hasCreds } = useQuery({
@@ -152,7 +152,7 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
     void commands.capturePending().then((p) => {
       if (!cancelled && p) {
         setPendingHost(p.host)
-        if (!openRef.current) autoOpenRef.current = true
+        if (!openRef.current) setAutoOpen(true)
       }
     })
     return () => {
@@ -165,7 +165,7 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
     let cancelled = false
     void listen<CaptureInfo>(CAPTURE_LOGIN_EVENT, (e) => {
       setPendingHost(e.payload.host)
-      autoOpenRef.current = true
+      setAutoOpen(true)
     }).then((fn) => (cancelled ? fn() : (un = fn)))
     return () => {
       cancelled = true
@@ -174,11 +174,11 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
   }, [])
 
   useEffect(() => {
-    if (visible && autoOpenRef.current) {
-      autoOpenRef.current = false
+    if (visible && autoOpen) {
+      setAutoOpen(false)
       void open()
     }
-  }, [visible, open])
+  }, [visible, autoOpen, open])
 
   useEffect(() => {
     let unC: UnlistenFn | null = null

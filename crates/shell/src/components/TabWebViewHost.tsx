@@ -441,13 +441,18 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     }
   }, [findOverlay, findRect])
 
-  // Close find when the user switches the focused tab.
+  // Close find when the user switches the focused tab or it navigates, and
+  // drop the matches it left on the tab it was searching. The cleanup runs
+  // with that tab's id, before the next one takes over.
   useEffect(() => {
-    if (findOpenRef.current) {
+    const tabId = activeTab?.id
+    return () => {
+      if (!findOpenRef.current) return
       findOpenRef.current = false
       void findOverlay.hide().catch(() => undefined)
+      if (tabId) void commands.tabFindClear(tabId).catch(() => undefined)
     }
-  }, [activeTab?.id, findOverlay])
+  }, [activeTab?.id, activeTab?.url, findOverlay])
 
   // Native click-to-focus: the pane-focus monitor emits the tab id of whichever
   // webview was clicked.
