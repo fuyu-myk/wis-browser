@@ -10,10 +10,11 @@ const OPEN_IN_TAB = rawStringConst('link_open.rs', 'OPEN_IN_TAB_JS')
 const PANEL = rawStringConst('link_open.rs', 'PANEL_CROSS_SITE_JS')
 
 /** A page at `url` holding `children`, running `script`. */
-function loadPage(script, { url = 'https://page.test/article', children = [], channel = handlers('wisOpenInTab') } = {}) {
+function loadPage(script, { url = 'https://page.test/article', children = [], channel = handlers('wisOpenInTab'), navigator = {} } = {}) {
   const document = page(url, ...children)
   const window = channel ? { webkit: channel.webkit } : {}
-  const run = () => new Function('window', 'document', 'location', script)(window, document, document.location)
+  const run = () =>
+    new Function('window', 'document', 'location', 'navigator', script)(window, document, document.location, navigator)
   run()
   return {
     window,
@@ -128,6 +129,14 @@ describe('OPEN_IN_TAB_JS', () => {
     assert.doesNotThrow(() => p.fire('click', p.link, { metaKey: true }))
   })
 
+  test('a Cmd+click or middle-click the page dispatched itself is left to the page', () => {
+    const p = linkPage(OPEN_IN_TAB, '/a')
+    const click = p.fire('click', p.link, { metaKey: true, isTrusted: false })
+    const aux = p.fire('auxclick', p.link, { button: 1, isTrusted: false })
+    assert.deepEqual(p.sent(), [])
+    assert.ok(!click.defaultPrevented && !aux.defaultPrevented)
+  })
+
   test('installing twice registers the listeners once', () => {
     const p = linkPage(OPEN_IN_TAB, '/a')
     p.run()
@@ -141,9 +150,9 @@ describe('OPEN_IN_TAB_JS', () => {
 })
 
 /** A widget panel at `url` with one link to `href`. */
-function panelLink(href, { url = 'https://mail.google.com/inbox', channel = handlers('wisOpenInTabFg'), attrs = {} } = {}) {
+function panelLink(href, { url = 'https://mail.google.com/inbox', channel = handlers('wisOpenInTabFg'), attrs = {}, navigator } = {}) {
   const link = h('a', { href, ...attrs }, 'link')
-  const p = loadPage(PANEL, { url, channel, children: [link] })
+  const p = loadPage(PANEL, { url, channel, children: [link], navigator })
   return { ...p, link, click: (props = {}) => p.fire('click', link, props) }
 }
 
@@ -153,6 +162,16 @@ describe('PANEL_CROSS_SITE_JS', () => {
     const click = p.click()
     assert.deepEqual(p.sent(), [{ name: 'wisOpenInTabFg', body: 'https://news.test/story' }])
     assert.ok(click.defaultPrevented && click.propagationStopped)
+  })
+
+  test('a click the page dispatched opens a tab only inside a user gesture', () => {
+    const idle = panelLink('https://news.test/story')
+    assert.equal(idle.click({ isTrusted: false }).defaultPrevented, false)
+    assert.deepEqual(idle.sent(), [])
+
+    const gesture = panelLink('https://news.test/story', { navigator: { userActivation: { isActive: true } } })
+    gesture.click({ isTrusted: false })
+    assert.deepEqual(gesture.sent(), [{ name: 'wisOpenInTabFg', body: 'https://news.test/story' }])
   })
 
   test('a link within the same registrable site stays in the panel', () => {

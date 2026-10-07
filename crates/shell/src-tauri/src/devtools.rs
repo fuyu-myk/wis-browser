@@ -35,7 +35,7 @@ pub async fn inspect_tab(app: AppHandle, id: TabId) -> WisResult<()> {
     Ok(())
 }
 
-/// Reveal the node `page_menu.rs` parked on the page.
+/// Reveal the node `page_menu.rs` parked, which it marks in the page's DOM.
 ///
 /// No selector inspects a node. Safari's own Inspect Element reaches
 /// `InspectorDOMAgent::inspect` through `InjectedScript::inspectObject`, which
@@ -52,8 +52,27 @@ mod macos {
     use objc2::runtime::{AnyObject, Bool};
     use objc2::{class, msg_send, msg_send_id, sel};
 
-    const REVEAL_JS: &str = "(function(){var t=window.__wisInspectTarget;\
-if(t&&t.deref)t=t.deref();if(t)inspect(t);})()";
+    const MARK_JS: &str = "window.__wisInspectMark && window.__wisInspectMark();";
+
+    const REVEAL_JS: &str = r#"(function () {
+  function find(root) {
+    var node = root.querySelector('[data-wis-inspect]');
+    if (node) return node;
+    var all = root.querySelectorAll('*');
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].shadowRoot) {
+        node = find(all[i].shadowRoot);
+        if (node) return node;
+      }
+    }
+    return null;
+  }
+  var t = find(document);
+  if (t) {
+    t.removeAttribute('data-wis-inspect');
+    inspect(t);
+  }
+})()"#;
 
     pub(super) fn reveal_menu_target<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
         let _ = webview.with_webview(|w| unsafe {
@@ -61,6 +80,7 @@ if(t&&t.deref)t=t.deref();if(t)inspect(t);})()";
             if wk.is_null() {
                 return;
             }
+            crate::content_world::macos::run(wk, MARK_JS);
 
             let inspector: Option<Retained<AnyObject>> = msg_send_id![wk, _inspector];
             let Some(inspector) = inspector else {

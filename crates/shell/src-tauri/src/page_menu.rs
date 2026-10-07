@@ -86,7 +86,10 @@ pub fn page_script() -> String {
 /// Drop the stand-in highlight in `webview`. The chrome calls this when the
 /// menu closes.
 pub fn clear_selection_paint<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
-    let _ = webview.eval("window.__wisMenuClearPaint && window.__wisMenuClearPaint();");
+    let _ = crate::content_world::eval(
+        webview,
+        "window.__wisMenuClearPaint && window.__wisMenuClearPaint();",
+    );
 }
 
 const PAGE_MENU_JS: &str = r#"(function () {
@@ -189,6 +192,14 @@ const PAGE_MENU_JS: &str = r#"(function () {
   window.__wisKeepSelectionOnce = function () {
     keepSelectionOnce = true;
   };
+
+  // Inspect Element reads the node from the page's world, through the DOM.
+  window.__wisInspectMark = function () {
+    var t = window.__wisInspectTarget;
+    if (t && t.deref) t = t.deref();
+    if (t && !t.setAttribute) t = t.parentElement;
+    if (t && t.setAttribute) t.setAttribute('data-wis-inspect', '');
+  };
   window.addEventListener('mousedown', function (e) {
     if (!keepSelectionOnce) return;
     keepSelectionOnce = false;
@@ -205,7 +216,7 @@ const PAGE_MENU_JS: &str = r#"(function () {
   }, true);
 
   window.addEventListener('contextmenu', function (e) {
-    if (e.defaultPrevented) return;
+    if (e.defaultPrevented || !e.isTrusted) return;
 
     var path = [];
     try { path = e.composedPath() || []; } catch (err) { path = []; }
@@ -341,8 +352,8 @@ fn capped(value: &str, limit: usize) -> String {
     value[..end].to_string()
 }
 
-/// Register the `wisPageMenu` handler on a tab webview. macOS only; Windows
-/// and Linux route through their own dispatchers.
+/// Install the right-click reporter and its `wisPageMenu` handler on a tab
+/// webview. macOS only; Windows and Linux route through their own dispatchers.
 pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
     #[cfg(target_os = "macos")]
     macos::install(webview, webview.label().to_string());
@@ -353,7 +364,7 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use std::ffi::{CStr, CString};
+    use std::ffi::CStr;
     use std::os::raw::c_char;
 
     use objc2::rc::Id;
@@ -361,6 +372,8 @@ mod macos {
     use objc2::{
         class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass,
     };
+
+    use crate::content_world::macos as content_world;
 
     use super::dispatch_message;
 
@@ -395,11 +408,6 @@ mod macos {
             let this = Self::alloc().set_ivars(HandlerIvars { label });
             unsafe { msg_send_id![super(this), init] }
         }
-    }
-
-    unsafe fn ns_string(s: &str) -> *mut AnyObject {
-        let c = CString::new(s).unwrap_or_default();
-        msg_send![class!(NSString), stringWithUTF8String: c.as_ptr()]
     }
 
     unsafe fn nsstring_to_string(ns: *mut AnyObject) -> Option<String> {
@@ -447,6 +455,7 @@ mod macos {
     }
 
     pub(super) fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, label: String) {
+        let script = super::page_script();
         let _ = webview.with_webview(move |w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
             if wk.is_null() {
@@ -462,8 +471,8 @@ mod macos {
             }
 
             let handler = PageMenuHandler::new(label);
-            let name = ns_string("wisPageMenu");
-            let _: () = msg_send![controller, addScriptMessageHandler: &*handler, name: name];
+            content_world::add_handler(controller, &*handler, "wisPageMenu");
+            content_world::install_script(wk, controller, "wisPageMenu", &script, true);
         });
     }
 }

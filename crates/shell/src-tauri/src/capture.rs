@@ -411,6 +411,7 @@ mod imp {
     };
 
     use super::{intake, APP, CAPTURE_JS};
+    use crate::content_world::macos as content_world;
 
     declare_class!(
         struct CaptureHandler;
@@ -527,23 +528,9 @@ mod imp {
                 return;
             }
 
-            // Inject the capture script at document end, all frames.
-            let src = ns_string(CAPTURE_JS);
-            let script: *mut AnyObject = msg_send![class!(WKUserScript), alloc];
-            let injection_time: isize = 1; // WKUserScriptInjectionTimeAtDocumentEnd
-            let script: *mut AnyObject = msg_send![
-                script,
-                initWithSource: src,
-                injectionTime: injection_time,
-                forMainFrameOnly: false,
-            ];
-            let _: () = msg_send![controller, addUserScript: script];
-            let _: () = msg_send![script, release];
-
-            // Register the narrow message handler.
             let handler = CaptureHandler::new();
-            let name = ns_string("wisCapture");
-            let _: () = msg_send![controller, addScriptMessageHandler: &*handler, name: name];
+            content_world::add_handler(controller, &*handler, "wisCapture");
+            content_world::install_script(wk, controller, "wisCapture", CAPTURE_JS, false);
         });
     }
 }

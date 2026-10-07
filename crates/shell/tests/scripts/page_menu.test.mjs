@@ -109,6 +109,7 @@ function loadPage({ top = true, highlights = true, raf = true, weakRef = true, h
       const e = {
         clientX: 40,
         clientY: 50,
+        isTrusted: true,
         defaultPrevented: false,
         target: path[0],
         composedPath: () => [...path, document, window],
@@ -119,7 +120,7 @@ function loadPage({ top = true, highlights = true, raf = true, weakRef = true, h
       return e
     },
     press(type, button) {
-      const e = { button, prevented: false, preventDefault: () => (e.prevented = true) }
+      const e = { button, isTrusted: true, prevented: false, preventDefault: () => (e.prevented = true) }
       fire(type, e)
       return e
     },
@@ -261,6 +262,13 @@ describe('what a right-click posts', () => {
     p.rightClick([undefined], { composedPath: () => null })
     assert.deepEqual(p.posts(), [{ x: 40, y: 50, viewWidth: 1280, viewHeight: 720, ...EMPTY }])
     assert.equal(p.window.__wisInspectTarget, undefined)
+  })
+
+  test('a right-click the page dispatched itself is left alone', () => {
+    const p = loadPage()
+    const e = p.rightClick([el('p')], { isTrusted: false })
+    assert.equal(e.defaultPrevented, false)
+    assert.deepEqual(p.sent, [])
   })
 
   test('a right-click the page already handled is left alone', () => {
@@ -532,6 +540,29 @@ describe('the node parked for Inspect Element', () => {
     const target = el('span')
     p.rightClick([target])
     assert.equal(p.window.__wisInspectTarget, target)
+  })
+
+  test('Inspect marks the parked node in the DOM for the page-world reveal', () => {
+    const p = loadPage()
+    const marked = {}
+    const target = el('span', { setAttribute: (n, v) => (marked[n] = v) })
+    p.rightClick([target])
+    p.window.__wisInspectMark()
+    assert.deepEqual(marked, { 'data-wis-inspect': '' })
+  })
+
+  test('a text node is marked through its parent element', () => {
+    const p = loadPage()
+    const marked = {}
+    const parent = el('p', { setAttribute: (n, v) => (marked[n] = v) })
+    p.rightClick([{ nodeType: 3, parentElement: parent }])
+    p.window.__wisInspectMark()
+    assert.deepEqual(marked, { 'data-wis-inspect': '' })
+  })
+
+  test('nothing is marked when nothing was parked', () => {
+    const p = loadPage()
+    assert.doesNotThrow(() => p.window.__wisInspectMark())
   })
 
   test('nothing is parked for a right-click left to the engine', () => {

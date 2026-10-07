@@ -158,4 +158,11 @@ describe('clicking the button', () => {
     assert.ok(!shown(p))
     assert.ok(click.defaultPrevented && click.propagationStopped)
   })
+
+  test('a click the page dispatched itself asks for nothing', () => {
+    const p = page()
+    p.mouse(300, 200)
+    p.hoverButton().fire('click', { isTrusted: false })
+    assert.deepEqual(p.sent, [])
+  })
 })

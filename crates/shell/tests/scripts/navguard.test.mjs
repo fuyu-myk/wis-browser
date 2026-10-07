@@ -54,6 +54,13 @@ describe('NAVGUARD_JS posting', () => {
     assert.ok(click.defaultPrevented && click.propagationStopped)
   })
 
+  test('a click the page dispatched itself is left to the native guard', () => {
+    const p = loadPage('https://evil.test/login', 'paypal.com')
+    const click = p.click({ isTrusted: false })
+    assert.deepEqual(p.sent(), [])
+    assert.equal(click.defaultPrevented, false)
+  })
+
   test('link text is whitespace-collapsed and capped at 200 characters', () => {
     const p = loadPage('http://192.168.1.1/', `  Visit \n\n  the\trouter  ${'x'.repeat(300)}`)
     p.click()

@@ -41,6 +41,7 @@ mod script;
 pub(crate) use geometry::MAX_DELTA;
 #[cfg(target_os = "macos")]
 pub use geometry::*;
+#[cfg(not(target_os = "macos"))]
 pub use script::page_script;
 #[cfg(windows)]
 pub use script::pip_flag_script;
@@ -163,11 +164,9 @@ pub async fn open_video_popout(
             });
         }
 
-        webview
-            .eval(ENTER_EVAL)
-            .map_err(|err| WisError::InvalidInput {
-                message: format!("video popout enter eval: {err}"),
-            })?;
+        crate::content_world::eval(&webview, ENTER_EVAL).map_err(|err| WisError::InvalidInput {
+            message: format!("video popout enter eval: {err}"),
+        })?;
     }
 
     // WebView2: enter the engine's native Picture-in-Picture.
@@ -212,7 +211,7 @@ pub async fn close_video_popout(
         if pending_cancelled {
             // The page may have applied popout styling before the cancel.
             if let Some(webview) = app.webviews().get(&label).cloned() {
-                let _ = webview.eval(EXIT_EVAL);
+                let _ = crate::content_world::eval(&webview, EXIT_EVAL);
             }
         }
 
@@ -262,8 +261,8 @@ pub fn close_popout_window(app: &AppHandle) {
     }
 }
 
-/// Install the `wisPopout` message handler on a tab webview (the script
-/// itself rides the builder, see [`page_script`]). No-op off macOS.
+/// Install the popout script and its `wisPopout` handler on a tab webview.
+/// No-op off macOS.
 pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
     #[cfg(target_os = "macos")]
     imp::install(webview);

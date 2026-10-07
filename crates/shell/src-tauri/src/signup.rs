@@ -18,6 +18,8 @@
 //! Text heuristics are deliberately absent.
 //!
 //! The tab and host are read natively from the webview, never from the page.
+//! On macOS the script and its channel run in their own content world, out of
+//! the page's reach.
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
@@ -264,9 +266,11 @@ pub(crate) fn forget_field(tab_id: &str) {
 pub fn release_signup_field(app: AppHandle, tab_id: wis_core::TabId) {
     let label = format!("tab-{}", tab_id.as_uuid());
     if let Some(webview) = app.webviews().get(&label) {
-        let _ = webview.eval("window.__wisSignupRelease && window.__wisSignupRelease();");
+        let _ = crate::content_world::eval(webview, RELEASE_JS);
     }
 }
+
+const RELEASE_JS: &str = "window.__wisSignupRelease && window.__wisSignupRelease();";
 
 /// The password field last focused in `tab_id`'s page, if it is still there.
 #[tauri::command]
@@ -297,6 +301,7 @@ fn field_constraints(
     (rules, max_length)
 }
 
+#[cfg(not(target_os = "macos"))]
 pub fn page_script() -> &'static str {
     SIGNUP_JS
 }
@@ -638,6 +643,8 @@ mod macos {
         class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass,
     };
 
+    use crate::content_world::macos as content_world;
+
     use std::ffi::CStr;
     use std::os::raw::c_char;
 
@@ -785,10 +792,8 @@ mod macos {
             }
 
             let handler = SignupHandler::new(label.clone());
-            let c = CString::new("wisSignup").unwrap_or_default();
-            let name: *mut AnyObject =
-                msg_send![class!(NSString), stringWithUTF8String: c.as_ptr()];
-            let _: () = msg_send![controller, addScriptMessageHandler: &*handler, name: name];
+            content_world::add_handler(controller, &*handler, "wisSignup");
+            content_world::install_script(wk, controller, "wisSignup", super::SIGNUP_JS, true);
         });
     }
 }

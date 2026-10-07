@@ -98,24 +98,28 @@ pub async fn create_tab_webview(
         .proxy_url(proxy_url)
         .accept_first_mouse(true)
         .disable_drag_drop_handler()
-        // Ride the webview configuration so even an instantly-loading first
-        // document (cache, localhost, the restored startup page) gets them.
-        .initialization_script(crate::video_popout::page_script())
-        .initialization_script(crate::peek::page_script())
-        .initialization_script(crate::link_open::page_script())
-        .initialization_script(crate::page_menu::page_script())
-        .initialization_script(crate::signup::page_script())
         // Global Privacy Control's page signal, in every frame.
         .initialization_script_for_all_frames(crate::gpc::page_script(global_privacy_control))
         // Swipe back/forward: publish the indicator colour, then the gesture+UI.
         .initialization_script(crate::swipe_nav::accent_script(&swipe_accent));
 
+    // Ride the webview configuration so even an instantly-loading first
+    // document (cache, localhost, the restored startup page) gets them. macOS
+    // runs these in Wis's own content world instead (`content_world`).
+    #[cfg(not(target_os = "macos"))]
+    {
+        builder = builder
+            .initialization_script(crate::video_popout::page_script())
+            .initialization_script(crate::peek::page_script())
+            .initialization_script(crate::link_open::page_script())
+            .initialization_script(crate::page_menu::page_script())
+            .initialization_script(crate::signup::page_script());
+    }
+
     // The scroll-phase monitor.
     #[cfg(target_os = "macos")]
     {
         builder = builder.initialization_script(crate::swipe_nav::phase_flag_script());
-        // Unconsumed page-first editing combos replay natively (wisEditKey).
-        builder = builder.initialization_script(crate::edit_keys::page_script());
     }
     builder = builder.initialization_script(crate::swipe_nav::page_script());
 

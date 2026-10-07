@@ -21,6 +21,7 @@ export const NATIVE = {
 function makeEvent(type, init) {
   return {
     type,
+    isTrusted: true,
     defaultPrevented: false,
     propagationStopped: false,
     preventDefault() {

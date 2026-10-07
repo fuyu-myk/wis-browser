@@ -274,7 +274,7 @@ const NAVGUARD_JS: &str = r#"(function () {
     return el && el.closest ? el.closest('a[href]') : null;
   }
   document.addEventListener('click', function (e) {
-    if (e.altKey || e.button !== 0) return; // Option+click is Peek
+    if (!e.isTrusted || e.altKey || e.button !== 0) return; // Option+click is Peek
     var a = anchorFrom(e.target);
     if (!a) return;
     var href = a.href || '';
@@ -307,6 +307,7 @@ mod imp {
     };
 
     use super::{intake, navguard_js, APP};
+    use crate::content_world::macos as content_world;
 
     declare_class!(
         struct NavGuardHandler;
@@ -413,21 +414,9 @@ mod imp {
                 return;
             }
 
-            let src = ns_string(navguard_js());
-            let script: *mut AnyObject = msg_send![class!(WKUserScript), alloc];
-            let injection_time: isize = 1; // WKUserScriptInjectionTimeAtDocumentEnd
-            let script: *mut AnyObject = msg_send![
-                script,
-                initWithSource: src,
-                injectionTime: injection_time,
-                forMainFrameOnly: false,
-            ];
-            let _: () = msg_send![controller, addUserScript: script];
-            let _: () = msg_send![script, release];
-
             let handler = NavGuardHandler::new();
-            let name = ns_string("wisNavGuard");
-            let _: () = msg_send![controller, addScriptMessageHandler: &*handler, name: name];
+            content_world::add_handler(controller, &*handler, "wisNavGuard");
+            content_world::install_script(wk, controller, "wisNavGuard", navguard_js(), false);
         });
     }
 }

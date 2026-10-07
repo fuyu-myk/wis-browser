@@ -130,7 +130,8 @@ pub fn install(app: &AppHandle) {
                 if from != uuid {
                     let _: Bool = msg_send![window, makeFirstResponder: pane];
                     if let Some(webview) = app.webviews().get(&format!("{LABEL_PREFIX}{uuid}")) {
-                        let _ = webview.eval(
+                        let _ = crate::content_world::eval(
+                            webview,
                             "window.__wisKeepSelectionOnce && window.__wisKeepSelectionOnce();",
                         );
                     }

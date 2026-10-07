@@ -1,12 +1,12 @@
-//! The page-side popout scripts: the builder-level document-start script that
-//! exposes the `__wisPopout*` hooks, and the document-end tracker that pins the
-//! video and mounts the control overlay. Pure string payloads, no native deps.
+//! The page-side popout script: it exposes the `__wisPopout*` hooks, tracks
+//! the page's video, pins it and mounts the control overlay. Pure string
+//! payloads, no native deps.
 
-/// The page-side popout script, injected as a builder-level initialization
-/// script (document start, main frame). Baked into the webview configuration
-/// before the first document exists, so even an instantly-loading page (file
-/// cache, localhost) can never race the injection. Top-level code only
-/// registers listeners, so document-start execution is safe.
+/// The page-side popout script, injected at document start in the main frame:
+/// as a builder-level initialization script off macOS, and in Wis's own
+/// content world on macOS (`imp::install`). Top-level code only registers
+/// listeners, so document-start execution is safe.
+#[cfg(not(target_os = "macos"))]
 pub fn page_script() -> &'static str {
     POPOUT_JS
 }
@@ -18,7 +18,7 @@ pub fn pip_flag_script() -> &'static str {
     "window.__wisPopoutPip = true;"
 }
 
-/// Injected page script (main frame, document end). Tracks the page's
+/// Injected page script (main frame, document start). Tracks the page's
 /// dominant video and reports media-state changes (`playing` for the
 /// automatic trigger, `present` for the manual ones); shows a small pop-out
 /// button pinned to the video under the cursor; on demand
@@ -28,7 +28,7 @@ pub fn pip_flag_script() -> &'static str {
 /// drag-to-move handoff, corner resize zones).
 /// Muted, tiny, or detached videos never qualify as "playing", so muted
 /// autoplay ads cannot trigger the automatic popout.
-const POPOUT_JS: &str = r#"(function () {
+pub(super) const POPOUT_JS: &str = r#"(function () {
   'use strict';
   if (window.__wisPopoutInstalled) return;
   window.__wisPopoutInstalled = true;
@@ -135,6 +135,7 @@ const POPOUT_JS: &str = r#"(function () {
     b.addEventListener('mouseenter', function () { b.style.background = 'rgba(15,15,20,0.85)'; });
     b.addEventListener('mouseleave', function () { b.style.background = 'rgba(15,15,20,0.62)'; });
     b.addEventListener('click', function (e) {
+      if (!e.isTrusted) return;
       e.preventDefault();
       e.stopPropagation();
       var target = hoverFor;
@@ -640,6 +641,7 @@ const POPOUT_JS: &str = r#"(function () {
     if (next > 0 && v.muted) v.muted = false;
   }
   function onClose(e) {
+    if (!e.isTrusted) return;
     e.preventDefault();
     e.stopPropagation();
     if (!active) return;
@@ -649,7 +651,7 @@ const POPOUT_JS: &str = r#"(function () {
     teardown('close');
   }
   function onDown(e) {
-    if (!active || e.button !== 0) return;
+    if (!e.isTrusted || !active || e.button !== 0) return;
     if (active.x.contains(e.target) || active.vol.contains(e.target) || active.seek.contains(e.target)) return;
     var corner = e.target && e.target.getAttribute ? e.target.getAttribute('data-corner') : null;
     active.down = { sx: e.screenX, sy: e.screenY, corner: corner, moved: false, ax: 0, ay: 0, raf: 0 };
@@ -657,7 +659,7 @@ const POPOUT_JS: &str = r#"(function () {
     e.preventDefault();
   }
   function onMove(e) {
-    if (!active || !active.down) return;
+    if (!e.isTrusted || !active || !active.down) return;
     var d = active.down;
     if (!d.moved) {
       if (Math.abs(e.screenX - d.sx) < 4 && Math.abs(e.screenY - d.sy) < 4) return;
@@ -689,7 +691,7 @@ const POPOUT_JS: &str = r#"(function () {
     }
   }
   function onUp(e) {
-    if (!active || !active.down) return;
+    if (!e.isTrusted || !active || !active.down) return;
     var d = active.down;
     active.down = null;
     if (d.raf) cancelAnimationFrame(d.raf);

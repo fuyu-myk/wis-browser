@@ -13,6 +13,7 @@ mod capture;
 mod clipboard;
 mod commands;
 mod content_filter;
+mod content_world;
 mod cookies;
 mod cosmetic;
 mod default_browser;

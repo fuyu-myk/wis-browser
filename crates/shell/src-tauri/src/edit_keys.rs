@@ -14,6 +14,7 @@
 /// Injected page script (tab webviews): report unconsumed editing combos.
 /// The `setTimeout` defers the `defaultPrevented` check until after every
 /// page handler (including ones registered later than this one) has run.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const EDIT_KEYS_JS: &str = r#"(function () {
   if (window.__wisEditKeys) return;
   window.__wisEditKeys = true;
@@ -25,7 +26,7 @@ const EDIT_KEYS_JS: &str = r#"(function () {
     } catch (err) {}
   }
   window.addEventListener('keydown', function (e) {
-    if (!e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!e.isTrusted || !e.metaKey || e.ctrlKey || e.altKey) return;
     var k = (e.key || '').toLowerCase();
     var cmd = null;
     if (k === 'z') cmd = e.shiftKey ? 'redo' : 'undo';
@@ -37,16 +38,9 @@ const EDIT_KEYS_JS: &str = r#"(function () {
   }, false);
 })();"#;
 
-/// The watcher, baked into tab webviews as a builder-level initialization
-/// script. Only meaningful on macOS (the combos are menu-reserved nowhere
-/// else); the posting is feature-detected so it is inert elsewhere.
-pub fn page_script() -> &'static str {
-    EDIT_KEYS_JS
-}
-
 #[cfg(target_os = "macos")]
 mod imp {
-    use std::ffi::{CStr, CString};
+    use std::ffi::CStr;
     use std::os::raw::c_char;
 
     use objc2::rc::Id;
@@ -54,6 +48,9 @@ mod imp {
     use objc2::{
         class, declare_class, msg_send, msg_send_id, mutability, sel, ClassType, DeclaredClass,
     };
+
+    use super::EDIT_KEYS_JS;
+    use crate::content_world::macos as content_world;
 
     declare_class!(
         struct EditKeyHandler;
@@ -132,9 +129,7 @@ mod imp {
         ];
     }
 
-    /// Install the `wisEditKey` message handler on a tab webview. The watcher
-    /// script rides the builder (see [`super::page_script`]); message handlers
-    /// apply retroactively, so an already-loaded page is covered.
+    /// Install the watcher and its `wisEditKey` handler on a webview.
     pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
         let _ = webview.with_webview(|w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
@@ -153,10 +148,8 @@ mod imp {
             }
 
             let handler = EditKeyHandler::new();
-            let c = CString::new("wisEditKey").unwrap_or_default();
-            let name: *mut AnyObject =
-                msg_send![class!(NSString), stringWithUTF8String: c.as_ptr()];
-            let _: () = msg_send![controller, addScriptMessageHandler: &*handler, name: name];
+            content_world::add_handler(controller, &*handler, "wisEditKey");
+            content_world::install_script(wk, controller, "wisEditKey", EDIT_KEYS_JS, true);
         });
     }
 }

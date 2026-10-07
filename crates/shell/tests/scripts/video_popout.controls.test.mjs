@@ -48,6 +48,14 @@ describe('the X button', () => {
     assert.equal(p.ui(), null)
     assert.equal(v.parentNode, player)
   })
+
+  test('a click the page dispatched itself does nothing', () => {
+    const { p, v, ui } = popped()
+    ui.x.fire('click', { isTrusted: false })
+    assert.equal(v.pauses, 0)
+    assert.deepEqual(p.kinds(), [])
+    assert.notEqual(p.ui(), null)
+  })
 })
 
 describe('clicks on the video', () => {
@@ -196,6 +204,20 @@ describe('clicks on the video', () => {
 })
 
 describe('drag and corner resize', () => {
+  test('a drag or corner resize the page dispatched itself reaches neither native nor the video', () => {
+    const { p, v, ui } = popped()
+    pointer(ui, 'pointerdown', { x: 450, y: 250, isTrusted: false })
+    pointer(ui, 'pointermove', { x: 500, y: 300, isTrusted: false })
+    pointer(ui, 'pointerup', { x: 500, y: 300, isTrusted: false })
+    p.clock.advance(300)
+    assert.deepEqual(p.sent, [])
+    assert.equal(v.paused, false)
+
+    pointer(ui, 'pointerdown', { x: 450, y: 250 })
+    pointer(ui, 'pointermove', { x: 500, y: 300, isTrusted: false })
+    assert.deepEqual(p.sent, [], 'a forged move during a real press')
+  })
+
   test('dragging the video past 4px hands the window move to native once, and is not a click', () => {
     const { p, v, ui } = popped()
     pointer(ui, 'pointermove', { x: 500 })

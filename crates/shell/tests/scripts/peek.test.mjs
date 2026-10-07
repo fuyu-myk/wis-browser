@@ -46,6 +46,14 @@ test('the click that follows is cancelled too, without a second post', () => {
   assert.equal(p.sent().length, 1)
 })
 
+test('an Option+click the page dispatched itself is left to the page', () => {
+  const p = loadPage('/next')
+  const press = p.press({ ...OPTION, isTrusted: false })
+  const click = p.click({ ...OPTION, isTrusted: false })
+  assert.ok(!press.defaultPrevented && !click.defaultPrevented)
+  assert.deepEqual(p.sent(), [])
+})
+
 test('without Option, presses and clicks are left alone', () => {
   const p = loadPage('/next')
   for (const props of [{}, { metaKey: true }, { ctrlKey: true }, { shiftKey: true }]) {

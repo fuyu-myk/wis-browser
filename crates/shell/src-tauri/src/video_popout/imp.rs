@@ -8,6 +8,7 @@ use super::{
     EXIT_EVAL, MAX_DELTA, MEDIA_EVENT, OPENED_EVENT, POPOUT_WINDOW_LABEL, REQUESTED_EVENT,
     RESUME_EVAL, TAB_LABEL_PREFIX,
 };
+use crate::content_world::macos as content_world;
 use crate::state::AppState;
 
 declare_class!(
@@ -139,12 +140,7 @@ impl HoverHandler {
         } else {
             "window.__wisPopoutHover&&window.__wisPopoutHover(false);"
         };
-        let s = ns_string(js);
-        let _: () = msg_send![
-            wk,
-            evaluateJavaScript: s,
-            completionHandler: std::ptr::null_mut::<AnyObject>(),
-        ];
+        content_world::run(wk, js);
     }
 }
 
@@ -405,7 +401,7 @@ fn on_entered(app: &AppHandle, label: &str, aspect: f64) {
         // styling it just applied.
         log::debug!("video popout: enter from {label} without a pending open; unwinding");
         if let Some(webview) = app.webviews().get(label).cloned() {
-            let _ = webview.eval(EXIT_EVAL);
+            let _ = crate::content_world::eval(&webview, EXIT_EVAL);
         }
         return;
     };
@@ -444,7 +440,7 @@ fn on_entered(app: &AppHandle, label: &str, aspect: f64) {
         Ok(w) => w,
         Err(err) => {
             log::warn!("video popout: window build failed: {err}");
-            let _ = webview.eval(EXIT_EVAL);
+            let _ = crate::content_world::eval(&webview, EXIT_EVAL);
             return;
         }
     };
@@ -452,7 +448,7 @@ fn on_entered(app: &AppHandle, label: &str, aspect: f64) {
     if let Err(err) = webview.reparent(&window) {
         log::warn!("video popout: reparent failed: {err}");
         let _ = window.close();
-        let _ = webview.eval(EXIT_EVAL);
+        let _ = crate::content_world::eval(&webview, EXIT_EVAL);
         return;
     }
 
@@ -475,7 +471,7 @@ fn on_entered(app: &AppHandle, label: &str, aspect: f64) {
         });
     }
 
-    let _ = webview.eval(RESUME_EVAL);
+    let _ = crate::content_world::eval(&webview, RESUME_EVAL);
     log::info!(
         "video popout: opened for {label} at {:.0}x{:.0}+{:.0}+{:.0}",
         frame.w,
@@ -612,7 +608,7 @@ pub fn close_and_notify(app: &AppHandle, label: &str, eval_exit: bool) {
         }
         if let Some(webview) = app.webviews().get(label).cloned() {
             if eval_exit {
-                let _ = webview.eval(EXIT_EVAL);
+                let _ = crate::content_world::eval(&webview, EXIT_EVAL);
             }
             set_fills_window(&webview, false);
             let _ = webview.hide();
@@ -629,7 +625,7 @@ pub fn close_and_notify(app: &AppHandle, label: &str, eval_exit: bool) {
             }
             // The reparent back paused the video; resume it so folding
             // the popout in never silences a playing video.
-            let _ = webview.eval(RESUME_EVAL);
+            let _ = crate::content_world::eval(&webview, RESUME_EVAL);
         }
         if let Some(window) = window {
             let _ = window.close();
@@ -646,9 +642,7 @@ pub fn close_and_notify(app: &AppHandle, label: &str, eval_exit: bool) {
     let _ = app.emit(CLOSED_EVENT, payload);
 }
 
-/// Install the `wisPopout` message handler. Handlers (unlike user
-/// scripts) apply retroactively to a loaded page, so this cannot race
-/// the first document.
+/// Install the popout script and its `wisPopout` handler.
 pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
     let _ = webview.with_webview(|w| unsafe {
         let wk: *mut AnyObject = w.inner() as *mut AnyObject;
@@ -667,7 +661,7 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
         }
 
         let handler = PopoutHandler::new();
-        let name = ns_string("wisPopout");
-        let _: () = msg_send![controller, addScriptMessageHandler: &*handler, name: name];
+        content_world::add_handler(controller, &*handler, "wisPopout");
+        content_world::install_script(wk, controller, "wisPopout", super::script::POPOUT_JS, true);
     });
 }

@@ -86,7 +86,7 @@ const OPEN_IN_TAB_JS: &str = r#"(function () {
     } catch (err) {}
   }
   document.addEventListener('click', function (e) {
-    if (e.button !== 0 || e.altKey || !(e.metaKey || e.ctrlKey)) return;
+    if (!e.isTrusted || e.button !== 0 || e.altKey || !(e.metaKey || e.ctrlKey)) return;
     var href = hrefAt(e);
     if (!href) return;
     e.preventDefault();
@@ -94,7 +94,7 @@ const OPEN_IN_TAB_JS: &str = r#"(function () {
     post(href);
   }, true);
   document.addEventListener('auxclick', function (e) {
-    if (e.button !== 1) return;
+    if (!e.isTrusted || e.button !== 1) return;
     var href = hrefAt(e);
     if (!href) return;
     e.preventDefault();
@@ -107,8 +107,9 @@ const OPEN_IN_TAB_JS: &str = r#"(function () {
   }, true);
 })();"#;
 
-/// The trigger, exposed so tab webviews can bake it in as a builder-level
-/// initialization script (runs at document start, before the first document).
+/// The trigger, baked into tab webviews as a builder-level initialization
+/// script off macOS, where it runs in the page's world.
+#[cfg(not(target_os = "macos"))]
 pub fn page_script() -> &'static str {
     OPEN_IN_TAB_JS
 }
@@ -146,6 +147,8 @@ const PANEL_CROSS_SITE_JS: &str = r#"(function () {
   }
   document.addEventListener('click', function (e) {
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    var active = navigator.userActivation && navigator.userActivation.isActive;
+    if (!e.isTrusted && !active) return;
     var href = crossSiteHref(e);
     if (!href) return;
     e.preventDefault();
@@ -159,17 +162,21 @@ const PANEL_CROSS_SITE_JS: &str = r#"(function () {
 })();"#;
 
 /// The panel trigger, baked into widget panel webviews alongside
-/// [`page_script`].
+/// [`page_script`] off macOS.
+#[cfg(not(target_os = "macos"))]
 pub fn panel_page_script() -> &'static str {
     PANEL_CROSS_SITE_JS
 }
 
 #[cfg(target_os = "macos")]
 mod imp {
-    use std::ffi::{CStr, CString};
+    use std::ffi::CStr;
     use std::os::raw::c_char;
 
-    use super::{emit, HANDLER_BACKGROUND, HANDLER_FOREGROUND};
+    use super::{
+        emit, HANDLER_BACKGROUND, HANDLER_FOREGROUND, OPEN_IN_TAB_JS, PANEL_CROSS_SITE_JS,
+    };
+    use crate::content_world::macos as content_world;
     use objc2::rc::Id;
     use objc2::runtime::{AnyObject, NSObject};
     use objc2::{
@@ -236,13 +243,12 @@ mod imp {
         emit(&handler, &href);
     }
 
-    /// Register one [`OpenInTabHandler`] under each of `names` on a webview.
-    /// The trigger scripts ride the builder (see [`super::page_script`] and
-    /// [`super::panel_page_script`]); message handlers apply retroactively, so
-    /// an already-loaded page is covered.
+    /// Register one [`OpenInTabHandler`] under each of `names` on a webview,
+    /// with `scripts` beside them.
     fn install_names<R: tauri::Runtime>(
         webview: &tauri::webview::Webview<R>,
         names: &'static [&'static str],
+        scripts: &'static [(&'static str, &'static str)],
     ) {
         let _ = webview.with_webview(move |w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
@@ -262,20 +268,31 @@ mod imp {
 
             let handler = OpenInTabHandler::new();
             for name in names {
-                let c = CString::new(*name).unwrap_or_default();
-                let ns: *mut AnyObject =
-                    msg_send![class!(NSString), stringWithUTF8String: c.as_ptr()];
-                let _: () = msg_send![controller, addScriptMessageHandler: &*handler, name: ns];
+                content_world::add_handler(controller, &*handler, name);
+            }
+            for (key, source) in scripts {
+                content_world::install_script(wk, controller, key, source, true);
             }
         });
     }
 
     pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
-        install_names(webview, &[HANDLER_BACKGROUND]);
+        install_names(
+            webview,
+            &[HANDLER_BACKGROUND],
+            &[(HANDLER_BACKGROUND, OPEN_IN_TAB_JS)],
+        );
     }
 
     pub fn install_panel<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
-        install_names(webview, &[HANDLER_BACKGROUND, HANDLER_FOREGROUND]);
+        install_names(
+            webview,
+            &[HANDLER_BACKGROUND, HANDLER_FOREGROUND],
+            &[
+                (HANDLER_BACKGROUND, OPEN_IN_TAB_JS),
+                (HANDLER_FOREGROUND, PANEL_CROSS_SITE_JS),
+            ],
+        );
     }
 }
 
@@ -313,8 +330,8 @@ mod tests {
 
     #[test]
     fn panel_script_posts_to_the_foreground_channel_only() {
-        assert!(panel_page_script().contains("messageHandlers.wisOpenInTabFg.postMessage"));
-        assert!(!panel_page_script().contains("wisOpenInTab.postMessage"));
-        assert!(!page_script().contains("wisOpenInTabFg"));
+        assert!(PANEL_CROSS_SITE_JS.contains("messageHandlers.wisOpenInTabFg.postMessage"));
+        assert!(!PANEL_CROSS_SITE_JS.contains("wisOpenInTab.postMessage"));
+        assert!(!OPEN_IN_TAB_JS.contains("wisOpenInTabFg"));
     }
 }

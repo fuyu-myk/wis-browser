@@ -26,7 +26,7 @@ function loadPage({ handler = true } = {}) {
     timers: () => timers,
     /** Dispatches a keydown; the page may claim it any time before the macrotask runs. */
     press(key, mods = {}) {
-      const e = { key, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, defaultPrevented: false, ...mods }
+      const e = { key, isTrusted: true, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, defaultPrevented: false, ...mods }
       listeners.filter((l) => l.type === 'keydown').forEach((l) => l.fn(e))
       return e
     },
@@ -64,6 +64,13 @@ describe('unconsumed editing keys', () => {
     assert.equal(p.timers()[0].ms, 0)
     p.settle()
     assert.deepEqual(p.sent, ['undo'])
+  })
+
+  test('a Cmd+Z the page dispatched itself posts nothing', () => {
+    const p = loadPage()
+    p.press('z', { ...cmd, isTrusted: false })
+    p.settle()
+    assert.deepEqual(p.sent, [])
   })
 
   test('Cmd+Shift+Z posts redo', () => {

@@ -401,15 +401,14 @@ pub async fn open_widget_panel(
         .disable_drag_drop_handler()
         .proxy_url(proxy_url);
 
-    // Unconsumed page-first editing combos (undo/redo/select-all) replay natively
-    // via wisEditKey.
-    #[cfg(target_os = "macos")]
+    // macOS installs the link scripts in Wis's own content world instead.
+    #[cfg(not(target_os = "macos"))]
     {
-        builder = builder.initialization_script(crate::edit_keys::page_script());
+        builder = builder
+            .initialization_script(crate::link_open::page_script())
+            .initialization_script(crate::link_open::panel_page_script());
     }
     builder = builder
-        .initialization_script(crate::link_open::page_script())
-        .initialization_script(crate::link_open::panel_page_script())
         .initialization_script_for_all_frames(crate::gpc::page_script(global_privacy_control));
 
     // Fluent overlay scrollbars; WebView2 only.

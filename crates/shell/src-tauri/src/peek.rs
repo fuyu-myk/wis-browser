@@ -460,7 +460,7 @@ const PEEK_JS: &str = r#"(function () {
   if (window.__wisPeekInstalled) return;
   window.__wisPeekInstalled = true;
   function linkAt(e) {
-    if (!e.altKey || e.button !== 0) return null;
+    if (!e.isTrusted || !e.altKey || e.button !== 0) return null;
     var t = e.target;
     var el = (t && t.nodeType === 1) ? t : (t && t.parentElement);
     var a = el && el.closest ? el.closest('a[href]') : null;
@@ -490,9 +490,9 @@ const PEEK_JS: &str = r#"(function () {
   }, true);
 })();"#;
 
-/// The Opt+click trigger, exposed so tab webviews can bake it in as a
-/// **builder-level initialization script** (run at document start, before the
-/// first document exists).
+/// The Opt+click trigger, baked into tab webviews as a builder-level
+/// initialization script off macOS, where it runs in the page's world.
+#[cfg(not(target_os = "macos"))]
 pub fn page_script() -> &'static str {
     PEEK_JS
 }
@@ -509,7 +509,8 @@ mod imp {
     };
     use tauri::Emitter;
 
-    use super::{PeekOpenEvent, APP, PEEK_OPEN_EVENT};
+    use super::{PeekOpenEvent, APP, PEEK_JS, PEEK_OPEN_EVENT};
+    use crate::content_world::macos as content_world;
 
     declare_class!(
         struct PeekHandler;
@@ -613,10 +614,7 @@ mod imp {
         }
     }
 
-    /// Install the `wisPeek` message handler on a tab webview. The trigger
-    /// script itself rides the builder (see [`super::page_script`]); message
-    /// handlers, unlike user scripts, apply retroactively to an already-loaded
-    /// page.
+    /// Install the Opt+click trigger and its `wisPeek` handler on a tab webview.
     pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
         let _ = webview.with_webview(|w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
@@ -635,8 +633,8 @@ mod imp {
             }
 
             let handler = PeekHandler::new();
-            let name = ns_string("wisPeek");
-            let _: () = msg_send![controller, addScriptMessageHandler: &*handler, name: name];
+            content_world::add_handler(controller, &*handler, "wisPeek");
+            content_world::install_script(wk, controller, "wisPeek", PEEK_JS, true);
         });
     }
 }
