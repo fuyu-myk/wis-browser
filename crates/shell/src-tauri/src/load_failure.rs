@@ -2,7 +2,8 @@
 //!
 //! WebView2 and WebKitGTK expose their own per-webview failure callbacks, so
 //! each registers one here and reports the failure into tab state. The chrome
-//! then renders an error page in the tab's place (`SplitPaneHost`).
+//! then renders an error page in the tab's place (`SplitPaneHost`). A crashed
+//! page process reloads the tab, as macOS already does through wry.
 
 use std::sync::OnceLock;
 
@@ -49,9 +50,11 @@ pub fn report(app: &AppHandle, tab_id: TabId, failure: Option<LoadError>) {
 pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, tab_id: TabId) {
     use webview2_com::Microsoft::Web::WebView2::Win32::{
         ICoreWebView2, ICoreWebView2NavigationCompletedEventArgs,
+        ICoreWebView2ProcessFailedEventArgs, COREWEBVIEW2_PROCESS_FAILED_KIND,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED,
         COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN,
     };
-    use webview2_com::NavigationCompletedEventHandler;
+    use webview2_com::{NavigationCompletedEventHandler, ProcessFailedEventHandler};
 
     crate::win_webview2::with_core_webview2(webview, move |core| {
         let handler = NavigationCompletedEventHandler::create(Box::new(
@@ -88,6 +91,30 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, tab_id: 
         if let Err(err) = unsafe { core.add_NavigationCompleted(&handler, &mut token) } {
             log::warn!("load_failure: add_NavigationCompleted failed: {err}");
         }
+
+        let crashed = ProcessFailedEventHandler::create(Box::new(
+            move |sender: Option<ICoreWebView2>,
+                  args: Option<ICoreWebView2ProcessFailedEventArgs>|
+                  -> windows::core::Result<()> {
+                let (Some(core), Some(args)) = (sender, args) else {
+                    return Ok(());
+                };
+                let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND(0);
+                // SAFETY: UI thread; the out-param is a stack local.
+                unsafe { args.ProcessFailedKind(&mut kind)? };
+                if kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED {
+                    // SAFETY: UI thread; the sender is the live webview.
+                    unsafe { core.Reload()? };
+                }
+
+                Ok(())
+            },
+        ));
+        let mut crash_token = 0_i64;
+        // SAFETY: runs on the UI thread via with_core_webview2.
+        if let Err(err) = unsafe { core.add_ProcessFailed(&crashed, &mut crash_token) } {
+            log::warn!("load_failure: add_ProcessFailed failed: {err}");
+        }
     });
 }
 
@@ -96,7 +123,7 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, tab_id: 
 /// the chrome error page is the only one shown. Called per tab webview.
 #[cfg(target_os = "linux")]
 pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, tab_id: TabId) {
-    use webkit2gtk::{NetworkError, WebViewExt};
+    use webkit2gtk::{NetworkError, WebProcessTerminationReason, WebViewExt};
 
     let _ = webview.with_webview(move |w| {
         let wv = w.inner();
@@ -120,6 +147,16 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, tab_id: 
                 }
             }
             true
+        });
+
+        wv.connect_web_process_terminated(|wv, reason| {
+            if matches!(
+                reason,
+                WebProcessTerminationReason::Crashed
+                    | WebProcessTerminationReason::ExceededMemoryLimit
+            ) {
+                wv.reload();
+            }
         });
     });
 }
