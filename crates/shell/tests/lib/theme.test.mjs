@@ -32,22 +32,33 @@ describe('mixing', () => {
 describe('theme variables', () => {
   const light = defaultModeTokens(false)
 
-  test('the primary scale lightens above 500 and darkens below it, monotonically', () => {
-    const vars = themeVars(light)
+  const custom = { ...light, accent: '#3366cc' }
+
+  test('a custom accent derives a scale that lightens above 500 and darkens below it', () => {
+    const vars = themeVars(custom)
     const steps = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900].map((s) => vars[`--primary-${s}`])
-    assert.equal(vars['--primary-500'], light.accent)
-    assert.equal(vars['--primary'], light.accent)
+    assert.equal(vars['--primary-500'], '#3366cc')
     for (let i = 1; i < steps.length; i++) {
       assert.ok(luminance(steps[i]) < luminance(steps[i - 1]), `${steps[i - 1]} then ${steps[i]}`)
     }
-    assert.equal(vars['--primary-50'], mixHex(light.accent, '#ffffff', 0.92))
-    assert.equal(vars['--primary-900'], mixHex(light.accent, '#000000', 0.66))
+    assert.equal(vars['--primary-50'], mixHex('#3366cc', '#ffffff', 0.92))
+    assert.equal(vars['--primary-900'], mixHex('#3366cc', '#000000', 0.66))
+  })
+
+  test('--primary is the 400 step, as in the built-in theme', () => {
+    const vars = themeVars(custom)
+    assert.equal(vars['--primary'], vars['--primary-400'])
   })
 
   test('an accent with an alpha byte drives the scale by its colour alone', () => {
-    const vars = themeVars({ ...light, accent: '#6b77f880' })
-    assert.equal(vars['--primary'], '#6b77f8')
-    assert.equal(vars['--primary-600'], themeVars(light)['--primary-600'])
+    const vars = themeVars({ ...light, accent: '#3366cc80' })
+    assert.equal(vars['--primary-500'], '#3366cc')
+    assert.equal(vars['--primary-600'], themeVars(custom)['--primary-600'])
+  })
+
+  test("a dark popover sits between the chrome and the background, as the built-in one does", () => {
+    const dark = { ...defaultModeTokens(true), chrome_bg: '#303040', bg: '#101010' }
+    assert.equal(themeVars(dark, true)['--popover'], mixHex('#303040', '#101010', 0.6))
   })
 
   test('the subtle background leans four percent toward the text colour', () => {
@@ -101,6 +112,33 @@ describe('seed tokens', () => {
         assert.equal(seed[key], cssVar(selector, name), `${selector} ${name}`)
       }
       assert.equal(seed.accent, cssVar(':root', 'primary-500'))
+    }
+  })
+
+  // The value a mode's built-in tokens give `name`, following var() references.
+  const builtIn = (modeSelector, name) => {
+    const css = tokens.replace(/\/\*[\s\S]*?\*\//g, '')
+    const blocks = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, sel, body]) => [sel.trim(), body])
+    for (const wanted of [modeSelector, ':root']) {
+      for (const [sel, body] of blocks) {
+        if (sel !== wanted) continue
+        const found = body.match(new RegExp(`--${name}:\\s*([^;]+);`))
+        if (!found) continue
+        const ref = /^var\(--([\w-]+)\)$/.exec(found[1].trim())
+        return ref ? builtIn(modeSelector, ref[1]) : found[1].trim().toLowerCase()
+      }
+    }
+    return undefined
+  }
+
+  test('a theme left at the defaults looks exactly like the built-in theme in each mode', () => {
+    for (const [dark, selector] of [
+      [false, '.light, [data-mode="light"]'],
+      [true, '.dark, [data-mode="dark"]'],
+    ]) {
+      for (const [key, value] of Object.entries(themeVars(defaultModeTokens(dark), dark))) {
+        assert.equal(value.toLowerCase(), builtIn(selector, key.slice(2)), `${selector} ${key}`)
+      }
     }
   })
 

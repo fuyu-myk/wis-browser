@@ -35,7 +35,8 @@ export function useThemeApply(settings: UserSettings | undefined) {
         ? settings.custom_themes.find((t) => t.id === settings.active_theme)
         : undefined
       if (active) {
-        const vars = themeVars(mode === 'dark' ? active.tokens.dark : active.tokens.light)
+        const dark = mode === 'dark'
+        const vars = themeVars(dark ? active.tokens.dark : active.tokens.light, dark)
         for (const [key, value] of Object.entries(vars)) {
           body.style.setProperty(key, value)
         }

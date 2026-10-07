@@ -19,28 +19,62 @@ export function mixHex(a: string, b: string, t: number): string {
   return `#${to(0)}${to(1)}${to(2)}`
 }
 
-/** CSS variables for one mode's tokens. The primary scale derives from the
- * accent: lighter mixes toward white above 500, darker toward black below. */
-export function themeVars(m: ModeTokens): Record<string, string> {
-  const accent = m.accent.slice(0, 7)
+/** tokens.css's own primary scale for the default accent. */
+const DEFAULT_SCALE: Record<string, string> = {
+  '--primary': '#8f99fb',
+  '--primary-50': '#f0f1ff',
+  '--primary-100': '#e2e4fe',
+  '--primary-200': '#c5cafd',
+  '--primary-300': '#a8b0fc',
+  '--primary-400': '#8f99fb',
+  '--primary-500': '#6b77f8',
+  '--primary-600': '#4a58f4',
+  '--primary-700': '#2e3ce0',
+  '--primary-800': '#2230b3',
+  '--primary-900': '#18237f',
+}
+
+/** tokens.css's hand-tuned subtle backgrounds. */
+const DEFAULT_BG_SUBTLE = { light: '#f0efeb', dark: '#222229' }
+
+const sameColour = (a: string, b: string) => a.slice(0, 7).toLowerCase() === b.toLowerCase()
+
+/** The primary scale for an accent: lighter mixes toward white above 500,
+ * darker toward black below.
+ */
+function primaryScale(accent: string): Record<string, string> {
+  if (sameColour(accent, DEFAULT_SCALE['--primary-500'])) return DEFAULT_SCALE
+  const lighter = (t: number) => mixHex(accent, '#ffffff', t)
+  const darker = (t: number) => mixHex(accent, '#000000', t)
   return {
-    '--primary': accent,
-    '--primary-50': mixHex(accent, '#ffffff', 0.92),
-    '--primary-100': mixHex(accent, '#ffffff', 0.84),
-    '--primary-200': mixHex(accent, '#ffffff', 0.66),
-    '--primary-300': mixHex(accent, '#ffffff', 0.46),
-    '--primary-400': mixHex(accent, '#ffffff', 0.24),
+    '--primary': lighter(0.24),
+    '--primary-50': lighter(0.92),
+    '--primary-100': lighter(0.84),
+    '--primary-200': lighter(0.66),
+    '--primary-300': lighter(0.46),
+    '--primary-400': lighter(0.24),
     '--primary-500': accent,
-    '--primary-600': mixHex(accent, '#000000', 0.18),
-    '--primary-700': mixHex(accent, '#000000', 0.36),
-    '--primary-800': mixHex(accent, '#000000', 0.52),
-    '--primary-900': mixHex(accent, '#000000', 0.66),
+    '--primary-600': darker(0.18),
+    '--primary-700': darker(0.36),
+    '--primary-800': darker(0.52),
+    '--primary-900': darker(0.66),
+  }
+}
+
+/** CSS variables for one mode's tokens. */
+export function themeVars(m: ModeTokens, dark = false): Record<string, string> {
+  const seed = defaultModeTokens(dark)
+  const atDefaultBg = sameColour(m.bg, seed.bg) && sameColour(m.text_primary, seed.text_primary)
+  return {
+    ...primaryScale(m.accent.slice(0, 7)),
     '--bg': m.bg,
-    '--bg-subtle': mixHex(m.bg.slice(0, 7), m.text_primary.slice(0, 7), 0.04),
+    '--bg-subtle': atDefaultBg
+      ? DEFAULT_BG_SUBTLE[dark ? 'dark' : 'light']
+      : mixHex(m.bg.slice(0, 7), m.text_primary.slice(0, 7), 0.04),
     '--surface': m.surface,
     '--surface-raised': m.surface_raised,
     '--chrome-bg': m.chrome_bg,
-    '--popover': m.chrome_bg,
+    '--popover': dark ? mixHex(m.chrome_bg.slice(0, 7), m.bg.slice(0, 7), 0.6) : m.chrome_bg,
     '--content-bg': m.content_bg,
     '--text-primary': m.text_primary,
     '--text-secondary': m.text_secondary,
