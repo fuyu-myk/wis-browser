@@ -27,13 +27,24 @@ function __wisFindMainContent() {
   var named = document.querySelectorAll('article, main, [role=main], [itemprop=articleBody], .post, .article, .entry-content, .post-content, #content, .content');
   Array.prototype.slice.call(named).forEach(function (c) { var s = textLen(c); if (s > bestScore) { bestScore = s; best = c; } });
   if (!best || bestScore < 200) {
+    // Exclude comment threads, sidebars and the like.
+    var UNLIKELY = /comment|sidebar|related|share|social|sponsor|promo|widget|advert|newsletter|subscribe/i;
+    function unlikely(el) { return UNLIKELY.test(String(el.className || '') + ' ' + (el.id || '')); }
+    function insideUnlikely(el, block) {
+      for (var n = el.parentElement; n && n !== block; n = n.parentElement) if (unlikely(n)) return true;
+      return false;
+    }
     Array.prototype.slice.call(document.querySelectorAll('div, section')).forEach(function (c) {
-      var ps = c.querySelectorAll('p'); if (ps.length < 2) return;
+      if (unlikely(c)) return;
+      var ps = Array.prototype.slice.call(c.querySelectorAll('p')).filter(function (p) { return !insideUnlikely(p, c); });
+      if (ps.length < 2) return;
       var s = 0; for (var i = 0; i < ps.length; i++) s += textLen(ps[i]);
-      if (s > bestScore) { bestScore = s; best = c; }
+      // A tie goes to the later block, which is the one nested deeper.
+      if (s > 0 && s >= bestScore) { bestScore = s; best = c; }
     });
   }
   if (!best) best = document.body;
+  if (!best) return null;
   var tight = best.querySelector('#mw-content-text, [itemprop=articleBody]');
   if (tight && textLen(tight) > bestScore * 0.5) { best = tight; }
   return best;

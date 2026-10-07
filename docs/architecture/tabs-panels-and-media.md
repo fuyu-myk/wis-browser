@@ -38,6 +38,7 @@ This guide elaborates on WIS.md. If anything here conflicts, WIS.md wins.
 
 ## Reader mode
 
+- Finding the article (`reader::MAIN_CONTENT_FINDER`, shared with the assistant's page text): the largest named container (`article`, `main`, `[role=main]` and the usual content classes) with 200 characters or more; otherwise the `div` or `section` with the most paragraph text across at least two paragraphs. Blocks marked as comments, sidebars, related links and the like never count, nor do their paragraphs toward a block around them, and a tie goes to the deeper block. A page with no body yields nothing rather than throwing.
 - Clean-article view (`reader.rs`, `tab_set_reader`), toggled from the toolbar, `ToggleReader` (`Alt+Cmd+R`), or the palette. The transform (`reader::reader_script`, shared with Peek) runs inside the tab's own webview and rebuilds the tree via `documentElement.innerHTML`, not `document.write` (which WebKit leaves blank on some pages, e.g. Wikipedia), so no untrusted markup reaches the chrome; exit reloads. A session-only `Tab.reader` flag drives the button; a real navigation resets it. Disabled on chrome pages.
 
 ## Video popout

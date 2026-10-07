@@ -75,9 +75,9 @@ describe('the script as shipped', () => {
     assert.deepEqual(sent, [{ text: 'Just a body', title: 'A page' }])
   })
 
-  test.todo(
-    'a document without a body answers with empty text (bug: __wisFindMainContent dereferences a null document.body, the throw is swallowed and nothing is posted, so the assistant waits out its 6 s timeout; the extraction guard `best &&` never applies)',
-  )
+  test('a document without a body answers with empty text rather than leaving the assistant to time out', () => {
+    assert.deepEqual(extractPage({ body: null }), [{ text: '', title: 'A page' }])
+  })
 })
 
 describe('the text', () => {

@@ -112,9 +112,34 @@ describe('MAIN_CONTENT_FINDER', () => {
     assert.equal(findMain(article, block), block)
   })
 
-  test.todo(
-    'the paragraph fallback picks the block holding the article rather than a wrapper that adds comment or sidebar paragraphs (bug: a parent div always scores at least its child, so the outermost wrapper wins and its extra paragraphs come along)',
-  )
+  test('the paragraph fallback picks the block holding the article, not a wrapper that adds its comments', () => {
+    const story = h('div', { class: 'story' }, h('p', {}, prose(100)), h('p', {}, prose(100)), h('p', {}, prose(100)))
+    const comments = h('div', { class: 'comments' }, h('p', {}, prose(120)), h('p', {}, prose(120)))
+    assert.equal(findMain(h('div', { class: 'wrap' }, story, comments)), story)
+  })
+
+  test('a comment thread or sidebar is never the article, however long', () => {
+    const story = h('div', {}, h('p', {}, prose(100)), h('p', {}, prose(100)))
+    const comments = h('section', { id: 'comments' }, h('p', {}, prose(400)), h('p', {}, prose(400)))
+    const sidebar = h('div', { class: 'sidebar' }, h('p', {}, prose(400)), h('p', {}, prose(400)))
+    assert.equal(findMain(story, comments, sidebar), story)
+  })
+
+  test('an article split into sections keeps the block holding them all', () => {
+    const wrap = h(
+      'div',
+      {},
+      h('section', {}, h('p', {}, prose(100)), h('p', {}, prose(100))),
+      h('section', {}, h('p', {}, prose(100)), h('p', {}, prose(100))),
+    )
+    assert.equal(findMain(wrap), wrap)
+  })
+
+  test('with no body there is nothing to find', () => {
+    const doc = page(URL_NOW)
+    Object.defineProperty(doc, 'body', { value: null })
+    assert.equal(new Function('document', `${FINDER}\nreturn __wisFindMainContent();`)(doc), null)
+  })
 })
 
 /**
