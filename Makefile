@@ -36,9 +36,10 @@ build_frontend:
 check:
 	cargo check --workspace --all-targets
 
-## test: Run the full workspace test suite
+## test: Run the full workspace test suite, then the frontend tests
 test:
 	cargo test --workspace --all-targets
+	cd crates/shell && pnpm test
 
 ## fmt: Format all Rust code in the workspace
 fmt:

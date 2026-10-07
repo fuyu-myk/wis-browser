@@ -11,7 +11,7 @@ Wis loads `WIS.md` from the workspace root as agent memory (similar to AGENTS.md
 - Bundle id: `app.myk.wis`
 - Package manager: **pnpm**
 - Run/build: use the `Makefile` (`make dev`, `make build`, `make check`, `make test`, `make lint`, `make fmt`). `make dev` runs `pnpm tauri dev`; the built-in Tor client is a **default cargo feature**, so a plain `make dev` already includes it.
-- Frontend check: `cd crates/shell && pnpm build` (= `tsc && vite build`; this is the typecheck gate, there is no separate test script yet) and `pnpm lint` (ESLint: React hooks rules and `no-console`, all errors).
+- Frontend check: `cd crates/shell && pnpm build` (= `tsc && vite build`, the typecheck gate), `pnpm lint` (ESLint: React hooks rules and `no-console`, all errors) and `pnpm test` (Node's built-in `node:test` over `crates/shell/tests`, no dependencies). `tests/lib` covers every `src/lib` module and `pnpm test` fails below 80% of lines or functions there; `tests/scripts` covers every page script embedded in Rust, read out of the Rust source (`tests/support/rustSource.mjs`) so the tests run the text that ships. A bug a test exposes but is unfixed is a `test.todo`. React hooks and components are not covered (no DOM in the runner).
 - Rust checks: `make lint` (`cargo clippy --workspace --all-targets -- -D warnings`, then the frontend `pnpm lint`) and `make test` (`cargo test --workspace --all-targets`).
 
 ## Quality bar
