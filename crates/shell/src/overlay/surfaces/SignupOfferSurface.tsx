@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react'
 import { emit, listen } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { commands } from '@/bindings/commands'
 import { Switch } from '@/components/controls'
@@ -34,14 +35,16 @@ export function SignupOfferSurface() {
   useEffect(() => {
     let unlisten: (() => void) | null = null
     let cancelled = false
+    const label = getCurrentWindow().label
     void listen<SignupOffer>(SIGNUP_SHOW_EVENT, (event) => {
+      if (event.payload.window !== label) return
       setOffer(event.payload)
       setRemember(false)
     }).then((fn) => {
       if (cancelled) fn()
       else unlisten = fn
     })
-    void emit(SIGNUP_READY_EVENT)
+    void emit(SIGNUP_READY_EVENT, label)
     return () => {
       cancelled = true
       unlisten?.()
@@ -51,7 +54,7 @@ export function SignupOfferSurface() {
   const decide = (accepted: boolean) => {
     const current = offer
     setOffer(null)
-    void emit(SIGNUP_CLOSE_EVENT)
+    void emit(SIGNUP_CLOSE_EVENT, getCurrentWindow().label)
     if (!current) return
 
     if (accepted) {

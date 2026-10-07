@@ -15,7 +15,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { commands } from '@/bindings/commands'
 import type { BrowserState, TabId } from '@/bindings/types'
-import { useAnchoredCard, type FieldRect } from '@/hooks/useAnchoredCard'
+import { FIELD_LEAVE_EVENT, useAnchoredCard, type FieldRect } from '@/hooks/useAnchoredCard'
 import type { Rect } from '@/lib/signupPlacement'
 
 export const SIGNUP_FIELD_EVENT = 'wis-signup-field'
@@ -29,6 +29,8 @@ const CARD = { width: 340, height: 190 }
 const MARGIN = 14
 
 export interface SignupOffer {
+  /** Events reach every window, so the surface keeps to its own. */
+  window: string
   tabId: TabId
   host: string
   password: string
@@ -56,7 +58,6 @@ export function useSignupOffer(
   suspended: boolean,
 ): void {
   const offerRef = useRef<SignupOffer | null>(null)
-  const generatingRef = useRef<TabId | null>(null)
   /** Pages answered either way, so a refocus does not ask again. */
   const decidedRef = useRef(new Set<TabId>())
   const settingsRef = useRef(state.settings)
@@ -67,6 +68,8 @@ export function useSignupOffer(
 
   useEffect(() => {
     let cancelled = false
+    // Bumped whenever focus moves on or a card closes.
+    let focus = 0
     const unlistens: UnlistenFn[] = []
     const track = (pending: Promise<UnlistenFn>) =>
       void pending.then((fn) => (cancelled ? fn() : unlistens.push(fn)))
@@ -88,7 +91,7 @@ export function useSignupOffer(
         const tabId = field.tabId as TabId
         const offer = settingsRef.current?.password_offer ?? 'ask'
         if (offer === 'never' || decidedRef.current.has(tabId)) return
-        if (generatingRef.current === tabId) return
+        const mine = ++focus
 
         // Already open on this page: follow focus to the field now taking it.
         if (offerRef.current?.tabId === tabId && card.openFor() === tabId) {
@@ -97,13 +100,11 @@ export function useSignupOffer(
           return
         }
 
-        generatingRef.current = tabId
         void (async () => {
           const password = await commands
             .generatePasswordForField(field.rules, field.maxLength)
             .catch(() => null)
-          generatingRef.current = null
-          if (!password || cancelled) return
+          if (!password || cancelled || mine !== focus) return
 
           if (offer === 'always') {
             decidedRef.current.add(tabId)
@@ -113,7 +114,7 @@ export function useSignupOffer(
 
           const rect = field.rect ? card.placeAt(tabId, field.rect, CARD) : fallback()
           if (!rect) return
-          offerRef.current = { tabId, host: field.host, password }
+          offerRef.current = { window: field.window, tabId, host: field.host, password }
           await card.open(tabId, rect, CARD)
           void emit(SIGNUP_SHOW_EVENT, offerRef.current)
         })()
@@ -122,19 +123,29 @@ export function useSignupOffer(
 
     track(
       listen<TabPayload>(SIGNUP_GONE_EVENT, (event) => {
+        focus++
         decidedRef.current.delete(event.payload.tabId as TabId)
       }),
     )
 
     track(
-      listen<void>(SIGNUP_READY_EVENT, () => {
+      listen<void>(FIELD_LEAVE_EVENT, () => {
+        focus++
+      }),
+    )
+
+    track(
+      listen<string>(SIGNUP_READY_EVENT, (event) => {
+        if (event.payload !== getCurrentWindow().label) return
         if (offerRef.current) void emit(SIGNUP_SHOW_EVENT, offerRef.current)
       }),
     )
 
     // The surface only ever closes on an answer, which settles the page.
     track(
-      listen<void>(SIGNUP_CLOSE_EVENT, () => {
+      listen<string>(SIGNUP_CLOSE_EVENT, (event) => {
+        if (event.payload !== getCurrentWindow().label) return
+        focus++
         const open = offerRef.current
         if (open) decidedRef.current.add(open.tabId)
         card.close(true)
