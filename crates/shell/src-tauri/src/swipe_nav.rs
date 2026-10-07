@@ -71,19 +71,33 @@ const SWIPE_NAV_JS: &str = r#"(function () {
     } catch (e) { return '#ffffff'; }
   }
 
-  function canScroll(el, sign) {
-    while (el && el.nodeType === 1 && el !== document.documentElement) {
+  // Room to scroll in `sign`'s direction.
+  function hasRoom(el, sign) {
+    var max = el.scrollWidth - el.clientWidth;
+    var x = el.scrollLeft;
+    var left = x < 0 || getComputedStyle(el).direction === 'rtl' ? max + x : x;
+    return sign < 0 ? left > 0 : left < max - 1;
+  }
+
+  function canScroll(e, sign) {
+    var path = (e.composedPath && e.composedPath()) || [];
+    if (!path.length) for (var n = e.target; n; n = n.parentNode) path.push(n);
+    for (var i = 0; i < path.length; i++) {
+      var el = path[i];
+      if (el === document.documentElement) break;
+      if (!el || el.nodeType !== 1) continue;
       var ov = getComputedStyle(el).overflowX;
-      if ((ov === 'auto' || ov === 'scroll') && el.scrollWidth > el.clientWidth + 1) {
-        if (sign < 0 && el.scrollLeft > 0) return true;
-        if (sign > 0 && el.scrollLeft < el.scrollWidth - el.clientWidth - 1) return true;
+      if ((ov === 'auto' || ov === 'scroll') && el.scrollWidth > el.clientWidth + 1 && hasRoom(el, sign)) {
+        return true;
       }
-      el = el.parentNode;
     }
-    var de = document.scrollingElement || document.documentElement;
-    if (sign < 0 && de.scrollLeft > 0) return true;
-    if (sign > 0 && de.scrollLeft < de.scrollWidth - de.clientWidth - 1) return true;
-    return false;
+    return hasRoom(document.scrollingElement || document.documentElement, sign);
+  }
+
+  // Swipes over popped-out videos cannot affect underlying page.
+  function poppedOut() {
+    var classes = document.documentElement && document.documentElement.classList;
+    return !!(classes && classes.contains('__wis-popout-mode'));
   }
 
   var host, semi, arr, ind, hideTimer = null;
@@ -114,14 +128,20 @@ const SWIPE_NAV_JS: &str = r#"(function () {
     var tipX = back ? R * 0.28 : W - R * 0.28;
     var baseX = back ? R * 0.56 : W - R * 0.56;
     var arrD = 'M' + baseX + ' ' + (cy - hw) + ' L' + tipX + ' ' + cy + ' L' + baseX + ' ' + (cy + hw);
-    ind.innerHTML = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">'
-      + '<path class="semi" d="' + semiD + '" stroke="' + a + '" fill="' + a + '"/>'
-      + '<path class="arr" d="' + arrD + '" stroke="' + a + '"/></svg>';
+    // Built from nodes.
+    var NS = 'http://www.w3.org/2000/svg';
+    function svgNode(tag, attrs) {
+      var n = document.createElementNS(NS, tag);
+      for (var k in attrs) n.setAttribute(k, attrs[k]);
+      return n;
+    }
+    var svg = svgNode('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H });
+    semi = svg.appendChild(svgNode('path', { 'class': 'semi', d: semiD, stroke: a, fill: a }));
+    arr = svg.appendChild(svgNode('path', { 'class': 'arr', d: arrD, stroke: a }));
+    ind.replaceChildren(svg);
     ind.style.left = back ? '0' : 'auto';
     ind.style.right = back ? 'auto' : '0';
     ind.dataset.dir = dir;
-    semi = ind.querySelector('.semi');
-    arr = ind.querySelector('.arr');
   }
 
   function show(dir) { clearTimeout(hideTimer); build(dir); ind.style.opacity = '1'; }
@@ -224,7 +244,7 @@ const SWIPE_NAV_JS: &str = r#"(function () {
       var horizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY);
       var dir = e.deltaX < 0 ? 'back' : 'forward';
       var sign = e.deltaX < 0 ? -1 : 1;
-      if (!e.cancelable || !horizontal || canScroll(e.target, sign) || !canNavigate(dir)) {
+      if (!e.cancelable || !horizontal || e.shiftKey || poppedOut() || canScroll(e, sign) || !canNavigate(dir)) {
         seq = 'scroll';
         if (!nativePhase) armQuiet(END_DELAY, function () { seq = null; });
         return;

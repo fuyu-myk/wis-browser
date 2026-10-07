@@ -1,9 +1,9 @@
 //! Reader mode: the in-page article transform shared by full-page reader
 //! (a tab webview) and the Peek link preview.
 //!
-//! The script runs entirely inside the target webview and rewrites the
-//! document into a clean article via `document.write`, so no untrusted markup
-//! ever reaches the privileged chrome. Exiting reader mode reloads the live
+//! The script runs entirely inside the target webview and rebuilds the
+//! document from nodes into a clean article, so no untrusted markup ever
+//! reaches the privileged chrome. Exiting reader mode reloads the live
 //! page (`location.reload()`), which restores the original document.
 
 /// In-page reader transform. Evaluated inside the target webview only.
@@ -71,11 +71,22 @@ const READER_BODY: &str = r#"(function () {
     var dark = (0.299 * pc.r + 0.587 * pc.g + 0.114 * pc.b) < 128;
     var bgCol = dark ? '#16161a' : '#fbfbfd', fgCol = dark ? '#e9e9ee' : '#1d1d22', linkCol = dark ? '#9aa4ff' : '#6b77f8';
     var css = '*{box-sizing:border-box}html,body{margin:0;padding:0;background:' + bgCol + ';color:' + fgCol + '}body{font:17px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main.kbreader{max-width:680px;margin:0 auto;padding:40px 24px 80px}main.kbreader h1.kbreader-title{font-size:28px;line-height:1.25;margin:0 0 24px}main.kbreader img{max-width:100%;height:auto;border-radius:8px}main.kbreader p{margin:0 0 18px}main.kbreader a{color:' + linkCol + '}';
-    var safeTitle = title.replace(/</g, '&lt;');
-    var head = '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>' + css + '</style>';
-    var body = '<main class=kbreader>' + (title ? ('<h1 class=kbreader-title>' + safeTitle + '</h1>') : '') + clone.innerHTML + '</main>';
-    // Rebuild the document tree via the DOM rather than document.write.
-    document.documentElement.innerHTML = '<head>' + head + '</head><body>' + body + '</body>';
+    // Rebuilt from nodes.
+    function el(tag, attrs) {
+      var n = document.createElement(tag);
+      for (var k in attrs) n.setAttribute(k, attrs[k]);
+      return n;
+    }
+    var head = el('head', {});
+    head.appendChild(el('meta', { charset: 'utf-8' }));
+    head.appendChild(el('meta', { name: 'viewport', content: 'width=device-width,initial-scale=1' }));
+    head.appendChild(el('style', {})).textContent = css;
+    var main = el('main', { 'class': 'kbreader' });
+    if (title) main.appendChild(el('h1', { 'class': 'kbreader-title' })).textContent = title;
+    while (clone.firstChild) main.appendChild(clone.firstChild);
+    var body = el('body', {});
+    body.appendChild(main);
+    document.documentElement.replaceChildren(head, body);
     document.title = title;
   } catch (e) {}
 })();"#;
@@ -93,10 +104,14 @@ mod tests {
             js.contains("kbreader"),
             "reader transform emits the kbreader article shell"
         );
-        // Rebuilds via the DOM.
+        // Rebuilds from nodes.
         assert!(
-            js.contains("documentElement.innerHTML"),
+            js.contains("documentElement.replaceChildren"),
             "reader transform rewrites the document tree via the DOM"
+        );
+        assert!(
+            !js.contains("innerHTML ="),
+            "reader transform must not assign an HTML string"
         );
         assert!(
             !js.contains("document.write("),

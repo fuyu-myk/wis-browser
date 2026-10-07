@@ -33,41 +33,46 @@ function element(tag, props = {}) {
     dataset: {},
     children: [],
     parentNode: null,
+    attrs: {},
     appendChild(child) {
       child.parentNode = this
       this.children.push(child)
       return child
     },
+    replaceChildren(...nodes) {
+      this.children = []
+      nodes.forEach((n) => this.appendChild(n))
+    },
+    setAttribute(name, value) {
+      this.attrs[name] = String(value)
+    },
+    getAttribute(name) {
+      return this.attrs[name] ?? null
+    },
+    /** `.class` selectors only, searched depth first. */
+    querySelector(selector) {
+      for (const child of this.children) {
+        if (child.attrs?.class === selector.slice(1)) return child
+        const found = child.querySelector?.(selector)
+        if (found) return found
+      }
+      return null
+    },
     ...props,
   }
 }
 
-/** The indicator's `<path>`s, keyed by class, from the markup the script writes. */
-function parsePaths(html) {
-  const paths = {}
-  for (const [, text] of html.matchAll(/<path ([^>]*?)\/>/g)) {
-    const attrs = Object.fromEntries([...text.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]))
-    paths[attrs.class] = {
-      style: {},
-      setAttribute: (name, value) => void (attrs[name] = String(value)),
-      getAttribute: (name) => attrs[name] ?? null,
-    }
-  }
-  return paths
-}
-
+/**
+ * An element on a page that enforces Trusted Types: it refuses an HTML string,
+ * so the indicator has to be built from nodes.
+ */
 function createElement(tag) {
   const el = element(tag)
-  if (tag !== 'div') return el
-  let paths = {}
   Object.defineProperty(el, 'innerHTML', {
-    get: () => el.markup,
-    set(markup) {
-      el.markup = markup
-      paths = parsePaths(markup)
+    set() {
+      throw new TypeError("This document requires 'TrustedHTML' assignment.")
     },
   })
-  el.querySelector = (selector) => paths[selector.slice(1)] || null
   el.attachShadow = ({ mode }) => (el.shadowRoot = element('#shadow-root', { mode }))
   return el
 }
@@ -118,6 +123,7 @@ function loadPage({
     scrollingElement: html,
     addEventListener: (type, fn) => (listeners[`doc:${type}`] ||= []).push({ fn }),
     createElement,
+    createElementNS: (namespace, tag) => element(tag, { namespaceURI: namespace }),
   }
   const getComputedStyle = (el) => ({ overflowX: el.overflowX || 'visible' })
   const fire = (key, event = {}) => (listeners[key] || []).forEach((l) => l.fn(event))
@@ -386,8 +392,8 @@ describe('horizontal scroll ownership', () => {
     assert.deepEqual(p.navigations, [])
   })
 
-  test.todo(
-    'a right-to-left scroller that can still scroll left keeps a back swipe as a scroll (bug: canScroll assumes scrollLeft runs from 0 up, but RTL scrollers run from 0 down to negative values, so a back swipe over an RTL carousel navigates instead of scrolling)',
+  test(
+    'a right-to-left scroller that can still scroll left keeps a back swipe as a scroll',
     () => {
       const p = loadPage()
       gesture(p, [-60, -60], scroller(p, { scrollLeft: -300 }))
@@ -395,8 +401,8 @@ describe('horizontal scroll ownership', () => {
     },
   )
 
-  test.todo(
-    'a scroller inside a shadow root keeps the swipe as a scroll (bug: canScroll walks up from e.target, which a window listener sees retargeted to the shadow host, so scrollers inside the shadow tree are never consulted)',
+  test(
+    'a scroller inside a shadow root keeps the swipe as a scroll',
     () => {
       const p = loadPage()
       const host = p.body.appendChild(element('x-carousel'))
@@ -412,6 +418,24 @@ describe('horizontal scroll ownership', () => {
       assert.deepEqual(p.navigations, [])
     },
   )
+
+  test('the arrow is drawn on a page that refuses HTML strings', () => {
+    const p = loadPage()
+    p.began()
+    p.wheel(-60)
+    const ind = p.indicator()
+    assert.equal(ind.visible, true)
+    assert.equal(ind.dir, 'back')
+    assert.equal(ind.semi.namespaceURI, 'http://www.w3.org/2000/svg')
+    assert.equal(ind.arrow, DEFAULT_ACCENT)
+  })
+
+  test('a swipe over a popped-out video never navigates the page behind it', () => {
+    const p = loadPage()
+    p.html.classList = { contains: (name) => name === '__wis-popout-mode' }
+    gesture(p, [-60, -60])
+    assert.deepEqual(p.navigations, [])
+  })
 })
 
 describe('history availability', () => {
@@ -583,8 +607,8 @@ describe('without phase signals', () => {
     assert.deepEqual(p.navigations, ['back'])
   })
 
-  test.todo(
-    'a shift+wheel from a mouse at the page edge stays a scroll (bug: modifier keys are never checked, so in the no-phase fallback used on Windows and Linux a shift+wheel, which the engine delivers as deltaX, navigates back or forward)',
+  test(
+    'a shift+wheel from a mouse at the page edge stays a scroll',
     () => {
       const p = loadPage({ native: false })
       p.wheel(-100, 0, { shiftKey: true })

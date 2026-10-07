@@ -124,9 +124,20 @@ export class Element {
   get innerHTML() {
     return this.childNodes.map(serialize).join('')
   }
+  // A page enforcing Trusted Types refuses an HTML string.
   set innerHTML(html) {
+    throw new TypeError("This document requires 'TrustedHTML' assignment.")
+  }
+  get firstChild() {
+    return this.childNodes[0] ?? null
+  }
+  set className(value) {
+    this.setAttribute('class', value)
+  }
+  replaceChildren(...nodes) {
+    for (const node of [...this.childNodes]) node.parentNode = null
     this.childNodes = []
-    this.html = html
+    nodes.forEach((node) => this.appendChild(node))
   }
   appendChild(node) {
     detach(node)

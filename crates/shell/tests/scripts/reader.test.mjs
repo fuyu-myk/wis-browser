@@ -151,8 +151,10 @@ function readerize(children, { title = 'A story', bodyBg = 'rgb(255, 255, 255)',
   doc.title = title
   const getComputedStyle =
     style ?? ((el) => ({ backgroundColor: el === doc.body ? bodyBg : el === doc.documentElement ? rootBg : '' }))
+  const before = doc.documentElement.innerHTML
   new Function('document', 'getComputedStyle', `${FINDER}\n${BODY}`)(doc, getComputedStyle)
-  return { doc, html: doc.documentElement.html }
+  const after = doc.documentElement.innerHTML
+  return { doc, html: after === before ? undefined : after }
 }
 
 const story = (...extra) => h('article', {}, h('p', {}, prose(300)), ...extra)
@@ -161,7 +163,7 @@ describe('READER_BODY', () => {
   test('the article is rebuilt as a kbreader page headed by the document title', () => {
     const { doc, html } = readerize([h('nav', {}, 'Menu'), story(h('h2', {}, 'Part two'))], { title: '  A story  ' })
     assert.match(html, /^<head><meta charset="utf-8"><meta name="viewport"[^>]*><style>[^<]*<\/style><\/head><body>/)
-    assert.ok(html.includes(`<main class=kbreader><h1 class=kbreader-title>A story</h1><p>${prose(300)}</p><h2>Part two</h2></main>`))
+    assert.ok(html.includes(`<main class="kbreader"><h1 class="kbreader-title">A story</h1><p>${prose(300)}</p><h2>Part two</h2></main>`))
     assert.ok(!html.includes('Menu'), 'only the article is kept')
     assert.equal(doc.title, 'A story')
   })
@@ -220,10 +222,15 @@ describe('READER_BODY', () => {
     for (const gone of ['onclick', 'btn', 'width="10"', 'float', 'data-x', 'p2']) assert.ok(!html.includes(gone), gone)
   })
 
-  test('the title is escaped so it cannot add markup', () => {
+  test('the title is text, so it cannot add markup', () => {
     const { html } = readerize([story()], { title: '<img src=x onerror=alert(1)>' })
-    assert.ok(html.includes('<h1 class=kbreader-title>&lt;img src=x onerror=alert(1)></h1>'))
+    assert.ok(html.includes('<h1 class="kbreader-title">&lt;img src=x onerror=alert(1)&gt;</h1>'))
     assert.ok(!html.includes('<img src=x'))
+  })
+
+  test('the page is rebuilt on a page that refuses HTML strings', () => {
+    const { html } = readerize([story()])
+    assert.ok(html.includes('<main class="kbreader">'))
   })
 
   test('without a title there is no heading', () => {
