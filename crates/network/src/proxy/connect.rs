@@ -24,6 +24,13 @@ const RESOLVE_TIMEOUT: Duration = Duration::from_secs(12);
 /// Per-address connect timeout.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
 
+/// Backstop for a SOCKS5 connect, handshake included.
+const SOCKS_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Idle time before the first keepalive probe, and the gap between probes.
+const KEEPALIVE_IDLE: Duration = Duration::from_secs(30);
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
+
 /// Check that a SOCKS5 upstream is reachable and speaks the protocol, without
 /// opening any onward connection.
 pub async fn probe_upstream(upstream: &UpstreamProxy) -> Result<(), String> {
@@ -70,17 +77,43 @@ pub async fn connect_target(
     upstream: Option<&UpstreamProxy>,
     resolver: &Arc<dyn Resolver>,
 ) -> Result<TcpStream, String> {
-    match upstream {
-        None => direct(host, port, resolver).await,
+    let stream = match upstream {
+        None => direct(host, port, resolver).await?,
         Some(UpstreamProxy::Socks5 {
             host: proxy_host,
             port: proxy_port,
-        }) => socks5_connect(proxy_host, *proxy_port, host, port, resolver).await,
+        }) => match timeout(
+            SOCKS_TIMEOUT,
+            socks5_connect(proxy_host, *proxy_port, host, port, resolver),
+        )
+        .await
+        {
+            Ok(result) => result?,
+            Err(_) => {
+                return Err(format!(
+                    "socks5 {proxy_host}:{proxy_port}: no answer within {}s",
+                    SOCKS_TIMEOUT.as_secs()
+                ))
+            }
+        },
         // The shell resolves Tor to a concrete loopback SOCKS5 address before
         // building the policy, so it should never reach the transport layer.
         Some(UpstreamProxy::Tor) => {
-            Err("built-in Tor was not resolved to a SOCKS5 address".to_string())
+            return Err("built-in Tor was not resolved to a SOCKS5 address".to_string())
         }
+    };
+    keep_alive(&stream);
+    Ok(stream)
+}
+
+/// A connection that died without a close, as across a sleep or a network
+/// change, then fails on the next probe instead of hanging the page.
+fn keep_alive(stream: &TcpStream) {
+    let probe = socket2::TcpKeepalive::new()
+        .with_time(KEEPALIVE_IDLE)
+        .with_interval(KEEPALIVE_INTERVAL);
+    if let Err(err) = socket2::SockRef::from(stream).set_tcp_keepalive(&probe) {
+        tracing::debug!("tcp keepalive not set: {err}");
     }
 }
 
@@ -256,5 +289,38 @@ mod tests {
         stream.read_exact(&mut echoed).await.unwrap();
         assert_eq!(&echoed, b"example.com");
         server.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_socks5_proxy_that_never_answers_times_out() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            let (_held, _) = listener.accept().await.unwrap();
+            std::future::pending::<()>().await;
+        });
+
+        let upstream = UpstreamProxy::Socks5 {
+            host: addr.ip().to_string(),
+            port: addr.port(),
+        };
+        let err = connect_target("example.com", 443, Some(&upstream), &stub())
+            .await
+            .expect_err("a silent proxy must not hang the request");
+        assert!(err.contains("no answer"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn outbound_connections_probe_for_a_dead_peer() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let resolver: Arc<dyn Resolver> =
+            Arc::new(StubResolver::new().with("peer.test", vec![addr.ip()]));
+
+        let stream = connect_target("peer.test", addr.port(), None, &resolver)
+            .await
+            .expect("direct connect");
+        let keepalive = socket2::SockRef::from(&stream).keepalive().unwrap();
+        assert!(keepalive, "keepalive is on");
     }
 }

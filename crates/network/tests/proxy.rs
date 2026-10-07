@@ -261,6 +261,28 @@ async fn global_privacy_control_off_sends_no_sec_gpc() {
 }
 
 #[tokio::test]
+async fn a_proxy_switched_to_refusing_keeps_its_port_and_refuses_traffic() {
+    let upstream_port = start_stub_upstream("hello from upstream").await;
+    let proxy = start_proxy(TrackerBlocker::empty(), localhost_resolver()).await;
+    let port = proxy.port();
+    assert!(!proxy.refusing());
+
+    proxy.update_policy(Arc::new(
+        RequestPolicy::new(
+            wis_core::PrivacyMode::Balanced,
+            Arc::new(TrackerBlocker::empty()),
+        )
+        .refusing_all(),
+    ));
+
+    assert!(proxy.refusing());
+    assert_eq!(proxy.port(), port);
+    let url = format!("http://localhost:{upstream_port}/");
+    let resp = send_through_proxy(port, Method::GET, &url).await;
+    assert_eq!(resp.status(), 403);
+}
+
+#[tokio::test]
 async fn proxy_blocks_http_to_tracker_host() {
     let resolver: Arc<dyn Resolver> = Arc::new(StubResolver::new());
     // Default tracker list blocks google-analytics.com. The request never

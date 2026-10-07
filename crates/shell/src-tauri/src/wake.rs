@@ -3,8 +3,9 @@
 //! Tunnels through the workspace proxies can die while asleep without either
 //! end noticing: the page's side is loopback, so a hung connection only clears
 //! on a kernel timeout, and pages that wait on one look frozen. Waking cuts
-//! them all so pages reconnect. It also lifts any hover guard whose exit event
-//! was lost across the sleep, which would otherwise leave tabs ignoring clicks.
+//! them all so pages reconnect, and starts DNS afresh. It also lifts any hover
+//! guard whose exit event was lost across the sleep, which would otherwise
+//! leave tabs ignoring clicks.
 
 use tauri::{AppHandle, Manager};
 
@@ -25,6 +26,10 @@ fn on_wake(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();
+        let doh = state.browser.lock().await.settings.doh_resolver.clone();
+        state
+            .resolver
+            .set(crate::state::build_resolver(doh.as_deref()));
         let proxies = state.proxies.lock().await;
         for server in proxies.values() {
             server.sever_open_connections();

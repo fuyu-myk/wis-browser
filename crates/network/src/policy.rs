@@ -40,6 +40,7 @@ pub struct RequestPolicy {
     per_site: Vec<PerSitePolicy>,
     upstream: Option<UpstreamProxy>,
     global_privacy_control: bool,
+    refuse_all: bool,
 }
 
 impl RequestPolicy {
@@ -51,7 +52,20 @@ impl RequestPolicy {
             per_site: Vec::new(),
             upstream: None,
             global_privacy_control: false,
+            refuse_all: false,
         }
+    }
+
+    /// Refuse every request, for a workspace whose route cannot be reached.
+    pub fn refusing_all(self) -> Self {
+        Self {
+            refuse_all: true,
+            ..self
+        }
+    }
+
+    pub fn refuses_all(&self) -> bool {
+        self.refuse_all
     }
 
     /// Send `Sec-GPC: 1` on every request the proxy forwards itself.
@@ -93,6 +107,12 @@ impl RequestPolicy {
     /// 2. Consult the tracker blocker on the (possibly rewritten) URL.
     /// 3. Honour per-site overrides last so they have the final say.
     pub fn decide(&self, request: &OutboundRequest<'_>) -> NetworkResult<Decision> {
+        if self.refuse_all {
+            return Ok(Decision::Block {
+                reason: "the workspace's route is unavailable".into(),
+            });
+        }
+
         // HTTPS upgrade
         let effective_url = match self.upgrader.decide(request.url) {
             UpgradeAction::Keep => request.url.clone(),

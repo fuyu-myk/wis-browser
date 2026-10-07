@@ -104,6 +104,11 @@ impl ProxyServer {
         let _ = self.policy_tx.send(policy);
     }
 
+    /// Whether the current policy refuses everything.
+    pub fn refusing(&self) -> bool {
+        self.policy_tx.borrow().refuses_all()
+    }
+
     /// Cut every tunnel this proxy is carrying. A new policy binds new
     /// requests only.
     pub fn sever_open_connections(&self) {

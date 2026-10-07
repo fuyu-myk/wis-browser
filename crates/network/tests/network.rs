@@ -336,6 +336,22 @@ fn policy(mode: PrivacyMode) -> RequestPolicy {
 }
 
 #[test]
+fn a_refusing_policy_blocks_every_request() {
+    let p = policy(PrivacyMode::Permissive).refusing_all();
+    assert!(p.refuses_all());
+    let url = u("https://example.com/app.js");
+    let source = u("https://example.com/");
+    let decision = p
+        .decide(&OutboundRequest {
+            url: &url,
+            source_url: &source,
+            request_type: RequestType::Script,
+        })
+        .unwrap();
+    assert!(matches!(decision, Decision::Block { .. }), "{decision:?}");
+}
+
+#[test]
 fn policy_allows_a_benign_first_party_request() {
     let p = policy(PrivacyMode::Balanced);
     let url = u("https://example.com/app.js");

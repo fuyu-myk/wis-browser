@@ -528,7 +528,15 @@ impl AppState {
 
         let mut proxies = self.proxies.lock().await;
         if let Some(server) = proxies.get(&workspace_id) {
-            return Ok(server.port());
+            let port = server.port();
+            let refusing = server.refusing();
+            drop(proxies);
+
+            if refusing {
+                let _ = self.update_proxy_policy(workspace_id, true).await;
+            }
+
+            return Ok(port);
         }
 
         let policy =
@@ -607,9 +615,15 @@ impl AppState {
         let upstream = match self.resolve_upstream(upstream_setting.clone()).await {
             Ok(up) => up,
             Err(err) => {
-                self.proxies.lock().await.remove(&workspace_id);
+                if let Some(server) = self.proxies.lock().await.get(&workspace_id) {
+                    server.update_policy(Arc::new(
+                        self.build_request_policy(privacy_mode, None, global_privacy_control)
+                            .refusing_all(),
+                    ));
+                    server.sever_open_connections();
+                }
                 log::warn!(
-                    "workspace {workspace_id} upstream resolve failed: {err}; proxy dropped"
+                    "workspace {workspace_id} upstream resolve failed: {err}; proxy refusing"
                 );
                 return Err(err);
             }
