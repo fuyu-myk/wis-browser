@@ -295,7 +295,9 @@ const CAPTURE_JS: &str = r#"(function () {
       if (t === 'password' || t === 'hidden') continue;
       if (el.value && (t === 'email' || looksLikeUser(el))) return el.value;
     }
+    // Hidden fields stay in.
     for (var k = 0; k < inputs.length; k++) {
+      if ((inputs[k].type || '').toLowerCase() === 'password') continue;
       var v = inputs[k].value || '';
       if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return v;
     }
