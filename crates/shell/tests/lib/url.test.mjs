@@ -87,6 +87,25 @@ describe('address bar input', () => {
     )
   })
 
+  test('localhost, a bracketed IPv6 literal and a name with a port are addresses', () => {
+    assert.deepEqual(resolveInput('localhost:3000'), page('http://localhost:3000'))
+    assert.deepEqual(resolveInput('localhost'), page('http://localhost'))
+    assert.deepEqual(resolveInput('localhost:5173/app?x=1'), page('http://localhost:5173/app?x=1'))
+    assert.deepEqual(resolveInput('[::1]:8080'), page('http://[::1]:8080'))
+    assert.deepEqual(resolveInput('devbox:8080/x'), page('https://devbox:8080/x'))
+  })
+
+  test('loopback is opened over http, which local servers speak', () => {
+    assert.deepEqual(resolveInput('127.0.0.1:8000'), page('http://127.0.0.1:8000'))
+    assert.deepEqual(resolveInput('LOCALHOST:3000'), page('http://LOCALHOST:3000'))
+    assert.deepEqual(resolveInput('app.localhost:3000'), page('http://app.localhost:3000'))
+  })
+
+  test('a ratio or a time stays a search', () => {
+    assert.equal(resolveInput('16:9').isSearch, true)
+    assert.equal(resolveInput('10:30').isSearch, true)
+  })
+
   test('a single word without a dot is a search', () => {
     assert.deepEqual(resolveInput('weather'), search(`${DDG}weather`, 'DuckDuckGo'))
   })
@@ -186,6 +205,10 @@ describe('normalising a typed URL', () => {
     assert.equal(normaliseUrl('example.com/path'), 'https://example.com/path')
   })
 
+  test('a local address gets http', () => {
+    assert.equal(normaliseUrl('localhost:3000'), 'http://localhost:3000')
+  })
+
   test('a web or about: URL is kept', () => {
     assert.equal(normaliseUrl('http://Example.com'), 'http://example.com/')
     assert.equal(normaliseUrl('about:blank'), 'about:blank')
@@ -216,7 +239,7 @@ describe('telling a search from an address', () => {
   })
 
   test('agrees with what normalising the same input does', () => {
-    for (const raw of ['example.com', 'http://x.test', 'about:blank', 'cats', 'a.b c', 'javascript:x.y', '10.0.0.1:80']) {
+    for (const raw of ['example.com', 'http://x.test', 'about:blank', 'cats', 'a.b c', 'javascript:x.y', '10.0.0.1:80', 'localhost:3000', '[::1]:8080', '16:9']) {
       assert.equal(isSearchQuery(raw), normaliseUrl(raw).startsWith(DDG), raw)
     }
   })
@@ -332,11 +355,12 @@ describe('tab names', () => {
     assert.equal(named('Admin - Localhost - Dashboard overview', 'http://localhost:3000/'), 'Dashboard overview')
   })
 
-  test.todo(
-    "a hyphenated domain's brand is recognised in the title (bug: matchesBrand strips punctuation from the " +
-      "title segment but not from the brand token, so 'rust-lang' never matches; 'Intro - Rust-Lang - The Rust " +
-      "Programming Language Book' on rust-lang.org shows 'Intro')",
-  )
+  test("a hyphenated domain's brand is recognised in the title", () => {
+    assert.equal(
+      named('Intro - Rust-Lang - The Rust Programming Language Book', 'https://rust-lang.org/learn'),
+      'The Rust Programming Language Book',
+    )
+  })
 
   test('an untitled page is named by its host, without www.', () => {
     assert.equal(named('', 'https://www.example.com/a'), 'example.com')

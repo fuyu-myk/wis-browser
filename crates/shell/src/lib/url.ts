@@ -102,7 +102,7 @@ export function resolveInput(raw: string, settings?: SearchSettings): ResolvedIn
   }
 
   if (looksLikeHost(trimmed)) {
-    return { url: `https://${trimmed}`, isSearch: false, engineLabel: null }
+    return { url: `${schemeFor(trimmed)}${trimmed}`, isSearch: false, engineLabel: null }
   }
 
   const engine = activeEngine(settings)
@@ -124,18 +124,26 @@ export function normaliseUrl(input: string, engine: SearchEngine = DEFAULT_ENGIN
   }
 
   if (looksLikeHost(trimmed)) {
-    return `https://${trimmed}`
+    return `${schemeFor(trimmed)}${trimmed}`
   }
 
   return (SEARCH_ENGINES[engine] ?? SEARCH_ENGINES[DEFAULT_ENGINE]).search(trimmed)
 }
 
 const HOST_RE = /^[A-Za-z0-9.\-_]+(:\d+)?(\/.*)?$/
+const LOCAL_RE = /^(localhost|\[[0-9A-Fa-f:.]+\])(:\d+)?(\/.*)?$/i
+const PORTED_RE = /^[A-Za-z][A-Za-z0-9-]*:\d+(\/.*)?$/
+const LOOPBACK_RE = /^((?:[a-z0-9-]+\.)*localhost|127\.\d+\.\d+\.\d+|\[::1\])(:|\/|$)/i
 
 function looksLikeHost(input: string): boolean {
   if (input.includes(' ')) return false
+  if (LOCAL_RE.test(input) || PORTED_RE.test(input)) return true
   if (!input.includes('.')) return false
   return HOST_RE.test(input)
+}
+
+function schemeFor(host: string): string {
+  return LOOPBACK_RE.test(host) ? 'http://' : 'https://'
 }
 
 /**
@@ -253,8 +261,10 @@ function shortTitle(title: string, url: string): string {
 }
 
 function matchesBrand(segment: string, brand: string): boolean {
-  const normalized = segment.toLowerCase().replace(/[^a-z0-9]/g, '')
-  return normalized === brand || normalized.startsWith(brand)
+  const fold = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const normalized = fold(segment)
+  const folded = fold(brand)
+  return normalized === folded || normalized.startsWith(folded)
 }
 
 function brandTokenFor(url: string): string | null {
