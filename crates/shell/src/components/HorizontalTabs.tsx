@@ -481,6 +481,7 @@ export function HorizontalTabs({
       activeTabId,
       tabs.map((t) => t.id),
       paneTree,
+      recentTabs(),
     )
     return predicted ?? activeTabId
   })()

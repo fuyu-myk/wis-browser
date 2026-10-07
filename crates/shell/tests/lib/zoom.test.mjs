@@ -36,7 +36,8 @@ test('the page URL feeds straight into the lookup', () => {
   assert.equal(zoomPercentForHost(host, { 'example.com': 125 }, 100), 125)
 })
 
-test.todo(
-  "a host named like an Object.prototype member gets the default (bug: zoom.ts:23 reads overrides[key] " +
-    "without an own-property check, so a page on http://constructor/ yields Object's constructor, not a percentage)",
-)
+test('a host named like an Object.prototype member gets the default', () => {
+  for (const host of ['constructor', 'toString', '__proto__']) {
+    assert.equal(zoomPercentForHost(host, {}, 100), 100, host)
+  }
+})

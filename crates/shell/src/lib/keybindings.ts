@@ -167,7 +167,11 @@ const SHIFTED_SYMBOL_BASE: Record<string, string> = {
 export function normalizeAccelerator(accel: string): string {
   const mods: string[] = []
   let key = ''
-  for (const part of accel.split('+')) {
+  const parts = accel.split('+')
+  if (parts.length > 1 && parts[parts.length - 1] === '' && parts[parts.length - 2] === '') {
+    parts.splice(-2, 2, '+')
+  }
+  for (const part of parts) {
     if (MODIFIER_TOKENS.has(part)) {
       mods.push(part === 'Option' ? 'Alt' : part)
     } else {

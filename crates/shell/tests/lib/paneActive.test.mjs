@@ -1,6 +1,7 @@
 // Which tab the chrome predicts becomes active after a close
-// (`lib/paneActive.ts`), mirroring `Workspace::with_tab_removed` and
-// `with_pane_after_removed` in core.
+// (`lib/paneActive.ts`), mirroring core's `close_tab`: the return to the
+// previous tab, `with_tab_closed_keeping_split`, `with_tab_removed` and
+// `with_pane_after_removed`.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -27,9 +28,17 @@ describe('without a split', () => {
     assert.equal(predictActiveAfterClose('a', 'a', ['a'], null), null)
   })
 
-  test.todo(
-    'an active tab missing from the order hands off to the last tab, as core does (bug: picks the first tab instead; unreachable from HorizontalTabs, which passes the full tab order)',
-  )
+  test('an active tab missing from the order hands off to the last tab, as core does', () => {
+    assert.equal(predictActiveAfterClose('z', 'z', ['a', 'b', 'c'], null), 'c')
+  })
+
+  test('closing the active tab returns to the tab used before it', () => {
+    assert.equal(predictActiveAfterClose('c', 'c', ['a', 'b', 'c'], null, ['a', 'b']), 'a')
+  })
+
+  test('a previous tab from another workspace is not returned to', () => {
+    assert.equal(predictActiveAfterClose('c', 'c', ['a', 'b', 'c'], null, ['elsewhere', 'a']), 'b')
+  })
 })
 
 describe('with a split', () => {
@@ -38,15 +47,25 @@ describe('with a split', () => {
     assert.equal(predictActiveAfterClose('d', 'd', ['a', 'b', 'c', 'd'], tree), 'c')
   })
 
-  test('closing one of two panes makes the survivor active, whatever the order says', () => {
+  test('closing a pane refills it with the most recent tab not in a pane, which takes focus', () => {
     const tree = split(leaf('a'), leaf('c'))
-    assert.equal(predictActiveAfterClose('c', 'c', ['a', 'b', 'c'], tree), 'a')
-    assert.equal(predictActiveAfterClose('a', 'a', ['a', 'b', 'c'], tree), 'c')
+    assert.equal(predictActiveAfterClose('c', 'c', ['a', 'b', 'd', 'c'], tree, ['d', 'a', 'b']), 'd')
   })
 
-  test('a split collapsing to one pane makes that pane active even when another tab was', () => {
+  test('with no history the refill is the nearest tab in order', () => {
+    const tree = split(leaf('a'), leaf('c'))
+    assert.equal(predictActiveAfterClose('c', 'c', ['a', 'b', 'c'], tree), 'b')
+  })
+
+  test('refilling an unfocused pane leaves focus where it is', () => {
     const tree = split(leaf('a'), leaf('b'))
-    assert.equal(predictActiveAfterClose('c', 'b', ['a', 'b', 'c'], tree), 'a')
+    assert.equal(predictActiveAfterClose('a', 'b', ['a', 'b', 'c'], tree), 'a')
+  })
+
+  test('with every other tab already a pane, closing one of two makes the survivor active', () => {
+    const tree = split(leaf('a'), leaf('c'))
+    assert.equal(predictActiveAfterClose('c', 'c', ['a', 'c'], tree), 'a')
+    assert.equal(predictActiveAfterClose('a', 'a', ['a', 'c'], tree), 'c')
   })
 
   test('an active pane that survives a close stays active', () => {
@@ -59,20 +78,12 @@ describe('with a split', () => {
     assert.equal(predictActiveAfterClose('b', 'b', ['a', 'b', 'c'], tree), 'a')
   })
 
-  test('otherwise the first surviving pane becomes active', () => {
-    const tree = split(split(leaf('c'), leaf('b')), leaf('a'))
-    assert.equal(predictActiveAfterClose('b', 'b', ['x', 'b', 'c', 'a'], tree), 'c')
-  })
-
   test('closing the only pane of a single-leaf layout falls back to the order', () => {
     assert.equal(predictActiveAfterClose('b', 'b', ['a', 'b'], leaf('b')), 'a')
   })
 
   test('the closed pane collapses its split so a deeper sibling takes its place', () => {
-    // After closing c, the tree is split(a, b); d was before c in order but
-    // is not a pane, so the first surviving pane wins.
     const tree = split(leaf('a'), split(leaf('c'), leaf('b')))
-    assert.equal(predictActiveAfterClose('c', 'c', ['a', 'd', 'c', 'b'], tree), 'a')
     assert.equal(predictActiveAfterClose('c', 'c', ['a', 'b', 'c'], tree), 'b')
   })
 })

@@ -150,9 +150,18 @@ describe('what is captured', () => {
     assert.deepEqual(capture({ top: false }).sent, [])
   })
 
-  test.todo(
-    "the video pop-out's hover button is dropped from the capture (bug: video_popout leaves #__wis-popout-hover on the root element once a video was hovered, and it is not in the selector list; neither are #__wis-popout-style and #__wis-popout-overlay while a pop-out is open)",
-  )
+  test("the video pop-out's hover button, style and overlay are dropped from the capture", () => {
+    const root = new El('html', {}, [
+      new El('head', {}, [new El('style', { id: '__wis-popout-style' })]),
+      new El('body', {}, [
+        new El('p', {}, [new Text('Hello')]),
+        new El('div', { id: '__wis-popout-overlay' }, [new El('button', { id: '__wis-popout-x' })]),
+      ]),
+      new El('button', { id: '__wis-popout-hover' }),
+    ])
+    const [{ html }] = capture({ root }).sent
+    assert.equal(html, '<html><head></head><body><p>Hello</p></body></html>')
+  })
 })
 
 describe('the doctype', () => {
@@ -207,9 +216,11 @@ describe('the size cap', () => {
     assert.ok(body.html.startsWith('<!DOCTYPE html>\n'))
   })
 
-  test.todo(
-    'the cut never ends on half of a surrogate pair (bug: out.slice(0, MAX) can leave a lone high surrogate at the end, which page_menu.rs guards against in clip and this script does not)',
-  )
+  test('the cut never ends on half of a surrogate pair', () => {
+    const [body] = capture({ root: rootOf('x'.repeat(MAX - 1) + '\u{1F600}y') }).sent
+    assert.equal(body.truncated, true)
+    assert.equal(body.html, 'x'.repeat(MAX - 1))
+  })
 })
 
 describe('failures still answer', () => {

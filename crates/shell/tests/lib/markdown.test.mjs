@@ -82,10 +82,15 @@ describe('inline spans', () => {
     assert.deepEqual(parseSpans('*a\nb*'), [text('*a\nb*')])
   })
 
-  test.todo(
-    "spaced asterisks in arithmetic stay literal (bug: markdown.ts:72 `\\*([^*\\n]+)\\*` accepts " +
-      "whitespace-flanked markers, so '2 * 3 * 4 = 24' renders ' 3 ' in italics and drops both asterisks)",
-  )
+  test('spaced asterisks in arithmetic stay literal', () => {
+    assert.deepEqual(parseSpans('2 * 3 * 4 = 24'), [text('2 * 3 * 4 = 24')])
+    assert.deepEqual(parseSpans('2 ** 3 ** 4'), [text('2 ** 3 ** 4')])
+  })
+
+  test('emphasis hugging its words still applies inside a sentence', () => {
+    assert.deepEqual(parseSpans('a *big* deal'), [text('a '), { kind: 'em', text: 'big' }, text(' deal')])
+    assert.deepEqual(parseSpans('**x**'), [{ kind: 'strong', text: 'x' }])
+  })
 })
 
 describe('blocks', () => {
@@ -223,10 +228,11 @@ describe('blocks', () => {
     assert.deepEqual(parseMarkdown('| a | b |\n| c | d |'), [paragraph(text('| a | b |\n| c | d |'))])
   })
 
-  test.todo(
-    'a single-column table is a table (bug: TABLE_SEPARATOR at markdown.ts:38 needs two dash groups, ' +
-      "so '| a |\\n|---|\\n| 1 |' stays a paragraph)",
-  )
+  test('a single-column table is a table', () => {
+    assert.deepEqual(parseMarkdown('| a |\n|---|\n| 1 |'), [
+      { kind: 'table', header: [[text('a')]], rows: [[[text('1')]]] },
+    ])
+  })
 
   test('every prefix of a streamed answer parses', () => {
     const answer =

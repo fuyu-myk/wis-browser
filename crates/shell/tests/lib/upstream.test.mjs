@@ -65,10 +65,11 @@ describe('proxy host', () => {
     }
   })
 
-  test.todo(
-    "a host carrying a query or fragment is refused (bug: '?' and '#' end the URL authority, so " +
-      "'proxy.example.com?x' and 'proxy#x' pass the inline check while UpstreamProxy::validate refuses them)",
-  )
+  test('a host carrying a query or fragment is refused, as the Rust side refuses it', () => {
+    for (const host of ['proxy.example.com?x', 'proxy#x']) {
+      assert.equal(proxyHostProblem(host), 'Enter a host and port only, with no scheme, credentials or path.', host)
+    }
+  })
 })
 
 describe('proxy port', () => {

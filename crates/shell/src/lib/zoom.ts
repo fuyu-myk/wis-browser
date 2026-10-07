@@ -20,5 +20,5 @@ export function zoomPercentForHost(
   defaultPercent: number,
 ): number {
   const key = host.trim().toLowerCase().replace(/^www\./, '')
-  return overrides[key] ?? defaultPercent
+  return Object.prototype.hasOwnProperty.call(overrides, key) ? overrides[key] : defaultPercent
 }

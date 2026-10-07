@@ -35,7 +35,7 @@ const LIST_ITEM = /^(\s*)([-*+]|\d{1,3}[.)])\s+(.*)$/
 const QUOTE = /^>\s?(.*)$/
 const RULE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/
 const TABLE_ROW = /^\s*\|(.+)\|\s*$/
-const TABLE_SEPARATOR = /^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$/
+const TABLE_SEPARATOR = /^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$|^\s*\|\s*:?-+:?\s*\|\s*$/
 
 /** Split a `| a | b |` row into trimmed cell strings, honouring `\|`. */
 function tableCells(inner: string): string[] {
@@ -67,9 +67,10 @@ export function parseSpans(text: string): Span[] {
   let rest = text
 
   // Underscore emphasis requires word boundaries so snake_case identifiers
-  // in prose stay literal; CommonMark draws the same line.
+  // in prose stay literal, and asterisk emphasis needs its text to touch both
+  // markers; CommonMark draws the same lines.
   const INLINE =
-    /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)|\[([^\]\n]+)\]\(([^\s)]+)\)|\*\*([^*\n]+)\*\*|(?<![A-Za-z0-9])__([^_\n]+)__(?![A-Za-z0-9])|\*([^*\n]+)\*|(?<![A-Za-z0-9])_([^_\n]+)_(?![A-Za-z0-9])|~~([^~\n]+)~~/
+    /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)|\[([^\]\n]+)\]\(([^\s)]+)\)|\*\*([^*\s](?:[^*\n]*[^*\s])?)\*\*|(?<![A-Za-z0-9])__([^_\n]+)__(?![A-Za-z0-9])|\*([^*\s](?:[^*\n]*[^*\s])?)\*|(?<![A-Za-z0-9])_([^_\n]+)_(?![A-Za-z0-9])|~~([^~\n]+)~~/
 
   while (rest !== '') {
     const match = INLINE.exec(rest)

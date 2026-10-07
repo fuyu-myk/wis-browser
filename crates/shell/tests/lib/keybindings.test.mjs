@@ -137,11 +137,13 @@ describe('matching a keystroke against the keymap', () => {
     assert.equal(normalizeAccelerator('Meta+Ctrl+K'), 'Ctrl+Meta+K')
   })
 
-  test.todo(
-    "Shift with the '+' glyph folds back to the '=' key (bug: normalizeAccelerator splits on '+', so " +
-      "'Cmd+Shift++' from a Shift+= keystroke loses its key and becomes 'Shift+Cmd+'; the '+' entry " +
-      'in SHIFTED_SYMBOL_BASE can never apply)',
-  )
+  test("Shift with the '+' glyph folds back to the '=' key", () => {
+    assert.equal(normalizeAccelerator('Cmd+Shift++'), 'Shift+Cmd+=')
+  })
+
+  test("a '+' key without Shift stays the '+' key", () => {
+    assert.equal(normalizeAccelerator('Cmd++'), 'Cmd++')
+  })
 })
 
 describe('rendering the pill', () => {

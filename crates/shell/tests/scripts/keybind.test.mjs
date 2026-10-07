@@ -316,6 +316,8 @@ describe("parity with the chrome's keybindings.ts", () => {
       'F5',
       'Ctrl+Left',
       'Ctrl+Space',
+      'Cmd+Shift++',
+      'Cmd++',
     ]
     for (const accel of accelerators) assert.equal(PAGE.normalize(accel), normalizeAccelerator(accel), accel)
   })

@@ -49,9 +49,14 @@ describe('byte sizes', () => {
     assert.equal(dl.formatBytes(2048 * 1024 * 1024 * MB), '2048 TB')
   })
 
-  test.todo(
-    'a size just under the next unit rounds up into that unit, e.g. 1048575 bytes reads 1.0 MB (bug: formatBytes picks the unit before rounding, so it reads "1024 KB"; likewise 102350 bytes reads "100.0 KB" instead of "100 KB")',
-  )
+  test('a size that rounds up to the next unit reads in that unit', () => {
+    assert.equal(dl.formatBytes(1048575), '1.0 MB')
+    assert.equal(dl.formatBytes(1073741823), '1.0 GB')
+  })
+
+  test('a size that rounds up to 100 drops its decimal', () => {
+    assert.equal(dl.formatBytes(102350), '100 KB')
+  })
 })
 
 describe('the source host', () => {

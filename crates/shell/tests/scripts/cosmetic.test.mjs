@@ -459,9 +459,20 @@ describe('PICKER_JS', () => {
     assertTornDown(p)
   })
 
-  test.todo(
-    'an element whose id is repeated on the page can still be zapped by a path selector (bug: selectorFor stops at the first id it meets, so a duplicate id yields no selector and the click hides nothing)',
-  )
+  test('an element whose id is repeated on the page is told apart by its path instead', () => {
+    const first = h('div', { id: 'ad', class: 'slot' })
+    const second = h('div', { id: 'ad', class: 'slot' })
+    const p = loadPicker({ children: [first, second] })
+    assert.equal(p.selectorFor(second), 'div.slot:nth-of-type(2)')
+  })
+
+  test('an ancestor whose id is repeated is climbed past rather than stopped at', () => {
+    const mine = h('span')
+    const p = loadPicker({
+      children: [h('section', { id: 'unit' }, h('div', { class: 'ad' }, mine)), h('section', { id: 'unit' }, h('div', { class: 'ad' }, h('span')))],
+    })
+    assert.equal(p.selectorFor(mine), 'section:nth-of-type(1) > div.ad > span')
+  })
 
   test('Escape cancels without posting; other keys do nothing', () => {
     const p = loadPicker({ children: [h('div', { id: 'x' })] })

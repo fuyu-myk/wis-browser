@@ -23,7 +23,7 @@ export function proxyHostProblem(host: string): string | null {
   if (value === '') return 'Enter the proxy host.'
   // Measure in UTF-8 bytes.
   if (new TextEncoder().encode(value).length > 253) return 'That host is too long.'
-  if (/[\s/@]/.test(value) || value.includes('://')) {
+  if (/[\s/@?#]/.test(value) || value.includes('://')) {
     return 'Enter a host and port only, with no scheme, credentials or path.'
   }
   const inner = /^\[(.*)\]$/.exec(value)?.[1]

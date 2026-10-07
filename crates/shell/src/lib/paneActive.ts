@@ -3,7 +3,9 @@ import type { PaneNode, TabId } from '@/bindings/types'
 /* Pure mirror of the parts of `wis_core` that decide which tab becomes active
    after a close, so the top strip can size + highlight the promoted tab on the
    close frame instead of waiting for the backend refetch. Kept in lockstep with
-   `Workspace::with_tab_removed` + `with_pane_after_removed` and `PaneNode`. */
+   the `close_tab` command's return to the previous tab,
+   `BrowserState::with_tab_closed_keeping_split`, `Workspace::with_tab_removed`
+   + `with_pane_after_removed` and `PaneNode`. */
 
 function contains(node: PaneNode, tab: TabId): boolean {
   return node.kind === 'leaf'
@@ -38,13 +40,26 @@ export function predictActiveAfterClose(
   closing: TabId,
   order: TabId[],
   paneTree: PaneNode | null,
+  recent: TabId[] = [],
 ): TabId | null {
+  if (paneTree && contains(paneTree, closing)) {
+    const free = (id: TabId) => id !== closing && order.includes(id) && !contains(paneTree, id)
+    const at = Math.max(0, order.indexOf(closing))
+    const nearest = [...order.slice(0, at).reverse(), ...order.slice(at)].find(free)
+    const refill = recent.find(free) ?? nearest
+    if (refill !== undefined) return active === closing ? refill : active
+  }
+  const previous = recent[0]
+  if (!paneTree && active === closing && previous !== undefined && previous !== closing && order.includes(previous)) {
+    return previous
+  }
   // with_tab_removed: a closed active hands off to the previous tab in order,
-  // or the new first when it was first.
+  // the new first when it was first, or the last when it was not in the order.
   let next: TabId | null = active
   if (active === closing) {
     const idx = order.indexOf(closing)
-    next = idx > 0 ? order[idx - 1] : (order.find((id) => id !== closing) ?? null)
+    const others = order.filter((id) => id !== closing)
+    next = idx > 0 ? order[idx - 1] : idx === 0 ? (others[0] ?? null) : (others[others.length - 1] ?? null)
   }
   // with_pane_after_removed: a split instead promotes a surviving pane leaf.
   if (!paneTree || !contains(paneTree, closing)) return next

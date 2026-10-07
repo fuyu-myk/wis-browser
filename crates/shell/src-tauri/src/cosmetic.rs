@@ -643,14 +643,13 @@ const PICKER_JS: &str = r#"(function () {
     var node = el;
     var depth = 0;
     while (node && node.nodeType === 1 && node !== document.body && depth < 8) {
-      if (node.id && /^[A-Za-z_][-\w]*$/.test(node.id)) {
-        parts.unshift('#' + node.id);
-      } else {
-        parts.unshift(segFor(node));
-      }
+      // An id only anchors the path when the page does not repeat it.
+      var anchor = node.id && /^[A-Za-z_][-\w]*$/.test(node.id) &&
+        document.querySelectorAll('#' + node.id).length === 1;
+      parts.unshift(anchor ? '#' + node.id : segFor(node));
       var candidate = parts.join(' > ');
       if (uniqueFor(candidate, el)) return candidate;
-      if (parts[0].charAt(0) === '#') break; // an id ancestor won't narrow further
+      if (anchor) break; // a unique id ancestor won't narrow further
       node = node.parentElement;
       depth++;
     }

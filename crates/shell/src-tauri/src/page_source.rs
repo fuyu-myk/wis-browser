@@ -113,7 +113,8 @@ const CAPTURE_JS: &str = r#"(function () {
     // Cloned so Wis's own injected nodes go without touching the live page.
     var clone = root.cloneNode(true);
     var junk = clone.querySelectorAll(
-      '#wis-cosmetic,#wis-cosmetic-host,#wis-find-style,#wis-menu-selection-style,#__wisHoverGuard,#__wisSwipeNav');
+      '#wis-cosmetic,#wis-cosmetic-host,#wis-find-style,#wis-menu-selection-style,#__wisHoverGuard,#__wisSwipeNav,' +
+      '#__wis-popout-hover,#__wis-popout-style,#__wis-popout-overlay');
     for (var i = 0; i < junk.length; i++) {
       if (junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
     }
@@ -130,7 +131,12 @@ const CAPTURE_JS: &str = r#"(function () {
     out += clone.outerHTML;
 
     var truncated = out.length > MAX;
-    if (truncated) out = out.slice(0, MAX);
+    if (truncated) {
+      var end = MAX;
+      var last = out.charCodeAt(end - 1);
+      if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+      out = out.slice(0, end);
+    }
     post({ html: out, truncated: truncated });
   } catch (e) {
     post({ html: '', truncated: false });

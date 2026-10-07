@@ -25,14 +25,16 @@ export function isInProgress(item: DownloadItem): boolean {
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   const units = ['KB', 'MB', 'GB', 'TB']
-  let value = bytes
-  let unit = ''
-  for (const next of units) {
+  // Round what is shown, with the unit chosen after rounding.
+  const shown = (v: number) => (v >= 100 ? Math.round(v) : Math.round(v * 10) / 10)
+  let value = bytes / 1024
+  let unit = 0
+  while (shown(value) >= 1024 && unit < units.length - 1) {
     value /= 1024
-    unit = next
-    if (value < 1024) break
+    unit++
   }
-  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${unit}`
+  const rounded = shown(value)
+  return `${rounded >= 100 ? rounded : rounded.toFixed(1)} ${units[unit]}`
 }
 
 /** Host of the source URL, for the row's secondary line. */

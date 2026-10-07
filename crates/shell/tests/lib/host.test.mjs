@@ -39,12 +39,11 @@ test('a subdomain is kept', () => {
   assert.equal(normalizeHostInput('https://news.example.com'), 'news.example.com')
 })
 
-test.todo(
-  "an unparseable URL never becomes the host 'https:' (bug: host.ts:12 falls through to split('/'), so " +
-    "'https://exa mple.com/x' yields 'https:', which the Compatibility and Autoplay rows then save as an override)",
-)
+test("an unparseable URL is no host, never the host 'https:'", () => {
+  assert.equal(normalizeHostInput('https://exa mple.com/x'), '')
+})
 
-test.todo(
-  "a typed host:port drops the port (bug: only the '://' branch goes through URL.hostname, so " +
-    "'localhost:3000' is kept whole and never matches the Rust lookup, which keys by host_str)",
-)
+test('a typed host:port drops the port, as the Rust lookup keys by host alone', () => {
+  assert.equal(normalizeHostInput('localhost:3000'), 'localhost')
+  assert.equal(normalizeHostInput('www.example.com:8443/path'), 'example.com')
+})

@@ -87,6 +87,9 @@ const KEYBIND_JS: &str = r#"(function () {
     var mods = {};
     var key = '';
     var parts = accel.split('+');
+    if (parts.length > 1 && parts[parts.length - 1] === '' && parts[parts.length - 2] === '') {
+      parts.splice(-2, 2, '+');
+    }
     for (var i = 0; i < parts.length; i++) {
       var p = parts[i];
       if (MODS[p]) mods[p === 'Option' ? 'Alt' : (p === 'Meta' ? 'Cmd' : p)] = true;
