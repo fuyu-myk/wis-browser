@@ -46,15 +46,23 @@ pub fn last_download_expected_bytes() -> i64 {
 // Started/Finished and cannot carry a Failed variant without also vendoring
 // `tauri-runtime`/`tauri`. The third element is the failing server's leaf
 // certificate DER for a TLS failure (pulled from the NSError's peer-trust
-// userInfo, so it is bound to this exact navigation), `None` otherwise. See
-// WIS-PATCH.md.
+// userInfo, so it is bound to this exact navigation), `None` otherwise. The
+// fourth is the URL that failed to load. See WIS-PATCH.md.
+type PageLoadError = (i64, String, Option<Vec<u8>>, Option<String>);
+
 thread_local! {
-  static LAST_PAGE_LOAD_ERROR: std::cell::RefCell<Option<(i64, String, Option<Vec<u8>>)>> =
+  static LAST_PAGE_LOAD_ERROR: std::cell::RefCell<Option<PageLoadError>> =
     const { std::cell::RefCell::new(None) };
 }
 
-pub(crate) fn set_last_page_load_error(code: i64, domain: String, leaf_der: Option<Vec<u8>>) {
-  LAST_PAGE_LOAD_ERROR.with(|cell| *cell.borrow_mut() = Some((code, domain, leaf_der)));
+pub(crate) fn set_last_page_load_error(
+  code: i64,
+  domain: String,
+  leaf_der: Option<Vec<u8>>,
+  failing_url: Option<String>,
+) {
+  LAST_PAGE_LOAD_ERROR
+    .with(|cell| *cell.borrow_mut() = Some((code, domain, leaf_der, failing_url)));
 }
 
 /// WIS patch: whether a page-load failure is pending on this thread, without
@@ -64,8 +72,8 @@ pub(crate) fn page_load_error_pending() -> bool {
 }
 
 /// WIS patch: take the most recent page-load failure
-/// `(code, error domain, failing leaf-certificate DER)`.
-pub fn take_last_page_load_error() -> Option<(i64, String, Option<Vec<u8>>)> {
+/// `(code, error domain, failing leaf-certificate DER, failing URL)`.
+pub fn take_last_page_load_error() -> Option<PageLoadError> {
   LAST_PAGE_LOAD_ERROR.with(|cell| cell.borrow_mut().take())
 }
 

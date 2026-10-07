@@ -3,7 +3,7 @@ use objc2::{msg_send, DeclaredClass};
 use objc2_foundation::{
   ns_string, NSError, NSHTTPURLResponse, NSObjectProtocol, NSString, NSURLAuthenticationChallenge,
   NSURLAuthenticationMethodServerTrust, NSURLCredential, NSURLErrorFailingURLPeerTrustErrorKey,
-  NSURLSessionAuthChallengeDisposition,
+  NSURLErrorFailingURLErrorKey, NSURLSessionAuthChallengeDisposition, NSURL,
 };
 use objc2_web_kit::{
   WKNavigation, WKNavigationAction, WKNavigationActionPolicy, WKNavigationResponse,
@@ -65,6 +65,7 @@ pub(crate) fn did_fail_provisional_navigation(
     error.code() as i64,
     error.domain().to_string(),
     failing_leaf_certificate_der(error),
+    failing_url(error),
   );
   if let Some(on_page_load) = &this.ivars().on_page_load_handler {
     on_page_load(PageLoadEvent::Finished);
@@ -115,6 +116,15 @@ unsafe fn leaf_certificate_der(trust: *const core::ffi::c_void) -> Option<Vec<u8
     (len > 0 && !ptr.is_null()).then(|| std::slice::from_raw_parts(ptr, len as usize).to_vec());
   CFRelease(data);
   der
+}
+
+/// WIS patch: the URL the failed navigation was for. The webview's own URL is
+/// still the page navigated away from.
+fn failing_url(error: &NSError) -> Option<String> {
+  let user_info = error.userInfo();
+  let value = unsafe { user_info.objectForKey(NSURLErrorFailingURLErrorKey) }?;
+  let url = value.downcast::<NSURL>().ok()?;
+  url.absoluteString().map(|url| url.to_string())
 }
 
 /// WIS patch: the failing server's leaf certificate DER, read from the

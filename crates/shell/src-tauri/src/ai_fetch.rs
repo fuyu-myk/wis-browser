@@ -315,7 +315,7 @@ mod imp {
                 }
 
                 #[cfg(target_os = "macos")]
-                if let Some((code, domain, _)) = wry::take_last_page_load_error() {
+                if let Some((code, domain, _, _)) = wry::take_last_page_load_error() {
                     let url = payload.url().to_string();
                     if wis_core::LoadError::from_ns_error(&domain, code, url).is_some() {
                         deliver(

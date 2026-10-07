@@ -225,7 +225,9 @@ registry + `cancel_download_to` + both re-exports, and move
   constraint as the download expected-size patch), so the failure rides the
   existing `Finished` event plus a thread_local side channel.
 - `src/wkwebview/navigation.rs` (`did_fail_provisional_navigation`): stashes
-  the `NSError` code + domain via `set_last_page_load_error`, emits
+  the `NSError` code + domain, the failing leaf certificate, and the failing
+  URL (`NSURLErrorFailingURLErrorKey`; the webview's own URL is still the page
+  navigated away from) via `set_last_page_load_error`, emits
   `PageLoadEvent::Finished`, then clears the channel with
   `take_last_page_load_error()`. `src/wkwebview/mod.rs`: the side channel with
   `page_load_error_pending()` and `take_last_page_load_error()`. The channel

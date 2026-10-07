@@ -2,7 +2,7 @@ use super::*;
 
 /// A macOS provisional page-load failure surfaced through the wry side
 /// channel: `(NSError code, error domain, failing leaf-certificate DER)`.
-type NsPageLoadFailure = (i64, String, Option<Vec<u8>>);
+type NsPageLoadFailure = (i64, String, Option<Vec<u8>>, Option<String>);
 
 /// Create a Tauri child webview for a tab using `WebviewBuilder` directly.
 #[tauri::command]
@@ -271,7 +271,7 @@ pub async fn create_tab_webview(
             let ns_failure: Option<NsPageLoadFailure> = None;
 
             let load_failed = ns_failure.is_some();
-            let policy_interrupted = ns_failure.as_ref().is_some_and(|(code, domain, _)| {
+            let policy_interrupted = ns_failure.as_ref().is_some_and(|(code, domain, _, _)| {
                 *code == FRAME_LOAD_INTERRUPTED && domain == "WebKitErrorDomain"
             });
             let shown = policy_interrupted
@@ -324,16 +324,22 @@ pub async fn create_tab_webview(
                         };
                     }
 
-                    let failure = ns_failure.as_ref().and_then(|(code, domain, _cert)| {
-                        let url = s.tab(tab_id).ok()?.url.to_string();
-                        wis_core::LoadError::from_ns_error(domain, *code, url)
-                    });
+                    let failure =
+                        ns_failure
+                            .as_ref()
+                            .and_then(|(code, domain, _cert, failing_url)| {
+                                let url = match failing_url {
+                                    Some(url) => url.clone(),
+                                    None => s.tab(tab_id).ok()?.url.to_string(),
+                                };
+                                wis_core::LoadError::from_ns_error(domain, *code, url)
+                            });
 
                     let next = s.with_tab_loading(tab_id, loading)?;
-                    let next = if ns_failure.is_some() {
-                        next
-                    } else {
-                        next.with_tab_url_synced(tab_id, &url_string)?
+                    let next = match (&ns_failure, &failure) {
+                        (None, _) => next.with_tab_url_synced(tab_id, &url_string)?,
+                        (Some(_), Some(err)) => next.with_tab_url_synced(tab_id, &err.url)?,
+                        (Some(_), None) => next,
                     };
                     let next = if loading {
                         next.with_tab_reader(tab_id, false)?
