@@ -245,7 +245,11 @@ describe('the channel', () => {
     assert.doesNotThrow(() => new Function('window', 'document', SCRIPT)(window, document))
   })
 
-  test.todo(
-    'on Windows and Linux the capture reaches the dispatcher as the JSON string it parses (bug: both expose window.webkit.messageHandlers.wisPageSource, so the script posts an object, and win_dispatch/gtk_dispatch drop any wisPageSource body that is not a string, leaving View Source to time out)',
-  )
+  // macOS reads an NSDictionary; the Windows and Linux dispatchers take the
+  // object too (`page_message::json_body`, tested on the Rust side).
+  test('with the webkit handler it posts the object itself', () => {
+    const { sent } = capture()
+    assert.equal(typeof sent[0], 'object')
+    assert.deepEqual(sent[0], { html: CLEAN, truncated: false })
+  })
 })

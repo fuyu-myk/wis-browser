@@ -174,26 +174,17 @@ fn route(name: &str, label: &str, body: &serde_json::Value) {
             crate::page_text::dispatch_message(label, str_field("text"), str_field("title"));
         }
         "wisSignup" => {
-            if let Some(parsed) = body
-                .as_str()
-                .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
-            {
+            if let Some(parsed) = crate::page_message::json_body(body) {
                 crate::signup::dispatch_message(label, &parsed);
             }
         }
         "wisPageSource" => {
-            if let Some(parsed) = body
-                .as_str()
-                .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
-            {
+            if let Some(parsed) = crate::page_message::json_body(body) {
                 crate::page_source::dispatch_message(label, &parsed);
             }
         }
         "wisPageMenu" => {
-            if let Some(parsed) = body
-                .as_str()
-                .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
-            {
+            if let Some(parsed) = crate::page_message::json_body(body) {
                 crate::page_menu::dispatch_message(label, &parsed);
             }
         }

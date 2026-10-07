@@ -43,6 +43,8 @@ mod overlay;
 mod page_archive;
 mod page_image;
 mod page_menu;
+#[cfg(any(windows, target_os = "linux", test))]
+mod page_message;
 mod page_source;
 mod page_text;
 mod pane_container;
