@@ -404,9 +404,11 @@ pub async fn open_widget_panel(
     // macOS and Linux install the link scripts in Wis's own script world instead.
     #[cfg(windows)]
     {
+        let token = crate::win_dispatch::token(&label);
+        let private = |source: &str| crate::win_dispatch::private_script(&token, source, &[]);
         builder = builder
-            .initialization_script(crate::link_open::page_script())
-            .initialization_script(crate::link_open::panel_page_script());
+            .initialization_script(private(crate::link_open::page_script()))
+            .initialization_script(private(crate::link_open::panel_page_script()));
     }
     builder = builder
         .initialization_script_for_all_frames(crate::gpc::page_script(global_privacy_control));

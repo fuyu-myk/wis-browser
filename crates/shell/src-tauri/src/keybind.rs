@@ -243,9 +243,13 @@ pub fn apply_to_all_tabs(app: &AppHandle, keymap: &HashMap<KeyAction, String>) {
     let json = keymap_json(keymap);
     for (label, webview) in app.webviews() {
         if label.starts_with("tab-") {
+            #[cfg(windows)]
+            let key = format!(", '{}'", crate::win_dispatch::token(&label));
+            #[cfg(not(windows))]
+            let key = String::new();
             let _ = crate::content_world::eval(
                 &webview,
-                format!("window.__wisKeybindUpdate && window.__wisKeybindUpdate({json});"),
+                format!("window.__wisKeybindUpdate && window.__wisKeybindUpdate({json}{key});"),
             );
         }
     }

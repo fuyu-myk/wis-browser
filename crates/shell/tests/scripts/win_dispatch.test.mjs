@@ -1,9 +1,10 @@
-// win_dispatch.rs: SHIM_SCRIPT and AI_FETCH_SHIM, which rebuild webkit.messageHandlers over WebView2's single channel.
+// win_dispatch.rs: SHIM_SCRIPT and AI_FETCH_SHIM, which rebuild webkit.messageHandlers over WebView2's single channel,
+// and private_script, which keeps a script's acting channels behind a sender only it holds.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { rawStringConst } from '../support/rustSource.mjs'
+import { formatTemplate, rawStringConst } from '../support/rustSource.mjs'
 import { fnBody, shellSource } from '../support/s2-rust.mjs'
 
 const SHIM = rawStringConst('win_dispatch.rs', 'SHIM_SCRIPT')
@@ -15,6 +16,12 @@ const ROUTED = [
   ...[...fnBody('win_dispatch.rs', 'dispatch').matchAll(/^\s*"(wis\w+)"(?:\s+if\s+\w+)?\s*=>/gm)].map((m) => m[1]),
   ...[...shellSource('link_open.rs').matchAll(/const HANDLER_\w+: &str = "(wis\w+)";/g)].map((m) => m[1]),
 ]
+// The channels that post only through private_script's sender.
+const ACTING = [
+  ...shellSource('win_dispatch.rs')
+    .match(/const ACTING: &\[&str\] = &\[([^\]]*)\]/)[1]
+    .matchAll(/"(wis\w+)"/g),
+].map((m) => m[1])
 
 /** A WebView2-like window (or a plain one with `webview: false`) after the shim runs. */
 function loadPage(script, { webview = true, webkit } = {}) {
@@ -45,16 +52,17 @@ describe('SHIM_SCRIPT', () => {
     )
   })
 
-  test('every channel the native receivers route has a shim handler', () => {
+  test('every routed page-world channel has a shim handler, and no acting channel does', () => {
     const p = loadPage(SHIM)
     assert.ok(ROUTED.length >= 13, `parsed ${ROUTED.length} routed names`)
-    for (const name of ROUTED) assert.ok(p.handler(name), name)
+    assert.ok(ACTING.length >= 8, `parsed ${ACTING.length} acting names`)
+    for (const name of ROUTED) assert.equal(Boolean(p.handler(name)), !ACTING.includes(name), name)
   })
 
   test('string bodies stay strings inside the envelope', () => {
     const p = loadPage(SHIM)
-    p.handler('wisOpenInTab').postMessage('https://a.test/')
-    assert.deepEqual(p.envelopes(), [{ handler: 'wisOpenInTab', body: 'https://a.test/' }])
+    p.handler('wisZap').postMessage('div.ad')
+    assert.deepEqual(p.envelopes(), [{ handler: 'wisZap', body: 'div.ad' }])
   })
 
   test('an undefined body is sent as null', () => {
@@ -70,11 +78,11 @@ describe('SHIM_SCRIPT', () => {
 
   test('handlers and a webkit object the page already has are kept', () => {
     const own = { postMessage: () => 'own' }
-    const webkit = { messageHandlers: { wisPeek: own }, other: 1 }
+    const webkit = { messageHandlers: { wisCosmetic: own }, other: 1 }
     const p = loadPage(SHIM, { webkit })
     assert.equal(p.window.webkit, webkit)
-    assert.equal(p.handler('wisPeek'), own)
-    assert.ok(p.handler('wisNavGuard'))
+    assert.equal(p.handler('wisCosmetic'), own)
+    assert.ok(p.handler('wisZap'))
   })
 
   test('outside WebView2 the shim does nothing', () => {
@@ -89,7 +97,7 @@ describe('SHIM_SCRIPT', () => {
     const p = loadPage(SHIM)
     const cyclic = {}
     cyclic.self = cyclic
-    assert.doesNotThrow(() => p.handler('wisPeek').postMessage(cyclic))
+    assert.doesNotThrow(() => p.handler('wisCosmetic').postMessage(cyclic))
     assert.deepEqual(p.sent, [])
   })
 
@@ -98,14 +106,14 @@ describe('SHIM_SCRIPT', () => {
     p.window.chrome.webview.postMessage = () => {
       throw new Error('closed')
     }
-    assert.doesNotThrow(() => p.handler('wisPeek').postMessage({}))
+    assert.doesNotThrow(() => p.handler('wisCosmetic').postMessage({}))
   })
 
   test('the channel is looked up at post time', () => {
     const p = loadPage(SHIM)
     const later = []
     p.window.chrome.webview = { postMessage: (m) => later.push(m) }
-    p.handler('wisKeybind').postMessage({ action: 'x' })
+    p.handler('wisZap').postMessage({ selector: 'x' })
     assert.deepEqual(p.sent, [])
     assert.equal(later.length, 1)
   })
@@ -155,4 +163,101 @@ describe('AI_FETCH_SHIM', () => {
     }
     assert.doesNotThrow(() => p.handler('wisAiFetch').postMessage({ text: 'x' }))
   })
+})
+
+const NAMES = ['wisPeek', 'wisKeybind']
+
+/** `source` wrapped as Rust wraps it, with `frozen` fixed behind the token. */
+function wrap(source, frozen = []) {
+  return formatTemplate('win_dispatch.rs', 'private_script', {
+    token: 't1',
+    channels: NAMES.map((name) => `${name}: channel('${name}')`).join(', '),
+    source: source.replace(/window\.webkit/g, 'webkit'),
+    freeze: frozen.map((name) => `  freeze('${name}');\n`).join(''),
+  })
+}
+
+/** A WebView2 page running `script`; `json` stands in for the page's JSON. */
+function loadWrapped(script, { webview = true } = {}) {
+  const sent = []
+  const json = { stringify: JSON.stringify }
+  const window = {}
+  if (webview) window.chrome = { webview: { postMessage: (text) => sent.push(text) } }
+  new Function('window', 'JSON', script)(window, json)
+  return { window, json, sent, posts: () => sent.map((text) => JSON.parse(text)) }
+}
+
+const POSTER = `window.__wisFire = function (body) {
+  window.webkit.messageHandlers.wisPeek.postMessage(body);
+};`
+
+describe('private_script', () => {
+  test("a post carries its channel, the webview's token and the body", () => {
+    const p = loadWrapped(wrap(POSTER))
+    p.window.__wisFire({ href: 'https://a.test/', x: 1 })
+    p.window.__wisFire(undefined)
+    assert.deepEqual(p.posts(), [
+      { handler: 'wisPeek', token: 't1', body: { href: 'https://a.test/', x: 1 } },
+      { handler: 'wisPeek', token: 't1', body: null },
+    ])
+  })
+
+  test('the page gets no handler of its own to post through', () => {
+    const p = loadWrapped(wrap(POSTER))
+    assert.equal(p.window.webkit, undefined)
+  })
+
+  test('replacing postMessage or JSON.stringify later never shows the page the token', () => {
+    const p = loadWrapped(wrap(POSTER))
+    const seen = []
+    p.window.chrome.webview.postMessage = (text) => seen.push(text)
+    p.json.stringify = (value) => {
+      seen.push(value)
+      return '0'
+    }
+    p.window.__wisFire({ x: 1 })
+    assert.deepEqual(seen, [])
+    assert.equal(p.posts()[0].token, 't1')
+  })
+
+  test('a frozen function answers only a call that brings the token, and stays in place', () => {
+    const p = loadWrapped(
+      wrap('window.calls = []; window.__wisKeybindUpdate = function (map) { window.calls.push(map); };', [
+        '__wisKeybindUpdate',
+      ]),
+    )
+    p.window.__wisKeybindUpdate({ new_tab: 'Ctrl+A' })
+    p.window.__wisKeybindUpdate({ new_tab: 'Ctrl+A' }, 'guess')
+    assert.throws(() => {
+      p.window.__wisKeybindUpdate = () => {}
+    }, TypeError)
+    p.window.__wisKeybindUpdate({ new_tab: 'Ctrl+T' }, 't1')
+    assert.deepEqual(p.window.calls, [{ new_tab: 'Ctrl+T' }])
+  })
+
+  test('without the WebView2 channel the script does not run', () => {
+    const p = loadWrapped(wrap(POSTER), { webview: false })
+    assert.equal(p.window.__wisFire, undefined)
+  })
+})
+
+test('every channel the wrapped scripts post to is one the private sender carries', () => {
+  const scripts = [
+    ['link_open.rs', 'OPEN_IN_TAB_JS'],
+    ['link_open.rs', 'PANEL_CROSS_SITE_JS'],
+    ['peek.rs', 'PEEK_JS'],
+    ['page_menu.rs', 'PAGE_MENU_JS'],
+    ['signup.rs', 'SIGNUP_JS'],
+    ['capture.rs', 'CAPTURE_JS'],
+    ['navguard.rs', 'NAVGUARD_JS'],
+    ['keybind.rs', 'KEYBIND_JS'],
+    ['video_popout/script.rs', 'POPOUT_JS'],
+  ]
+  for (const [file, name] of scripts) {
+    const posted = [...rawStringConst(file, name).matchAll(/(?:messageHandlers\.|\b)(wis[A-Z]\w*)\.postMessage|messageHandlers\.(wis\w+)/g)].map(
+      (m) => m[1] || m[2],
+    )
+    assert.ok(posted.length, `${name} posts somewhere`)
+    for (const channel of posted) assert.ok(ACTING.includes(channel), `${name} posts to ${channel}`)
+  }
 })

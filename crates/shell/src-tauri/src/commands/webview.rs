@@ -106,17 +106,24 @@ pub async fn create_tab_webview(
     // Ride the webview configuration so even an instantly-loading first
     // document (cache, localhost, the restored startup page) gets them. macOS
     // and Linux run these in Wis's own script world instead (`content_world`).
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
     {
         builder = builder.initialization_script(crate::video_popout::page_script());
     }
+
+    // Windows has no such world, so its copies post through a private sender
+    // instead (`win_dispatch::private_script`).
+    #[cfg(windows)]
+    let token = crate::win_dispatch::token(&label_ident);
     #[cfg(windows)]
     {
+        let private = |source: &str| crate::win_dispatch::private_script(&token, source, &[]);
         builder = builder
-            .initialization_script(crate::peek::page_script())
-            .initialization_script(crate::link_open::page_script())
-            .initialization_script(crate::page_menu::page_script())
-            .initialization_script(crate::signup::page_script());
+            .initialization_script(private(crate::video_popout::page_script()))
+            .initialization_script(private(crate::peek::page_script()))
+            .initialization_script(private(crate::link_open::page_script()))
+            .initialization_script(private(&crate::page_menu::page_script()))
+            .initialization_script(private(crate::signup::page_script()));
     }
 
     // The scroll-phase monitor.
@@ -126,9 +133,9 @@ pub async fn create_tab_webview(
     }
     builder = builder.initialization_script(crate::swipe_nav::page_script());
 
-    // Windows multiplexes every `window.webkit.messageHandlers.*` channel over
-    // WebView2's single message pipe; the shim recreates those handler objects so
-    // the feature page scripts above post unchanged (see `win_dispatch`). The
+    // Windows multiplexes every channel over WebView2's single message pipe: the
+    // shim recreates `window.webkit.messageHandlers` for the page-world ones, and
+    // the acting scripts carry their own private sender (see `win_dispatch`). The
     // camera/mic consent gate and the save-password capture script, which macOS
     // injects via each feature's `install` (a Windows no-op), ride the builder
     // here instead. The gate applies on every tab; capture skips private ones.
@@ -141,7 +148,11 @@ pub async fn create_tab_webview(
             .initialization_script(crate::permissions::gate_script())
             .initialization_script(crate::video_popout::pip_flag_script());
         if !ephemeral {
-            builder = builder.initialization_script(crate::capture::capture_script());
+            builder = builder.initialization_script(crate::win_dispatch::private_script(
+                &token,
+                crate::capture::capture_script(),
+                &[],
+            ));
         }
         // Cosmetic element-hiding page script (macOS injects it via
         // `cosmetic::install`); Permissive workspaces opt out of blocking.
@@ -153,12 +164,20 @@ pub async fn create_tab_webview(
         builder = builder.initialization_script(crate::find::engine_script());
         // Navigation-guard click interceptor (macOS injects it via
         // `navguard::install`); applies on every tab like macOS.
-        builder = builder.initialization_script(crate::navguard::page_script());
+        builder = builder.initialization_script(crate::win_dispatch::private_script(
+            &token,
+            crate::navguard::page_script(),
+            &[],
+        ));
         // Page-side keyboard shortcuts.
         {
             let keybindings = state.browser.lock().await.settings.keybindings.clone();
             let effective = wis_core::effective_keymap(&keybindings);
-            builder = builder.initialization_script(crate::keybind::page_script(&effective));
+            builder = builder.initialization_script(crate::win_dispatch::private_script(
+                &token,
+                &crate::keybind::page_script(&effective),
+                &["__wisKeybindUpdate"],
+            ));
         }
     }
 
@@ -760,6 +779,8 @@ pub async fn close_tab_webview(app: AppHandle, label: String) -> WisResult<()> {
 
     crate::webview_close::terminate_page(&webview);
     crate::content_world::forget(&label);
+    #[cfg(windows)]
+    crate::win_dispatch::forget(&label);
     webview.close().map_err(|err| WisError::InvalidInput {
         message: format!("close webview failed: {err}"),
     })?;

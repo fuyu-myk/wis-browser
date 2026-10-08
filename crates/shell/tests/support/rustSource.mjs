@@ -26,7 +26,8 @@ export function formatTemplate(file, fnName, values) {
   const source = read(file)
   const at = source.indexOf(`fn ${fnName}`)
   if (at < 0) throw new Error(`fn ${fnName} not found in ${file}`)
-  const body = source.slice(source.indexOf('r#"', at) + 3, source.indexOf('"#,', at))
+  const open = source.indexOf('r#"', at) + 3
+  const body = source.slice(open, source.indexOf('"#', open))
   let text = body.replace(/\{\{/g, '{').replace(/\}\}/g, '}')
   for (const [key, value] of Object.entries(values)) text = text.replace(`{${key}}`, value)
   return text
