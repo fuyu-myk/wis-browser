@@ -137,6 +137,7 @@ const KEYBIND_JS: &str = r#"(function () {
     return parts.join('+');
   }
   function actionOf(e) {
+    if (!e.isTrusted) return null;
     var accel = accelOf(e);
     if (!accel) return null;
     return lookup[normalize(accel)] || null;
@@ -242,9 +243,10 @@ pub fn apply_to_all_tabs(app: &AppHandle, keymap: &HashMap<KeyAction, String>) {
     let json = keymap_json(keymap);
     for (label, webview) in app.webviews() {
         if label.starts_with("tab-") {
-            let _ = webview.eval(format!(
-                "window.__wisKeybindUpdate && window.__wisKeybindUpdate({json});"
-            ));
+            let _ = crate::content_world::eval(
+                &webview,
+                format!("window.__wisKeybindUpdate && window.__wisKeybindUpdate({json});"),
+            );
         }
     }
 }

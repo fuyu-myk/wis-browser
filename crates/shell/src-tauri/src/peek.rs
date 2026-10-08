@@ -490,8 +490,9 @@ const PEEK_JS: &str = r#"(function () {
   }, true);
 })();"#;
 
-/// The Opt+click trigger, baked into tab webviews as a builder-level
-/// initialization script off macOS, where it runs in the page's world.
+/// The Opt+click trigger: a builder-level initialization script on Windows,
+/// where it runs in the page's world, and installed in Wis's own world on
+/// Linux.
 #[cfg(not(target_os = "macos"))]
 pub fn page_script() -> &'static str {
     PEEK_JS
@@ -616,7 +617,8 @@ mod imp {
 
     /// Install the Opt+click trigger and its `wisPeek` handler on a tab webview.
     pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
-        let _ = webview.with_webview(|w| unsafe {
+        let label = webview.label().to_string();
+        let _ = webview.with_webview(move |w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
             if wk.is_null() {
                 return;
@@ -634,7 +636,7 @@ mod imp {
 
             let handler = PeekHandler::new();
             content_world::add_handler(controller, &*handler, "wisPeek");
-            content_world::install_script(wk, controller, "wisPeek", PEEK_JS, true);
+            content_world::install_script(wk, controller, &label, "wisPeek", PEEK_JS, true);
         });
     }
 }

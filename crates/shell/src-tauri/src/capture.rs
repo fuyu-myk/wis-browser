@@ -514,7 +514,8 @@ mod imp {
 
     /// Install the capture user script + message handler on a tab webview.
     pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
-        let _ = webview.with_webview(|w| unsafe {
+        let label = webview.label().to_string();
+        let _ = webview.with_webview(move |w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
             if wk.is_null() {
                 return;
@@ -530,7 +531,7 @@ mod imp {
 
             let handler = CaptureHandler::new();
             content_world::add_handler(controller, &*handler, "wisCapture");
-            content_world::install_script(wk, controller, "wisCapture", CAPTURE_JS, false);
+            content_world::install_script(wk, controller, &label, "wisCapture", CAPTURE_JS, false);
         });
     }
 }

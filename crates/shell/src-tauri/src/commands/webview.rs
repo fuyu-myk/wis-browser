@@ -105,11 +105,14 @@ pub async fn create_tab_webview(
 
     // Ride the webview configuration so even an instantly-loading first
     // document (cache, localhost, the restored startup page) gets them. macOS
-    // runs these in Wis's own content world instead (`content_world`).
+    // and Linux run these in Wis's own script world instead (`content_world`).
     #[cfg(not(target_os = "macos"))]
     {
+        builder = builder.initialization_script(crate::video_popout::page_script());
+    }
+    #[cfg(windows)]
+    {
         builder = builder
-            .initialization_script(crate::video_popout::page_script())
             .initialization_script(crate::peek::page_script())
             .initialization_script(crate::link_open::page_script())
             .initialization_script(crate::page_menu::page_script())
@@ -159,29 +162,23 @@ pub async fn create_tab_webview(
         }
     }
 
-    // Linux (WebKitGTK): inject the page-side scripts for the channels
-    // `gtk_dispatch` receives (peek/link_open already ride the builder above).
+    // Linux (WebKitGTK): inject the page-world scripts for the channels
+    // `gtk_dispatch` receives; the rest it installs in Wis's own world.
     #[cfg(target_os = "linux")]
     {
-        builder = builder
-            .initialization_script(crate::permissions::gate_script())
-            .initialization_script(crate::navguard::page_script());
-        if !ephemeral {
-            builder = builder.initialization_script(crate::capture::capture_script());
-        }
+        builder = builder.initialization_script(crate::permissions::gate_script());
 
         // Cosmetic element-hiding page script; Permissive workspaces opt out.
         if nav_privacy_mode != wis_core::PrivacyMode::Permissive {
             builder = builder.initialization_script(crate::cosmetic::page_script());
         }
-
-        // Page-side keyboard shortcuts.
-        {
-            let keybindings = state.browser.lock().await.settings.keybindings.clone();
-            let effective = wis_core::effective_keymap(&keybindings);
-            builder = builder.initialization_script(crate::keybind::page_script(&effective));
-        }
     }
+
+    #[cfg(target_os = "linux")]
+    let keybind_script = {
+        let keybindings = state.browser.lock().await.settings.keybindings.clone();
+        crate::keybind::page_script(&wis_core::effective_keymap(&keybindings))
+    };
 
     // The single navigation hook carries two concerns: custom-scheme
     // navigations are cancelled on every workspace and offered as an app
@@ -387,6 +384,9 @@ pub async fn create_tab_webview(
 
             if matches!(event, PageLoadEvent::Finished) {
                 crate::webview_prefs::keep_inactive_selection(&webview);
+                if page_url.as_str() != "about:blank" {
+                    crate::content_world::cover_first_document(&webview);
+                }
             }
 
             if matches!(event, PageLoadEvent::Finished) && !load_failed {
@@ -655,6 +655,7 @@ pub async fn create_tab_webview(
         &child,
         ephemeral,
         privacy_mode != wis_core::PrivacyMode::Permissive,
+        keybind_script,
     );
 
     // Windows/Linux report page-load failures through their own native
@@ -758,6 +759,7 @@ pub async fn close_tab_webview(app: AppHandle, label: String) -> WisResult<()> {
     };
 
     crate::webview_close::terminate_page(&webview);
+    crate::content_world::forget(&label);
     webview.close().map_err(|err| WisError::InvalidInput {
         message: format!("close webview failed: {err}"),
     })?;

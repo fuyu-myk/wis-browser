@@ -85,18 +85,30 @@ const OPEN_IN_TAB_JS: &str = r#"(function () {
       }
     } catch (err) {}
   }
+  // A site may forward a real click by dispatching one; that counts once per gesture.
+  var gesture = 0;
+  var spent = -1;
+  function count(e) { if (e.isTrusted) gesture++; }
+  document.addEventListener('pointerdown', count, true);
+  document.addEventListener('keydown', count, true);
+  function allowed(e) {
+    if (e.isTrusted) return true;
+    if (!(navigator.userActivation && navigator.userActivation.isActive) || spent === gesture) return false;
+    spent = gesture;
+    return true;
+  }
   document.addEventListener('click', function (e) {
-    if (!e.isTrusted || e.button !== 0 || e.altKey || !(e.metaKey || e.ctrlKey)) return;
+    if (e.button !== 0 || e.altKey || !(e.metaKey || e.ctrlKey)) return;
     var href = hrefAt(e);
-    if (!href) return;
+    if (!href || !allowed(e)) return;
     e.preventDefault();
     e.stopPropagation();
     post(href);
   }, true);
   document.addEventListener('auxclick', function (e) {
-    if (!e.isTrusted || e.button !== 1) return;
+    if (e.button !== 1) return;
     var href = hrefAt(e);
-    if (!href) return;
+    if (!href || !allowed(e)) return;
     e.preventDefault();
     e.stopPropagation();
     post(href);
@@ -107,8 +119,8 @@ const OPEN_IN_TAB_JS: &str = r#"(function () {
   }, true);
 })();"#;
 
-/// The trigger, baked into tab webviews as a builder-level initialization
-/// script off macOS, where it runs in the page's world.
+/// The trigger: a builder-level initialization script on Windows, where it
+/// runs in the page's world, and installed in Wis's own world on Linux.
 #[cfg(not(target_os = "macos"))]
 pub fn page_script() -> &'static str {
     OPEN_IN_TAB_JS
@@ -145,14 +157,25 @@ const PANEL_CROSS_SITE_JS: &str = r#"(function () {
     try { host = new URL(href).hostname; } catch (err) { return null; }
     return registrable(host) === here ? null : href;
   }
+  // A site may forward a real click by dispatching one; that counts once per gesture.
+  var gesture = 0;
+  var spent = -1;
+  function count(e) { if (e.isTrusted) gesture++; }
+  document.addEventListener('pointerdown', count, true);
+  document.addEventListener('keydown', count, true);
+  function allowed(e) {
+    if (e.isTrusted) return true;
+    if (!(navigator.userActivation && navigator.userActivation.isActive) || spent === gesture) return false;
+    spent = gesture;
+    return true;
+  }
   document.addEventListener('click', function (e) {
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-    var active = navigator.userActivation && navigator.userActivation.isActive;
-    if (!e.isTrusted && !active) return;
     var href = crossSiteHref(e);
     if (!href) return;
     e.preventDefault();
     e.stopPropagation();
+    if (!allowed(e)) return;
     try {
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.wisOpenInTabFg) {
         window.webkit.messageHandlers.wisOpenInTabFg.postMessage(href);
@@ -161,7 +184,7 @@ const PANEL_CROSS_SITE_JS: &str = r#"(function () {
   }, true);
 })();"#;
 
-/// The panel trigger, baked into widget panel webviews alongside
+/// The panel trigger, injected into widget panel webviews alongside
 /// [`page_script`] off macOS.
 #[cfg(not(target_os = "macos"))]
 pub fn panel_page_script() -> &'static str {
@@ -250,6 +273,7 @@ mod imp {
         names: &'static [&'static str],
         scripts: &'static [(&'static str, &'static str)],
     ) {
+        let label = webview.label().to_string();
         let _ = webview.with_webview(move |w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
             if wk.is_null() {
@@ -271,7 +295,7 @@ mod imp {
                 content_world::add_handler(controller, &*handler, name);
             }
             for (key, source) in scripts {
-                content_world::install_script(wk, controller, key, source, true);
+                content_world::install_script(wk, controller, &label, key, source, true);
             }
         });
     }

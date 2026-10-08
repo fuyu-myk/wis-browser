@@ -401,8 +401,8 @@ pub async fn open_widget_panel(
         .disable_drag_drop_handler()
         .proxy_url(proxy_url);
 
-    // macOS installs the link scripts in Wis's own content world instead.
-    #[cfg(not(target_os = "macos"))]
+    // macOS and Linux install the link scripts in Wis's own script world instead.
+    #[cfg(windows)]
     {
         builder = builder
             .initialization_script(crate::link_open::page_script())

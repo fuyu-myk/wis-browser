@@ -793,7 +793,14 @@ mod macos {
 
             let handler = SignupHandler::new(label.clone());
             content_world::add_handler(controller, &*handler, "wisSignup");
-            content_world::install_script(wk, controller, "wisSignup", super::SIGNUP_JS, true);
+            content_world::install_script(
+                wk,
+                controller,
+                &label,
+                "wisSignup",
+                super::SIGNUP_JS,
+                true,
+            );
         });
     }
 }

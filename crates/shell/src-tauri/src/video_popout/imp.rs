@@ -644,7 +644,8 @@ pub fn close_and_notify(app: &AppHandle, label: &str, eval_exit: bool) {
 
 /// Install the popout script and its `wisPopout` handler.
 pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
-    let _ = webview.with_webview(|w| unsafe {
+    let label = webview.label().to_string();
+    let _ = webview.with_webview(move |w| unsafe {
         let wk: *mut AnyObject = w.inner() as *mut AnyObject;
         if wk.is_null() {
             return;
@@ -662,6 +663,13 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
 
         let handler = PopoutHandler::new();
         content_world::add_handler(controller, &*handler, "wisPopout");
-        content_world::install_script(wk, controller, "wisPopout", super::script::POPOUT_JS, true);
+        content_world::install_script(
+            wk,
+            controller,
+            &label,
+            "wisPopout",
+            super::script::POPOUT_JS,
+            true,
+        );
     });
 }

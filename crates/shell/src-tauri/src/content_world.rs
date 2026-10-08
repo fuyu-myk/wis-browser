@@ -1,11 +1,23 @@
 //! The JS world Wis's own page scripts run in.
 //!
-//! On macOS that is a `WKContentWorld` of its own: it shares the page's DOM
-//! but not its globals, so the page can neither call the scripts nor post to
-//! their handlers. Elsewhere it is still the page's world.
+//! On macOS and Linux that is a script world of its own, named `wis`: it shares
+//! the page's DOM but not its globals, so the page can neither call the scripts
+//! nor post to their handlers. On Windows it is still the page's world.
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::collections::HashMap;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::sync::Mutex;
 
 use tauri::webview::Webview;
 use tauri::Runtime;
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+const WORLD: &str = "wis";
+
+/// The scripts each webview installed, by label, until its first page loads.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+static PENDING: Mutex<Option<HashMap<String, Vec<String>>>> = Mutex::new(None);
 
 /// Run `js` in the main frame, in the world the scripts live in.
 pub fn eval<R: Runtime>(webview: &Webview<R>, js: impl Into<String>) -> tauri::Result<()> {
@@ -20,14 +32,66 @@ pub fn eval<R: Runtime>(webview: &Webview<R>, js: impl Into<String>) -> tauri::R
         })
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        let js = js.into();
+        webview.with_webview(move |w| linux::run(&w.inner(), &js))
+    }
+
+    #[cfg(windows)]
     webview.eval(js)
 }
 
+/// Run the scripts `webview` installed again, once, when its first page has
+/// loaded. That page can start in a fresh web process before the scripts reach
+/// it, and the evaluate at install went to the document it replaced.
+pub fn cover_first_document<R: Runtime>(webview: &Webview<R>) {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let sources = PENDING
+            .lock()
+            .expect("content world pending poisoned")
+            .as_mut()
+            .and_then(|pending| pending.remove(webview.label()));
+        for source in sources.into_iter().flatten() {
+            let _ = eval(webview, source);
+        }
+    }
+
+    #[cfg(windows)]
+    let _ = webview;
+}
+
+/// Drop what a webview closed before its first page loaded left behind.
+pub fn forget(label: &str) {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    if let Some(pending) = PENDING
+        .lock()
+        .expect("content world pending poisoned")
+        .as_mut()
+    {
+        pending.remove(label);
+    }
+
+    #[cfg(windows)]
+    let _ = label;
+}
+
 /// `source`, run at most once per document under `key`.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
 fn once(key: &str, source: &str) -> String {
     format!("if (!window.__wisOnce_{key}) {{\nwindow.__wisOnce_{key} = true;\n{source}\n}}")
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn remember(label: &str, source: &str) {
+    PENDING
+        .lock()
+        .expect("content world pending poisoned")
+        .get_or_insert_with(HashMap::new)
+        .entry(label.to_string())
+        .or_default()
+        .push(source.to_string());
 }
 
 #[cfg(target_os = "macos")]
@@ -44,15 +108,17 @@ pub mod macos {
         msg_send![class!(NSString), stringWithUTF8String: c.as_ptr()]
     }
 
-    pub unsafe fn world() -> *mut AnyObject {
-        msg_send![class!(WKContentWorld), worldWithName: ns_string("wis")]
+    unsafe fn world() -> *mut AnyObject {
+        msg_send![class!(WKContentWorld), worldWithName: ns_string(super::WORLD)]
     }
 
-    /// Add `source` to every document from here on, and run it in the current
-    /// one, which a document already under way when the tab was built missed.
+    /// Add `source` to every document of webview `label` from here on, and
+    /// run it in the current one, which a document already under way when the
+    /// tab was built missed.
     pub unsafe fn install_script(
         wk: *mut AnyObject,
         controller: *mut AnyObject,
+        label: &str,
         key: &str,
         source: &str,
         main_frame_only: bool,
@@ -66,9 +132,14 @@ pub mod macos {
             forMainFrameOnly: main_frame_only,
             inContentWorld: world(),
         ];
+        if script.is_null() {
+            return;
+        }
+
         let _: () = msg_send![controller, addUserScript: script];
         let _: () = msg_send![script, release];
         run(wk, &source);
+        super::remember(label, &source);
     }
 
     pub unsafe fn add_handler<T: Message>(controller: *mut AnyObject, handler: &T, name: &str) {
@@ -80,17 +151,13 @@ pub mod macos {
         ];
     }
 
+    /// Run `source` in the main frame.
     pub unsafe fn run(wk: *mut AnyObject, source: &str) {
-        run_in_frame(wk, std::ptr::null_mut(), source);
-    }
-
-    /// Run `source` in `frame`, or the main frame when it is null.
-    pub unsafe fn run_in_frame(wk: *mut AnyObject, frame: *mut AnyObject, source: &str) {
         let nil: *mut AnyObject = std::ptr::null_mut();
         let _: () = msg_send![
             wk,
             evaluateJavaScript: ns_string(source),
-            inFrame: frame,
+            inFrame: nil,
             inContentWorld: world(),
             completionHandler: nil,
         ];
@@ -129,6 +196,55 @@ pub mod macos {
                 ))
                 .unwrap();
         }
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub mod linux {
+    use webkit2gtk::{
+        UserContentInjectedFrames, UserContentManager, UserContentManagerExt, UserScript,
+        UserScriptInjectionTime, WebView, WebViewExt,
+    };
+
+    /// Add `source` to every document of webview `label` from here on, and
+    /// run it in the current one.
+    pub fn install_script(
+        wv: &WebView,
+        ucm: &UserContentManager,
+        label: &str,
+        key: &str,
+        source: &str,
+        main_frame_only: bool,
+    ) {
+        let source = super::once(key, source);
+        let frames = if main_frame_only {
+            UserContentInjectedFrames::TopFrame
+        } else {
+            UserContentInjectedFrames::AllFrames
+        };
+        let script = UserScript::for_world(
+            &source,
+            frames,
+            UserScriptInjectionTime::Start,
+            super::WORLD,
+            &[],
+            &[],
+        );
+
+        ucm.add_script(&script);
+        run(wv, &source);
+        super::remember(label, &source);
+    }
+
+    /// Register `name` as a handler only scripts in Wis's world can post to.
+    pub fn add_handler(ucm: &UserContentManager, name: &str) -> bool {
+        ucm.register_script_message_handler_in_world(name, super::WORLD)
+    }
+
+    /// Run `source` in the main frame.
+    #[allow(deprecated)]
+    pub fn run(wv: &WebView, source: &str) {
+        wv.run_javascript_in_world(source, super::WORLD, None::<&gtk::gio::Cancellable>, |_| {});
     }
 }
 

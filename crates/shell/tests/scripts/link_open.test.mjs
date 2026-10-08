@@ -137,6 +137,18 @@ describe('OPEN_IN_TAB_JS', () => {
     assert.ok(!click.defaultPrevented && !aux.defaultPrevented)
   })
 
+  test('a Cmd+click the page forwards during a real gesture opens one background tab', () => {
+    const p = linkPage(OPEN_IN_TAB, '/a', { navigator: { userActivation: { isActive: true } } })
+    const first = p.fire('click', p.link, { metaKey: true, isTrusted: false })
+    const second = p.fire('click', p.link, { metaKey: true, isTrusted: false })
+    assert.deepEqual(p.sent(), [{ name: 'wisOpenInTab', body: 'https://page.test/a' }])
+    assert.ok(first.defaultPrevented && !second.defaultPrevented)
+
+    p.fire('pointerdown', p.link)
+    p.fire('click', p.link, { metaKey: true, isTrusted: false })
+    assert.equal(p.sent().length, 2, 'a new gesture allows another')
+  })
+
   test('installing twice registers the listeners once', () => {
     const p = linkPage(OPEN_IN_TAB, '/a')
     p.run()
@@ -164,14 +176,20 @@ describe('PANEL_CROSS_SITE_JS', () => {
     assert.ok(click.defaultPrevented && click.propagationStopped)
   })
 
-  test('a click the page dispatched opens a tab only inside a user gesture', () => {
+  test('a click the page dispatched opens a tab only once per user gesture, and never navigates the panel', () => {
     const idle = panelLink('https://news.test/story')
-    assert.equal(idle.click({ isTrusted: false }).defaultPrevented, false)
+    assert.equal(idle.click({ isTrusted: false }).defaultPrevented, true)
     assert.deepEqual(idle.sent(), [])
 
     const gesture = panelLink('https://news.test/story', { navigator: { userActivation: { isActive: true } } })
     gesture.click({ isTrusted: false })
+    const burst = gesture.click({ isTrusted: false })
     assert.deepEqual(gesture.sent(), [{ name: 'wisOpenInTabFg', body: 'https://news.test/story' }])
+    assert.equal(burst.defaultPrevented, true)
+
+    gesture.fire('keydown', gesture.link)
+    gesture.click({ isTrusted: false })
+    assert.equal(gesture.sent().length, 2, 'a new gesture allows another')
   })
 
   test('a link within the same registrable site stays in the panel', () => {

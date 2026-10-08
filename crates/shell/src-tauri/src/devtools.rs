@@ -52,11 +52,9 @@ mod macos {
     use objc2::runtime::{AnyObject, Bool};
     use objc2::{class, msg_send, msg_send_id, sel};
 
-    const MARK_JS: &str = "window.__wisInspectMark && window.__wisInspectMark();";
-
     const REVEAL_JS: &str = r#"(function () {
   function find(root) {
-    var node = root.querySelector('[data-wis-inspect]');
+    var node = root.querySelector('[data-wis-inspect="__WIS_NONCE__"]');
     if (node) return node;
     var all = root.querySelectorAll('*');
     for (var i = 0; i < all.length; i++) {
@@ -75,12 +73,12 @@ mod macos {
 })()"#;
 
     pub(super) fn reveal_menu_target<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
-        let _ = webview.with_webview(|w| unsafe {
+        let nonce = uuid::Uuid::new_v4().simple().to_string();
+        let _ = webview.with_webview(move |w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
             if wk.is_null() {
                 return;
             }
-            crate::content_world::macos::run(wk, MARK_JS);
 
             let inspector: Option<Retained<AnyObject>> = msg_send_id![wk, _inspector];
             let Some(inspector) = inspector else {
@@ -93,13 +91,17 @@ mod macos {
                 return;
             }
 
-            register(inspector);
+            crate::content_world::macos::run(
+                wk,
+                &format!("window.__wisInspectMark && window.__wisInspectMark('{nonce}');"),
+            );
+            register(inspector, nonce);
         });
     }
 
     /// A fresh id on each registration. The inspector drops its registrations
     /// when it closes.
-    unsafe fn register(inspector: Retained<AnyObject>) {
+    unsafe fn register(inspector: Retained<AnyObject>, nonce: String) {
         let uuid: *mut AnyObject = msg_send![class!(NSUUID), UUID];
         let extension_id: *mut AnyObject = msg_send![uuid, UUIDString];
 
@@ -114,7 +116,7 @@ mod macos {
                 return;
             }
 
-            unsafe { evaluate(host.clone(), extension) };
+            unsafe { evaluate(host.clone(), extension, &nonce) };
         });
 
         let _: () = msg_send![
@@ -126,7 +128,11 @@ mod macos {
         ];
     }
 
-    unsafe fn evaluate(inspector: Retained<AnyObject>, extension: Retained<AnyObject>) {
+    unsafe fn evaluate(
+        inspector: Retained<AnyObject>,
+        extension: Retained<AnyObject>,
+        nonce: &str,
+    ) {
         let unregister_from = extension.clone();
         let evaluated = RcBlock::new(move |_error: *mut AnyObject, _result: *mut AnyObject| {
             let done = RcBlock::new(|_error: *mut AnyObject| {});
@@ -142,7 +148,7 @@ mod macos {
         let null: *mut AnyObject = ptr::null_mut();
         let _: () = msg_send![
             &*extension,
-            evaluateScript: ns_string(REVEAL_JS),
+            evaluateScript: ns_string(&REVEAL_JS.replace("__WIS_NONCE__", nonce)),
             frameURL: null,
             contextSecurityOrigin: null,
             useContentScriptContext: Bool::NO,

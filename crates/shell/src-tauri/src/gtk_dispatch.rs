@@ -7,10 +7,14 @@
 //! feature that owns it, mirroring that feature's macOS `install` handler.
 //!
 //! This module is the Linux replacement for the macOS per-feature `install`
-//! functions, wired once per tab webview.
+//! functions, wired once per tab webview. As on macOS, the channels whose
+//! message makes the browser act, and their scripts, live in Wis's own script
+//! world (`content_world`).
 
 use javascriptcore::ValueExt;
 use webkit2gtk::{JavascriptResult, UserContentManager, UserContentManagerExt, WebViewExt};
+
+use crate::content_world::linux as content_world;
 
 /// Register the page->chrome message handlers on a tab webview and route each
 /// received message to its feature. Runs on the GTK main thread via `with_webview`.
@@ -18,6 +22,7 @@ pub fn install<R: tauri::Runtime>(
     webview: &tauri::webview::Webview<R>,
     ephemeral: bool,
     cosmetic_enabled: bool,
+    keybind_script: String,
 ) {
     let label = webview.label().to_string();
     let _ = webview.with_webview(move |w| {
@@ -34,15 +39,9 @@ pub fn install<R: tauri::Runtime>(
             return;
         };
 
-        register(&ucm, "wisOpenInTab", &label);
-        register(&ucm, "wisNavGuard", &label);
-        register(&ucm, "wisPeek", &label);
         register(&ucm, "wisMediaPermission", &label);
-        register(&ucm, "wisKeybind", &label);
         register(&ucm, "wisPageText", &label);
         register(&ucm, "wisPageSource", &label);
-        register(&ucm, "wisSignup", &label);
-        register(&ucm, "wisPageMenu", &label);
 
         // Cosmetic filtering + the element-picker zapper.
         if cosmetic_enabled {
@@ -50,8 +49,24 @@ pub fn install<R: tauri::Runtime>(
             register(&ucm, "wisZap", &label);
         }
 
+        let page_menu = crate::page_menu::page_script();
+        let mut isolated: Vec<(&'static str, &str)> = vec![
+            (
+                crate::link_open::HANDLER_BACKGROUND,
+                crate::link_open::page_script(),
+            ),
+            ("wisNavGuard", crate::navguard::page_script()),
+            ("wisPeek", crate::peek::page_script()),
+            ("wisKeybind", &keybind_script),
+            ("wisSignup", crate::signup::page_script()),
+            ("wisPageMenu", &page_menu),
+        ];
         if !ephemeral {
-            register(&ucm, "wisCapture", &label);
+            isolated.push(("wisCapture", crate::capture::capture_script()));
+        }
+        for (name, source) in isolated {
+            register_isolated(&ucm, name, &label);
+            content_world::install_script(&wv, &ucm, &label, name, source, true);
         }
     });
 }
@@ -67,8 +82,19 @@ pub fn install_link_open_only<R: tauri::Runtime>(webview: &tauri::webview::Webvi
             return;
         };
 
-        register(&ucm, crate::link_open::HANDLER_BACKGROUND, &label);
-        register(&ucm, crate::link_open::HANDLER_FOREGROUND, &label);
+        for (name, source) in [
+            (
+                crate::link_open::HANDLER_BACKGROUND,
+                crate::link_open::page_script(),
+            ),
+            (
+                crate::link_open::HANDLER_FOREGROUND,
+                crate::link_open::panel_page_script(),
+            ),
+        ] {
+            register_isolated(&ucm, name, &label);
+            content_world::install_script(&wv, &ucm, &label, name, source, true);
+        }
     });
 }
 
@@ -112,7 +138,19 @@ fn register(ucm: &UserContentManager, name: &'static str, label: &str) {
         log::warn!("gtk_dispatch: failed to register handler {name}");
         return;
     }
+    connect(ucm, name, label);
+}
 
+/// [`register`], for a handler only scripts in Wis's own world can post to.
+fn register_isolated(ucm: &UserContentManager, name: &'static str, label: &str) {
+    if !content_world::add_handler(ucm, name) {
+        log::warn!("gtk_dispatch: failed to register handler {name}");
+        return;
+    }
+    connect(ucm, name, label);
+}
+
+fn connect(ucm: &UserContentManager, name: &'static str, label: &str) {
     let label = label.to_string();
     ucm.connect_script_message_received(Some(name), move |_ucm, result| {
         if let Some(body) = decode(result) {

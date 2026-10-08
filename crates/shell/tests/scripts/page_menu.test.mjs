@@ -542,27 +542,47 @@ describe('the node parked for Inspect Element', () => {
     assert.equal(p.window.__wisInspectTarget, target)
   })
 
-  test('Inspect marks the parked node in the DOM for the page-world reveal', () => {
+  /** An element whose attributes can be read back. */
+  function markable(tag) {
+    const attrs = {}
+    return el(tag, {
+      attrs,
+      setAttribute: (n, v) => (attrs[n] = v),
+      removeAttribute: (n) => delete attrs[n],
+    })
+  }
+
+  test("Inspect marks the parked node with the invocation's nonce for the page-world reveal", () => {
     const p = loadPage()
-    const marked = {}
-    const target = el('span', { setAttribute: (n, v) => (marked[n] = v) })
+    const target = markable('span')
     p.rightClick([target])
-    p.window.__wisInspectMark()
-    assert.deepEqual(marked, { 'data-wis-inspect': '' })
+    p.window.__wisInspectMark('n1')
+    assert.deepEqual(target.attrs, { 'data-wis-inspect': 'n1' })
+  })
+
+  test('a new mark clears the one before it', () => {
+    const p = loadPage()
+    const first = markable('span')
+    const second = markable('em')
+    p.rightClick([first])
+    p.window.__wisInspectMark('n1')
+    p.rightClick([second])
+    p.window.__wisInspectMark('n2')
+    assert.deepEqual(first.attrs, {})
+    assert.deepEqual(second.attrs, { 'data-wis-inspect': 'n2' })
   })
 
   test('a text node is marked through its parent element', () => {
     const p = loadPage()
-    const marked = {}
-    const parent = el('p', { setAttribute: (n, v) => (marked[n] = v) })
+    const parent = markable('p')
     p.rightClick([{ nodeType: 3, parentElement: parent }])
-    p.window.__wisInspectMark()
-    assert.deepEqual(marked, { 'data-wis-inspect': '' })
+    p.window.__wisInspectMark('n1')
+    assert.deepEqual(parent.attrs, { 'data-wis-inspect': 'n1' })
   })
 
   test('nothing is marked when nothing was parked', () => {
     const p = loadPage()
-    assert.doesNotThrow(() => p.window.__wisInspectMark())
+    assert.doesNotThrow(() => p.window.__wisInspectMark('n1'))
   })
 
   test('nothing is parked for a right-click left to the engine', () => {

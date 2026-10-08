@@ -398,7 +398,8 @@ mod imp {
 
     /// Install the navigation-guard user script + message handler on a tab webview.
     pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
-        let _ = webview.with_webview(|w| unsafe {
+        let label = webview.label().to_string();
+        let _ = webview.with_webview(move |w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
             if wk.is_null() {
                 return;
@@ -416,7 +417,14 @@ mod imp {
 
             let handler = NavGuardHandler::new();
             content_world::add_handler(controller, &*handler, "wisNavGuard");
-            content_world::install_script(wk, controller, "wisNavGuard", navguard_js(), false);
+            content_world::install_script(
+                wk,
+                controller,
+                &label,
+                "wisNavGuard",
+                navguard_js(),
+                false,
+            );
         });
     }
 }

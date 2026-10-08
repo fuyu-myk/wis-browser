@@ -61,6 +61,7 @@ function loadPage({ keymap = KEYMAP, handler = true } = {}) {
     press(key, mods = {}, page) {
       const e = {
         key,
+        isTrusted: true,
         metaKey: false,
         ctrlKey: false,
         altKey: false,
@@ -119,9 +120,17 @@ describe('reserved shortcuts', () => {
     assert.deepEqual(p.sent, ['new_tab'])
   })
 
+  test('a shortcut the page dispatched itself does nothing', () => {
+    const p = loadPage()
+    const reserved = p.press('t', { ...ctrl, isTrusted: false })
+    const plain = p.press('l', { ...ctrl, isTrusted: false })
+    assert.deepEqual(p.sent, [])
+    assert.ok(!reserved.defaultPrevented && !plain.defaultPrevented)
+  })
+
   test('the bubble listener leaves a reserved shortcut alone', () => {
     const p = loadPage()
-    p.bubbleOnly({ key: 't', ctrlKey: true, defaultPrevented: false, preventDefault: () => assert.fail('prevented') })
+    p.bubbleOnly({ key: 't', ctrlKey: true, isTrusted: true, defaultPrevented: false, preventDefault: () => assert.fail('prevented') })
     assert.deepEqual(p.sent, [])
   })
 })

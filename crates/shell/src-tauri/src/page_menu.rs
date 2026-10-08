@@ -194,11 +194,19 @@ const PAGE_MENU_JS: &str = r#"(function () {
   };
 
   // Inspect Element reads the node from the page's world, through the DOM.
-  window.__wisInspectMark = function () {
+  var inspectMarked = null;
+  window.__wisInspectMark = function (nonce) {
+    if (inspectMarked) {
+      try { inspectMarked.removeAttribute('data-wis-inspect'); } catch (err) {}
+      inspectMarked = null;
+    }
     var t = window.__wisInspectTarget;
     if (t && t.deref) t = t.deref();
     if (t && !t.setAttribute) t = t.parentElement;
-    if (t && t.setAttribute) t.setAttribute('data-wis-inspect', '');
+    if (t && t.setAttribute) {
+      t.setAttribute('data-wis-inspect', String(nonce));
+      inspectMarked = t;
+    }
   };
   window.addEventListener('mousedown', function (e) {
     if (!keepSelectionOnce) return;
@@ -470,9 +478,9 @@ mod macos {
                 return;
             }
 
+            content_world::install_script(wk, controller, &label, "wisPageMenu", &script, true);
             let handler = PageMenuHandler::new(label);
             content_world::add_handler(controller, &*handler, "wisPageMenu");
-            content_world::install_script(wk, controller, "wisPageMenu", &script, true);
         });
     }
 }
