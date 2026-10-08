@@ -10,10 +10,9 @@
 
 import { execFileSync } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 
 const SHELL = new URL('../../', import.meta.url)
-const REGISTER = fileURLToPath(new URL('./register.mjs', import.meta.url))
+const REGISTER = new URL('./register.mjs', import.meta.url).href
 
 /**
  * Install a fresh `globalThis.window` (an EventTarget, so DOM events work)
