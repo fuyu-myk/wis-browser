@@ -69,9 +69,11 @@ jobs:
           cache: pnpm
           cache-dependency-path: crates/shell/pnpm-lock.yaml
 
+      # Matches rust-toolchain.toml.
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.99.0
           targets: ${{ matrix.rust-targets }}
 
       - name: Cache Rust build

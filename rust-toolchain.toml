@@ -1,0 +1,5 @@
+# The one compiler local builds, CI and releases use. Bump it together with
+# the `toolchain:` of the Rust setup step in ci.yml and release.yml.
+[toolchain]
+channel = "1.99.0"
+components = ["clippy", "rustfmt"]
