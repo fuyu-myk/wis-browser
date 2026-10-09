@@ -1,4 +1,4 @@
-//! React to the system waking from sleep, and to the network changing (macOS).
+//! React to the system waking from sleep, and to the network changing.
 //!
 //! Tunnels through the workspace proxies can die while asleep without either
 //! end noticing: the page's side is loopback, so a hung connection only clears
@@ -9,8 +9,11 @@
 //!
 //! The engine never sees the network change behind the loopback proxy, so it
 //! cannot drop the connections the change killed itself. A path monitor does
-//! the same cut once the network is usable again with a different path.
+//! the same cut once the network is usable again with a different path. Off
+//! macOS a two-second poll stands in for both: it compares the addresses the
+//! machine sends from, and reads a sleep from a tick that ran far too long.
 
+use std::net::{IpAddr, Ipv6Addr, SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -24,10 +27,9 @@ pub fn install(app: &AppHandle) {
     imp::install(app.clone());
 
     #[cfg(not(target_os = "macos"))]
-    let _ = app;
+    poll::spawn(app.clone());
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn on_wake(app: &AppHandle) {
     crate::hover_guard::release_all();
     reconnect(app, "woke from sleep");
@@ -47,7 +49,6 @@ pub fn disrupted_within(window: Duration) -> bool {
 
 /// Start DNS afresh and cut every proxy's tunnels, restarting their dials, so
 /// pages reconnect over the network as it is now.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn reconnect(app: &AppHandle, why: &'static str) {
     *LAST_DISRUPTION
         .lock()
@@ -69,13 +70,10 @@ fn reconnect(app: &AppHandle, why: &'static str) {
 
 /// Path updates arrive in bursts as a network comes back; reconnect once the
 /// burst has been quiet this long.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const PATH_SETTLE: Duration = Duration::from_secs(1);
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 static PATH_CHANGES: AtomicU64 = AtomicU64::new(0);
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn reconnect_when_settled(app: &AppHandle) {
     let change = PATH_CHANGES.fetch_add(1, Ordering::SeqCst) + 1;
     let app = app.clone();
@@ -87,21 +85,62 @@ fn reconnect_when_settled(app: &AppHandle) {
     });
 }
 
-/// A network path as the monitor reports it: its status and the names of the
-/// interfaces it uses, sorted and each named once.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-type PathPrint = (i32, Vec<String>);
-
-/// `nw_path_status_satisfied`: the path has a usable route.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-const PATH_SATISFIED: i32 = 1;
+/// The network as connections see it: whether it is usable, the interfaces
+/// it uses and where the machine sends from, each sorted and named once.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PathPrint {
+    usable: bool,
+    interfaces: Vec<String>,
+    addresses: Vec<IpAddr>,
+}
 
 /// Whether moving from `previous` to `next` should cut the connections: the
-/// path is usable again and is not the one they were opened over. The first
-/// report is the path at launch, so it never does.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+/// network is usable again and is not the one they were opened over. The
+/// first report is the network at launch, so it never does.
 fn reconnects_for(previous: Option<&PathPrint>, next: &PathPrint) -> bool {
-    next.0 == PATH_SATISFIED && previous.is_some_and(|previous| previous != next)
+    next.usable && previous.is_some_and(|previous| previous != next)
+}
+
+/// Where the machine would send from to reach the internet, per address
+/// family that has a route. IPv6 keeps just its /64, since privacy addresses
+/// rotate within one network and the connections on the old one keep working.
+fn sending_addresses() -> Vec<IpAddr> {
+    let remotes = [
+        SocketAddr::from(([1, 1, 1, 1], 53)),
+        SocketAddr::from((
+            Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111),
+            53,
+        )),
+    ];
+    let mut addresses: Vec<IpAddr> = remotes
+        .into_iter()
+        .filter_map(|remote| {
+            let any = if remote.is_ipv4() {
+                SocketAddr::from(([0, 0, 0, 0], 0))
+            } else {
+                SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0))
+            };
+            let socket = UdpSocket::bind(any).ok()?;
+            socket.connect(remote).ok()?;
+            socket
+                .local_addr()
+                .ok()
+                .map(|local| network_part(local.ip()))
+        })
+        .collect();
+    addresses.sort();
+    addresses
+}
+
+fn network_part(address: IpAddr) -> IpAddr {
+    match address {
+        IpAddr::V4(_) => address,
+        IpAddr::V6(v6) => {
+            let mut segments = v6.segments();
+            segments[4..].fill(0);
+            IpAddr::V6(Ipv6Addr::from(segments))
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -239,12 +278,19 @@ mod imp {
         nw_path_enumerate_interfaces(path, &each);
         drop(each);
 
-        let mut names = names.take();
-        names.sort();
-        names.dedup();
+        let mut interfaces = names.take();
+        interfaces.sort();
+        interfaces.dedup();
 
-        (status, names)
+        super::PathPrint {
+            usable: status == PATH_SATISFIED,
+            interfaces,
+            addresses: super::sending_addresses(),
+        }
     }
+
+    /// `nw_path_status_satisfied`: the path has a usable route.
+    const PATH_SATISFIED: c_int = 1;
 
     pub(super) unsafe fn wake_name() -> *mut AnyObject {
         let name = CString::new("NSWorkspaceDidWakeNotification").unwrap_or_default();
@@ -271,42 +317,134 @@ mod imp {
     }
 }
 
+/// Off macOS: a poll for what the path monitor and the wake notification give
+/// macOS.
+#[cfg(not(target_os = "macos"))]
+mod poll {
+    use std::time::{Duration, Instant, SystemTime};
+
+    use tauri::AppHandle;
+
+    const TICK: Duration = Duration::from_secs(2);
+
+    pub(super) fn spawn(app: AppHandle) {
+        tauri::async_runtime::spawn(async move {
+            let mut last = None;
+            loop {
+                let (wall, monotonic) = (SystemTime::now(), Instant::now());
+                tokio::time::sleep(TICK).await;
+
+                let addresses = super::sending_addresses();
+                let print = super::PathPrint {
+                    usable: !addresses.is_empty(),
+                    interfaces: Vec::new(),
+                    addresses,
+                };
+                let wall = wall.elapsed().unwrap_or_default();
+                if super::slept_through(TICK, wall, monotonic.elapsed()) {
+                    super::on_wake(&app);
+                } else if super::reconnects_for(last.as_ref(), &print) {
+                    super::reconnect_when_settled(&app);
+                }
+
+                last = Some(print);
+            }
+        });
+    }
+}
+
+/// How much longer than asked a tick must run to mean the machine slept.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+const SLEPT: Duration = Duration::from_secs(10);
+
+/// Whether a `tick` that took `wall` by the wall clock and `monotonic` by the
+/// monotonic one spanned a sleep. Platforms differ on whether the monotonic
+/// clock runs while asleep, so either clock running long is enough.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn slept_through(tick: Duration, wall: Duration, monotonic: Duration) -> bool {
+    wall > tick + SLEPT || monotonic > tick + SLEPT
+}
+
 #[cfg(test)]
 mod path_tests {
-    use super::{reconnects_for, PATH_SATISFIED};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+    use std::time::Duration;
 
-    fn print(status: i32, names: &[&str]) -> super::PathPrint {
-        (status, names.iter().map(|n| n.to_string()).collect())
+    use super::{network_part, reconnects_for, slept_through, PathPrint};
+
+    fn print(usable: bool, interfaces: &[&str], addresses: &[IpAddr]) -> PathPrint {
+        PathPrint {
+            usable,
+            interfaces: interfaces.iter().map(|n| n.to_string()).collect(),
+            addresses: addresses.to_vec(),
+        }
     }
+
+    const HOME: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20));
+    const CAFE: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 7));
 
     #[test]
     fn the_path_at_launch_never_reconnects() {
-        assert!(!reconnects_for(None, &print(PATH_SATISFIED, &["en0"])));
+        assert!(!reconnects_for(None, &print(true, &["en0"], &[HOME])));
     }
 
     #[test]
     fn coming_back_or_switching_reconnects_once_usable() {
-        let wifi = print(PATH_SATISFIED, &["en0"]);
-        let down = print(2, &[]);
+        let wifi = print(true, &["en0"], &[HOME]);
+        let down = print(false, &[], &[]);
         assert!(
             !reconnects_for(Some(&wifi), &down),
             "nothing to reconnect over"
         );
         assert!(reconnects_for(Some(&down), &wifi), "back after a wake");
         assert!(
-            reconnects_for(Some(&wifi), &print(PATH_SATISFIED, &["en0", "utun4"])),
+            reconnects_for(Some(&wifi), &print(true, &["en0", "utun4"], &[HOME])),
             "a VPN"
         );
         assert!(
-            reconnects_for(Some(&wifi), &print(PATH_SATISFIED, &["en1"])),
-            "another network"
+            reconnects_for(Some(&wifi), &print(true, &["en1"], &[HOME])),
+            "another interface"
+        );
+        assert!(
+            reconnects_for(Some(&wifi), &print(true, &["en0"], &[CAFE])),
+            "another network on the same interface"
         );
     }
 
     #[test]
     fn the_same_path_again_keeps_the_connections() {
-        let wifi = print(PATH_SATISFIED, &["en0"]);
+        let wifi = print(true, &["en0"], &[HOME]);
         assert!(!reconnects_for(Some(&wifi), &wifi.clone()));
+    }
+
+    #[test]
+    fn a_rotated_ipv6_privacy_address_is_the_same_network() {
+        let before: Ipv6Addr = "2001:db8:1:2:aaaa:bbbb:cccc:dddd".parse().unwrap();
+        let after: Ipv6Addr = "2001:db8:1:2:1111:2222:3333:4444".parse().unwrap();
+        let elsewhere: Ipv6Addr = "2001:db8:9:9:aaaa:bbbb:cccc:dddd".parse().unwrap();
+        assert_eq!(network_part(before.into()), network_part(after.into()));
+        assert_ne!(network_part(before.into()), network_part(elsewhere.into()));
+        assert_eq!(network_part(HOME), HOME);
+    }
+
+    #[test]
+    fn a_tick_far_longer_than_asked_on_either_clock_is_a_sleep() {
+        let tick = Duration::from_secs(2);
+        let late = Duration::from_secs(60);
+        assert!(!slept_through(tick, tick, tick));
+        assert!(!slept_through(tick, tick + Duration::from_secs(1), tick));
+        assert!(
+            slept_through(tick, late, tick),
+            "a monotonic clock that stops asleep"
+        );
+        assert!(slept_through(tick, tick, late), "one that runs on");
+    }
+
+    #[test]
+    fn the_sending_addresses_are_read_without_sending() {
+        for address in super::sending_addresses() {
+            assert!(!address.is_unspecified(), "{address}");
+        }
     }
 }
 
@@ -336,11 +474,14 @@ mod tests {
         let monitor = super::imp::watch_path(move |print| {
             let _ = tx.lock().unwrap().send(print);
         });
-        let (status, names) = rx
+        let print = rx
             .recv_timeout(std::time::Duration::from_secs(5))
             .expect("the monitor reports the current path first");
         unsafe { super::imp::stop_watching(monitor) };
-        assert!((0..=3).contains(&status), "status {status}");
-        assert!(names.iter().all(|name| !name.is_empty()));
+        assert!(print.interfaces.iter().all(|name| !name.is_empty()));
+        assert!(
+            print.usable || print.addresses.is_empty(),
+            "an unusable path has nowhere to send from"
+        );
     }
 }
