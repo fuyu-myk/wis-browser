@@ -36,6 +36,7 @@ import { SIGNUP_FIELD_EVENT } from '@/hooks/useSignupOffer'
 import { useOpenTabActions } from '@/hooks/useOpenTabActions'
 import { useOverlay } from '@/hooks/useOverlay'
 import { useUrlbarSuggest } from '@/hooks/useUrlbarSuggest'
+import { watchLayout } from '@/lib/layoutWatch'
 
 /** Hide the http(s):// prefix in the address bar. */
 function displayUrl(url: string): string {
@@ -202,8 +203,7 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
         .catch(() => undefined)
       void emit(VAULTMENU_OPEN_EVENT, a).catch(() => undefined)
     }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    return watchLayout(document.querySelector('.kb-content-host'), onResize)
   }, [anchorRect, overlay])
 
   useEffect(() => {

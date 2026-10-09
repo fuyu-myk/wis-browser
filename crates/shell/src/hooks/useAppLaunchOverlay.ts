@@ -10,6 +10,7 @@ import { useEffect, useRef, type RefObject } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { useOverlay } from '@/hooks/useOverlay'
+import { watchLayout } from '@/lib/layoutWatch'
 
 const REQUEST_EVENT = 'wis-app-launch-request'
 const SHOW_EVENT = 'wis-applaunch-show'
@@ -103,12 +104,12 @@ export function useAppLaunchOverlay(hostRef: RefObject<HTMLElement>): void {
       reanchor()
     }).then((fn) => (cancelled ? fn() : unlistens.push(fn)))
 
-    window.addEventListener('resize', reanchor)
+    const stopWatching = watchLayout(hostRef.current, reanchor)
 
     return () => {
       cancelled = true
       unlistens.forEach((fn) => fn())
-      window.removeEventListener('resize', reanchor)
+      stopWatching()
     }
   }, [overlay, hostRef])
 }

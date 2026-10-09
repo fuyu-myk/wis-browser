@@ -14,6 +14,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { commands } from '@/bindings/commands'
 import { useOverlay } from '@/hooks/useOverlay'
 import { WINDOW_PICKER_OPEN_EVENT } from '@/hooks/useKeyActions'
+import { watchLayout } from '@/lib/layoutWatch'
 
 const PICKER_FOCUS_EVENT = 'wis-overlay-windowpicker-focus'
 const PICKER_CLOSED_EVENT = 'wis-overlay-windowpicker-closed'
@@ -68,8 +69,7 @@ export function useWindowPickerOverlay(): void {
       if (!openRef.current) return
       void overlay.show(contentRect())
     }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    return watchLayout(document.querySelector('.kb-content-host'), onResize)
   }, [overlay])
 
   useEffect(() => {

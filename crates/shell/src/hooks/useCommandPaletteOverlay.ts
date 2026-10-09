@@ -14,6 +14,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { commands } from '@/bindings/commands'
 import { useOverlay } from '@/hooks/useOverlay'
 import { COMMAND_PALETTE_OPEN_EVENT } from '@/hooks/useKeyActions'
+import { watchLayout } from '@/lib/layoutWatch'
 
 const PALETTE_FOCUS_EVENT = 'wis-overlay-palette-focus'
 const PALETTE_CLOSED_EVENT = 'wis-overlay-palette-closed'
@@ -68,8 +69,7 @@ export function useCommandPaletteOverlay(): void {
       if (!openRef.current) return
       void overlay.show(contentRect())
     }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    return watchLayout(document.querySelector('.kb-content-host'), onResize)
   }, [overlay])
 
   useEffect(() => {

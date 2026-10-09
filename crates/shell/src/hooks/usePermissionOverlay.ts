@@ -13,6 +13,7 @@ import { useEffect, useRef, type RefObject } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { useOverlay } from '@/hooks/useOverlay'
+import { watchLayout } from '@/lib/layoutWatch'
 
 const REQUEST_EVENT = 'wis-permission-request'
 const SHOW_EVENT = 'wis-permission-show'
@@ -86,12 +87,12 @@ export function usePermissionOverlay(hostRef: RefObject<HTMLElement>): void {
       const rect = rectFor()
       if (rect) void overlay.show(rect)
     }
-    window.addEventListener('resize', onResize)
+    const stopWatching = watchLayout(hostRef.current, onResize)
 
     return () => {
       cancelled = true
       unlistens.forEach((fn) => fn())
-      window.removeEventListener('resize', onResize)
+      stopWatching()
     }
   }, [overlay, hostRef])
 }
