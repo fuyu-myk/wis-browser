@@ -3359,6 +3359,7 @@ body.glass-chrome .kb-content {
   box-shadow: var(--shadow-soft);
 }
 .kb-cbd-range { margin-top: 6px; }
+.kb-cbd-error { margin: 10px 0 0; font-size: 12px; color: var(--danger); }
 .kb-cbd-range button { padding: 6px 10px; white-space: nowrap; }
 .kb-cbd-row {
   width: 100%;

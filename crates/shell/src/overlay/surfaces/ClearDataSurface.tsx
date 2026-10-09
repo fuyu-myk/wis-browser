@@ -22,6 +22,7 @@ import {
   type ClearRange,
 } from '@/lib/clearData'
 import { cx } from '@/lib/cx'
+import { errorMessage } from '@/lib/errors'
 import { currentPlatform } from '@/lib/platform'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
@@ -47,6 +48,7 @@ export function ClearDataSurface() {
   const [withHistory, setWithHistory] = useState(true)
   const [siteKinds, setSiteKinds] = useState<ReadonlyArray<SiteDataKind>>(DEFAULT_KINDS)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const activeWorkspaceId = state?.active_workspace_id ?? null
   const glassMenus = menusGlass(state?.settings)
@@ -66,6 +68,7 @@ export function ClearDataSurface() {
       setWithHistory(true)
       setSiteKinds(DEFAULT_KINDS)
       setBusy(false)
+      setError(null)
       void commands.focusSelf().catch(() => undefined)
     }).then((fn) => {
       if (cancelled) fn()
@@ -90,29 +93,38 @@ export function ClearDataSurface() {
 
   const runClear = useCallback(async () => {
     setBusy(true)
-    try {
-      const siteTargets =
-        scope === 'workspace'
-          ? activeWorkspaceId
-            ? [activeWorkspaceId]
-            : []
-          : (state?.workspaces ?? []).filter((w) => !w.ephemeral).map((w) => w.id)
-
-      const since = clearSince(range)
-      if (withHistory) {
-        await commands
-          .clearHistory(scope === 'workspace' ? activeWorkspaceId ?? undefined : undefined, since)
-          .catch(() => undefined)
-      }
-      if (siteKinds.length > 0) {
-        for (const id of siteTargets) {
-          await commands.clearSiteData(id, siteKinds, since).catch(() => undefined)
-        }
-      }
-      await emit(HISTORY_CHANGED_EVENT).catch(() => undefined)
-    } finally {
-      await close()
+    setError(null)
+    const failures = new Set<string>()
+    const failed = (e: unknown) => {
+      failures.add(errorMessage(e))
     }
+
+    const siteTargets =
+      scope === 'workspace'
+        ? activeWorkspaceId
+          ? [activeWorkspaceId]
+          : []
+        : (state?.workspaces ?? []).filter((w) => !w.ephemeral).map((w) => w.id)
+
+    const since = clearSince(range)
+    if (withHistory) {
+      await commands
+        .clearHistory(scope === 'workspace' ? activeWorkspaceId ?? undefined : undefined, since)
+        .catch(failed)
+    }
+    if (siteKinds.length > 0) {
+      for (const id of siteTargets) {
+        await commands.clearSiteData(id, siteKinds, since).catch(failed)
+      }
+    }
+    await emit(HISTORY_CHANGED_EVENT).catch(() => undefined)
+
+    if (failures.size > 0) {
+      setError([...failures].join(' '))
+      setBusy(false)
+      return
+    }
+    await close()
   }, [scope, range, activeWorkspaceId, state?.workspaces, withHistory, siteKinds, close])
 
   const toggleKind = (kind: SiteDataKind) =>
@@ -189,6 +201,12 @@ export function ClearDataSurface() {
             onToggle={() => toggleKind(row.kind)}
           />
         ))}
+
+        {error !== null && (
+          <p className="kb-cbd-error" role="alert">
+            Some data was not cleared: {error}
+          </p>
+        )}
 
         <div className="kb-modal-actions">
           <button type="button" className="kb-modal-btn" onClick={() => void close()}>
