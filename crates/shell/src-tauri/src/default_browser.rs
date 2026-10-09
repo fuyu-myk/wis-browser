@@ -8,10 +8,10 @@
 //!   Apps settings page
 //! - Linux asks `xdg-settings`.
 //!
-//! Incoming URLs arrive as Apple Events (`RunEvent::Opened`, macOS) or process
-//! argv (Windows/Linux, second instances forwarded by the single-instance
-//! plugin) and queue in [`EXTERNAL_URLS`] until the main chrome has mounted
-//! and drained them.
+//! Incoming URLs and files arrive as Apple Events (`RunEvent::Opened`, macOS)
+//! or process argv (Windows/Linux, second instances forwarded by the
+//! single-instance plugin) and queue in [`EXTERNAL_URLS`] until the main chrome
+//! has mounted and drained them. A file opens as its `file://` URL.
 
 use tauri::{AppHandle, Emitter};
 use wis_core::WisResult;
@@ -43,15 +43,29 @@ static EXTERNAL_URLS: std::sync::Mutex<ExternalUrlQueue> =
         pending: Vec::new(),
     });
 
-/// Accept only an external well-formed web URL; anything else (files,
-/// `javascript:`, custom schemes) is dropped at this boundary.
+/// Accept a well-formed web URL, or a local file that exists as its full
+/// `file://` URL, whether it arrives as a `file://` URL (`open`) or an absolute
+/// path (file associations). Anything else (`javascript:`, custom schemes,
+/// directories, missing files) is dropped at this boundary.
 fn accept_external_url(raw: &str) -> Option<String> {
-    let parsed = url::Url::parse(raw.trim()).ok()?;
-    if !matches!(parsed.scheme(), "http" | "https") || !parsed.has_host() {
-        return None;
+    let raw = raw.trim();
+    if std::path::Path::new(raw).is_absolute() {
+        return local_file_url(raw.into());
     }
 
-    Some(parsed.into())
+    let parsed = url::Url::parse(raw).ok()?;
+    match parsed.scheme() {
+        "http" | "https" if parsed.has_host() => Some(parsed.into()),
+        "file" => local_file_url(parsed.to_file_path().ok()?),
+        _ => None,
+    }
+}
+
+fn local_file_url(path: std::path::PathBuf) -> Option<String> {
+    if !path.is_file() {
+        return None;
+    }
+    url::Url::from_file_path(path).ok().map(String::from)
 }
 
 /// Validate and dispatch URLs handed to Wis from outside (Apple Events or
@@ -297,10 +311,53 @@ mod tests {
         );
     }
 
+    /// A file in a fresh temp directory, removed with the directory.
+    fn temp_file(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("wis-open-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join(name);
+        std::fs::write(&file, "<p>hi</p>").unwrap();
+        (dir, file)
+    }
+
+    #[test]
+    fn accepts_a_local_file_as_its_full_file_url() {
+        let (dir, file) = temp_file("page one.html");
+        let url = url::Url::from_file_path(&file).unwrap().to_string();
+        assert!(url.ends_with("/page%20one.html"), "{url}");
+
+        assert_eq!(accept_external_url(&url), Some(url.clone()));
+        assert_eq!(
+            accept_external_url(file.to_str().unwrap()),
+            Some(url),
+            "an absolute path from argv"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn rejects_a_missing_file_a_directory_a_relative_path_or_a_remote_host() {
+        let (dir, file) = temp_file("page.html");
+        let missing = url::Url::from_file_path(dir.join("gone.html"))
+            .unwrap()
+            .to_string();
+        let folder = url::Url::from_file_path(&dir).unwrap().to_string();
+        for input in [
+            missing.as_str(),
+            folder.as_str(),
+            dir.to_str().unwrap(),
+            "page.html",
+            "file://server/share/page.html",
+        ] {
+            assert_eq!(accept_external_url(input), None, "accepted {input}");
+        }
+        assert!(file.exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn rejects_non_web_schemes() {
         for url in [
-            "file:///etc/passwd",
             "javascript:alert(1)",
             "data:text/html,hi",
             "wis://internal",

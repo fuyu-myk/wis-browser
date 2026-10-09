@@ -67,10 +67,13 @@ describe('address bar input', () => {
     assert.deepEqual(resolveInput('about:blank'), page('about:blank'))
   })
 
+  test('a file URL opens as typed', () => {
+    assert.deepEqual(resolveInput('file:///Users/me/My%20Page.html'), page('file:///Users/me/My%20Page.html'))
+  })
+
   test('other schemes are searched for, never opened', () => {
     for (const raw of [
       'javascript:alert(document.cookie)',
-      'file:///etc/hosts.txt',
       'mailto:someone@example.com',
       'data:text/html,<b>x</b>',
     ]) {
@@ -312,6 +315,11 @@ describe('source tabs', () => {
 
 describe('tab names', () => {
   const named = (title, url) => tabDisplayName({ title, url })
+
+  test('a local file without a title is named after the file', () => {
+    assert.equal(named('', 'file:///Users/me/Notes/My%20Page.html'), 'My Page.html')
+    assert.equal(named('Report', 'file:///Users/me/report.html'), 'Report')
+  })
 
   test('a source tab is named Page source', () => {
     assert.equal(named('view-source', sourceUrlFor('https://x.test', 't')), 'Page source')

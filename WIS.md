@@ -144,7 +144,7 @@ Each group maps to a `docs/architecture/` doc that carries the mechanism details
 - **Autoplay**: a global policy (allow, block sound, block all; block sound by default) with per-site rules. Engine-level on macOS per page load and on Linux per webview; Windows keeps WebView2's own rule.
 - **History & cookies**: per-workspace deduped history with search; native site-data listing + per-domain clear. The clear-data dialog takes a time range (1 hour, 24 hours, 7 days, all time) and separates history, cookies, cache and site storage.
 - **Browser identity**: modern Safari-class UA by default with per-host overrides (`wis_core::user_agent`), OS-following platform token; **open in default browser** exit hatch.
-- **Default browser**: registrable as the OS default on all three platforms (Compatibility settings row; macOS system prompt, Windows Default Apps hand-off, Linux `xdg-settings`); links clicked in other apps open as tabs, queued until the chrome is ready (`default_browser.rs`).
+- **Default browser**: registrable as the OS default on all three platforms (Compatibility settings row; macOS system prompt, Windows Default Apps hand-off, Linux `xdg-settings`); links clicked in other apps open as tabs, queued until the chrome is ready (`default_browser.rs`); a local file handed over opens as its `file://` URL when it exists.
 
 ### Cross-platform & page channel (`docs/architecture/cross-platform-and-page-channel.md`)
 

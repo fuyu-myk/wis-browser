@@ -94,7 +94,7 @@ export function resolveInput(raw: string, settings?: SearchSettings): ResolvedIn
   try {
     const u = new URL(trimmed)
     // Reject things like `mailto:` here.
-    if (u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'about:') {
+    if (['http:', 'https:', 'about:', 'file:'].includes(u.protocol)) {
       return { url: u.toString(), isSearch: false, engineLabel: null }
     }
   } catch {
@@ -233,6 +233,9 @@ export function tabDisplayName(tab: { title: string; url: string }): string {
     const u = new URL(tab.url)
     if (u.protocol === 'about:') {
       return 'Launchpad'
+    }
+    if (u.protocol === 'file:') {
+      return decodeURIComponent(u.pathname.split('/').pop() ?? '') || tab.url
     }
     return u.host.replace(/^www\./, '')
   } catch {
