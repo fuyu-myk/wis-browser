@@ -11,7 +11,8 @@ use url::Url;
 use crate::{policy::Decision, OutboundRequest, RequestPolicy, Resolver};
 
 use super::request_type::classify;
-use super::tunnel::{tunnel, Signals};
+use super::signals::Signals;
+use super::tunnel::tunnel;
 use super::upstream::{bad_gateway, empty, forward, full};
 
 /// Entry point for every request the proxy accepts.
@@ -26,13 +27,14 @@ pub async fn handle(
     if req.method() == Method::CONNECT {
         return handle_connect(req, policy, resolver, signals).await;
     }
-    handle_http(req, policy, resolver).await
+    handle_http(req, policy, resolver, signals).await
 }
 
 async fn handle_http(
     req: Request<Incoming>,
     policy: Arc<RequestPolicy>,
     resolver: Arc<dyn Resolver>,
+    signals: Signals,
 ) -> Response<BoxBody<Bytes, hyper::Error>> {
     // Parse the URL from the absolute request-target. Proxy-form requests
     // carry the full URL; if an origin-form request is somehow received,
@@ -71,6 +73,7 @@ async fn handle_http(
                 resolver,
                 policy.upstream().cloned(),
                 policy.global_privacy_control(),
+                signals,
             )
             .await
         }

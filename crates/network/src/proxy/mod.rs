@@ -10,6 +10,7 @@ mod connect;
 mod handler;
 mod live;
 mod request_type;
+mod signals;
 mod tunnel;
 mod upstream;
 
@@ -32,7 +33,7 @@ use crate::policy::RequestPolicy;
 use crate::resolver::Resolver;
 
 use live::{Registry, Revive};
-use tunnel::Signals;
+use signals::Signals;
 
 /// A running per-workspace proxy server. Dropping the value sends a
 /// shutdown signal to the accept loop and the spawned connection

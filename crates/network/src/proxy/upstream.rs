@@ -16,20 +16,23 @@ use hyper_util::rt::TokioIo;
 use url::Url;
 use wis_core::UpstreamProxy;
 
-use super::connect::connect_target;
+use super::live::Stamped;
+use super::signals::{dial, ended, Signals};
 use crate::Resolver;
 
 /// Forward an HTTP request through to its upstream and return the
 /// response (with the body streamed through unchanged). Hop-by-hop
 /// headers are stripped on both legs. When `upstream` is set the connection
-/// is routed through it. `global_privacy_control` adds `Sec-GPC: 1`.
+/// is routed through it. `global_privacy_control` adds `Sec-GPC: 1`. The
+/// connection ends early on what `signals` carry, as a tunnel does.
 pub async fn forward(
     req: Request<Incoming>,
     resolver: Arc<dyn Resolver>,
     upstream: Option<UpstreamProxy>,
     global_privacy_control: bool,
+    signals: Signals,
 ) -> Response<BoxBody<Bytes, hyper::Error>> {
-    match forward_inner(req, resolver, upstream, global_privacy_control).await {
+    match forward_inner(req, resolver, upstream, global_privacy_control, signals).await {
         Ok(resp) => resp,
         Err(reason) => bad_gateway(&reason),
     }
@@ -40,6 +43,7 @@ async fn forward_inner(
     resolver: Arc<dyn Resolver>,
     upstream: Option<UpstreamProxy>,
     global_privacy_control: bool,
+    mut signals: Signals,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, String> {
     let uri = req.uri().clone();
     let url = parse_uri_as_url(&uri).map_err(|e| format!("invalid request URI {uri}: {e}"))?;
@@ -54,15 +58,31 @@ async fn forward_inner(
         .unwrap_or_else(|| "/".to_string());
 
     // Connect directly (DoH-resolve + dial) or through the upstream proxy.
-    let stream = connect_target(&host, port, upstream.as_ref(), &resolver).await?;
-    let io = TokioIo::new(stream);
+    let live = signals.register();
+    let stream = dial(
+        &host,
+        port,
+        upstream.as_ref(),
+        &resolver,
+        &mut signals,
+        &live,
+    )
+    .await?;
+    let io = TokioIo::new(Stamped::new(stream, live.clone()));
 
     let (mut sender, conn) = hyper::client::conn::http1::handshake::<_, Incoming>(io)
         .await
         .map_err(|e| format!("handshake: {e}"))?;
     tokio::spawn(async move {
-        if let Err(err) = conn.await {
-            tracing::debug!("upstream conn closed: {err}");
+        tokio::select! {
+            done = conn => {
+                if let Err(err) = done {
+                    tracing::debug!("upstream conn closed: {err}");
+                }
+            }
+            why = ended(&mut signals, &live) => {
+                tracing::debug!("upstream conn cut: {}", why.reason());
+            }
         }
     });
 

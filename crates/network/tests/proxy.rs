@@ -791,3 +791,71 @@ async fn a_revive_cuts_an_idle_tunnel_and_keeps_a_busy_one() {
     );
     assert!(echoes(&mut busy).await, "a tunnel carrying traffic is kept");
 }
+
+#[tokio::test]
+async fn a_network_change_redials_a_plain_http_request_still_dialing() {
+    let upstream_port = start_stub_upstream("back again").await;
+    let policy = RequestPolicy::new(
+        wis_core::PrivacyMode::Permissive,
+        Arc::new(TrackerBlocker::empty()),
+    );
+    let proxy = Arc::new(start_proxy_with(policy, Arc::new(ComebackResolver::default())).await);
+    let request = tokio::spawn({
+        let port = proxy.port();
+        async move {
+            let url = format!("http://comeback.test:{upstream_port}/");
+            let resp = send_through_proxy(port, Method::GET, &url).await;
+            let status = resp.status().as_u16();
+            (status, resp.into_body().collect().await.unwrap().to_bytes())
+        }
+    });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    proxy.network_changed();
+
+    let (status, body) = tokio::time::timeout(Duration::from_secs(2), request)
+        .await
+        .expect("the redial answers at once")
+        .unwrap();
+    assert_eq!(status, 200);
+    assert_eq!(body, Bytes::from_static(b"back again"));
+}
+
+/// A plain-HTTP response still streaming ends at a route change, as a tunnel
+/// does, rather than flowing on over the previous route.
+#[tokio::test]
+async fn a_route_change_cuts_a_plain_http_response_still_streaming() {
+    // Sends the head and part of the body, then holds the rest back.
+    let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+        .await
+        .expect("bind streaming upstream");
+    let upstream_port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((mut stream, _)) = listener.accept().await {
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request).await;
+            let _ = stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nhello")
+                .await;
+            held.push(stream);
+        }
+    });
+    let proxy = start_proxy(TrackerBlocker::empty(), localhost_resolver()).await;
+    let url = format!("http://localhost:{upstream_port}/");
+    let resp = send_through_proxy(proxy.port(), Method::GET, &url).await;
+    assert_eq!(resp.status(), 200);
+    let mut body = resp.into_body();
+    let first = body.frame().await.expect("a frame").expect("readable");
+    assert_eq!(first.into_data().unwrap(), Bytes::from_static(b"hello"));
+
+    proxy.sever_open_connections();
+
+    let rest = tokio::time::timeout(Duration::from_secs(2), body.frame())
+        .await
+        .expect("a cut response ends rather than hangs");
+    assert!(
+        !matches!(rest, Some(Ok(_))),
+        "the response must not carry on, got {rest:?}"
+    );
+}
