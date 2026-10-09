@@ -188,6 +188,13 @@ pub fn urls_for(conn: &Connection, ids: &[i64]) -> StorageResult<Vec<String>> {
     Ok(out)
 }
 
+// `visited_at` and the bound are both rusqlite's `%F %T%.f+00:00` text, whose
+// `+` sorts below the fraction's `.` and digits, so comparing the text orders
+// them exactly and lets the scoped clear search its index.
+const CLEAR_WORKSPACE_SINCE: &str =
+    "DELETE FROM history WHERE workspace_id = ?1 AND visited_at >= ?2";
+const CLEAR_SINCE: &str = "DELETE FROM history WHERE visited_at >= ?1";
+
 /// Remove history rows. Scoped to one workspace when `workspace_id` is set,
 /// otherwise clears everything.
 pub fn clear(
@@ -195,13 +202,10 @@ pub fn clear(
     workspace_id: Option<WorkspaceId>,
     since: Option<DateTime<Utc>>,
 ) -> StorageResult<()> {
-    // `visited_at` is stored as text, so they are comparable as instants
-    // via `datetime()`.
     match (workspace_id, since) {
         (Some(id), Some(since)) => {
             conn.execute(
-                "DELETE FROM history \
-                 WHERE workspace_id = ?1 AND datetime(visited_at) >= datetime(?2)",
+                CLEAR_WORKSPACE_SINCE,
                 params![id.as_uuid().to_string(), since],
             )?;
         }
@@ -212,10 +216,7 @@ pub fn clear(
             )?;
         }
         (None, Some(since)) => {
-            conn.execute(
-                "DELETE FROM history WHERE datetime(visited_at) >= datetime(?1)",
-                params![since],
-            )?;
+            conn.execute(CLEAR_SINCE, params![since])?;
         }
         (None, None) => {
             conn.execute("DELETE FROM history", [])?;
@@ -286,5 +287,55 @@ mod tests {
         let mut left = urls(&conn);
         left.sort();
         assert_eq!(left, vec!["https://a-old.example/", "https://b.example/"]);
+    }
+
+    #[test]
+    fn clear_since_orders_stored_times_at_every_fraction_precision() {
+        let conn = conn();
+        let ws = WorkspaceId::new();
+        let bound = DateTime::parse_from_rfc3339("2026-10-08T01:00:00.000500Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let at = |url: &str, rfc3339: &str| {
+            record_visit(&conn, ws, url, "").unwrap();
+            let when = DateTime::parse_from_rfc3339(rfc3339)
+                .unwrap()
+                .with_timezone(&Utc);
+            conn.execute(
+                "UPDATE history SET visited_at = ?1 WHERE url = ?2",
+                params![when, history_key(url)],
+            )
+            .unwrap();
+        };
+        at("https://whole.example/", "2026-10-08T01:00:00Z");
+        at("https://micro.example/", "2026-10-08T01:00:00.000001Z");
+        at("https://milli.example/", "2026-10-08T01:00:00.001Z");
+        at("https://nano.example/", "2026-10-08T01:00:00.000500001Z");
+        at("https://later.example/", "2026-10-08T01:00:01Z");
+
+        clear(&conn, Some(ws), Some(bound)).unwrap();
+
+        let mut left = urls(&conn);
+        left.sort();
+        assert_eq!(
+            left,
+            vec!["https://micro.example/", "https://whole.example/"]
+        );
+    }
+
+    #[test]
+    fn a_scoped_timed_clear_searches_the_visited_at_index() {
+        let conn = conn();
+        let plan: String = conn
+            .query_row(
+                &format!("EXPLAIN QUERY PLAN {CLEAR_WORKSPACE_SINCE}"),
+                params!["ws", Utc::now()],
+                |row| row.get(3),
+            )
+            .unwrap();
+        assert!(
+            plan.contains("idx_history_ws_visited_at (workspace_id=? AND visited_at>?)"),
+            "{plan}"
+        );
     }
 }
