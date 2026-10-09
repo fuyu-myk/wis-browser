@@ -517,3 +517,277 @@ async fn dropping_proxy_handle_shuts_down_listener() {
 fn _decision_compiles(d: Decision) -> Decision {
     d
 }
+
+/// Never answers, as DNS does while the network is still coming back.
+struct SilentResolver;
+
+#[async_trait::async_trait]
+impl Resolver for SilentResolver {
+    async fn resolve(&self, _hostname: &str) -> wis_network::NetworkResult<Vec<IpAddr>> {
+        std::future::pending().await
+    }
+}
+
+/// Hangs on the first lookup of `comeback.test`, then answers it with
+/// loopback, as DNS does once the network is back; every other host hangs.
+#[derive(Default)]
+struct ComebackResolver {
+    lookups: std::sync::atomic::AtomicUsize,
+}
+
+#[async_trait::async_trait]
+impl Resolver for ComebackResolver {
+    async fn resolve(&self, hostname: &str) -> wis_network::NetworkResult<Vec<IpAddr>> {
+        if hostname != "comeback.test" {
+            return std::future::pending().await;
+        }
+        let first = self
+            .lookups
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            == 0;
+        if first {
+            return std::future::pending().await;
+        }
+        Ok(vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])
+    }
+}
+
+/// An echo server on `127.0.0.1:0`; returns its port.
+async fn start_echo_target() -> u16 {
+    let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+        .await
+        .expect("bind echo target");
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut buf = [0u8; 64];
+                loop {
+                    match stream.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            if stream.write_all(&buf[..n]).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    });
+    port
+}
+
+/// Send `CONNECT authority` through the proxy; the response and, when it is
+/// a 200, the upgraded tunnel.
+async fn connect_through(
+    proxy: &ProxyServer,
+    authority: &str,
+) -> (u16, Option<TokioIo<hyper::upgrade::Upgraded>>) {
+    let stream = TcpStream::connect(("127.0.0.1", proxy.port()))
+        .await
+        .expect("connect to proxy");
+    let (mut sender, conn) =
+        hyper::client::conn::http1::handshake::<_, Empty<Bytes>>(TokioIo::new(stream))
+            .await
+            .expect("handshake");
+    tokio::spawn(async move {
+        let _ = conn.with_upgrades().await;
+    });
+    let req = Request::builder()
+        .method(Method::CONNECT)
+        .uri(authority)
+        .body(Empty::<Bytes>::new())
+        .expect("request build");
+    let resp = sender.send_request(req).await.expect("send");
+    let status = resp.status().as_u16();
+    if status != 200 {
+        return (status, None);
+    }
+    let upgraded = hyper::upgrade::on(resp).await.expect("upgrade");
+    (status, Some(TokioIo::new(upgraded)))
+}
+
+async fn echoes(tunnel: &mut TokioIo<hyper::upgrade::Upgraded>) -> bool {
+    if tunnel.write_all(b"ping").await.is_err() {
+        return false;
+    }
+    let mut echoed = [0u8; 4];
+    matches!(
+        tokio::time::timeout(Duration::from_secs(2), tunnel.read_exact(&mut echoed)).await,
+        Ok(Ok(_))
+    ) && &echoed == b"ping"
+}
+
+async fn closes(tunnel: &mut TokioIo<hyper::upgrade::Upgraded>) -> bool {
+    let mut byte = [0u8; 1];
+    matches!(
+        tokio::time::timeout(Duration::from_secs(2), tunnel.read(&mut byte)).await,
+        Ok(Ok(0) | Err(_))
+    )
+}
+
+/// A dial still waiting on DNS when the network changes must end at the
+/// sever, not ride out its timeouts.
+#[tokio::test]
+async fn a_sever_cuts_a_tunnel_still_dialing() {
+    let proxy = Arc::new(start_proxy(TrackerBlocker::empty(), Arc::new(SilentResolver)).await);
+    let dialing = tokio::spawn({
+        let proxy = proxy.clone();
+        async move { connect_through(&proxy, "stuck.test:443").await.0 }
+    });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    proxy.sever_open_connections();
+
+    let status = tokio::time::timeout(Duration::from_secs(2), dialing)
+        .await
+        .expect("a severed dial must answer at once")
+        .unwrap();
+    assert_eq!(status, 502);
+}
+
+/// A dial the network moved under starts again over the network as it is now,
+/// rather than failing a load the engine would not retry.
+#[tokio::test]
+async fn a_network_change_redials_a_tunnel_still_dialing() {
+    let target = start_echo_target().await;
+    let resolver = Arc::new(ComebackResolver::default());
+    let proxy = Arc::new(start_proxy(TrackerBlocker::empty(), resolver).await);
+    let dialing = tokio::spawn({
+        let proxy = proxy.clone();
+        async move { connect_through(&proxy, &format!("comeback.test:{target}")).await }
+    });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    proxy.network_changed();
+
+    let (status, tunnel) = tokio::time::timeout(Duration::from_secs(2), dialing)
+        .await
+        .expect("the redial answers at once")
+        .unwrap();
+    assert_eq!(status, 200);
+    assert!(echoes(&mut tunnel.unwrap()).await);
+}
+
+#[tokio::test]
+async fn a_network_change_cuts_open_tunnels() {
+    let target = start_echo_target().await;
+    let proxy = start_proxy(TrackerBlocker::empty(), localhost_resolver()).await;
+    let (_, tunnel) = connect_through(&proxy, &format!("localhost:{target}")).await;
+    let mut tunnel = tunnel.unwrap();
+    assert!(echoes(&mut tunnel).await);
+
+    proxy.network_changed();
+
+    assert!(closes(&mut tunnel).await);
+}
+
+#[tokio::test]
+async fn a_revive_redials_a_dial_older_than_its_threshold_and_spares_a_fresh_one() {
+    let target = start_echo_target().await;
+    let resolver = Arc::new(ComebackResolver::default());
+    let proxy = Arc::new(start_proxy(TrackerBlocker::empty(), resolver).await);
+    let old = tokio::spawn({
+        let proxy = proxy.clone();
+        async move {
+            connect_through(&proxy, &format!("comeback.test:{target}"))
+                .await
+                .0
+        }
+    });
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    let fresh = tokio::spawn({
+        let proxy = proxy.clone();
+        async move { connect_through(&proxy, "silent.test:443").await.0 }
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    proxy.revive(Duration::from_millis(300), false);
+
+    let status = tokio::time::timeout(Duration::from_secs(2), old)
+        .await
+        .expect("the stale dial starts again and answers")
+        .unwrap();
+    assert_eq!(status, 200);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(
+        !fresh.is_finished(),
+        "a dial younger than the threshold keeps going"
+    );
+    fresh.abort();
+}
+
+/// A Tor circuit routinely takes longer than the threshold, so a dial through
+/// an upstream proxy is never restarted.
+#[tokio::test]
+async fn a_revive_leaves_dials_through_an_upstream_proxy_alone() {
+    // Accepts and then says nothing, like a SOCKS proxy still building.
+    let socks = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+        .await
+        .expect("bind silent socks");
+    let socks_port = socks.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((stream, _)) = socks.accept().await {
+            held.push(stream);
+        }
+    });
+    let policy = RequestPolicy::new(
+        wis_core::PrivacyMode::Balanced,
+        Arc::new(TrackerBlocker::empty()),
+    )
+    .with_upstream(wis_core::UpstreamProxy::Socks5 {
+        host: "127.0.0.1".into(),
+        port: socks_port,
+    });
+    let proxy = Arc::new(start_proxy_with(policy, localhost_resolver()).await);
+    let dialing = tokio::spawn({
+        let proxy = proxy.clone();
+        async move { connect_through(&proxy, "example.test:443").await.0 }
+    });
+    tokio::time::sleep(Duration::from_millis(400)).await;
+
+    proxy.revive(Duration::from_millis(300), true);
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!dialing.is_finished());
+    dialing.abort();
+}
+
+#[tokio::test]
+async fn a_revive_keeps_quiet_tunnels_unless_asked_to_cut_them() {
+    let target = start_echo_target().await;
+    let proxy = start_proxy(TrackerBlocker::empty(), localhost_resolver()).await;
+    let (_, quiet) = connect_through(&proxy, &format!("localhost:{target}")).await;
+    let mut quiet = quiet.unwrap();
+    assert!(echoes(&mut quiet).await);
+    tokio::time::sleep(Duration::from_millis(400)).await;
+
+    proxy.revive(Duration::from_millis(300), false);
+
+    assert!(echoes(&mut quiet).await, "only dials were asked for");
+}
+
+#[tokio::test]
+async fn a_revive_cuts_an_idle_tunnel_and_keeps_a_busy_one() {
+    let target = start_echo_target().await;
+    let proxy = start_proxy(TrackerBlocker::empty(), localhost_resolver()).await;
+    let (_, idle) = connect_through(&proxy, &format!("localhost:{target}")).await;
+    let (_, busy) = connect_through(&proxy, &format!("localhost:{target}")).await;
+    let (mut idle, mut busy) = (idle.unwrap(), busy.unwrap());
+    assert!(echoes(&mut idle).await && echoes(&mut busy).await);
+
+    for _ in 0..8 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(echoes(&mut busy).await);
+    }
+
+    proxy.revive(Duration::from_millis(300), true);
+
+    assert!(
+        closes(&mut idle).await,
+        "a tunnel quiet past the threshold is cut"
+    );
+    assert!(echoes(&mut busy).await, "a tunnel carrying traffic is kept");
+}

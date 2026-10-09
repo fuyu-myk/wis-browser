@@ -534,11 +534,16 @@ pub async fn move_tab_to_workspace(
 
 /// Reload a tab bypassing the HTTP cache (WKWebView `reloadFromOrigin`).
 #[tauri::command]
-pub async fn tab_hard_reload(app: AppHandle, id: TabId) -> WisResult<()> {
+pub async fn tab_hard_reload(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: TabId,
+) -> WisResult<()> {
     let label = format!("tab-{}", id.as_uuid());
     let Some(webview) = app.webviews().get(&label).cloned() else {
         return Ok(());
     };
+    revive_before_reload(&state, id).await;
 
     #[cfg(target_os = "macos")]
     {
@@ -896,9 +901,30 @@ pub async fn update_tab_loading(
     mutate_unit(&app, &state, |s| s.with_tab_loading(id, loading)).await
 }
 
+/// How long a dial may run, or a connection sit quiet, before a reload treats
+/// it as stuck.
+const RELOAD_STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// How long after a wake or network change a quiet connection may be one the
+/// change killed rather than one that is idle.
+const RELOAD_DISRUPTION_WINDOW: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Before a reload, restart the dials in the tab's workspace that have run past
+/// [`RELOAD_STALE_AFTER`], and soon after a wake or network change also end the
+/// connections quiet that long, so the reload does not wait on a dead one.
+async fn revive_before_reload(state: &AppState, id: TabId) {
+    let Ok(workspace) = state.browser.lock().await.tab(id).map(|t| t.workspace_id) else {
+        return;
+    };
+    if let Some(server) = state.proxies.lock().await.get(&workspace) {
+        let idle_tunnels = crate::wake::disrupted_within(RELOAD_DISRUPTION_WINDOW);
+        server.revive(RELOAD_STALE_AFTER, idle_tunnels);
+    }
+}
+
 /// Reload a tab's webview.
 #[tauri::command]
-pub async fn tab_reload(app: AppHandle, id: TabId) -> WisResult<()> {
+pub async fn tab_reload(app: AppHandle, state: State<'_, AppState>, id: TabId) -> WisResult<()> {
     let label = format!("tab-{}", id.as_uuid());
     let webview = app
         .webviews()
@@ -908,6 +934,7 @@ pub async fn tab_reload(app: AppHandle, id: TabId) -> WisResult<()> {
             message: format!("no webview labelled {label}"),
         })?;
     log::info!("tab_reload: {label}");
+    revive_before_reload(&state, id).await;
 
     // Native reload useful for hung pages.
     webview.reload().map_err(|err| WisError::InvalidInput {

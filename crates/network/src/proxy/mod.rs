@@ -8,6 +8,7 @@
 
 mod connect;
 mod handler;
+mod live;
 mod request_type;
 mod tunnel;
 mod upstream;
@@ -17,6 +18,7 @@ pub use connect::probe_upstream;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use hyper::body::Incoming;
 use hyper::service::service_fn;
@@ -29,6 +31,9 @@ use crate::error::{NetworkError, NetworkResult};
 use crate::policy::RequestPolicy;
 use crate::resolver::Resolver;
 
+use live::{Registry, Revive};
+use tunnel::Signals;
+
 /// A running per-workspace proxy server. Dropping the value sends a
 /// shutdown signal to the accept loop and the spawned connection
 /// handlers: open connections finish on their own.
@@ -39,6 +44,9 @@ pub struct ProxyServer {
     policy_tx: watch::Sender<Arc<RequestPolicy>>,
     /// Bumped to cut tunnels opened under a previous route.
     route_tx: watch::Sender<u64>,
+    /// Bumped when the network under every connection changed.
+    network_tx: watch::Sender<u64>,
+    live: Registry,
 }
 
 impl ProxyServer {
@@ -59,7 +67,14 @@ impl ProxyServer {
         let local_addr = listener.local_addr()?;
         let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
         let (policy_tx, policy_rx) = watch::channel(policy);
-        let (route_tx, route_rx) = watch::channel(0u64);
+        let (route_tx, route) = watch::channel(0u64);
+        let (network_tx, network) = watch::channel(0u64);
+        let live = Registry::default();
+        let signals = Signals {
+            route,
+            network,
+            live: live.clone(),
+        };
 
         tokio::spawn(async move {
             loop {
@@ -82,8 +97,8 @@ impl ProxyServer {
                         };
                         let policy_rx = policy_rx.clone();
                         let resolver = resolver.clone();
-                        let route_rx = route_rx.clone();
-                        tokio::spawn(serve_connection(stream, policy_rx, resolver, route_rx));
+                        let signals = signals.clone();
+                        tokio::spawn(serve_connection(stream, policy_rx, resolver, signals));
                     }
                 }
             }
@@ -96,6 +111,8 @@ impl ProxyServer {
             shutdown_tx,
             policy_tx,
             route_tx,
+            network_tx,
+            live,
         })
     }
 
@@ -114,6 +131,26 @@ impl ProxyServer {
     pub fn sever_open_connections(&self) {
         self.route_tx
             .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+    }
+
+    /// The network under every connection changed: cut the tunnels, and start
+    /// the dials under way again over the network as it is now.
+    pub fn network_changed(&self) {
+        self.network_tx
+            .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+    }
+
+    /// Start the dials that have run for `stale_after` again, so a reload is
+    /// not left waiting on one stuck since the network went; with
+    /// `idle_tunnels`, end the tunnels quiet for that long as well. Dials
+    /// through an upstream proxy are left alone.
+    pub fn revive(&self, stale_after: Duration, idle_tunnels: bool) {
+        let routed = self.policy_tx.borrow().upstream().is_some();
+        self.live.revive(Revive {
+            stale_after,
+            dials: !routed,
+            tunnels: idle_tunnels,
+        });
     }
 
     pub fn local_addr(&self) -> SocketAddr {
@@ -135,18 +172,15 @@ async fn serve_connection(
     stream: tokio::net::TcpStream,
     policy_rx: watch::Receiver<Arc<RequestPolicy>>,
     resolver: Arc<dyn Resolver>,
-    route_rx: watch::Receiver<u64>,
+    signals: Signals,
 ) {
     let io = TokioIo::new(stream);
     let service = service_fn(move |req: Request<Incoming>| {
-        // A cloned receiver inherits the version its parent last saw, and the
-        // parent here never observes one.
-        let mut route_rx = route_rx.clone();
-        route_rx.mark_unchanged();
+        let signals = signals.fresh();
         let policy = policy_rx.borrow().clone();
         let resolver = resolver.clone();
         async move {
-            let resp: Response<_> = handler::handle(req, policy, resolver, route_rx).await;
+            let resp: Response<_> = handler::handle(req, policy, resolver, signals).await;
             Ok::<_, Infallible>(resp)
         }
     });
