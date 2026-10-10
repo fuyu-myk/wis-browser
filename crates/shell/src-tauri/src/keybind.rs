@@ -232,10 +232,16 @@ pub fn set_page_first_titles(titles: Vec<String>) {
     }
 }
 
-/// Let a focused tab see its page-first combos before the menu does.
+/// Let a focused tab see its page-first combos before the menu does. Undo,
+/// redo and select all go to any web page first (`edit_keys` replays them),
+/// but stay with the menu in Wis's own webviews, whose inputs need the
+/// native command.
 #[cfg(target_os = "macos")]
 pub fn offer_page_first_combos_to_tabs() {
-    wry::set_page_first_menu_hook(Box::new(|label, title| {
+    wry::set_page_first_menu_hook(Box::new(|label, title, editing| {
+        if editing {
+            return crate::webview_prefs::is_remote(label);
+        }
         label.starts_with("tab-")
             && PAGE_FIRST_TITLES
                 .read()

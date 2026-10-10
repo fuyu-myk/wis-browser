@@ -11,7 +11,8 @@
 //! replays the standard editing selector down the responder chain, exactly
 //! what the menu accelerator would have done.
 
-/// Injected page script (tab webviews): report unconsumed editing combos.
+/// Injected page script (tabs, Peek, widget panels): report unconsumed
+/// editing combos.
 /// The `setTimeout` defers the `defaultPrevented` check until after every
 /// page handler (including ones registered later than this one) has run.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -155,7 +156,8 @@ mod imp {
     }
 }
 
-/// Install the unconsumed-editing-key channel on a tab webview. No-op off macOS.
+/// Install the unconsumed-editing-key channel on a webview that loads web
+/// pages. No-op off macOS.
 pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
     #[cfg(target_os = "macos")]
     imp::install(webview);

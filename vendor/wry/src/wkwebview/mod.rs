@@ -98,20 +98,24 @@ pub fn set_main_frame_download_policy(mime_types: &[&str], attachments: bool) {
 }
 
 /// WIS patch: which menu-bound Cmd-key combos a focused child webview offers
-/// in its page first. See WIS-PATCH.md.
-type PageFirstMenuHook = Box<dyn Fn(&str, &str) -> bool + Send + Sync>;
+/// its page first. See WIS-PATCH.md.
+type PageFirstMenuHook = Box<dyn Fn(&str, &str, bool) -> bool + Send + Sync>;
 static PAGE_FIRST_MENU_HOOK: std::sync::OnceLock<PageFirstMenuHook> = std::sync::OnceLock::new();
 
-/// WIS patch: asked with a focused child webview's id and the title of the
-/// non-editing menu item its Cmd-key event matched. Returning true offers the
-/// combo to the page first; the embedder then runs the action for a page.
-/// Registered once (first registration wins).
+/// WIS patch: asked with a focused child webview's id, the title of the menu
+/// item its Cmd-key event matched, and whether that item is an editing one
+/// (undo, redo, select all). Returning true offers the combo to the page
+/// first instead of leaving it to the menu; the embedder then runs the action
+/// for a page that leaves it alone. Registered once (first registration
+/// wins).
 pub fn set_page_first_menu_hook(hook: PageFirstMenuHook) {
   let _ = PAGE_FIRST_MENU_HOOK.set(hook);
 }
 
-pub(crate) fn offers_menu_item_to_page(id: &str, title: &str) -> bool {
-  PAGE_FIRST_MENU_HOOK.get().is_some_and(|hook| hook(id, title))
+pub(crate) fn offers_menu_item_to_page(id: &str, title: &str, editing: bool) -> bool {
+  PAGE_FIRST_MENU_HOOK
+    .get()
+    .map_or(editing, |hook| hook(id, title, editing))
 }
 
 pub(crate) fn download_forced(

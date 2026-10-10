@@ -166,7 +166,8 @@ impl WryWebView {
   }
 }
 
-/// Editing actions that stay page-first even though menu items bind them.
+/// Editing actions that go page-first (unless the page-first hook keeps
+/// them on the menu) even though menu items bind them.
 /// Clipboard actions (cut:/copy:/paste:) are not here. Pages that leave
 /// these page-first combos unconsumed get them replayed natively by the
 /// embedder (Wis: the wisEditKey channel).
@@ -267,17 +268,13 @@ unsafe fn menu_claims(
           .map(|n| EDITING_ACTIONS.contains(&n))
       })
       .unwrap_or(false);
-    if editing {
-      return false;
-    }
-
     let title: *mut objc2_foundation::NSString = objc2::msg_send![&*item, title];
     let title = if title.is_null() {
       String::new()
     } else {
       (*title).to_string()
     };
-    return !crate::wkwebview::offers_menu_item_to_page(id, &title);
+    return !crate::wkwebview::offers_menu_item_to_page(id, &title, editing);
   }
 
   false

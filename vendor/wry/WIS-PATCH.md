@@ -434,11 +434,14 @@ menu-first, so a web app never sees Cmd+P, Cmd+F or Cmd+S. Browsers give the
 page those first and keep only a few (new/close tab, address bar).
 
 - `src/wkwebview/mod.rs`: `wry::set_page_first_menu_hook(Box<dyn Fn(&str,
-  &str) -> bool + Send + Sync>)` (`OnceLock`, first registration wins), asked
-  with the focused child's webview id and the matched menu item's title.
+  &str, bool) -> bool + Send + Sync>)` (`OnceLock`, first registration
+  wins), asked with the focused child's webview id, the matched menu item's
+  title and whether it is an editing item.
 - `src/wkwebview/class/wry_web_view.rs`: `WryWebViewIvars` carries the
-  webview id; `menu_claims` asks the hook before reserving a non-editing
-  item, and a combo it offers goes to the page like the editing ones. The
+  webview id; `menu_claims` asks the hook for every matched item, so the
+  embedder can also keep undo/redo/select all on the menu for webviews
+  without a replay fallback (Wis's own interface, a child under Tauri's
+  multiwebview mode, lost Cmd+A in its inputs). The
   page-declined resend still never reaches the menu, so the embedder runs
   the action itself when the page leaves the combo alone (Wis: the macOS
   `wisKeybind` forwarder).

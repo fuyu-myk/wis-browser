@@ -291,6 +291,9 @@ pub async fn open_peek(
     // Per-site camera/microphone consent gate.
     crate::permissions::install(&child);
 
+    // Native fallback for page-first editing keys (undo/redo/select-all).
+    crate::edit_keys::install(&child);
+
     // Find-in-peek match counts (WebKitGTK FindController signals).
     #[cfg(target_os = "linux")]
     {
