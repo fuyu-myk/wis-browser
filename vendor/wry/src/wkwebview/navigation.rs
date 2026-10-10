@@ -264,9 +264,9 @@ pub(crate) fn navigation_policy_response(
 ) {
   unsafe {
     let can_show_mime_type = response.canShowMIMEType();
-    // WIS patch: the embedder can force main-frame downloads (PDF, attachment
+    // WIS patch: the embedder can force downloads (main-frame PDF, attachment
     // disposition) that WebKit would otherwise render inline. See WIS-PATCH.md.
-    let forced = response.isForMainFrame() && {
+    let forced = {
       let resp = response.response();
       let mime_type = resp.MIMEType().map(|m| m.to_string());
       let disposition = resp
@@ -274,7 +274,11 @@ pub(crate) fn navigation_policy_response(
         .ok()
         .and_then(|http| http.valueForHTTPHeaderField(ns_string!("Content-Disposition")))
         .map(|d| d.to_string());
-      super::main_frame_download_forced(mime_type.as_deref(), disposition.as_deref())
+      super::download_forced(
+        response.isForMainFrame(),
+        mime_type.as_deref(),
+        disposition.as_deref(),
+      )
     };
 
     if !can_show_mime_type || forced {

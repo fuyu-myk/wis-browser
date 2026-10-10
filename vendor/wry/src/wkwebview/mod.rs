@@ -79,15 +79,15 @@ pub fn take_last_page_load_error() -> Option<PageLoadError> {
 
 // WIS patch: main-frame responses the embedder wants downloaded even though
 // WebKit could render them inline (PDF), plus `Content-Disposition:
-// attachment` responses. Consulted by `navigation_policy_response`. See
-// WIS-PATCH.md.
+// attachment` responses in any frame. Consulted by
+// `navigation_policy_response`. See WIS-PATCH.md.
 static MAIN_FRAME_DOWNLOAD_POLICY: std::sync::RwLock<(Vec<String>, bool)> =
   std::sync::RwLock::new((Vec::new(), false));
 
 /// WIS patch: route main-frame responses whose MIME type is one of
-/// `mime_types` (or, with `attachments`, that carry a
-/// `Content-Disposition: attachment` header) into the download pipeline
-/// instead of rendering them inline. Subframes are never affected.
+/// `mime_types`, and with `attachments` any frame's response that carries a
+/// `Content-Disposition: attachment` header, into the download pipeline
+/// instead of rendering them inline.
 pub fn set_main_frame_download_policy(mime_types: &[&str], attachments: bool) {
   if let Ok(mut policy) = MAIN_FRAME_DOWNLOAD_POLICY.write() {
     *policy = (
@@ -97,7 +97,8 @@ pub fn set_main_frame_download_policy(mime_types: &[&str], attachments: bool) {
   }
 }
 
-pub(crate) fn main_frame_download_forced(
+pub(crate) fn download_forced(
+  main_frame: bool,
   mime_type: Option<&str>,
   disposition: Option<&str>,
 ) -> bool {
@@ -106,7 +107,8 @@ pub(crate) fn main_frame_download_forced(
   };
   let (types, attachments) = &*policy;
 
-  let by_type = mime_type.is_some_and(|m| {
+  let by_type = main_frame
+    && mime_type.is_some_and(|m| {
     let m = m.trim().to_ascii_lowercase();
     types.iter().any(|t| *t == m)
   });
