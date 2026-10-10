@@ -335,9 +335,11 @@ re-export, and move the shell's evaluator registration onto it.
   (`src/wkwebview/mod.rs`, a process-wide `RwLock`) forces the Download
   policy for the listed MIME types and, when `attachments` is set, for any
   `Content-Disposition: attachment` response (`NSHTTPURLResponse
-  valueForHTTPHeaderField:`, macOS 10.15+). Subframes (`isForMainFrame`
-  false) keep rendering inline so embedded PDF previews are untouched. Wis
-  sets `["application/pdf"]` + attachments at setup.
+  valueForHTTPHeaderField:`, macOS 10.15+). The MIME types apply to the main
+  frame only (`isForMainFrame`), so embedded PDF previews keep rendering
+  inline; attachments download from any frame since a page that loads one
+  in a hidden iframe otherwise gets nothing. Wis sets `["application/pdf"]` +
+  attachments at setup.
 
 Removal checklist: wry exposes a navigation-response policy hook -> move the
 policy into the shell's handler and drop the static + `lib.rs` re-export.
@@ -413,3 +415,14 @@ does not implement it, so the call did nothing. Tauri covers this with its own
   `_printOperationWithPrintInfo:forFrame:` for the calling frame as a sheet on
   the webview's window, so an iframe prints only itself. Nothing happens when
   the webview is hidden, has no window, or its window already shows a sheet.
+
+## Twelfth patch: pages see the window's frame (macOS) (Wis-original)
+
+WebKit asks the UI delegate's private
+`_webView:getWindowFrameWithCompletionHandler:` for `window.outerWidth`,
+`outerHeight`, `screenX` and `screenY`; upstream wry does not implement it,
+so all four were 0.
+
+- `src/wkwebview/class/wry_web_view_ui_delegate.rs`: the delegate answers
+  with the webview's window frame (zero without a window). WebKit converts it
+  to screen coordinates for the page.

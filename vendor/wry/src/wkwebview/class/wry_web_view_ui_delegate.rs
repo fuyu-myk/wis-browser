@@ -109,6 +109,21 @@ define_class!(
       completion_handler.call(());
       print_frame(webview, frame);
     }
+
+    /// `window.outerWidth`, `outerHeight`, `screenX` and `screenY`, which are
+    /// all 0 without it.
+    #[cfg(target_os = "macos")]
+    #[unsafe(method(_webView:getWindowFrameWithCompletionHandler:))]
+    fn window_frame(
+      &self,
+      webview: &WryWebView,
+      completion_handler: &Block<dyn Fn(objc2_foundation::NSRect)>,
+    ) {
+      let frame = webview
+        .window()
+        .map_or(objc2_foundation::NSRect::ZERO, |window| window.frame());
+      completion_handler.call((frame,));
+    }
   }
 
   unsafe impl NSObjectProtocol for WryWebViewUIDelegate {}
