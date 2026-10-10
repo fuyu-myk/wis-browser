@@ -31,7 +31,6 @@ mod gpc;
 mod gtk_dispatch;
 mod hover_guard;
 mod interaction_state;
-#[cfg(any(windows, target_os = "linux"))]
 mod keybind;
 mod link_open;
 #[cfg(any(windows, target_os = "linux"))]
@@ -55,6 +54,7 @@ mod peek;
 mod permissions;
 mod popup_chrome;
 mod print;
+mod print_export;
 mod reader;
 mod save_coalescer;
 mod screenshot;
@@ -464,8 +464,9 @@ pub fn run() {
             find::set_app_handle(app.handle().clone());
 
             // App handle for the page-side keyboard-shortcut forwarder.
-            #[cfg(any(windows, target_os = "linux"))]
             keybind::set_app_handle(app.handle().clone());
+            #[cfg(target_os = "macos")]
+            keybind::offer_page_first_combos_to_tabs();
 
             // App handle for the native page-load failure callbacks.
             #[cfg(any(windows, target_os = "linux"))]

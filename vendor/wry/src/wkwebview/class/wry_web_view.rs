@@ -26,6 +26,8 @@ use objc2_web_kit::WKWebView;
 pub struct WryWebViewIvars {
   pub(crate) is_child: bool,
   #[cfg(target_os = "macos")]
+  pub(crate) id: String,
+  #[cfg(target_os = "macos")]
   pub(crate) drag_drop_handler: Box<dyn Fn(DragDropEvent) -> bool>,
   #[cfg(target_os = "macos")]
   pub(crate) accept_first_mouse: objc2::runtime::Bool,
@@ -57,7 +59,7 @@ define_class!(
       let claim = if !self.ivars().is_child {
         true
       } else {
-        self.holds_first_responder() && !menu_reserves_event(event)
+        self.holds_first_responder() && !menu_reserves_event(event, &self.ivars().id)
       };
       #[cfg(target_os = "ios")]
       let claim = !self.ivars().is_child;
@@ -172,12 +174,13 @@ impl WryWebView {
 const EDITING_ACTIONS: [&str; 3] = ["undo:", "redo:", "selectAll:"];
 
 /// Whether the main menu binds this key event to a non-editing (chrome)
-/// action. Reserved combos are never offered to the focused page. Walking
+/// action that the page-first hook does not offer to webview `id`. Reserved
+/// combos are never offered to the focused page. Walking
 /// the live menu keeps the set correct under user-rebindable shortcuts.
 /// Known edge: Cmd+Shift+digit combos are not matched
 /// (charactersIgnoringModifiers applies Shift to digits).
 #[cfg(target_os = "macos")]
-fn menu_reserves_event(event: &NSEvent) -> bool {
+fn menu_reserves_event(event: &NSEvent, id: &str) -> bool {
   use objc2_app_kit::{NSApplication, NSEventModifierFlags};
   use objc2_foundation::MainThreadMarker;
 
@@ -205,7 +208,7 @@ fn menu_reserves_event(event: &NSEvent) -> bool {
 
   // SAFETY: the menu is read on the main thread within this synchronous
   // call; every msg_send receiver is checked non-nil first.
-  unsafe { menu_claims(&menu, &key, event_mask, relevant) }
+  unsafe { menu_claims(&menu, &key, event_mask, relevant, id) }
 }
 
 #[cfg(target_os = "macos")]
@@ -214,6 +217,7 @@ unsafe fn menu_claims(
   key: &str,
   event_mask: objc2_app_kit::NSEventModifierFlags,
   relevant: objc2_app_kit::NSEventModifierFlags,
+  id: &str,
 ) -> bool {
   use objc2::runtime::AnyObject;
   use objc2_app_kit::NSEventModifierFlags;
@@ -227,7 +231,7 @@ unsafe fn menu_claims(
 
     let submenu: *mut objc2_app_kit::NSMenu = objc2::msg_send![&*item, submenu];
     if !submenu.is_null() {
-      if menu_claims(&*submenu, key, event_mask, relevant) {
+      if menu_claims(&*submenu, key, event_mask, relevant, id) {
         return true;
       }
 
@@ -263,8 +267,17 @@ unsafe fn menu_claims(
           .map(|n| EDITING_ACTIONS.contains(&n))
       })
       .unwrap_or(false);
+    if editing {
+      return false;
+    }
 
-    return !editing;
+    let title: *mut objc2_foundation::NSString = objc2::msg_send![&*item, title];
+    let title = if title.is_null() {
+      String::new()
+    } else {
+      (*title).to_string()
+    };
+    return !crate::wkwebview::offers_menu_item_to_page(id, &title);
   }
 
   false

@@ -426,3 +426,19 @@ so all four were 0.
 - `src/wkwebview/class/wry_web_view_ui_delegate.rs`: the delegate answers
   with the webview's window frame (zero without a window). WebKit converts it
   to screen coordinates for the page.
+
+## Thirteenth patch: the embedder can offer menu combos to the page first (macOS) (Wis-original)
+
+The Cmd-key patch above keeps every combo bound to a non-editing menu item
+menu-first, so a web app never sees Cmd+P, Cmd+F or Cmd+S. Browsers give the
+page those first and keep only a few (new/close tab, address bar).
+
+- `src/wkwebview/mod.rs`: `wry::set_page_first_menu_hook(Box<dyn Fn(&str,
+  &str) -> bool + Send + Sync>)` (`OnceLock`, first registration wins), asked
+  with the focused child's webview id and the matched menu item's title.
+- `src/wkwebview/class/wry_web_view.rs`: `WryWebViewIvars` carries the
+  webview id; `menu_claims` asks the hook before reserving a non-editing
+  item, and a combo it offers goes to the page like the editing ones. The
+  page-declined resend still never reaches the menu, so the embedder runs
+  the action itself when the page leaves the combo alone (Wis: the macOS
+  `wisKeybind` forwarder).

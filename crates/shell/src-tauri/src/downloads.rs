@@ -89,10 +89,13 @@ pub struct DownloadItem {
 pub fn attach_download_handler(builder: WebviewBuilder<Wry>, private: bool) -> WebviewBuilder<Wry> {
     builder.on_download(move |webview, event| match event {
         DownloadEvent::Requested { url, destination } => {
-            on_requested(webview.app_handle(), &url, destination, private)
+            crate::print_export::intercept(&url, destination)
+                || on_requested(webview.app_handle(), &url, destination, private)
         }
         DownloadEvent::Finished { url, success, .. } => {
-            on_finished(webview.app_handle(), &url, success);
+            if !crate::print_export::finish(&webview, &url, success) {
+                on_finished(webview.app_handle(), &url, success);
+            }
             true
         }
         _ => true,

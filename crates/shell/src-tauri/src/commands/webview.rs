@@ -639,6 +639,13 @@ pub async fn create_tab_webview(
     // Native fallback for page-first editing keys (undo/redo/select-all).
     crate::edit_keys::install(&child);
 
+    // Page-first shortcuts.
+    #[cfg(target_os = "macos")]
+    {
+        let keybindings = state.browser.lock().await.settings.keybindings.clone();
+        crate::keybind::install(&child, &wis_core::effective_keymap(&keybindings));
+    }
+
     // Video popout channel (playing-state tracking + floating mini player).
     crate::video_popout::install(&child);
 

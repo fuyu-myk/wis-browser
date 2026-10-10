@@ -1,4 +1,4 @@
-//! Windows page-side keyboard shortcuts.
+//! Page-side keyboard shortcuts.
 //!
 //! Dispatch priority mirrors the platforms' native behavior. A small
 //! chrome-owned set (tab/window lifecycle, address bar; [`RESERVED_ACTIONS`])
@@ -10,6 +10,13 @@
 //! document instead of toggling the sidebar. A page that `stopPropagation`s
 //! without `preventDefault` keeps such a keystroke too; accepted cost.
 //!
+//! On macOS the menu keeps the reserved set natively and offers every other
+//! bound combo to a focused tab first (wry's page-first menu hook, matched by
+//! menu item title; [`set_page_first_titles`]). WebKit's resend of a key the
+//! page declined never reaches the menu there, so this script posts the
+//! action itself, one macrotask after the dispatch, when no handler claimed
+//! it.
+//!
 //! Trust model: a page could post fabricated action ids to this channel
 //! without any keystroke. The dispatcher therefore only accepts an action
 //! from the webview that is currently some workspace's **active tab**, and
@@ -18,8 +25,8 @@
 //! (`useKeyActions`). Residual exposure: the page the user is actively
 //! viewing can still trigger chrome actions on itself (close/navigate its own
 //! tab), and any window's active tab can trigger the nuisance-tier find/popout
-//! listeners, which do not check the source. macOS is unaffected (native
-//! accelerators, no such channel).
+//! listeners, which do not check the source. On macOS the channel lives in
+//! Wis's own script world, out of page scripts' reach.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -28,6 +35,10 @@ use tauri::{AppHandle, Emitter, Manager};
 use wis_core::{KeyAction, TabId};
 
 static APP: OnceLock<AppHandle> = OnceLock::new();
+
+/// Menu item titles whose combos a focused tab is offered first.
+#[cfg(target_os = "macos")]
+static PAGE_FIRST_TITLES: std::sync::RwLock<Vec<String>> = std::sync::RwLock::new(Vec::new());
 
 /// Record the app handle so the dispatcher arm can emit key actions.
 pub fn set_app_handle(app: AppHandle) {
@@ -83,6 +94,7 @@ const KEYBIND_JS: &str = r#"(function () {
   };
   var MODS = { Cmd: 1, Ctrl: 1, Option: 1, Alt: 1, Shift: 1, Meta: 1 };
   var RESERVED = __WIS_RESERVED__;
+  var DEFER = __WIS_DEFER__;
   function normalize(accel) {
     var mods = {};
     var key = '';
@@ -161,6 +173,12 @@ const KEYBIND_JS: &str = r#"(function () {
     if (e.defaultPrevented) return;
     var action = actionOf(e);
     if (!action || RESERVED[action]) return;
+    if (DEFER) {
+      setTimeout(function () {
+        if (!e.defaultPrevented) post(action);
+      }, 0);
+      return;
+    }
     e.preventDefault();
     post(action);
   }, false);
@@ -183,11 +201,59 @@ fn reserved_json() -> String {
     serde_json::to_string(&map).unwrap_or_else(|_| "{}".into())
 }
 
-/// The forwarder init script with the effective keymap baked in.
-pub fn page_script(keymap: &HashMap<KeyAction, String>) -> String {
+/// The forwarder init script with the effective keymap baked in. `defer`
+/// waits for a macrotask before posting a page-first action, for a page
+/// that claims it from a later handler.
+fn script(keymap: &HashMap<KeyAction, String>, defer: bool) -> String {
     KEYBIND_JS
         .replace("__WIS_KEYMAP__", &keymap_json(keymap))
         .replace("__WIS_RESERVED__", &reserved_json())
+        .replace("__WIS_DEFER__", if defer { "true" } else { "false" })
+}
+
+/// The forwarder init script for Windows and Linux tabs.
+#[cfg(any(windows, target_os = "linux"))]
+pub fn page_script(keymap: &HashMap<KeyAction, String>) -> String {
+    script(keymap, false)
+}
+
+/// Whether `action` dispatches page-first rather than from the chrome.
+#[cfg(target_os = "macos")]
+pub(crate) fn is_page_first(action: KeyAction) -> bool {
+    !RESERVED_ACTIONS.contains(&action)
+}
+
+/// Record the menu titles of the page-first actions; called on every menu
+/// build.
+#[cfg(target_os = "macos")]
+pub fn set_page_first_titles(titles: Vec<String>) {
+    if let Ok(mut current) = PAGE_FIRST_TITLES.write() {
+        *current = titles;
+    }
+}
+
+/// Let a focused tab see its page-first combos before the menu does.
+#[cfg(target_os = "macos")]
+pub fn offer_page_first_combos_to_tabs() {
+    wry::set_page_first_menu_hook(Box::new(|label, title| {
+        label.starts_with("tab-")
+            && PAGE_FIRST_TITLES
+                .read()
+                .is_ok_and(|titles| titles.iter().any(|t| t == title))
+    }));
+}
+
+/// Install the page-first fallback on a macOS tab, in every frame. Windows
+/// and Linux carry [`page_script`] on their own channels instead.
+pub fn install<R: tauri::Runtime>(
+    webview: &tauri::webview::Webview<R>,
+    keymap: &HashMap<KeyAction, String>,
+) {
+    #[cfg(target_os = "macos")]
+    imp::install(webview, script(keymap, true));
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = (webview, keymap);
 }
 
 /// Dispatcher arm for `wisKeybind`: validate the posted action id, require the
@@ -252,5 +318,122 @@ pub fn apply_to_all_tabs(app: &AppHandle, keymap: &HashMap<KeyAction, String>) {
                 format!("window.__wisKeybindUpdate && window.__wisKeybindUpdate({json}{key});"),
             );
         }
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod imp {
+    use std::ffi::CStr;
+    use std::os::raw::c_char;
+
+    use objc2::rc::Id;
+    use objc2::runtime::{AnyObject, NSObject};
+    use objc2::{
+        class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass,
+    };
+
+    use crate::content_world::macos as content_world;
+
+    struct HandlerIvars {
+        label: String,
+    }
+
+    declare_class!(
+        struct KeybindHandler;
+
+        unsafe impl ClassType for KeybindHandler {
+            type Super = NSObject;
+            type Mutability = mutability::InteriorMutable;
+            const NAME: &'static str = "WisKeybindHandler";
+        }
+
+        impl DeclaredClass for KeybindHandler {
+            type Ivars = HandlerIvars;
+        }
+
+        unsafe impl KeybindHandler {
+            #[method(userContentController:didReceiveScriptMessage:)]
+            fn did_receive(&self, _ucc: *mut AnyObject, message: *mut AnyObject) {
+                let label = self.ivars().label.clone();
+                unsafe { handle_message(&label, message) }
+            }
+        }
+    );
+
+    impl KeybindHandler {
+        fn new(label: String) -> Id<Self> {
+            let this = Self::alloc().set_ivars(HandlerIvars { label });
+            unsafe { msg_send_id![super(this), init] }
+        }
+    }
+
+    unsafe fn nsstring_to_string(ns: *mut AnyObject) -> Option<String> {
+        if ns.is_null() {
+            return None;
+        }
+
+        let is_str: bool = msg_send![ns, isKindOfClass: class!(NSString)];
+        if !is_str {
+            return None;
+        }
+
+        let utf8: *const c_char = msg_send![ns, UTF8String];
+        if utf8.is_null() {
+            return None;
+        }
+
+        Some(CStr::from_ptr(utf8).to_string_lossy().into_owned())
+    }
+
+    unsafe fn handle_message(label: &str, message: *mut AnyObject) {
+        if message.is_null() {
+            return;
+        }
+
+        let body: *mut AnyObject = msg_send![message, body];
+        let Some(action) = nsstring_to_string(body) else {
+            return;
+        };
+
+        super::dispatch_action(label, &serde_json::Value::String(action));
+    }
+
+    pub(super) fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, script: String) {
+        let label = webview.label().to_string();
+        let _ = webview.with_webview(move |w| unsafe {
+            let wk: *mut AnyObject = w.inner() as *mut AnyObject;
+            if wk.is_null() {
+                return;
+            }
+
+            let config: *mut AnyObject = msg_send![wk, configuration];
+            if config.is_null() {
+                return;
+            }
+
+            let controller: *mut AnyObject = msg_send![config, userContentController];
+            if controller.is_null() {
+                return;
+            }
+
+            let handler = KeybindHandler::new(label.clone());
+            content_world::add_handler(controller, &*handler, "wisKeybind");
+            content_world::install_script(wk, controller, &label, "wisKeybind", &script, false);
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn both_variants_fill_every_placeholder() {
+        let keymap = wis_core::default_keymap();
+        for defer in [false, true] {
+            assert!(!script(&keymap, defer).contains("__WIS_"));
+        }
+        assert!(script(&keymap, true).contains("var DEFER = true;"));
+        assert!(script(&keymap, false).contains("var DEFER = false;"));
     }
 }

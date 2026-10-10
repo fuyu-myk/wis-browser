@@ -22,7 +22,7 @@ Also wired: `wisPageText` (all three platforms), the AI page-text channel (`page
 
 **Accelerators are authored once in macOS form (`Cmd+T`) and localized to the host; dispatch mechanism then diverges per engine.** Source of truth is Rust: `keybinding::default_keymap()` delegates to `default_keymap_for(cfg!(target_os = "macos"))`, swapping `Cmd` to `Ctrl` on Windows/Linux (muda would otherwise bind literal `Cmd` to the Windows/Super key). The frontend keymap is display-only: `lib/platform.ts::isMacOS()` drives `lib/keybindings.ts::localizeAccelerator`/`prettyAccelerator`.
 
-- **macOS**: the native global menu is the real keystroke handler.
+- **macOS**: the native global menu is the real keystroke handler, but a focused tab is offered every bound combo outside `RESERVED_ACTIONS` first: wry's page-first menu hook matches the menu item by title (`menu::page_first_titles`, refreshed on each `apply_menu`), and the tab's forwarder (`keybind::install`, in Wis's script world, all frames) posts the action one macrotask after the dispatch when the page did not claim it. Reserved combos stay native, so they work even when the page is hung.
 - **Windows**: native accelerators never fire (a focused WebView2 handles input out-of-process, bypassing Tauri's `TranslateAcceleratorW` hook). Shortcuts dispatch in JS per focus location: chrome and every overlay webview mount `useKeybindCapture` (`Window.tsx` with `takeFocusOnMount`, `OverlayRoot` without); every tab webview gets an injected forwarder (`keybind.rs`).
 - **Linux**: the GTK accel-group handles chrome focus, but a focused WebKitGTK tab webview swallows key events, so tab webviews also take the injected forwarder.
 

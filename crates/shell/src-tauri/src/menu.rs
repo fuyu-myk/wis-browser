@@ -44,6 +44,7 @@ pub fn apply_menu(app: &AppHandle, keymap: &HashMap<KeyAction, String>) -> tauri
 
     #[cfg(target_os = "macos")]
     {
+        crate::keybind::set_page_first_titles(page_first_titles(menu.items()?));
         menu.set_as_app_menu()?;
         app.set_menu(menu)?;
     }
@@ -81,6 +82,32 @@ fn dispatch_keyaction(app: &AppHandle, item_id: &str) {
     ) {
         log::warn!("emit {KEYACTION_EVENT} for {item_id} failed: {err}");
     }
+}
+
+/// Titles of the items in `items` (and their submenus) whose actions a
+/// focused tab is offered first.
+#[cfg(target_os = "macos")]
+fn page_first_titles(items: Vec<tauri::menu::MenuItemKind<tauri::Wry>>) -> Vec<String> {
+    use tauri::menu::MenuItemKind;
+
+    let mut titles = Vec::new();
+    for item in items {
+        match item {
+            MenuItemKind::Submenu(submenu) => {
+                titles.extend(page_first_titles(submenu.items().unwrap_or_default()));
+            }
+            MenuItemKind::MenuItem(item) => {
+                let page_first = KeyAction::from_id(item.id().as_ref())
+                    .is_some_and(crate::keybind::is_page_first);
+                if let (true, Ok(title)) = (page_first, item.text()) {
+                    titles.push(title);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    titles
 }
 
 fn build_menu(

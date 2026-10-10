@@ -1,4 +1,4 @@
-// `keybind.rs` KEYBIND_JS: forwards bound keystrokes to `wisKeybind` on Windows, reserved ones at capture and the rest page-first.
+// `keybind.rs` KEYBIND_JS: forwards bound keystrokes to `wisKeybind` (Windows, Linux, macOS tabs), reserved ones at capture and the rest page-first.
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -22,9 +22,11 @@ const RESERVED = Object.fromEntries(
   }),
 )
 
-/** The script as `page_script()` bakes it. */
-const scriptFor = (keymap) =>
-  RAW.replaceAll('__WIS_KEYMAP__', JSON.stringify(keymap)).replaceAll('__WIS_RESERVED__', JSON.stringify(RESERVED))
+/** The script as `script()` bakes it; `defer` is the macOS tab variant. */
+const scriptFor = (keymap, defer = false) =>
+  RAW.replaceAll('__WIS_KEYMAP__', JSON.stringify(keymap))
+    .replaceAll('__WIS_RESERVED__', JSON.stringify(RESERVED))
+    .replaceAll('__WIS_DEFER__', String(defer))
 
 // A Windows effective keymap: defaults arrive with Cmd localised to Ctrl.
 const KEYMAP = {
@@ -38,13 +40,13 @@ const KEYMAP = {
 }
 
 /** A fresh page running the script. */
-function loadPage({ keymap = KEYMAP, handler = true } = {}) {
+function loadPage({ keymap = KEYMAP, handler = true, defer = false } = {}) {
   const sent = []
   const listeners = []
   const window = { addEventListener: (type, fn, capture) => listeners.push({ on: 'window', type, fn, capture }) }
   const document = { addEventListener: (type, fn, capture) => listeners.push({ on: 'document', type, fn, capture }) }
   if (handler) window.webkit = { messageHandlers: { wisKeybind: { postMessage: (action) => sent.push(action) } } }
-  const run = () => new Function('window', 'document', scriptFor(keymap))(window, document)
+  const run = () => new Function('window', 'document', scriptFor(keymap, defer))(window, document)
   run()
 
   const phase = (on, capture) => listeners.filter((l) => l.on === on && l.type === 'keydown' && l.capture === capture)
@@ -155,6 +157,36 @@ describe('page-first shortcuts', () => {
     const p = loadPage()
     p.press('s', ctrl, (ev) => ev.stopPropagation())
     assert.deepEqual(p.sent, [])
+  })
+})
+
+describe('deferred page-first shortcuts (macOS tabs)', () => {
+  const MAC = { new_tab: 'Cmd+T', print: 'Cmd+P' }
+  const cmd = { metaKey: true }
+  const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+  test('a keystroke no handler claims posts one macrotask later, default untouched', async () => {
+    const p = loadPage({ keymap: MAC, defer: true })
+    const e = p.press('p', cmd)
+    assert.deepEqual(p.sent, [])
+    await macrotask()
+    assert.deepEqual(p.sent, ['print'])
+    assert.equal(e.defaultPrevented, false)
+  })
+
+  test('a page that claims it from a handler running after the watcher keeps it', async () => {
+    const p = loadPage({ keymap: MAC, defer: true })
+    const e = p.press('p', cmd)
+    e.preventDefault()
+    await macrotask()
+    assert.deepEqual(p.sent, [])
+  })
+
+  test('a reserved shortcut is still taken at capture, without waiting', () => {
+    const p = loadPage({ keymap: MAC, defer: true })
+    const e = p.press('t', cmd)
+    assert.equal(e.pageSawIt, false)
+    assert.deepEqual(p.sent, ['new_tab'])
   })
 })
 
