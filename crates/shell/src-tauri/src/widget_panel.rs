@@ -397,6 +397,7 @@ pub async fn open_widget_panel(
     // after the entrance.
     let blank = Url::parse("about:blank").expect("about:blank is a valid URL");
     let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(blank))
+        .initialization_script(tauri_runtime_wry::SKIP_TAURI_SCRIPTS)
         .focused(true)
         .disable_drag_drop_handler()
         .proxy_url(proxy_url);

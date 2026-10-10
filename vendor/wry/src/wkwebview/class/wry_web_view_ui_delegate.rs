@@ -8,6 +8,8 @@ use std::{cell::RefCell, ptr::null_mut, rc::Rc};
 use block2::Block;
 #[cfg(target_os = "macos")]
 use objc2::DefinedClass;
+#[cfg(target_os = "macos")]
+use objc2::runtime::AnyObject;
 use objc2::{define_class, msg_send, rc::Retained, runtime::NSObject, MainThreadOnly};
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{NSModalResponse, NSModalResponseOK, NSOpenPanel, NSWindowDelegate};
@@ -91,6 +93,23 @@ define_class!(
   #[thread_kind = MainThreadOnly]
   #[ivars = WryWebViewUIDelegateIvars]
   pub struct WryWebViewUIDelegate;
+
+  impl WryWebViewUIDelegate {
+    /// `window.print()`. WebKit holds the page until the handler runs, and
+    /// the print operation needs the page, so the handler goes first.
+    #[cfg(target_os = "macos")]
+    #[unsafe(method(_webView:printFrame:pdfFirstPageSize:completionHandler:))]
+    fn print_frame(
+      &self,
+      webview: &WryWebView,
+      frame: &AnyObject,
+      _pdf_first_page_size: objc2_foundation::NSSize,
+      completion_handler: &Block<dyn Fn()>,
+    ) {
+      completion_handler.call(());
+      print_frame(webview, frame);
+    }
+  }
 
   unsafe impl NSObjectProtocol for WryWebViewUIDelegate {}
 
@@ -278,5 +297,35 @@ impl WryWebViewUIDelegate {
         new_windows: Rc::new(RefCell::new(vec![])),
       });
     unsafe { msg_send![super(delegate), init] }
+  }
+}
+
+/// Opens the print sheet for `frame`, unless the page is not on screen or its
+/// window already has a sheet.
+#[cfg(target_os = "macos")]
+fn print_frame(webview: &WryWebView, frame: &AnyObject) {
+  if webview.isHiddenOrHasHiddenAncestor() {
+    return;
+  }
+  let Some(window) = webview.window() else {
+    return;
+  };
+  if window.attachedSheet().is_some() {
+    return;
+  }
+
+  let info = objc2_app_kit::NSPrintInfo::sharedPrintInfo();
+  let operation: Option<Retained<objc2_app_kit::NSPrintOperation>> =
+    unsafe { msg_send![webview, _printOperationWithPrintInfo: &*info, forFrame: frame] };
+  if let Some(operation) = operation {
+    operation.setShowsPrintPanel(true);
+    unsafe {
+      operation.runOperationModalForWindow_delegate_didRunSelector_contextInfo(
+        &window,
+        None,
+        None,
+        null_mut(),
+      );
+    }
   }
 }

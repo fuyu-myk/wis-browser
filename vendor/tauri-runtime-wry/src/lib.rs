@@ -143,6 +143,12 @@ use std::{
 };
 
 pub type WebviewId = u32;
+
+/// Put first among a webview's own initialization scripts to leave out every
+/// script Tauri adds before them: `isTauri`, `__TAURI_INTERNALS__`, its IPC,
+/// event and plugin scripts. For webviews that only load remote pages.
+pub const SKIP_TAURI_SCRIPTS: &str = "/* tauri-runtime-wry: skip Tauri's scripts */";
+
 type IpcHandler = dyn Fn(Request<String>) + 'static;
 
 #[cfg(not(debug_assertions))]
@@ -5169,7 +5175,12 @@ You may have it installed on another user account, but it is not available for t
     ipc_handler,
   ));
 
-  for script in webview_attributes.initialization_scripts {
+  let scripts = webview_attributes.initialization_scripts;
+  let skipped = scripts
+    .iter()
+    .position(|script| script.script == SKIP_TAURI_SCRIPTS)
+    .map_or(0, |marker| marker + 1);
+  for script in scripts.into_iter().skip(skipped) {
     webview_builder = webview_builder
       .with_initialization_script_for_main_only(script.script, script.for_main_frame_only);
   }

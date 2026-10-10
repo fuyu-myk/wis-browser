@@ -27,9 +27,11 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
-# Direct dep on the vendored wry (via [patch.crates-io]) for its Wis hooks:
-# the download side channels and the `window.ipc` global (WIS-PATCH.md).
+# Direct deps on the vendored wry and tauri-runtime-wry (via [patch.crates-io])
+# for their Wis hooks: the download side channels, the `window.ipc` global and
+# Tauri's page scripts (WIS-PATCH.md).
 wry = { version = "0.55", default-features = false }
+tauri-runtime-wry = { version = "2.11", default-features = false }
 reqwest = { workspace = true }
 futures-util = "0.3"
 sha2 = { workspace = true }

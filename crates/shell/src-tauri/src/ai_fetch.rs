@@ -291,6 +291,7 @@ mod imp {
             .insert(label.clone(), tx);
 
         let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(target))
+            .initialization_script(tauri_runtime_wry::SKIP_TAURI_SCRIPTS)
             .incognito(true)
             .proxy_url(proxy_url)
             .on_navigation(wis_network::is_public_web_url)

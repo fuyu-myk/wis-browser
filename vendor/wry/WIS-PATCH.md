@@ -399,3 +399,17 @@ from remote webviews anyway, so the global only does harm there.
 - `src/wkwebview/mod.rs`, `src/webkitgtk/mod.rs`, `src/webview2/mod.rs`: the
   `window.ipc` init script is added only when the hook allows it. The `ipc`
   message handler itself is untouched.
+
+## Eleventh patch: `window.print()` opens the print sheet (macOS) (Wis-original)
+
+WebKit hands `window.print()` to the UI delegate's private
+`_webView:printFrame:pdfFirstPageSize:completionHandler:`, and upstream wry
+does not implement it, so the call did nothing. Tauri covers this with its own
+`window.print` over IPC, which only app webviews can use.
+
+- `src/wkwebview/class/wry_web_view_ui_delegate.rs`: the delegate implements
+  it. It calls the completion handler first (WebKit holds the page until then,
+  and printing needs the page), then runs
+  `_printOperationWithPrintInfo:forFrame:` for the calling frame as a sheet on
+  the webview's window, so an iframe prints only itself. Nothing happens when
+  the webview is hidden, has no window, or its window already shows a sheet.

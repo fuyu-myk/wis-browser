@@ -91,6 +91,7 @@ wis-secrets = { path = "crates/secrets" }
 #   tao 0.35.2               Linux `content_fixed` overlay layer (tao#1232)
 #   tauri-runtime-wry 2.11.2 route Linux child webviews into `content_fixed`
 #                            (tauri#15463); requires the tao + wry patches
+#                            + per-webview opt-out of Tauri's scripts
 # The tao + tauri-runtime-wry + wry#1745 trio fixes positioned multi-webview on
 # Linux (tauri#10420): child webviews overlay-position instead of stacking.
 [patch.crates-io]

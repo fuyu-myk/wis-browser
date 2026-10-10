@@ -1,7 +1,7 @@
 # Vendored tauri-runtime-wry 2.11.2 (patched)
 
 Verbatim copy of tauri-runtime-wry 2.11.2 from crates.io, applied via
-`[patch.crates-io]` in the workspace `Cargo.toml`, with one fix.
+`[patch.crates-io]` in the workspace `Cargo.toml`, with two patches.
 
 One addition beyond the verbatim crate: a `rustfmt.toml` (copied from the
 sibling vendored wry). The published crate ships none, so without it a
@@ -37,3 +37,16 @@ Removal checklist: a tauri-runtime-wry release building children into
 `vendor/tauri-runtime-wry`, `vendor/tao`, and the wry#1745 hunk, drop the three
 `[patch.crates-io]` entries, `cargo update`, and re-test Linux multi-webview
 positioning.
+
+## Second patch: a webview can opt out of Tauri's scripts (Wis-original)
+
+Tauri puts its own initialization scripts ahead of a webview's: `isTauri`,
+`__TAURI_INTERNALS__` (with the window and webview labels), its IPC, events
+and plugin scripts, including a macOS `window.print` that calls IPC. A webview
+that loads remote pages cannot use any of them, since Tauri refuses its calls,
+and they leave a page a way to tell the app apart.
+
+- `src/lib.rs`: `SKIP_TAURI_SCRIPTS`, a marker script. When a webview's
+  initialization scripts include it, the runtime drops it and every script
+  before it, which are Tauri's when it is the webview's first own script.
+  Without the marker nothing changes.

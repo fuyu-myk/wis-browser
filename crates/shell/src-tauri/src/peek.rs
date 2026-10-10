@@ -189,6 +189,7 @@ pub async fn open_peek(
     let autoplay_policy = state.autoplay_policy_for(parsed.as_str());
 
     let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed))
+        .initialization_script(tauri_runtime_wry::SKIP_TAURI_SCRIPTS)
         .focused(true)
         .incognito(true)
         .disable_drag_drop_handler()
