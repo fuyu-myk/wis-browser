@@ -119,6 +119,17 @@ pub(crate) fn is_remote(label: &str) -> bool {
         || label.starts_with("peek-page")
 }
 
+/// Leave wry's `window.ipc` global off every webview that loads remote pages:
+/// Tauri refuses their calls anyway, and the read-only global breaks a page
+/// with one of its own by that name.
+pub fn keep_ipc_global_off_remote_pages() {
+    wry::set_ipc_global_hook(Box::new(|label| !loads_remote_pages(label)));
+}
+
+fn loads_remote_pages(label: &str) -> bool {
+    is_remote(label) || label.starts_with("wis-fetch-")
+}
+
 /// Keep a page's selection alive when it stops being first responder.
 ///
 /// `WebViewImpl::resignFirstResponder` calls `clearSelection()` on the page
@@ -175,4 +186,19 @@ pub fn keep_inactive_selection<R: tauri::Runtime>(webview: &tauri::webview::Webv
 
     #[cfg(not(target_os = "macos"))]
     let _ = webview;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::loads_remote_pages;
+
+    #[test]
+    fn only_the_chrome_keeps_the_ipc_global() {
+        for label in ["tab-1", "widget-panel-2", "peek-page-main", "wis-fetch-3"] {
+            assert!(loads_remote_pages(label), "{label}");
+        }
+        for label in ["main", "window-4", "overlay-main-palette"] {
+            assert!(!loads_remote_pages(label), "{label}");
+        }
+    }
 }

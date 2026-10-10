@@ -892,12 +892,14 @@ impl InnerWebView {
     attributes: &mut WebViewAttributes,
     token: &mut EventRegistrationToken,
   ) -> Result<()> {
-    Self::add_script_to_execute_on_document_created(
-      webview,
-      String::from(
-        r#"Object.defineProperty(window, 'ipc', { value: Object.freeze({ postMessage: s=> window.chrome.webview.postMessage(s) }) });"#,
-      ),
-    )?;
+    if attributes.id.is_none_or(crate::wants_ipc_global) {
+      Self::add_script_to_execute_on_document_created(
+        webview,
+        String::from(
+          r#"Object.defineProperty(window, 'ipc', { value: Object.freeze({ postMessage: s=> window.chrome.webview.postMessage(s) }) });"#,
+        ),
+      )?;
+    }
 
     let ipc_handler = attributes.ipc_handler.take();
     webview.add_WebMessageReceived(

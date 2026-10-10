@@ -385,6 +385,24 @@ use objc2::rc::Retained;
 use objc2_app_kit::NSWindow;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use objc2_web_kit::WKUserContentController;
+/// WIS patch: whether webview `id` gets wry's `window.ipc` global. Defining it
+/// read-only on every page breaks sites with a global of their own by that
+/// name, so an embedder can leave it off webviews that show remote content.
+/// Without a hook every webview gets it, as upstream. See WIS-PATCH.md.
+type IpcGlobalHook = Box<dyn Fn(&str) -> bool + Send + Sync>;
+
+static IPC_GLOBAL_HOOK: std::sync::OnceLock<IpcGlobalHook> = std::sync::OnceLock::new();
+
+/// Register the hook once; the first registration wins.
+pub fn set_ipc_global_hook(hook: IpcGlobalHook) {
+  let _ = IPC_GLOBAL_HOOK.set(hook);
+}
+
+#[allow(dead_code)]
+pub(crate) fn wants_ipc_global(id: &str) -> bool {
+  IPC_GLOBAL_HOOK.get().is_none_or(|hook| hook(id))
+}
+
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub(crate) mod wkwebview;
 #[cfg(any(target_os = "macos", target_os = "ios"))]

@@ -324,6 +324,7 @@ impl InnerWebView {
       .map(|id| id.to_string())
       .unwrap_or_else(|| (webview.as_ptr() as isize).to_string());
     unsafe { webview.set_data(WEBVIEW_ID, id.clone()) };
+    let ipc_global = crate::wants_ipc_global(&id);
 
     let w = Self {
       id,
@@ -339,7 +340,9 @@ impl InnerWebView {
     };
 
     // Initialize message handler
-    w.init("Object.defineProperty(window, 'ipc', { value: Object.freeze({ postMessage: function(x) { window.webkit.messageHandlers['ipc'].postMessage(x) } }) })", true)?;
+    if ipc_global {
+      w.init("Object.defineProperty(window, 'ipc', { value: Object.freeze({ postMessage: function(x) { window.webkit.messageHandlers['ipc'].postMessage(x) } }) })", true)?;
+    }
 
     // Initialize scripts
     for init_script in attributes.initialization_scripts {

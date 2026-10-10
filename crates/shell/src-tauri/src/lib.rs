@@ -104,6 +104,7 @@ pub fn run() {
         .with_writer(std::io::stderr)
         .finish();
     let _ = tracing::subscriber::set_global_default(subscriber);
+    webview_prefs::keep_ipc_global_off_remote_pages();
 
     let mut builder = tauri::Builder::default();
 

@@ -348,6 +348,7 @@ impl InnerWebView {
       .id
       .map(|id| id.to_string())
       .unwrap_or_else(|| COUNTER.next().to_string());
+    let ipc_global = crate::wants_ipc_global(&webview_id);
 
     // Safety: objc runtime calls are unsafe
     unsafe {
@@ -786,12 +787,14 @@ impl InnerWebView {
       }
 
       // Initialize scripts
-      w.init(
+      if ipc_global {
+        w.init(
 r#"Object.defineProperty(window, 'ipc', {
   value: Object.freeze({postMessage: function(s) {window.webkit.messageHandlers.ipc.postMessage(s);}})
 });"#,
-      true
-      );
+        true
+        );
+      }
       for init_script in attributes.initialization_scripts {
         w.init(&init_script.script, init_script.for_main_frame_only);
       }

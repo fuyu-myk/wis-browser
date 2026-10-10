@@ -383,3 +383,19 @@ configuration knob is creation-time and tauri constructs the builder.
   preferences alongside the policy, so download and navigation-handler
   behaviour is unchanged. Subframe navigations skip the hook: WebKit applies
   website policies from the main frame only.
+
+## Tenth patch: embedder decides who gets the `window.ipc` global (Wis-original)
+
+Every backend defines `window.ipc` on every page as a frozen, non-writable,
+non-configurable global for Tauri's IPC. A page with a global of its own by
+that name then throws in strict mode as soon as it assigns it; such pages
+stop before drawing anything, leaving its dark backdrop. Tauri refuses calls
+from remote webviews anyway, so the global only does harm there.
+
+- `src/lib.rs`: a process-wide hook registered once via
+  `wry::set_ipc_global_hook(Box<dyn Fn(&str) -> bool + Send + Sync>)`
+  (`OnceLock`, first registration wins), asked with the webview's id. Without
+  a hook every webview gets the global, as upstream.
+- `src/wkwebview/mod.rs`, `src/webkitgtk/mod.rs`, `src/webview2/mod.rs`: the
+  `window.ipc` init script is added only when the hook allows it. The `ipc`
+  message handler itself is untouched.
