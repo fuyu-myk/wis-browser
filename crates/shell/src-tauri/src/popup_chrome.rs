@@ -32,12 +32,15 @@ pub fn wants_popup(url: &tauri::Url, features: &tauri::webview::NewWindowFeature
 /// `a.co.uk` and `b.co.uk` are not. IP hosts must match exactly.
 pub fn same_site(a: &tauri::Url, b: &tauri::Url) -> bool {
     match (a.host_str(), b.host_str()) {
-        (Some(a), Some(b)) => {
-            let (ra, rb) = (registrable(a), registrable(b));
-            !ra.is_empty() && ra == rb
-        }
+        (Some(a), Some(b)) => same_site_hosts(a, b),
         _ => false,
     }
+}
+
+/// [`same_site`] for bare hosts.
+pub(crate) fn same_site_hosts(a: &str, b: &str) -> bool {
+    let (ra, rb) = (registrable(a), registrable(b));
+    !ra.is_empty() && ra == rb
 }
 
 fn registrable(host: &str) -> String {

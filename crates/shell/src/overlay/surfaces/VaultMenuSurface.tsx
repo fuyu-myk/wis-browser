@@ -65,7 +65,7 @@ export function VaultMenuSurface() {
       host
         ? commands.autofillCandidates(host).catch(() => [] as CredentialSummary[])
         : Promise.resolve([] as CredentialSummary[]),
-      commands.capturePending().catch(() => null),
+      tabId ? commands.capturePending(tabId).catch(() => null) : Promise.resolve(null),
       tabId ? commands.signupField(tabId).catch(() => null) : Promise.resolve(null),
     ])
     setCandidates(cands)
@@ -124,8 +124,8 @@ export function VaultMenuSurface() {
   const onSave = async () => {
     setBusy(true)
     try {
-      if (!(await ensureUnlocked())) return
-      await commands.captureSave().catch(() => undefined)
+      if (!tabId || !(await ensureUnlocked())) return
+      await commands.captureSave(tabId).catch(() => undefined)
       close()
     } finally {
       setBusy(false)
@@ -133,7 +133,7 @@ export function VaultMenuSurface() {
   }
 
   const onDismiss = () => {
-    void commands.captureDismiss().catch(() => undefined)
+    if (tabId) void commands.captureDismiss(tabId).catch(() => undefined)
     setPending(null)
     if (candidates.length === 0) close()
   }

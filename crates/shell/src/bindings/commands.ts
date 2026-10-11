@@ -246,19 +246,19 @@ export const commands = {
 
   // -- "Save password?" capture ----------------------------------
 
-  /** Encrypt + save the pending captured login (vault must be unlocked). */
-  async captureSave(): Promise<void> {
-    return invoke('capture_save')
+  /** Encrypt + save the tab's pending captured login (vault must be unlocked). */
+  async captureSave(tabId: TabId): Promise<void> {
+    return invoke('capture_save', { tabId })
   },
 
-  /** Discard the pending captured login. */
-  async captureDismiss(): Promise<void> {
-    return invoke('capture_dismiss')
+  /** Discard the tab's pending captured login. */
+  async captureDismiss(tabId: TabId): Promise<void> {
+    return invoke('capture_dismiss', { tabId })
   },
 
-  /** The pending captured login (host + username, no password), or null. */
-  async capturePending(): Promise<CaptureInfo | null> {
-    return invoke('capture_pending')
+  /** The tab's pending captured login (host + username, no password), or null. */
+  async capturePending(tabId: TabId): Promise<CaptureInfo | null> {
+    return invoke('capture_pending', { tabId })
   },
 
   async getSettings(): Promise<UserSettings> {

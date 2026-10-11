@@ -416,7 +416,7 @@ fn dispatch(
                 &str_field("kind"),
             );
         }
-        "wisCapture" => {
+        "wisCapture" if top_frame => {
             if !ephemeral {
                 crate::capture::dispatch_message(
                     label,

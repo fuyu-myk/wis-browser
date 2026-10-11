@@ -9,11 +9,12 @@
 //! Trust model:
 //! - The **host** is taken from the WebView's own URL natively, never from the
 //!   page's JS, so a page can only ever offer to save a login for its *own*
-//!   origin (no cross-origin poisoning).
-//! - The plaintext password is held only in [`AppState::pending_capture`] and
-//!   never crosses back out to any webview: the consent event carries just
-//!   `{host, username}`. Saving happens entirely backend-side via
-//!   [`capture_save`]. Secrets are never logged.
+//!   origin (no cross-origin poisoning). A login from a subframe counts only
+//!   when the frame is on the page's own site.
+//! - The plaintext password is held only in [`AppState::pending_captures`],
+//!   one per tab, and never crosses back out to any webview: the consent event
+//!   carries just `{tab, host, username}`. Saving happens entirely
+//!   backend-side via [`capture_save`]. Secrets are never logged.
 //! - Private/ephemeral tabs never install the handler (see
 //!   `create_tab_webview`), so nothing is captured while browsing privately.
 
@@ -21,7 +22,7 @@ use std::sync::OnceLock;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
-use wis_core::{WisError, WisResult};
+use wis_core::{TabId, WisError, WisResult};
 use zeroize::Zeroizing;
 
 use crate::state::AppState;
@@ -43,6 +44,7 @@ pub struct PendingCapture {
 
 #[derive(Debug, Serialize, Clone)]
 struct CaptureEvent {
+    tab: TabId,
     host: String,
     username: String,
     generated: bool,
@@ -81,6 +83,9 @@ pub(crate) fn dispatch_message(label: &str, username: String, password: String) 
     let Some(app) = APP.get() else {
         return;
     };
+    let Some(tab) = tab_of(label) else {
+        return;
+    };
     let Some(webview) = app.webviews().get(label).cloned() else {
         return;
     };
@@ -94,17 +99,34 @@ pub(crate) fn dispatch_message(label: &str, username: String, password: String) 
 
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        intake(app, host, username, password).await;
+        intake(app, tab, host, username, password).await;
     });
+}
+
+/// The tab behind webview `label` (`tab-<uuid>`).
+fn tab_of(label: &str) -> Option<TabId> {
+    label
+        .strip_prefix("tab-")
+        .and_then(|id| uuid::Uuid::parse_str(id).ok())
+        .map(TabId::from_uuid)
+}
+
+/// Whether a login submitted in a frame on `frame_host` may be offered for the
+/// page on `page_host`: from the main frame always, from a subframe only when
+/// it is on the page's own site.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn frame_may_offer(main_frame: bool, page_host: &str, frame_host: &str) -> bool {
+    main_frame || crate::popup_chrome::same_site_hosts(page_host, frame_host)
 }
 
 fn strip_www(host: &str) -> &str {
     host.strip_prefix("www.").unwrap_or(host)
 }
 
-/// Dedup, stash the pending capture, and emit the consent event. Skips logins
-/// whose `(host, username)` is already saved so the user isn't nagged.
-async fn intake(app: AppHandle, host: String, username: String, password: String) {
+/// Dedup, stash `tab`'s pending capture (replacing an earlier one from that
+/// tab), and emit the consent event. Skips logins whose `(host, username)` is
+/// already saved so the user isn't nagged.
+async fn intake(app: AppHandle, tab: TabId, host: String, username: String, password: String) {
     let host = strip_www(&host).to_string();
     let state = app.state::<AppState>();
 
@@ -122,20 +144,21 @@ async fn intake(app: AppHandle, host: String, username: String, password: String
         return;
     }
 
-    {
-        let mut pending = state.pending_capture.lock().await;
-        *pending = Some(PendingCapture {
+    state.pending_captures.lock().await.insert(
+        tab,
+        PendingCapture {
             host: host.clone(),
             username: username.clone(),
             password: Zeroizing::new(password),
             generated,
             replaces,
-        });
-    }
+        },
+    );
 
     let _ = app.emit(
         CAPTURE_EVENT,
         CaptureEvent {
+            tab,
             host,
             username,
             generated,
@@ -150,16 +173,16 @@ fn should_offer(already_saved: bool, generated: bool) -> bool {
     generated || !already_saved
 }
 
-/// Encrypt and save the pending captured login. Requires the vault to be
-/// unlocked (the chrome unlocks via Touch ID first); leaves the pending capture
-/// in place if locked so the prompt can be retried.
+/// Encrypt and save `tab_id`'s pending captured login. Requires the vault to
+/// be unlocked (the chrome unlocks via Touch ID first); leaves the pending
+/// capture in place if locked so the prompt can be retried.
 #[tauri::command]
-pub async fn capture_save(state: State<'_, AppState>) -> WisResult<()> {
+pub async fn capture_save(state: State<'_, AppState>, tab_id: TabId) -> WisResult<()> {
     if state.vault_key.lock().await.is_none() {
         return Err(locked());
     }
 
-    let pending = match state.pending_capture.lock().await.take() {
+    let pending = match state.pending_captures.lock().await.remove(&tab_id) {
         Some(p) => p,
         None => return Ok(()),
     };
@@ -194,21 +217,29 @@ pub async fn capture_save(state: State<'_, AppState>) -> WisResult<()> {
     })
 }
 
-/// Discard the pending captured login (user clicked "Not now").
+/// Discard `tab_id`'s pending captured login (user clicked "Not now").
 #[tauri::command]
-pub async fn capture_dismiss(state: State<'_, AppState>) -> WisResult<()> {
-    if let Some(pending) = state.pending_capture.lock().await.take() {
+pub async fn capture_dismiss(state: State<'_, AppState>, tab_id: TabId) -> WisResult<()> {
+    if let Some(pending) = state.pending_captures.lock().await.remove(&tab_id) {
         crate::signup::forget_generated(&pending.host);
     }
     Ok(())
 }
 
-/// The pending capture (host + username, never the password), so a surface that
-/// mounts after the `wis-capture-login` event can still render it.
+/// Drop a closed tab's pending capture.
+pub async fn forget(state: &AppState, tab: TabId) {
+    state.pending_captures.lock().await.remove(&tab);
+}
+
+/// `tab_id`'s pending capture (host + username, never the password), so a
+/// surface that mounts after the `wis-capture-login` event can still render it.
 #[tauri::command]
-pub async fn capture_pending(state: State<'_, AppState>) -> WisResult<Option<CaptureInfo>> {
-    let guard = state.pending_capture.lock().await;
-    Ok(guard.as_ref().map(|p| CaptureInfo {
+pub async fn capture_pending(
+    state: State<'_, AppState>,
+    tab_id: TabId,
+) -> WisResult<Option<CaptureInfo>> {
+    let guard = state.pending_captures.lock().await;
+    Ok(guard.get(&tab_id).map(|p| CaptureInfo {
         host: p.host.clone(),
         username: p.username.clone(),
         generated: p.generated,
@@ -410,8 +441,12 @@ mod imp {
         class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass,
     };
 
-    use super::{intake, APP, CAPTURE_JS};
+    use super::{frame_may_offer, intake, tab_of, APP, CAPTURE_JS};
     use crate::content_world::macos as content_world;
+
+    struct HandlerIvars {
+        label: String,
+    }
 
     declare_class!(
         struct CaptureHandler;
@@ -423,20 +458,22 @@ mod imp {
         }
 
         impl DeclaredClass for CaptureHandler {
-            type Ivars = ();
+            type Ivars = HandlerIvars;
         }
 
         unsafe impl CaptureHandler {
             #[method(userContentController:didReceiveScriptMessage:)]
             fn did_receive(&self, _ucc: *mut AnyObject, message: *mut AnyObject) {
-                unsafe { handle_message(message) }
+                let label = self.ivars().label.clone();
+                unsafe { handle_message(&label, message) }
             }
         }
     );
 
     impl CaptureHandler {
-        fn new() -> Id<Self> {
-            unsafe { msg_send_id![Self::alloc(), init] }
+        fn new(label: String) -> Id<Self> {
+            let this = Self::alloc().set_ivars(HandlerIvars { label });
+            unsafe { msg_send_id![super(this), init] }
         }
     }
 
@@ -469,10 +506,13 @@ mod imp {
         nsstring_to_string(v)
     }
 
-    unsafe fn handle_message(message: *mut AnyObject) {
+    unsafe fn handle_message(label: &str, message: *mut AnyObject) {
         if message.is_null() {
             return;
         }
+        let Some(tab) = tab_of(label) else {
+            return;
+        };
 
         let webview: *mut AnyObject = msg_send![message, webView];
         if webview.is_null() {
@@ -486,6 +526,22 @@ mod imp {
         let Some(host) = nsstring_to_string(host_ns) else {
             return;
         };
+
+        let frame: *mut AnyObject = msg_send![message, frameInfo];
+        if frame.is_null() {
+            return;
+        }
+        let main_frame: bool = msg_send![frame, isMainFrame];
+        let origin: *mut AnyObject = msg_send![frame, securityOrigin];
+        let frame_host = if origin.is_null() {
+            None
+        } else {
+            let origin_host: *mut AnyObject = msg_send![origin, host];
+            nsstring_to_string(origin_host)
+        };
+        if !frame_may_offer(main_frame, &host, frame_host.as_deref().unwrap_or_default()) {
+            return;
+        }
 
         // Body must be a dictionary.
         let body: *mut AnyObject = msg_send![message, body];
@@ -507,7 +563,7 @@ mod imp {
         if let Some(app) = APP.get() {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
-                intake(app, host, username, password).await;
+                intake(app, tab, host, username, password).await;
             });
         }
     }
@@ -529,7 +585,7 @@ mod imp {
                 return;
             }
 
-            let handler = CaptureHandler::new();
+            let handler = CaptureHandler::new(label.clone());
             content_world::add_handler(controller, &*handler, "wisCapture");
             content_world::install_script(wk, controller, &label, "wisCapture", CAPTURE_JS, false);
         });
@@ -547,6 +603,18 @@ pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_login_from_the_main_frame_is_offered() {
+        assert!(frame_may_offer(true, "bank.example", "ads.example"));
+    }
+
+    #[test]
+    fn a_subframe_offers_only_from_the_page_site() {
+        assert!(frame_may_offer(false, "apple.com", "idmsa.apple.com"));
+        assert!(!frame_may_offer(false, "news.example", "ads.tracker.test"));
+        assert!(!frame_may_offer(false, "news.example", ""));
+    }
 
     #[test]
     fn a_new_login_is_offered() {
@@ -569,5 +637,28 @@ mod tests {
     #[test]
     fn a_generated_password_for_a_new_login_is_offered() {
         assert!(should_offer(false, true));
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod sends {
+    use objc2::runtime::{AnyObject, Bool};
+    use objc2::{class, sel};
+
+    type Obj = *mut AnyObject;
+
+    /// A wrong message type aborts at runtime only, so check each frame send
+    /// against its method.
+    #[test]
+    fn every_frame_send_matches_its_method() {
+        class!(WKScriptMessage)
+            .verify_sel::<(), Obj>(sel!(frameInfo))
+            .unwrap();
+        let frame = class!(WKFrameInfo);
+        frame.verify_sel::<(), Bool>(sel!(isMainFrame)).unwrap();
+        frame.verify_sel::<(), Obj>(sel!(securityOrigin)).unwrap();
+        class!(WKSecurityOrigin)
+            .verify_sel::<(), Obj>(sel!(host))
+            .unwrap();
     }
 }

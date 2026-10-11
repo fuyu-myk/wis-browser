@@ -27,7 +27,7 @@ import {
   CAPTURE_LOGIN_EVENT,
   VAULTMENU_CLOSE_EVENT,
   VAULTMENU_OPEN_EVENT,
-  type CaptureInfo,
+  type CaptureEvent,
 } from '@/lib/vaultMenu'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { WisMark } from '@/components/WisMark'
@@ -84,6 +84,8 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
   // A focused password field that is not a sign-in one makes "Use a strong
   // password" available, which is the way in when signup detection misses.
   const tabId = activeTab?.id ?? null
+  const tabIdRef = useRef(tabId)
+  tabIdRef.current = tabId
   const { data: passwordField } = useQuery({
     queryKey: [SIGNUP_FIELD_KEY, tabId],
     queryFn: () => (tabId ? commands.signupField(tabId) : Promise.resolve(null)),
@@ -146,25 +148,29 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
     void qc.invalidateQueries({ queryKey: [SIGNUP_FIELD_KEY] })
   }, [activeTab?.url, qc])
 
-  // Recover an outstanding capture (e.g. after a post-login navigation re-renders
-  // this bar).
+  // Recover this tab's outstanding capture (after a post-login navigation
+  // re-renders this bar, or on switching back to the tab).
   useEffect(() => {
+    if (!tabId) {
+      setPendingHost(null)
+      return
+    }
     let cancelled = false
-    void commands.capturePending().then((p) => {
-      if (!cancelled && p) {
-        setPendingHost(p.host)
-        if (!openRef.current) setAutoOpen(true)
-      }
+    void commands.capturePending(tabId).then((p) => {
+      if (cancelled) return
+      setPendingHost(p?.host ?? null)
+      if (p && !openRef.current) setAutoOpen(true)
     })
     return () => {
       cancelled = true
     }
-  }, [host])
+  }, [host, tabId])
 
   useEffect(() => {
     let un: UnlistenFn | null = null
     let cancelled = false
-    void listen<CaptureInfo>(CAPTURE_LOGIN_EVENT, (e) => {
+    void listen<CaptureEvent>(CAPTURE_LOGIN_EVENT, (e) => {
+      if (e.payload.tab !== tabIdRef.current) return
       setPendingHost(e.payload.host)
       setAutoOpen(true)
     }).then((fn) => (cancelled ? fn() : (un = fn)))
