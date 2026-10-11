@@ -8,6 +8,54 @@
 
 import { isMacOS } from '@/lib/platform'
 
+/** Keys that move the caret or delete within a text field. */
+const TEXT_EDITING_KEYS = new Set([
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowUp',
+  'ArrowDown',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+  'Backspace',
+  'Delete',
+])
+
+/** Input types the user types text into. */
+const TEXT_INPUT_TYPES = new Set(['text', 'search', 'url', 'tel', 'email', 'password', 'number'])
+
+interface KeystrokeState {
+  key: string
+  metaKey: boolean
+  ctrlKey: boolean
+  altKey: boolean
+}
+
+/**
+ * Whether a keystroke moves the caret or deletes within a text field (Cmd+Left
+ * to the line start, Option+Backspace to delete a word), so a shortcut bound to
+ * it gives way there. Two of Cmd, Ctrl and Option together edit nothing.
+ */
+export function isTextEditingKeystroke(e: KeystrokeState): boolean {
+  if (!TEXT_EDITING_KEYS.has(e.key)) return false
+  return [e.metaKey, e.ctrlKey, e.altKey].filter(Boolean).length <= 1
+}
+
+/** Whether `target` is a field the user types text into. */
+export function isTextField(target: unknown): boolean {
+  const el = target as {
+    tagName?: string
+    type?: string
+    isContentEditable?: boolean
+  } | null
+  if (!el || typeof el.tagName !== 'string') return false
+  if (el.isContentEditable) return true
+  const tag = el.tagName.toUpperCase()
+  if (tag === 'TEXTAREA') return true
+  return tag === 'INPUT' && TEXT_INPUT_TYPES.has((el.type || 'text').toLowerCase())
+}
+
 /** True when `name` is a function key (F1..F24). */
 function isFunctionKey(name: string): boolean {
   return /^F([1-9]|1[0-9]|2[0-4])$/.test(name)

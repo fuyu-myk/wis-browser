@@ -15,9 +15,12 @@
  * `menu::apply_menu`), so there is no GTK accel-group either and chrome-focused
  * shortcuts need the same JS capture as Windows.
  *
+ * On macOS the global menu bar handles shortcuts, except ones that move the
+ * caret or delete text (Cmd+Left, Option+Backspace): the menu offers those to
+ * this webview first, so they only reach this hook, and nothing fires twice.
+ *
  * Scope:
- * - Not macOS, which dispatches via the global menu bar; running this there
- *   would double-fire each action.
+ * - A caret-moving shortcut is left to a focused text field, on every platform.
  * - This webview's focus only. When a tab webview has focus its own keydown
  *   fires in the page, covered by the injected forwarder (`keybind.rs`).
  *
@@ -33,6 +36,8 @@ import { emit } from '@tauri-apps/api/event'
 import { commands } from '@/bindings/commands'
 import { currentPlatform } from '@/lib/platform'
 import {
+  isTextEditingKeystroke,
+  isTextField,
   keyboardEventToAccelerator,
   normalizeAccelerator,
 } from '@/lib/keybindings'
@@ -66,8 +71,6 @@ export function useKeybindCapture(
   }, [takeFocusOnMount])
 
   useEffect(() => {
-    if (currentPlatform() === 'macos') return
-
     const onKeyDown = (e: KeyboardEvent): void => {
       if (
         e.target instanceof HTMLElement &&
@@ -75,6 +78,7 @@ export function useKeybindCapture(
       ) {
         return
       }
+      if (isTextEditingKeystroke(e) && isTextField(e.composedPath()[0] ?? e.target)) return
       const accel = keyboardEventToAccelerator(e)
       if (!accel) return
       const action = lookup.get(normalizeAccelerator(accel))

@@ -36,9 +36,19 @@ use wis_core::{KeyAction, TabId};
 
 static APP: OnceLock<AppHandle> = OnceLock::new();
 
-/// Menu item titles whose combos a focused tab is offered first.
+/// Menu item titles a focused webview is offered first.
 #[cfg(target_os = "macos")]
-static PAGE_FIRST_TITLES: std::sync::RwLock<Vec<String>> = std::sync::RwLock::new(Vec::new());
+struct PageFirstTitles {
+    tab: Vec<String>,
+    text_editing: Vec<String>,
+}
+
+#[cfg(target_os = "macos")]
+static PAGE_FIRST_TITLES: std::sync::RwLock<PageFirstTitles> =
+    std::sync::RwLock::new(PageFirstTitles {
+        tab: Vec::new(),
+        text_editing: Vec::new(),
+    });
 
 /// Record the app handle so the dispatcher arm can emit key actions.
 pub fn set_app_handle(app: AppHandle) {
@@ -95,6 +105,22 @@ const KEYBIND_JS: &str = r#"(function () {
   var MODS = { Cmd: 1, Ctrl: 1, Option: 1, Alt: 1, Shift: 1, Meta: 1 };
   var RESERVED = __WIS_RESERVED__;
   var DEFER = __WIS_DEFER__;
+  var TEXT_KEYS = {
+    ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1, Home: 1, End: 1,
+    PageUp: 1, PageDown: 1, Backspace: 1, Delete: 1
+  };
+  var TEXT_INPUTS = { text: 1, search: 1, url: 1, tel: 1, email: 1, password: 1, number: 1 };
+  function textEditing(e) {
+    if (!TEXT_KEYS[e.key]) return false;
+    return (e.metaKey ? 1 : 0) + (e.ctrlKey ? 1 : 0) + (e.altKey ? 1 : 0) <= 1;
+  }
+  function textField(el) {
+    if (!el || typeof el.tagName !== 'string') return false;
+    if (el.isContentEditable) return true;
+    var tag = el.tagName.toUpperCase();
+    if (tag === 'TEXTAREA') return true;
+    return tag === 'INPUT' && !!TEXT_INPUTS[(el.type || 'text').toLowerCase()];
+  }
   function normalize(accel) {
     var mods = {};
     var key = '';
@@ -173,6 +199,7 @@ const KEYBIND_JS: &str = r#"(function () {
     if (e.defaultPrevented) return;
     var action = actionOf(e);
     if (!action || RESERVED[action]) return;
+    if (textEditing(e) && textField(e.composedPath ? e.composedPath()[0] : e.target)) return;
     if (DEFER) {
       setTimeout(function () {
         if (!e.defaultPrevented) post(action);
@@ -217,35 +244,77 @@ pub fn page_script(keymap: &HashMap<KeyAction, String>) -> String {
     script(keymap, false)
 }
 
-/// Whether `action` dispatches page-first rather than from the chrome.
-#[cfg(target_os = "macos")]
-pub(crate) fn is_page_first(action: KeyAction) -> bool {
-    !RESERVED_ACTIONS.contains(&action)
+/// Whether accelerator `accel` moves the caret or deletes within a text field
+/// (Cmd+Left, Option+Backspace). Two of Cmd, Ctrl and Option together edit
+/// nothing. Mirrors `isTextEditingKeystroke` in `lib/keybindings.ts`.
+#[cfg(any(target_os = "macos", test))]
+fn is_text_editing_accelerator(accel: &str) -> bool {
+    const KEYS: &[&str] = &[
+        "Left",
+        "Right",
+        "Up",
+        "Down",
+        "Home",
+        "End",
+        "PageUp",
+        "PageDown",
+        "Backspace",
+        "Delete",
+    ];
+    let mut parts: Vec<&str> = accel.split('+').collect();
+    let Some(key) = parts.pop() else {
+        return false;
+    };
+    let editing_mods = parts
+        .iter()
+        .filter(|m| matches!(**m, "Cmd" | "Meta" | "Ctrl" | "Alt" | "Option"))
+        .count();
+    KEYS.contains(&key) && editing_mods <= 1
 }
 
-/// Record the menu titles of the page-first actions; called on every menu
-/// build.
+/// Record which menu items a focused webview is offered first, from each
+/// action item's title; called on every menu build.
 #[cfg(target_os = "macos")]
-pub fn set_page_first_titles(titles: Vec<String>) {
+pub fn set_menu_titles(titles: Vec<(KeyAction, String)>, keymap: &HashMap<KeyAction, String>) {
+    let mut first = PageFirstTitles {
+        tab: Vec::new(),
+        text_editing: Vec::new(),
+    };
+    for (action, title) in titles {
+        if keymap
+            .get(&action)
+            .is_some_and(|accel| is_text_editing_accelerator(accel))
+        {
+            first.text_editing.push(title.clone());
+        }
+        if !RESERVED_ACTIONS.contains(&action) {
+            first.tab.push(title);
+        }
+    }
     if let Ok(mut current) = PAGE_FIRST_TITLES.write() {
-        *current = titles;
+        *current = first;
     }
 }
 
-/// Let a focused tab see its page-first combos before the menu does. Undo,
-/// redo and select all go to any web page first (`edit_keys` replays them),
-/// but stay with the menu in Wis's own webviews, whose inputs need the
-/// native command.
+/// Let a focused webview see its page-first combos before the menu does.
+/// Undo, redo and select all go to any web page first (`edit_keys` replays
+/// them), but stay with the menu in Wis's own webviews, whose inputs need the
+/// native command. A caret-moving shortcut reaches every webview first, so a
+/// text field keeps it; `useKeybindCapture` runs it in Wis's own.
 #[cfg(target_os = "macos")]
 pub fn offer_page_first_combos_to_tabs() {
     wry::set_page_first_menu_hook(Box::new(|label, title, editing| {
         if editing {
             return crate::webview_prefs::is_remote(label);
         }
-        label.starts_with("tab-")
-            && PAGE_FIRST_TITLES
-                .read()
-                .is_ok_and(|titles| titles.iter().any(|t| t == title))
+        PAGE_FIRST_TITLES.read().is_ok_and(|titles| {
+            let first = if label.starts_with("tab-") {
+                &titles.tab
+            } else {
+                &titles.text_editing
+            };
+            first.iter().any(|t| t == title)
+        })
     }));
 }
 
@@ -432,6 +501,23 @@ mod imp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn caret_moving_accelerators_are_recognised() {
+        for accel in [
+            "Cmd+Left",
+            "Cmd+Right",
+            "Cmd+Shift+Up",
+            "Alt+Backspace",
+            "Ctrl+Left",
+            "Home",
+        ] {
+            assert!(is_text_editing_accelerator(accel), "{accel}");
+        }
+        for accel in ["Alt+Cmd+Left", "Cmd+[", "Cmd+L", "Ctrl+Alt+Delete", "F5"] {
+            assert!(!is_text_editing_accelerator(accel), "{accel}");
+        }
+    }
 
     #[test]
     fn both_variants_fill_every_placeholder() {

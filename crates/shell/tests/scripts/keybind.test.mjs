@@ -4,7 +4,12 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, test } from 'node:test'
 
-import { keyboardEventToAccelerator, normalizeAccelerator } from '../../src/lib/keybindings.ts'
+import {
+  isTextEditingKeystroke,
+  isTextField,
+  keyboardEventToAccelerator,
+  normalizeAccelerator,
+} from '../../src/lib/keybindings.ts'
 import { rawStringConst } from '../support/rustSource.mjs'
 
 const RAW = rawStringConst('keybind.rs', 'KEYBIND_JS')
@@ -190,6 +195,40 @@ describe('deferred page-first shortcuts (macOS tabs)', () => {
   })
 })
 
+describe('caret-moving shortcuts in a text field', () => {
+  const field = { tagName: 'INPUT', type: 'text' }
+  const editing = { ...KEYMAP, go_back: 'Ctrl+Left', focus_pane_left: 'Ctrl+Alt+Left' }
+
+  test('a caret-moving shortcut is left to a focused text field', () => {
+    const p = loadPage({ keymap: editing })
+    for (const target of [field, { tagName: 'TEXTAREA' }, { tagName: 'DIV', isContentEditable: true }]) {
+      const e = p.press('ArrowLeft', { ctrlKey: true, target })
+      assert.equal(e.defaultPrevented, false, target.tagName)
+    }
+    assert.deepEqual(p.sent, [])
+  })
+
+  test('outside a text field, or in a field that takes no text, it still runs', () => {
+    const p = loadPage({ keymap: editing })
+    p.press('ArrowLeft', { ctrlKey: true, target: { tagName: 'DIV' } })
+    p.press('ArrowLeft', { ctrlKey: true, target: { tagName: 'INPUT', type: 'checkbox' } })
+    assert.deepEqual(p.sent, ['go_back', 'go_back'])
+  })
+
+  test('two editing modifiers together edit nothing, so the shortcut runs in a field', () => {
+    const p = loadPage({ keymap: editing })
+    p.press('ArrowLeft', { ctrlKey: true, altKey: true, target: field })
+    assert.deepEqual(p.sent, ['focus_pane_left'])
+  })
+
+  test('the deferred variant leaves it to the field too', async () => {
+    const p = loadPage({ keymap: { go_back_alt: 'Cmd+Left' }, defer: true })
+    p.press('ArrowLeft', { metaKey: true, target: field })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    assert.deepEqual(p.sent, [])
+  })
+})
+
 describe('matching a keystroke to a binding', () => {
   test('an unbound keystroke posts nothing and keeps its default', () => {
     const p = loadPage()
@@ -339,7 +378,7 @@ describe("parity with the chrome's keybindings.ts", () => {
   const PAGE = new Function(
     `${SCRIPT.slice(SCRIPT.indexOf('var SHIFT_BASE'), SCRIPT.indexOf('function build'))}
      ${SCRIPT.slice(SCRIPT.indexOf('var NAMED'), SCRIPT.indexOf('function actionOf'))}
-     return { normalize, accelOf };`,
+     return { normalize, accelOf, textEditing, textField };`,
   )()
 
   test('normalize agrees with normalizeAccelerator', () => {
@@ -380,6 +419,34 @@ describe("parity with the chrome's keybindings.ts", () => {
     for (const init of events) {
       const e = { metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...init }
       assert.equal(PAGE.accelOf(e), keyboardEventToAccelerator(e), JSON.stringify(init))
+    }
+  })
+
+  test('the text-field rule agrees with isTextEditingKeystroke and isTextField', () => {
+    const keystrokes = [
+      { key: 'ArrowLeft', metaKey: true },
+      { key: 'ArrowRight', altKey: true },
+      { key: 'Backspace', ctrlKey: true },
+      { key: 'Home' },
+      { key: 'ArrowLeft', metaKey: true, altKey: true },
+      { key: 'l', metaKey: true },
+    ]
+    for (const init of keystrokes) {
+      const e = { metaKey: false, ctrlKey: false, altKey: false, ...init }
+      assert.equal(PAGE.textEditing(e), isTextEditingKeystroke(e), JSON.stringify(init))
+    }
+    const targets = [
+      { tagName: 'INPUT' },
+      { tagName: 'input', type: 'Search' },
+      { tagName: 'INPUT', type: 'checkbox' },
+      { tagName: 'TEXTAREA' },
+      { tagName: 'DIV', isContentEditable: true },
+      { tagName: 'DIV' },
+      null,
+      {},
+    ]
+    for (const target of targets) {
+      assert.equal(PAGE.textField(target), isTextField(target), JSON.stringify(target))
     }
   })
 })

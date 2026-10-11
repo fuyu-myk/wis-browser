@@ -4,6 +4,8 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import {
+  isTextEditingKeystroke,
+  isTextField,
   keyboardEventToAccelerator,
   localizeAccelerator,
   normalizeAccelerator,
@@ -172,5 +174,40 @@ describe('rendering the pill', () => {
       "[m.prettyAccelerator('Shift+Ctrl+G'), m.prettyAccelerator('Option+Ctrl+Left'), m.prettyAccelerator('Cmd+T'), m.prettyAccelerator('F5'), m.prettyAccelerator(null)]",
     )
     assert.deepEqual(out, ['Ctrl+Shift+G', 'Ctrl+Alt+Left', 'Ctrl+T', 'F5', '—'])
+  })
+})
+
+describe('caret-moving keystrokes in text fields', () => {
+  const keys = (init) => ({ metaKey: false, ctrlKey: false, altKey: false, ...init })
+
+  test('arrows, Home, End and deletes with at most one of Cmd, Ctrl or Option move the caret', () => {
+    for (const init of [
+      { key: 'ArrowLeft', metaKey: true },
+      { key: 'ArrowUp' },
+      { key: 'End', ctrlKey: true },
+      { key: 'Backspace', altKey: true },
+      { key: 'Delete', metaKey: true },
+    ]) {
+      assert.equal(isTextEditingKeystroke(keys(init)), true, JSON.stringify(init))
+    }
+  })
+
+  test('two of those modifiers together, or another key, do not', () => {
+    assert.equal(isTextEditingKeystroke(keys({ key: 'ArrowLeft', metaKey: true, altKey: true })), false)
+    assert.equal(isTextEditingKeystroke(keys({ key: 'l', metaKey: true })), false)
+  })
+
+  test('text inputs, textareas and editable content are text fields', () => {
+    assert.equal(isTextField({ tagName: 'INPUT' }), true)
+    assert.equal(isTextField({ tagName: 'INPUT', type: 'email' }), true)
+    assert.equal(isTextField({ tagName: 'TEXTAREA' }), true)
+    assert.equal(isTextField({ tagName: 'DIV', isContentEditable: true }), true)
+  })
+
+  test('buttons, checkboxes and plain elements are not', () => {
+    assert.equal(isTextField({ tagName: 'INPUT', type: 'checkbox' }), false)
+    assert.equal(isTextField({ tagName: 'BUTTON' }), false)
+    assert.equal(isTextField({ tagName: 'DIV' }), false)
+    assert.equal(isTextField(null), false)
   })
 })
