@@ -56,6 +56,11 @@ fn emit(handler: &str, href: &str) {
     }
 }
 
+/// Open `href` in a new foreground tab beside the active one.
+pub(crate) fn open_in_foreground_tab(href: &str) {
+    emit(HANDLER_FOREGROUND, href);
+}
+
 /// Emit the open-in-tab event for a parsed href posted to `handler` (the
 /// Windows/Linux dispatchers' entry; macOS reaches the same emit through its
 /// script-message handlers).

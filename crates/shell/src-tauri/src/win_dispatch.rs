@@ -400,8 +400,13 @@ fn dispatch(
                 crate::link_open::dispatch_message(&env.handler, href);
             }
         }
-        "wisNavGuard" => {
-            crate::navguard::dispatch_message(str_field("href"), str_field("text"));
+        "wisNavGuard" if top_frame => {
+            let new_tab = env
+                .body
+                .get("newTab")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            crate::navguard::dispatch_message(label, str_field("href"), str_field("text"), new_tab);
         }
         "wisPeek" => {
             let x = env.body.get("x").and_then(|v| v.as_f64()).unwrap_or(-1.0);

@@ -190,7 +190,11 @@ fn route(name: &str, label: &str, body: &serde_json::Value) {
             }
         }
         "wisNavGuard" => {
-            crate::navguard::dispatch_message(str_field("href"), str_field("text"));
+            let new_tab = body
+                .get("newTab")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            crate::navguard::dispatch_message(label, str_field("href"), str_field("text"), new_tab);
         }
         "wisPeek" => {
             let x = body.get("x").and_then(|v| v.as_f64()).unwrap_or(-1.0);

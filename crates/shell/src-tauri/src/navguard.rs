@@ -8,7 +8,9 @@
 //! [`wis_core::assess_link`]; if risky and the host hasn't been waved through
 //! this session, a full-screen interstitial is raised. The user either
 //! dismisses it (staying on the current page) or proceeds, which navigates and
-//! remembers the host for the session.
+//! remembers the host for the session. A cancelled click that turns out safe,
+//! or whose host was already waved through, is carried out natively: in a new
+//! tab for a link that targets one, else in the tab that was clicked.
 //!
 //! The injected script does a *coarse* risk check (to avoid intercepting the
 //! vast majority of safe clicks); Rust produces the authoritative assessment.
@@ -36,17 +38,28 @@ pub fn set_app_handle(app: AppHandle) {
 /// dispatcher's entry; macOS reaches `intake` through its `wisNavGuard`
 /// script-message handler).
 #[cfg(any(windows, target_os = "linux"))]
-pub(crate) fn dispatch_message(href: String, text: String) {
+pub(crate) fn dispatch_message(label: &str, href: String, text: String, new_tab: bool) {
     if href.is_empty() {
         return;
     }
+    let Some(tab) = tab_of(label) else {
+        return;
+    };
 
     if let Some(app) = APP.get() {
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
-            intake(app, href, text).await;
+            intake(app, tab, href, text, new_tab).await;
         });
     }
+}
+
+/// The tab behind webview `label` (`tab-<uuid>`).
+fn tab_of(label: &str) -> Option<TabId> {
+    label
+        .strip_prefix("tab-")
+        .and_then(|id| uuid::Uuid::parse_str(id).ok())
+        .map(TabId::from_uuid)
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -73,10 +86,9 @@ fn should_guard(a: &LinkAssessment) -> bool {
     }
 }
 
-/// Assess an intercepted link click and, if risky and not bypassed, raise the
-/// interstitial. The click was already cancelled in the page, so nothing has
-/// loaded.
-async fn intake(app: AppHandle, href: String, text: String) {
+/// Assess a click cancelled in `tab` and, if risky and not bypassed, raise the
+/// interstitial; otherwise carry the click out, since nothing has loaded.
+async fn intake(app: AppHandle, tab: TabId, href: String, text: String, new_tab: bool) {
     let Ok(url) = Url::parse(&href) else {
         return;
     };
@@ -93,15 +105,20 @@ async fn intake(app: AppHandle, href: String, text: String) {
         Some(text.as_str())
     };
     let assessment = wis_core::assess_link(&href, anchor);
-    if !should_guard(&assessment) {
-        return;
-    }
-
-    {
-        let state = app.state::<AppState>();
-        if state.nav_guard_bypass.lock().await.contains(&host) {
-            return;
+    let bypassed = app
+        .state::<AppState>()
+        .nav_guard_bypass
+        .lock()
+        .await
+        .contains(&host);
+    if !should_guard(&assessment) || bypassed {
+        if new_tab {
+            crate::link_open::open_in_foreground_tab(url.as_str());
+        } else if let Err(err) = navigate_tab(&app, tab, url) {
+            log::warn!("{err}");
         }
+
+        return;
     }
 
     let _ = tauri::Emitter::emit(
@@ -112,7 +129,7 @@ async fn intake(app: AppHandle, href: String, text: String) {
             host,
             assessment,
             navigated: false,
-            tab_id: None,
+            tab_id: Some(tab),
         },
     );
 }
@@ -212,10 +229,15 @@ pub async fn nav_guard_proceed(
     state.nav_guard_bypass.lock().await.insert(host);
 
     let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
-    let label = format!("tab-{}", tab_id.as_uuid());
+    navigate_tab(&app, tab_id, parsed)
+}
+
+/// Load `url` in `tab`, if its webview is still open.
+fn navigate_tab(app: &AppHandle, tab: TabId, url: Url) -> WisResult<()> {
+    let label = format!("tab-{}", tab.as_uuid());
     if let Some(wv) = app.webviews().get(&label).cloned() {
-        wv.navigate(parsed).map_err(|err| WisError::InvalidInput {
-            message: format!("nav guard proceed navigate failed: {err}"),
+        wv.navigate(url).map_err(|err| WisError::InvalidInput {
+            message: format!("nav guard navigate failed: {err}"),
         })?;
     }
 
@@ -287,9 +309,11 @@ const NAVGUARD_JS: &str = r#"(function () {
     if (!shouldGuard(href, text)) return;
     e.preventDefault();
     e.stopPropagation();
+    var target = a.getAttribute('target') || '';
+    var newTab = target !== '' && !/^_(self|top|parent)$/i.test(target);
     try {
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.wisNavGuard) {
-        window.webkit.messageHandlers.wisNavGuard.postMessage({ href: href, text: text });
+        window.webkit.messageHandlers.wisNavGuard.postMessage({ href: href, text: text, newTab: newTab });
       }
     } catch (err) {}
   }, true);
@@ -306,8 +330,12 @@ mod imp {
         class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass,
     };
 
-    use super::{intake, navguard_js, APP};
+    use super::{intake, navguard_js, tab_of, APP};
     use crate::content_world::macos as content_world;
+
+    struct HandlerIvars {
+        label: String,
+    }
 
     declare_class!(
         struct NavGuardHandler;
@@ -319,20 +347,22 @@ mod imp {
         }
 
         impl DeclaredClass for NavGuardHandler {
-            type Ivars = ();
+            type Ivars = HandlerIvars;
         }
 
         unsafe impl NavGuardHandler {
             #[method(userContentController:didReceiveScriptMessage:)]
             fn did_receive(&self, _ucc: *mut AnyObject, message: *mut AnyObject) {
-                unsafe { handle_message(message) }
+                let label = self.ivars().label.clone();
+                unsafe { handle_message(&label, message) }
             }
         }
     );
 
     impl NavGuardHandler {
-        fn new() -> Id<Self> {
-            unsafe { msg_send_id![Self::alloc(), init] }
+        fn new(label: String) -> Id<Self> {
+            let this = Self::alloc().set_ivars(HandlerIvars { label });
+            unsafe { msg_send_id![super(this), init] }
         }
     }
 
@@ -365,10 +395,23 @@ mod imp {
         nsstring_to_string(v)
     }
 
-    unsafe fn handle_message(message: *mut AnyObject) {
+    unsafe fn dict_bool(dict: *mut AnyObject, key: &str) -> bool {
+        let v: *mut AnyObject = msg_send![dict, objectForKey: ns_string(key)];
+        if v.is_null() {
+            return false;
+        }
+
+        let is_number: bool = msg_send![v, isKindOfClass: class!(NSNumber)];
+        is_number && msg_send![v, boolValue]
+    }
+
+    unsafe fn handle_message(label: &str, message: *mut AnyObject) {
         if message.is_null() {
             return;
         }
+        let Some(tab) = tab_of(label) else {
+            return;
+        };
 
         let body: *mut AnyObject = msg_send![message, body];
         if body.is_null() {
@@ -387,11 +430,12 @@ mod imp {
             return;
         }
         let text = dict_string(body, "text").unwrap_or_default();
+        let new_tab = dict_bool(body, "newTab");
 
         if let Some(app) = APP.get() {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
-                intake(app, href, text).await;
+                intake(app, tab, href, text, new_tab).await;
             });
         }
     }
@@ -415,7 +459,7 @@ mod imp {
                 return;
             }
 
-            let handler = NavGuardHandler::new();
+            let handler = NavGuardHandler::new(label.clone());
             content_world::add_handler(controller, &*handler, "wisNavGuard");
             content_world::install_script(
                 wk,
@@ -423,7 +467,7 @@ mod imp {
                 &label,
                 "wisNavGuard",
                 navguard_js(),
-                false,
+                true,
             );
         });
     }

@@ -19,9 +19,14 @@ const TLDS = [...TLD_ARRAY.slice(TLD_ARRAY.indexOf('['), TLD_ARRAY.indexOf('];')
 const SCRIPT = RAW.replace('__WIS_TEXT_TLDS__', JSON.stringify(TLDS))
 
 /** A page at `url` with one link to `href` reading `text`, running the guard. */
-function loadPage(href, text = 'Read more', { url = 'https://page.test/news?id=1', channel = handlers('wisNavGuard') } = {}) {
+function loadPage(
+  href,
+  text = 'Read more',
+  { url = 'https://page.test/news?id=1', channel = handlers('wisNavGuard'), target } = {},
+) {
   const inner = h('b', {}, text)
-  const link = href == null ? h('a', {}, inner) : h('a', { href }, inner)
+  const attrs = target == null ? { href } : { href, target }
+  const link = href == null ? h('a', {}, inner) : h('a', attrs, inner)
   const document = page(url, h('p', {}, link))
   const window = channel ? { webkit: channel.webkit } : {}
   const run = () => new Function('window', 'document', 'location', SCRIPT)(window, document, document.location)
@@ -50,8 +55,23 @@ describe('NAVGUARD_JS posting', () => {
   test('a guarded click is cancelled and posts the absolute href with the link text', () => {
     const p = loadPage('https://evil.test/login', 'paypal.com')
     const click = p.click()
-    assert.deepEqual(p.sent(), [{ href: 'https://evil.test/login', text: 'paypal.com' }])
+    assert.deepEqual(p.sent(), [{ href: 'https://evil.test/login', text: 'paypal.com', newTab: false }])
     assert.ok(click.defaultPrevented && click.propagationStopped)
+  })
+
+  test('a link that targets a new browsing context says so, so it opens in a tab', () => {
+    for (const [target, newTab] of [
+      ['_blank', true],
+      ['results', true],
+      ['_self', false],
+      ['_TOP', false],
+      ['_parent', false],
+      ['', false],
+    ]) {
+      const p = loadPage('https://evil.test/login', 'paypal.com', { target })
+      p.click()
+      assert.equal(p.sent()[0].newTab, newTab, target)
+    }
   })
 
   test('a click the page dispatched itself is left to the native guard', () => {

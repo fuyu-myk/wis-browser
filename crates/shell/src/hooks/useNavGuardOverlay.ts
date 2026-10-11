@@ -3,13 +3,15 @@
  * guard emits `wis-nav-guard` when a risky navigation is halted; this reveals
  * the full-window `navguard` overlay and forwards the payload to the surface via
  * `wis-navguard-show` (emitted twice to cover the first-open race). It hides the
- * overlay on `wis-navguard-close` and keeps it full-window on resize.
+ * overlay on `wis-navguard-close` and keeps it full-window on resize. The event
+ * reaches every window; only the one showing the guarded tab's workspace acts.
  */
 
 import { useEffect, useRef } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import type { LinkAssessment } from '@/bindings/types'
+import { useBrowserState } from '@/hooks/useBrowserState'
 import { useOverlay } from '@/hooks/useOverlay'
 
 const NAV_GUARD_EVENT = 'wis-nav-guard'
@@ -29,6 +31,9 @@ export function useNavGuardOverlay(): void {
   const overlay = useOverlay('navguard')
   const openRef = useRef(false)
   const pendingRef = useRef<NavGuardPayload | null>(null)
+  const { data: state } = useBrowserState()
+  const stateRef = useRef(state)
+  stateRef.current = state
 
   useEffect(() => {
     let cancelled = false
@@ -49,6 +54,9 @@ export function useNavGuardOverlay(): void {
     }
 
     void listen<NavGuardPayload>(NAV_GUARD_EVENT, (e) => {
+      const current = stateRef.current
+      const tab = e.payload.tab_id ? current?.tabs.find((t) => t.id === e.payload.tab_id) : null
+      if (tab && tab.workspace_id !== current?.active_workspace_id) return
       void showFor(e.payload)
     }).then((fn) => {
       if (cancelled) fn()
