@@ -2,16 +2,17 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
-use rusqlite::params;
 use serde::Deserialize;
 use wis_core::bookmark_tree::BookmarkNode;
-use wis_core::netscape::{
-    accept_web_url, clamp, MAX_BOOKMARKS_FILE_BYTES, MAX_IMPORT_BOOKMARKS, MAX_IMPORT_FOLDERS,
-};
+use wis_core::netscape::{MAX_BOOKMARKS_FILE_BYTES, MAX_IMPORT_BOOKMARKS, MAX_IMPORT_FOLDERS};
 
 use crate::fs::read_capped;
+#[cfg(windows)]
+use crate::profile::store_package;
+use crate::profile::{display_name, under, variant, MAX_PROFILES};
 use crate::snapshot::Snapshot;
-use crate::{Browser, HistoryItem, ImportError, Roots, Source, MAX_IMPORT_HISTORY};
+use crate::visits;
+use crate::{Browser, HistoryItem, ImportError, Roots, Source};
 
 const BOOKMARK_FILES: [&str; 2] = ["Bookmarks", "AccountBookmarks"];
 const HISTORY_FILE: &str = "History";
@@ -21,8 +22,6 @@ const CHROMIUM_EPOCH_OFFSET_MICROS: i64 = 11_644_473_600_000_000;
 const LOCAL_STATE_CAP: usize = 16 * 1024 * 1024;
 const MAX_BOOKMARK_OBJECTS: usize = 4 * (MAX_IMPORT_BOOKMARKS + MAX_IMPORT_FOLDERS);
 const MAX_LOCAL_STATE_OBJECTS: usize = 100_000;
-const MAX_PROFILES: usize = 64;
-const PROFILE_NAME_CAP: usize = 64;
 
 pub(crate) fn discover(roots: &Roots) -> Vec<Source> {
     user_data_dirs(roots)
@@ -68,62 +67,20 @@ pub(crate) fn read_history(
     else {
         return Ok(Vec::new());
     };
-    let unreadable = |err: rusqlite::Error| ImportError::Unreadable {
+
+    visits::query(
+        &snapshot.conn,
+        "SELECT CASE WHEN octet_length(url) <= ?3 THEN url END, substr(title, 1, ?4),
+                visit_count, last_visit_time
+         FROM urls WHERE hidden = 0 AND last_visit_time >= ?1
+         ORDER BY last_visit_time DESC LIMIT ?2",
+        since,
+        CHROMIUM_EPOCH_OFFSET_MICROS,
+    )
+    .map_err(|err| ImportError::Unreadable {
         file: HISTORY_FILE.to_string(),
         reason: err.to_string(),
-    };
-
-    let mut query = snapshot
-        .conn
-        .prepare(
-            "SELECT url, title, visit_count, last_visit_time FROM urls
-             WHERE hidden = 0 AND last_visit_time >= ?1
-             ORDER BY last_visit_time DESC LIMIT ?2",
-        )
-        .map_err(unreadable)?;
-    let rows = query
-        .query_map(
-            params![
-                since.timestamp_micros() + CHROMIUM_EPOCH_OFFSET_MICROS,
-                MAX_IMPORT_HISTORY as i64
-            ],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, i64>(3)?,
-                ))
-            },
-        )
-        .map_err(unreadable)?;
-
-    let now = Utc::now();
-    let mut items = Vec::new();
-    for row in rows {
-        let (url, title, visit_count, last_visit) = match row {
-            Ok(row) => row,
-            Err(rusqlite::Error::FromSqlConversionFailure(..))
-            | Err(rusqlite::Error::InvalidColumnType(..)) => continue,
-            Err(err) => return Err(unreadable(err)),
-        };
-        let Some(url) = accept_web_url(&url) else {
-            continue;
-        };
-        let Some(visited_at) =
-            DateTime::from_timestamp_micros(last_visit - CHROMIUM_EPOCH_OFFSET_MICROS)
-        else {
-            continue;
-        };
-        items.push(HistoryItem {
-            url,
-            title: clamp(&title.unwrap_or_default()),
-            visited_at: visited_at.min(now),
-            visit_count: visit_count.max(1),
-        });
-    }
-
-    Ok(items)
+    })
 }
 
 fn profiles(browser: Browser, key: &str, user_data: &Path) -> Vec<Source> {
@@ -158,16 +115,6 @@ fn profiles(browser: Browser, key: &str, user_data: &Path) -> Vec<Source> {
     }
 
     found
-}
-
-fn variant(key: &str) -> Option<&'static str> {
-    if key.ends_with("-flatpak") {
-        Some("Flatpak")
-    } else if key.ends_with("-snap") {
-        Some("Snap")
-    } else {
-        None
-    }
 }
 
 /// `(directory, display name)` from `Local State`, or just `Default`.
@@ -246,20 +193,6 @@ fn has_bookmarks(dir: &Path) -> bool {
     BOOKMARK_FILES.iter().any(|file| dir.join(file).is_file())
 }
 
-fn display_name(raw: &str) -> String {
-    raw.trim()
-        .chars()
-        .filter(|c| !c.is_control())
-        .take(PROFILE_NAME_CAP)
-        .collect()
-}
-
-fn under(base: &Path, parts: &[&str]) -> PathBuf {
-    parts
-        .iter()
-        .fold(base.to_path_buf(), |dir, part| dir.join(part))
-}
-
 #[cfg(target_os = "macos")]
 fn user_data_dirs(roots: &Roots) -> Vec<(Browser, &'static str, PathBuf)> {
     let base = &roots.config;
@@ -321,24 +254,11 @@ fn user_data_dirs(roots: &Roots) -> Vec<(Browser, &'static str, PathBuf)> {
             under(&roots.config, &["Opera Software", "Opera Stable"]),
         ),
     ];
-    let arc = std::fs::read_dir(local.join("Packages"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .find(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with("TheBrowserCompany.Arc_")
-        });
-    if let Some(package) = arc {
+    if let Some(package) = store_package(local, "TheBrowserCompany.Arc_") {
         dirs.push((
             Browser::Arc,
             "arc",
-            under(
-                &package.path(),
-                &["LocalCache", "Local", "Arc", "User Data"],
-            ),
+            under(&package, &["LocalCache", "Local", "Arc", "User Data"]),
         ));
     }
 
@@ -859,13 +779,6 @@ mod tests {
                 folder("Unsorted Bookmarks", vec![link("https://s.example/", "S")]),
             ]
         );
-    }
-
-    #[test]
-    fn packaged_copies_are_labelled() {
-        assert_eq!(variant("chrome-flatpak"), Some("Flatpak"));
-        assert_eq!(variant("chromium-snap"), Some("Snap"));
-        assert_eq!(variant("chrome"), None);
     }
 
     #[test]

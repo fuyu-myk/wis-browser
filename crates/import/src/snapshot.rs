@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use rusqlite::config::DbConfig;
 use rusqlite::{Connection, OpenFlags};
@@ -9,6 +9,7 @@ use crate::ImportError;
 
 const JOURNALS: [&str; 2] = ["-wal", "-journal"];
 const STALE_AFTER: Duration = Duration::from_secs(60 * 60);
+const QUERY_BUDGET: Duration = Duration::from_secs(30);
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -77,12 +78,14 @@ impl Snapshot {
             })?;
         }
 
-        let conn = open_untrusted(&copy).map_err(|err| unreadable(err.to_string()))?;
+        let conn =
+            open_untrusted(&copy, QUERY_BUDGET).map_err(|err| unreadable(err.to_string()))?;
         Ok(Some(Self { conn, _dir: dir }))
     }
 }
 
-fn open_untrusted(path: &Path) -> rusqlite::Result<Connection> {
+/// Queries past `budget` are interrupted, so a crafted view cannot spin forever.
+fn open_untrusted(path: &Path, budget: Duration) -> rusqlite::Result<Connection> {
     let conn = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -90,6 +93,8 @@ fn open_untrusted(path: &Path) -> rusqlite::Result<Connection> {
     conn.set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
     conn.pragma_update(None, "trusted_schema", false)?;
     conn.pragma_update(None, "query_only", true)?;
+    let started = Instant::now();
+    conn.progress_handler(10_000, Some(move || started.elapsed() > budget));
     Ok(conn)
 }
 
@@ -140,4 +145,32 @@ fn is_locked(err: &std::io::Error) -> bool {
             err.raw_os_error(),
             Some(ERROR_SHARING_VIOLATION | ERROR_LOCK_VIOLATION)
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::TempDir;
+
+    #[test]
+    fn a_query_that_never_ends_is_interrupted() {
+        let tmp = TempDir::new();
+        let path = tmp.path().join("places.sqlite");
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch(
+                "CREATE VIEW endless AS
+                 WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n)
+                 SELECT x FROM n;",
+            )
+            .unwrap();
+
+        let conn = open_untrusted(&path, Duration::from_millis(100)).unwrap();
+        let started = Instant::now();
+        let result: rusqlite::Result<i64> =
+            conn.query_row("SELECT count(*) FROM endless", [], |row| row.get(0));
+
+        assert!(result.is_err());
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
 }

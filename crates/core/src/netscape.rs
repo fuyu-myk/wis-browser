@@ -23,9 +23,9 @@ pub const MAX_IMPORT_BOOKMARKS: usize = 20_000;
 pub const MAX_IMPORT_FOLDERS: usize = 5_000;
 
 /// Titles and folder names are clamped to this many characters.
-const NAME_CAP: usize = 1024;
+pub const NAME_CAP: usize = 1024;
 /// URLs beyond this are dropped.
-const MAX_URL_BYTES: usize = 8 * 1024;
+pub const MAX_URL_BYTES: usize = 8 * 1024;
 /// Levels beyond this stop being named (frames still balance).
 pub(crate) const MAX_NESTING: usize = 32;
 

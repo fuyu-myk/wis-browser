@@ -3,8 +3,11 @@
 //! parsing is lenient.
 
 mod chromium;
+mod firefox;
 mod fs;
+mod profile;
 mod snapshot;
+mod visits;
 
 use std::path::{Path, PathBuf};
 
@@ -30,6 +33,9 @@ pub enum Browser {
     Vivaldi,
     Opera,
     Arc,
+    Firefox,
+    Zen,
+    LibreWolf,
 }
 
 impl Browser {
@@ -42,7 +48,14 @@ impl Browser {
             Self::Vivaldi => "Vivaldi",
             Self::Opera => "Opera",
             Self::Arc => "Arc",
+            Self::Firefox => "Firefox",
+            Self::Zen => "Zen",
+            Self::LibreWolf => "LibreWolf",
         }
+    }
+
+    fn is_firefox_family(self) -> bool {
+        matches!(self, Self::Firefox | Self::Zen | Self::LibreWolf)
     }
 }
 
@@ -83,12 +96,14 @@ pub enum ImportError {
     TooLarge { file: String },
     #[error("{file} could not be read: {reason}")]
     Unreadable { file: String, reason: String },
-    #[error("quit {browser} first: it keeps its history locked while open")]
+    #[error("quit {browser} first: it keeps its data locked while open")]
     Busy { browser: String },
 }
 
 pub fn discover(roots: &Roots) -> Vec<Source> {
-    chromium::discover(roots)
+    let mut sources = chromium::discover(roots);
+    sources.extend(firefox::discover(roots));
+    sources
 }
 
 /// Resolves only against a fresh discovery, so a caller cannot name a path.
@@ -96,8 +111,13 @@ pub fn find(roots: &Roots, id: &str) -> Option<Source> {
     discover(roots).into_iter().find(|source| source.id == id)
 }
 
-pub fn read_bookmarks(source: &Source) -> Result<Vec<BookmarkNode>, ImportError> {
-    chromium::read_bookmarks(&source.dir)
+/// Databases are copied into `scratch` first and removed afterwards.
+pub fn read_bookmarks(source: &Source, scratch: &Path) -> Result<Vec<BookmarkNode>, ImportError> {
+    if source.browser.is_firefox_family() {
+        firefox::read_bookmarks(&source.dir, &source.browser_label(), scratch)
+    } else {
+        chromium::read_bookmarks(&source.dir)
+    }
 }
 
 /// Visits since `since`, newest first, at most [`MAX_IMPORT_HISTORY`]. The
@@ -107,7 +127,12 @@ pub fn read_history(
     scratch: &Path,
     since: DateTime<Utc>,
 ) -> Result<Vec<HistoryItem>, ImportError> {
-    chromium::read_history(&source.dir, &source.browser_label(), scratch, since)
+    let browser = source.browser_label();
+    if source.browser.is_firefox_family() {
+        firefox::read_history(&source.dir, &browser, scratch, since)
+    } else {
+        chromium::read_history(&source.dir, &browser, scratch, since)
+    }
 }
 
 #[cfg(test)]

@@ -49,8 +49,10 @@ pub async fn import_browser_bookmarks(
     ensure_not_private(&state, workspace_id).await?;
 
     let roots = roots(&app)?;
+    let scratch = scratch(&app)?;
     let parsed = blocking(move || {
-        let tree = wis_import::read_bookmarks(&find(&roots, &source_id)?).map_err(user_error)?;
+        let tree =
+            wis_import::read_bookmarks(&find(&roots, &source_id)?, &scratch).map_err(user_error)?;
         wis_core::bookmark_tree::flatten(&tree)
     })
     .await?;
@@ -68,7 +70,7 @@ pub async fn import_browser_history(
     ensure_not_private(&state, workspace_id).await?;
 
     let roots = roots(&app)?;
-    let scratch = located(app.path().app_cache_dir())?.join("browser-import");
+    let scratch = scratch(&app)?;
     let since = Utc::now() - Duration::days(HISTORY_DAYS);
     let entries = blocking(move || {
         let items = wis_import::read_history(&find(&roots, &source_id)?, &scratch, since)
@@ -124,6 +126,11 @@ fn user_error(err: wis_import::ImportError) -> WisError {
     WisError::InvalidInput {
         message: err.to_string(),
     }
+}
+
+/// Where browser databases are copied before reading.
+fn scratch(app: &AppHandle) -> WisResult<PathBuf> {
+    Ok(located(app.path().app_cache_dir())?.join("browser-import"))
 }
 
 fn roots(app: &AppHandle) -> WisResult<wis_import::Roots> {
