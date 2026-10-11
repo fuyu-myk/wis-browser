@@ -133,9 +133,12 @@ pub async fn spawn_window(
                         );
                     }
                     tauri::WindowEvent::Destroyed => {
-                        app_for_event
+                        let shown = app_for_event
                             .state::<AppState>()
                             .clear_window_workspace(&label_for_event);
+                        if let Some(id) = shown {
+                            crate::private_store::release(&app_for_event, id);
+                        }
                     }
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
                         record_window_geometry(&app_for_event, &label_for_event);

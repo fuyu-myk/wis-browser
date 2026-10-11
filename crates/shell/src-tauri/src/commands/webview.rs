@@ -225,7 +225,16 @@ pub async fn create_tab_webview(
         builder = builder.user_agent(ua);
     }
     if ephemeral {
-        builder = builder.incognito(true);
+        #[cfg(target_os = "macos")]
+        {
+            builder =
+                crate::private_store::with_workspace_store(&app, workspace_id, builder).await?;
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            builder = builder.incognito(true);
+        }
 
         #[cfg(windows)]
         {

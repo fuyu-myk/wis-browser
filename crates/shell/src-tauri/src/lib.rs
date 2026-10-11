@@ -55,6 +55,7 @@ mod permissions;
 mod popup_chrome;
 mod print;
 mod print_export;
+mod private_store;
 mod reader;
 mod save_coalescer;
 mod screenshot;
@@ -800,6 +801,9 @@ pub fn run() {
             {
                 if label == "main" {
                     video_popout::close_popout_window(app_handle);
+                    if let Some(id) = app_handle.state::<AppState>().window_workspace("main") {
+                        private_store::release(app_handle, id);
+                    }
                 }
             }
 

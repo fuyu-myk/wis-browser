@@ -287,17 +287,19 @@ impl AppState {
         self.persist_windowed_workspaces(&snapshot);
     }
 
-    /// Forget a window's workspace binding (window closed, or a failed open).
-    pub fn clear_window_workspace(&self, label: &str) {
-        let snapshot = {
+    /// Forget a window's workspace binding (window closed, or a failed open),
+    /// returning the workspace it showed.
+    pub fn clear_window_workspace(&self, label: &str) -> Option<WorkspaceId> {
+        let (shown, snapshot) = {
             let mut map = self
                 .window_workspaces
                 .lock()
                 .expect("window_workspaces poisoned");
-            map.remove(label);
-            map.values().copied().collect::<Vec<_>>()
+            let shown = map.remove(label);
+            (shown, map.values().copied().collect::<Vec<_>>())
         };
         self.persist_windowed_workspaces(&snapshot);
+        shown
     }
 
     /// Persist the current windowed-workspace set so the multi-window layout
@@ -831,8 +833,10 @@ mod tests {
         assert_eq!(state.window_for_workspace(primary).as_deref(), Some("main"));
         assert!(state.occupied_workspaces().contains(&primary));
 
-        // Clearing the binding leaves the workspace free (no owner, not occupied).
-        state.clear_window_workspace("main");
+        // Clearing the binding reports what it showed and leaves the workspace
+        // free (no owner, not occupied).
+        assert_eq!(state.clear_window_workspace("main"), Some(primary));
+        assert_eq!(state.clear_window_workspace("main"), None);
         assert_eq!(state.window_for_workspace(primary), None);
         assert!(!state.occupied_workspaces().contains(&primary));
 
