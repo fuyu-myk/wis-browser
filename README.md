@@ -7,7 +7,7 @@
   <p>
     <img src="https://img.shields.io/github/v/release/fuyu-myk/wis-browser?label=version&color=blue" alt="version" />
     <img src="https://img.shields.io/github/license/fuyu-myk/wis-browser?color=yellow" alt="license" />
-    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="platform" />
+    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%28preview%29%20%7C%20Linux%20%28preview%29-lightgrey" alt="platform" />
   </p>
 
   <p>
@@ -101,7 +101,7 @@ Wis is an open-source, lightweight, secure, and fast browser with AI integration
 
 ### Platform support
 
-Wis is macOS-first, with Windows a growing tier-1 platform (encrypted vault via DPAPI + Windows Hello, Mica glass styling) and Linux following the same design. A few pieces remain macOS-only today: native session/history restore, encrypted session-cookie persistence, per-tab memory readouts in the task manager, and full window/region screenshot capture.
+Wis is macOS-first. The Windows and Linux builds are previews: Windows is a growing tier-1 platform (encrypted vault via DPAPI + Windows Hello, Mica glass styling) and Linux follows the same design, but both are tested less than macOS. A few pieces remain macOS-only today: native session/history restore, encrypted session-cookie persistence, per-tab memory readouts in the task manager, and full window/region screenshot capture.
 
 Wis renders with the OS system WebView (WebKit on macOS, via Tauri/wry) rather than Chromium: a tiny bundle, low RAM use, and Safari-class battery life, at the cost of a few structural tradeoffs: premium DRM streaming (e.g. Netflix 4K) is limited, with an "Open in default browser" fallback; there's no traditional browser-extension runtime; and there's no cross-device sync or mobile app yet.
 
@@ -109,7 +109,7 @@ Wis renders with the OS system WebView (WebKit on macOS, via Tauri/wry) rather t
 
 Latest releases can be found in the [Releases](https://github.com/fuyu-myk/wis-browser/releases) page.
 
-Wis needs macOS 14 (Sonoma) or later.
+Wis needs macOS 14 (Sonoma) or later. The Windows and Linux builds are previews.
 
 ### Notes
 

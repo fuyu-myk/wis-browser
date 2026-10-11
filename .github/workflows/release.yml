@@ -95,7 +95,14 @@ jobs:
           projectPath: crates/shell
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
           releaseName: "Wis __VERSION__"
-          releaseBody: "Download the installer for your platform below (.dmg for macOS, .msi/.exe for Windows, .deb/.AppImage for Linux)."
+          releaseBody: |
+            Download the installer for your platform below.
+
+            - **macOS** (.dmg): requires macOS 14 (Sonoma) or later.
+            - **Windows** (.msi or .exe): preview.
+            - **Linux** (.deb or .AppImage): preview.
+
+            The Windows and Linux builds are previews: they are tested less than macOS, and a few features are macOS-only. Wis is not code-signed yet, so the first launch shows a security warning; the README explains how to open it.
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
