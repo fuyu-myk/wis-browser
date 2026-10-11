@@ -1,13 +1,17 @@
-//! Finds other browsers' profiles on this machine and reads their bookmarks.
-//! Profile files are untrusted input: reads are size-capped and parsing is
-//! lenient.
+//! Finds other browsers' profiles on this machine and reads their bookmarks
+//! and history. Profile files are untrusted input: reads are size-capped and
+//! parsing is lenient.
 
 mod chromium;
 mod fs;
+mod snapshot;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use chrono::{DateTime, Utc};
 use wis_core::bookmark_tree::BookmarkNode;
+
+pub const MAX_IMPORT_HISTORY: usize = 20_000;
 
 /// Base directories the per-OS profile locations hang off.
 #[derive(Debug, Clone)]
@@ -51,7 +55,17 @@ pub struct Source {
     /// Packaging that installs a second copy alongside the native one.
     pub variant: Option<&'static str>,
     pub profile: String,
+    pub bookmarks: bool,
+    pub history: bool,
     dir: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryItem {
+    pub url: String,
+    pub title: String,
+    pub visited_at: DateTime<Utc>,
+    pub visit_count: i64,
 }
 
 impl Source {
@@ -69,6 +83,8 @@ pub enum ImportError {
     TooLarge { file: String },
     #[error("{file} could not be read: {reason}")]
     Unreadable { file: String, reason: String },
+    #[error("quit {browser} first: it keeps its history locked while open")]
+    Busy { browser: String },
 }
 
 pub fn discover(roots: &Roots) -> Vec<Source> {
@@ -82,6 +98,16 @@ pub fn find(roots: &Roots, id: &str) -> Option<Source> {
 
 pub fn read_bookmarks(source: &Source) -> Result<Vec<BookmarkNode>, ImportError> {
     chromium::read_bookmarks(&source.dir)
+}
+
+/// Visits since `since`, newest first, at most [`MAX_IMPORT_HISTORY`]. The
+/// database is copied into `scratch` first and removed afterwards.
+pub fn read_history(
+    source: &Source,
+    scratch: &Path,
+    since: DateTime<Utc>,
+) -> Result<Vec<HistoryItem>, ImportError> {
+    chromium::read_history(&source.dir, &source.browser_label(), scratch, since)
 }
 
 #[cfg(test)]

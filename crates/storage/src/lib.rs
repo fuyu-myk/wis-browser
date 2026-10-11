@@ -19,7 +19,7 @@ pub use closed_tabs::ClosedTabRecord;
 pub use credentials::CredentialRecord;
 pub use downloads::DownloadRecord;
 pub use error::{StorageError, StorageResult};
-pub use history::{HistoryEntry, HistoryQuery};
+pub use history::{HistoryEntry, HistoryImport, HistoryImportStats, HistoryQuery};
 pub use searches::SearchEntry;
 pub use sqlite::{is_intact, SqliteStorage};
 pub use traits::Storage;

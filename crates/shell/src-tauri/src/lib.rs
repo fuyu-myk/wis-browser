@@ -767,6 +767,7 @@ pub fn run() {
             bookmarks::import_bookmarks_html,
             browser_import::list_import_sources,
             browser_import::import_browser_bookmarks,
+            browser_import::import_browser_history,
             overlay::focus_webview,
             overlay::focus_self,
             overlay::ensure_overlay,

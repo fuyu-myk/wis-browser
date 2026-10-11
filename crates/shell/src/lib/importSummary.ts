@@ -1,4 +1,4 @@
-import type { BookmarkImportStats } from '@/bindings/types'
+import type { BookmarkImportStats, HistoryImportStats } from '@/bindings/types'
 
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`
@@ -15,4 +15,13 @@ export function bookmarkImportSummary(stats: BookmarkImportStats, emptyText: str
   const skipped =
     stats.bookmarks_skipped > 0 ? ` (${plural(stats.bookmarks_skipped, 'duplicate')} skipped)` : ''
   return `Imported ${bits.join(' and ')}${skipped}.`
+}
+
+export function historyImportSummary(stats: HistoryImportStats, emptyText: string): string {
+  if (stats.added === 0 && stats.merged === 0) return emptyText
+  if (stats.added === 0) {
+    return `Nothing new in history: ${plural(stats.merged, 'page')} already there.`
+  }
+  const merged = stats.merged > 0 ? ` (${plural(stats.merged, 'page')} already there)` : ''
+  return `Imported ${plural(stats.added, 'page')} of history${merged}.`
 }

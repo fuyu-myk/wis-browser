@@ -6,13 +6,15 @@
 //! History is scoped per workspace: dedup is keyed on `(workspace_id, url)`, so
 //! the same page visited in two workspaces keeps independent counts.
 
+use std::collections::HashSet;
+
 use chrono::{DateTime, Utc};
 use rusqlite::{params, params_from_iter, Connection};
 use uuid::Uuid;
 use wis_core::WorkspaceId;
 
 use crate::error::{StorageError, StorageResult};
-use crate::history::{HistoryEntry, HistoryQuery};
+use crate::history::{HistoryEntry, HistoryImport, HistoryImportStats, HistoryQuery};
 
 /// The identity a visit is stored under: the URL without its fragment. A `#`
 /// only ever delimits the fragment in a valid URL (it is percent-encoded
@@ -49,6 +51,56 @@ pub fn record_visit(
     )?;
 
     Ok(())
+}
+
+pub fn import(
+    conn: &mut Connection,
+    workspace_id: WorkspaceId,
+    entries: &[HistoryImport],
+) -> StorageResult<HistoryImportStats> {
+    let ws = workspace_id.as_uuid().to_string();
+    let mut stats = HistoryImportStats {
+        added: 0,
+        merged: 0,
+    };
+    let tx = conn.transaction()?;
+    {
+        let mut known = tx.prepare("SELECT 1 FROM history WHERE workspace_id = ?1 AND url = ?2")?;
+        let mut upsert = tx.prepare(
+            r#"
+            INSERT INTO history (workspace_id, url, title, visited_at, visit_count)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(workspace_id, url) DO UPDATE SET
+                visit_count = max(history.visit_count, excluded.visit_count),
+                visited_at  = CASE WHEN datetime(excluded.visited_at) > datetime(history.visited_at)
+                                   THEN excluded.visited_at ELSE history.visited_at END,
+                title       = CASE WHEN history.title = '' THEN excluded.title
+                                   ELSE history.title END
+            "#,
+        )?;
+        let mut counted = HashSet::new();
+        for entry in entries {
+            let url = history_key(&entry.url);
+            if counted.insert(url) {
+                if known.exists(params![ws, url])? {
+                    stats.merged += 1;
+                } else {
+                    stats.added += 1;
+                }
+            }
+
+            upsert.execute(params![
+                ws,
+                url,
+                entry.title,
+                entry.visited_at,
+                entry.visit_count.max(1)
+            ])?;
+        }
+    }
+    tx.commit()?;
+
+    Ok(stats)
 }
 
 /// Newest-first history, filtered by a case-insensitive substring over
@@ -257,6 +309,149 @@ mod tests {
             .into_iter()
             .map(|e| e.url)
             .collect()
+    }
+
+    fn visit(url: &str, title: &str, days_ago: i64, count: i64) -> HistoryImport {
+        HistoryImport {
+            url: url.to_string(),
+            title: title.to_string(),
+            visited_at: Utc::now() - Duration::days(days_ago),
+            visit_count: count,
+        }
+    }
+
+    fn rows(conn: &Connection, ws: WorkspaceId) -> Vec<(String, String, i64)> {
+        query_history(
+            conn,
+            &crate::HistoryQuery {
+                workspace_id: Some(ws),
+                ..Default::default()
+            },
+        )
+        .expect("query")
+        .into_iter()
+        .map(|e| (e.url, e.title, e.visit_count))
+        .collect()
+    }
+
+    #[test]
+    fn imported_visits_keep_their_own_time_and_count() {
+        let mut conn = conn();
+        let ws = WorkspaceId::new();
+        let entries = [
+            visit("https://a.example/", "A", 1, 7),
+            visit("https://b.example/#top", "B", 3, 2),
+        ];
+
+        let stats = import(&mut conn, ws, &entries).unwrap();
+
+        assert_eq!(
+            stats,
+            HistoryImportStats {
+                added: 2,
+                merged: 0
+            }
+        );
+        assert_eq!(
+            rows(&conn, ws),
+            vec![
+                ("https://a.example/".to_string(), "A".to_string(), 7),
+                ("https://b.example/".to_string(), "B".to_string(), 2),
+            ]
+        );
+        let newest = &query_history(&conn, &crate::HistoryQuery::default()).unwrap()[0];
+        assert!(newest.visited_at < Utc::now() - Duration::hours(23));
+    }
+
+    #[test]
+    fn importing_the_same_visits_twice_changes_nothing() {
+        let mut conn = conn();
+        let ws = WorkspaceId::new();
+        let entries = [visit("https://a.example/", "A", 1, 7)];
+        import(&mut conn, ws, &entries).unwrap();
+        let before = rows(&conn, ws);
+
+        let stats = import(&mut conn, ws, &entries).unwrap();
+
+        assert_eq!(
+            stats,
+            HistoryImportStats {
+                added: 0,
+                merged: 1
+            }
+        );
+        assert_eq!(rows(&conn, ws), before);
+    }
+
+    #[test]
+    fn a_known_url_keeps_its_later_visit_higher_count_and_title() {
+        let mut conn = conn();
+        let ws = WorkspaceId::new();
+        record_visit(&conn, ws, "https://a.example/", "Here").unwrap();
+
+        import(
+            &mut conn,
+            ws,
+            &[visit("https://a.example/", "There", 10, 4)],
+        )
+        .unwrap();
+
+        assert_eq!(
+            rows(&conn, ws),
+            vec![("https://a.example/".to_string(), "Here".to_string(), 4)]
+        );
+        let entry = &query_history(&conn, &crate::HistoryQuery::default()).unwrap()[0];
+        assert!(entry.visited_at > Utc::now() - Duration::hours(1));
+    }
+
+    #[test]
+    fn an_untitled_row_takes_the_imported_title() {
+        let mut conn = conn();
+        let ws = WorkspaceId::new();
+        record_visit(&conn, ws, "https://a.example/", "").unwrap();
+
+        import(&mut conn, ws, &[visit("https://a.example/", "There", 1, 1)]).unwrap();
+
+        assert_eq!(rows(&conn, ws)[0].1, "There");
+    }
+
+    #[test]
+    fn urls_differing_only_by_fragment_count_once() {
+        let mut conn = conn();
+        let ws = WorkspaceId::new();
+        let entries = [
+            visit("https://a.example/#x", "A", 1, 2),
+            visit("https://a.example/#y", "A", 2, 3),
+        ];
+
+        let stats = import(&mut conn, ws, &entries).unwrap();
+
+        assert_eq!(
+            stats,
+            HistoryImportStats {
+                added: 1,
+                merged: 0
+            }
+        );
+        assert_eq!(
+            rows(&conn, ws),
+            vec![("https://a.example/".to_string(), "A".to_string(), 3)]
+        );
+    }
+
+    #[test]
+    fn imports_stay_in_their_workspace() {
+        let mut conn = conn();
+        let (a, b) = (WorkspaceId::new(), WorkspaceId::new());
+        record_visit(&conn, b, "https://a.example/", "B's").unwrap();
+
+        import(&mut conn, a, &[visit("https://a.example/", "A's", 1, 9)]).unwrap();
+
+        assert_eq!(
+            rows(&conn, b)[0],
+            ("https://a.example/".to_string(), "B's".to_string(), 1)
+        );
+        assert_eq!(rows(&conn, a)[0].2, 9);
     }
 
     #[test]

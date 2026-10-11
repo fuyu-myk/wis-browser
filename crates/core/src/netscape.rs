@@ -270,7 +270,7 @@ fn attr_value(
 
 /// Keep only http(s) URLs with a host, canonicalized. Never re-schemes, so
 /// `javascript:`, `file:`, `place:` and friends are dropped here.
-pub(crate) fn accept_web_url(raw: &str) -> Option<String> {
+pub fn accept_web_url(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.len() > MAX_URL_BYTES {
         return None;
@@ -282,7 +282,7 @@ pub(crate) fn accept_web_url(raw: &str) -> Option<String> {
         .then(|| parsed.to_string())
 }
 
-pub(crate) fn clamp(text: &str) -> String {
+pub fn clamp(text: &str) -> String {
     text.trim()
         .chars()
         .filter(|c| !c.is_control())

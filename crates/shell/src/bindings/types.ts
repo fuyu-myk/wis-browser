@@ -878,6 +878,14 @@ export interface ImportSource {
   id: string
   browser: string
   profile: string
+  bookmarks: boolean
+  history: boolean
+}
+
+/** Outcome of a history import (mirror of `HistoryImportStats`). */
+export interface HistoryImportStats {
+  added: number
+  merged: number
 }
 
 // ---------------------------------------------------------------------------

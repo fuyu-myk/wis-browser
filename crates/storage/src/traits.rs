@@ -9,7 +9,7 @@ use crate::closed_tabs::ClosedTabRecord;
 use crate::credentials::CredentialRecord;
 use crate::downloads::DownloadRecord;
 use crate::error::StorageResult;
-use crate::history::{HistoryEntry, HistoryQuery};
+use crate::history::{HistoryEntry, HistoryImport, HistoryImportStats, HistoryQuery};
 use crate::searches::SearchEntry;
 use wis_core::{BrowserState, DownloadId, TabId, WorkspaceId};
 
@@ -93,6 +93,15 @@ pub trait Storage: Send + Sync {
         workspace_id: Option<WorkspaceId>,
         since: Option<DateTime<Utc>>,
     ) -> StorageResult<()>;
+
+    /// Merge visits read from another browser in one transaction. A URL already
+    /// recorded keeps the later visit, the higher count and its own title, so
+    /// importing the same data twice changes nothing.
+    fn import_history(
+        &self,
+        workspace_id: WorkspaceId,
+        entries: &[HistoryImport],
+    ) -> StorageResult<HistoryImportStats>;
 
     // -- password vault (see [`crate::credentials`]) -----------------------
 

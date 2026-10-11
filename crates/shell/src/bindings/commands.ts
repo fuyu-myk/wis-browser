@@ -20,6 +20,7 @@ import type {
   BookmarkFolder,
   BookmarkImportStats,
   ImportSource,
+  HistoryImportStats,
   CsvImportStats,
   BrowserState,
   CredentialSummary,
@@ -1471,6 +1472,10 @@ export const commands = {
     sourceId: string,
   ): Promise<BookmarkImportStats> {
     return invoke('import_browser_bookmarks', { workspaceId, sourceId })
+  },
+
+  async importBrowserHistory(workspaceId: WorkspaceId, sourceId: string): Promise<HistoryImportStats> {
+    return invoke('import_browser_history', { workspaceId, sourceId })
   },
 
   // -- favicons -------------------------------------------------------------

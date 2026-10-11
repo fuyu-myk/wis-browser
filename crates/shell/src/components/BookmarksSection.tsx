@@ -2,8 +2,8 @@ import { useState } from 'react'
 
 import { commands } from '@/bindings/commands'
 import type { WorkspaceId } from '@/bindings/types'
-import { bookmarkImportSummary } from '@/lib/bookmarkImport'
 import { cx } from '@/lib/cx'
+import { bookmarkImportSummary } from '@/lib/importSummary'
 
 interface Status {
   kind: 'ok' | 'err'

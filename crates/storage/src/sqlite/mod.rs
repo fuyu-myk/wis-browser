@@ -146,6 +146,15 @@ impl Storage for SqliteStorage {
         history::record_visit(&conn, workspace_id, url, title)
     }
 
+    fn import_history(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+        entries: &[crate::history::HistoryImport],
+    ) -> StorageResult<crate::history::HistoryImportStats> {
+        let mut conn = self.conn.lock().expect("storage mutex poisoned");
+        history::import(&mut conn, workspace_id, entries)
+    }
+
     fn update_visit_title(
         &self,
         workspace_id: wis_core::WorkspaceId,

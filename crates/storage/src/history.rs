@@ -19,6 +19,21 @@ pub struct HistoryEntry {
     pub visit_count: i64,
 }
 
+/// A visited URL read from another browser.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryImport {
+    pub url: String,
+    pub title: String,
+    pub visited_at: DateTime<Utc>,
+    pub visit_count: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryImportStats {
+    pub added: usize,
+    pub merged: usize,
+}
+
 /// Query parameters for [`crate::Storage::query_history`]: a case-insensitive
 /// substring match over url + title (empty matches everything), newest first,
 /// with pagination, optionally scoped to a single workspace.

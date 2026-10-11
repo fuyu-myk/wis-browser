@@ -36,10 +36,7 @@ where
 }
 
 /// Reject writes to ephemeral (private) workspaces, which are never persisted.
-pub(crate) async fn ensure_persistable(
-    state: &AppState,
-    workspace_id: WorkspaceId,
-) -> WisResult<()> {
+async fn ensure_persistable(state: &AppState, workspace_id: WorkspaceId) -> WisResult<()> {
     let browser = state.browser.lock().await;
     let ephemeral = browser
         .workspace(workspace_id)

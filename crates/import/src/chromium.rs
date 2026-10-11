@@ -1,14 +1,23 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use chrono::{DateTime, Utc};
+use rusqlite::params;
 use serde::Deserialize;
 use wis_core::bookmark_tree::BookmarkNode;
-use wis_core::netscape::{MAX_BOOKMARKS_FILE_BYTES, MAX_IMPORT_BOOKMARKS, MAX_IMPORT_FOLDERS};
+use wis_core::netscape::{
+    accept_web_url, clamp, MAX_BOOKMARKS_FILE_BYTES, MAX_IMPORT_BOOKMARKS, MAX_IMPORT_FOLDERS,
+};
 
 use crate::fs::read_capped;
-use crate::{Browser, ImportError, Roots, Source};
+use crate::snapshot::Snapshot;
+use crate::{Browser, HistoryItem, ImportError, Roots, Source, MAX_IMPORT_HISTORY};
 
 const BOOKMARK_FILES: [&str; 2] = ["Bookmarks", "AccountBookmarks"];
+const HISTORY_FILE: &str = "History";
+const MAX_HISTORY_DB_BYTES: u64 = 512 * 1024 * 1024;
+/// Chromium counts microseconds from 1601-01-01.
+const CHROMIUM_EPOCH_OFFSET_MICROS: i64 = 11_644_473_600_000_000;
 const LOCAL_STATE_CAP: usize = 16 * 1024 * 1024;
 const MAX_BOOKMARK_OBJECTS: usize = 4 * (MAX_IMPORT_BOOKMARKS + MAX_IMPORT_FOLDERS);
 const MAX_LOCAL_STATE_OBJECTS: usize = 100_000;
@@ -44,31 +53,108 @@ pub(crate) fn read_bookmarks(profile: &Path) -> Result<Vec<BookmarkNode>, Import
     Ok(tree)
 }
 
+pub(crate) fn read_history(
+    profile: &Path,
+    browser: &str,
+    scratch: &Path,
+    since: DateTime<Utc>,
+) -> Result<Vec<HistoryItem>, ImportError> {
+    let Some(snapshot) = Snapshot::copy(
+        &profile.join(HISTORY_FILE),
+        scratch,
+        MAX_HISTORY_DB_BYTES,
+        browser,
+    )?
+    else {
+        return Ok(Vec::new());
+    };
+    let unreadable = |err: rusqlite::Error| ImportError::Unreadable {
+        file: HISTORY_FILE.to_string(),
+        reason: err.to_string(),
+    };
+
+    let mut query = snapshot
+        .conn
+        .prepare(
+            "SELECT url, title, visit_count, last_visit_time FROM urls
+             WHERE hidden = 0 AND last_visit_time >= ?1
+             ORDER BY last_visit_time DESC LIMIT ?2",
+        )
+        .map_err(unreadable)?;
+    let rows = query
+        .query_map(
+            params![
+                since.timestamp_micros() + CHROMIUM_EPOCH_OFFSET_MICROS,
+                MAX_IMPORT_HISTORY as i64
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            },
+        )
+        .map_err(unreadable)?;
+
+    let now = Utc::now();
+    let mut items = Vec::new();
+    for row in rows {
+        let (url, title, visit_count, last_visit) = match row {
+            Ok(row) => row,
+            Err(rusqlite::Error::FromSqlConversionFailure(..))
+            | Err(rusqlite::Error::InvalidColumnType(..)) => continue,
+            Err(err) => return Err(unreadable(err)),
+        };
+        let Some(url) = accept_web_url(&url) else {
+            continue;
+        };
+        let Some(visited_at) =
+            DateTime::from_timestamp_micros(last_visit - CHROMIUM_EPOCH_OFFSET_MICROS)
+        else {
+            continue;
+        };
+        items.push(HistoryItem {
+            url,
+            title: clamp(&title.unwrap_or_default()),
+            visited_at: visited_at.min(now),
+            visit_count: visit_count.max(1),
+        });
+    }
+
+    Ok(items)
+}
+
 fn profiles(browser: Browser, key: &str, user_data: &Path) -> Vec<Source> {
-    let variant = variant(key);
+    let source = |id: String, profile: String, dir: PathBuf| {
+        let bookmarks = has_bookmarks(&dir);
+        let history = dir.join(HISTORY_FILE).is_file();
+        (bookmarks || history).then(|| Source {
+            id,
+            browser,
+            variant: variant(key),
+            profile,
+            bookmarks,
+            history,
+            dir,
+        })
+    };
+
     let mut found: Vec<Source> = profile_names(user_data)
         .into_iter()
         .filter(|(dir_name, _)| is_plain_name(dir_name))
         .take(MAX_PROFILES)
-        .map(|(dir_name, name)| (user_data.join(&dir_name), dir_name, name))
-        .filter(|(dir, _, _)| has_bookmarks(dir))
-        .map(|(dir, dir_name, name)| Source {
-            id: format!("{key}:{dir_name}"),
-            browser,
-            variant,
-            profile: name,
-            dir,
+        .filter_map(|(dir_name, name)| {
+            source(format!("{key}:{dir_name}"), name, user_data.join(&dir_name))
         })
         .collect();
-
-    if found.is_empty() && has_bookmarks(user_data) {
-        found.push(Source {
-            id: format!("{key}:"),
-            browser,
-            variant,
-            profile: "Default".to_string(),
-            dir: user_data.to_path_buf(),
-        });
+    if found.is_empty() {
+        found.extend(source(
+            format!("{key}:"),
+            "Default".to_string(),
+            user_data.to_path_buf(),
+        ));
     }
 
     found
@@ -412,6 +498,7 @@ fn convert(node: Node) -> BookmarkNode {
 mod tests {
     use super::*;
     use crate::test_support::{write, TempDir};
+    use chrono::Duration;
 
     const BOOKMARKS: &str = r#"{
         "checksum": "x",
@@ -567,6 +654,143 @@ mod tests {
 
         assert_eq!(tree.len(), 4);
         assert_eq!(tree[3], link("https://d.example/", "D"));
+    }
+
+    const EPOCH_OFFSET: i64 = 11_644_473_600_000_000;
+
+    /// The returned connection stays open so its rows stay in the WAL file.
+    fn history_db(
+        profile: &Path,
+        rows: &[(&str, &str, i64, DateTime<Utc>, bool)],
+    ) -> rusqlite::Connection {
+        std::fs::create_dir_all(profile).unwrap();
+        let conn = rusqlite::Connection::open(profile.join("History")).unwrap();
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL;
+             CREATE TABLE urls (id INTEGER PRIMARY KEY, url LONGVARCHAR, title LONGVARCHAR,
+                 visit_count INTEGER DEFAULT 0, typed_count INTEGER DEFAULT 0,
+                 last_visit_time INTEGER NOT NULL, hidden INTEGER DEFAULT 0);",
+        )
+        .unwrap();
+
+        for (url, title, count, at, hidden) in rows {
+            conn.execute(
+                "INSERT INTO urls (url, title, visit_count, last_visit_time, hidden)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![
+                    url,
+                    title,
+                    count,
+                    at.timestamp_micros() + EPOCH_OFFSET,
+                    hidden
+                ],
+            )
+            .unwrap();
+        }
+
+        conn
+    }
+
+    #[test]
+    fn recent_visible_web_visits_come_back_newest_first() {
+        let tmp = TempDir::new();
+        let profile = tmp.path().join("Default");
+        let now = Utc::now();
+        let _writer = history_db(
+            &profile,
+            &[
+                (
+                    "https://old.example/",
+                    "Old",
+                    1,
+                    now - Duration::days(400),
+                    false,
+                ),
+                ("https://a.example/", "A", 5, now - Duration::days(2), false),
+                ("https://b.example/", "B", 0, now - Duration::days(1), false),
+                (
+                    "https://hidden.example/",
+                    "H",
+                    1,
+                    now - Duration::days(1),
+                    true,
+                ),
+                ("chrome://settings/", "S", 1, now - Duration::days(1), false),
+            ],
+        );
+        assert!(profile.join("History-wal").is_file());
+
+        let items = read_history(
+            &profile,
+            "Chrome",
+            &tmp.path().join("scratch"),
+            now - Duration::days(180),
+        )
+        .unwrap();
+
+        let found: Vec<(&str, &str, i64)> = items
+            .iter()
+            .map(|i| (i.url.as_str(), i.title.as_str(), i.visit_count))
+            .collect();
+        assert_eq!(
+            found,
+            vec![
+                ("https://b.example/", "B", 1),
+                ("https://a.example/", "A", 5)
+            ]
+        );
+        let drift = items[1].visited_at - (now - Duration::days(2));
+        assert!(drift.num_milliseconds().abs() < 1);
+    }
+
+    #[test]
+    fn the_copy_is_removed_after_reading() {
+        let tmp = TempDir::new();
+        let profile = tmp.path().join("Default");
+        let scratch = tmp.path().join("scratch");
+        let _writer = history_db(
+            &profile,
+            &[("https://a.example/", "A", 1, Utc::now(), false)],
+        );
+
+        read_history(&profile, "Chrome", &scratch, Utc::now() - Duration::days(1)).unwrap();
+
+        assert_eq!(std::fs::read_dir(&scratch).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn a_profile_without_history_reads_nothing() {
+        let tmp = TempDir::new();
+
+        let items = read_history(tmp.path(), "Chrome", &tmp.path().join("s"), Utc::now()).unwrap();
+
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn a_database_without_the_urls_table_is_unreadable() {
+        let tmp = TempDir::new();
+        rusqlite::Connection::open(tmp.path().join("History"))
+            .unwrap()
+            .execute_batch("CREATE TABLE other (x INTEGER);")
+            .unwrap();
+
+        let err =
+            read_history(tmp.path(), "Chrome", &tmp.path().join("s"), Utc::now()).unwrap_err();
+
+        assert!(matches!(err, ImportError::Unreadable { file, .. } if file == "History"));
+    }
+
+    #[test]
+    fn a_profile_with_only_history_is_discovered() {
+        let tmp = TempDir::new();
+        let roots = tmp.roots();
+        let _writer = history_db(&chrome_dir(&roots).join("Default"), &[]);
+
+        let sources = discover(&roots);
+
+        assert_eq!(sources.len(), 1);
+        assert!(sources[0].history && !sources[0].bookmarks);
     }
 
     #[test]
