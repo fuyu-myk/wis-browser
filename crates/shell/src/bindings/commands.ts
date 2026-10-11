@@ -19,6 +19,7 @@ import type {
   Bookmark,
   BookmarkFolder,
   BookmarkImportStats,
+  ImportSource,
   CsvImportStats,
   BrowserState,
   CredentialSummary,
@@ -1459,6 +1460,17 @@ export const commands = {
    */
   async importBookmarksHtml(workspaceId: WorkspaceId): Promise<BookmarkImportStats | null> {
     return invoke('import_bookmarks_html', { workspaceId })
+  },
+
+  async listImportSources(): Promise<ImportSource[]> {
+    return invoke('list_import_sources')
+  },
+
+  async importBrowserBookmarks(
+    workspaceId: WorkspaceId,
+    sourceId: string,
+  ): Promise<BookmarkImportStats> {
+    return invoke('import_browser_bookmarks', { workspaceId, sourceId })
   },
 
   // -- favicons -------------------------------------------------------------

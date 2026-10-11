@@ -42,6 +42,7 @@ wis-core = { workspace = true }
 wis-storage = { workspace = true }
 wis-network = { workspace = true }
 wis-secrets = { workspace = true }
+wis-import = { workspace = true }
 
 [features]
 # Built-in Tor client (Arti) is bundled by default. Build with

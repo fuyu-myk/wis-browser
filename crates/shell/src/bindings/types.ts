@@ -873,6 +873,13 @@ export interface BookmarkImportStats {
   bookmarks_skipped: number
 }
 
+/** A browser profile found on this machine (mirror of `browser_import::ImportSource`). */
+export interface ImportSource {
+  id: string
+  browser: string
+  profile: string
+}
+
 // ---------------------------------------------------------------------------
 // Password vault (mirror of `vault.rs`).
 // ---------------------------------------------------------------------------

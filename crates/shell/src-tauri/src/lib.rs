@@ -9,6 +9,7 @@ mod autoplay;
 mod backup;
 mod biometrics;
 mod bookmarks;
+mod browser_import;
 mod capture;
 mod clipboard;
 mod commands;
@@ -764,6 +765,8 @@ pub fn run() {
             bookmarks::delete_bookmark,
             bookmarks::export_bookmarks_html,
             bookmarks::import_bookmarks_html,
+            browser_import::list_import_sources,
+            browser_import::import_browser_bookmarks,
             overlay::focus_webview,
             overlay::focus_self,
             overlay::ensure_overlay,

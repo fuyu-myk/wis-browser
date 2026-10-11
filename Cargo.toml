@@ -6,6 +6,7 @@ members = [
     "crates/storage",
     "crates/network",
     "crates/secrets",
+    "crates/import",
 ]
 
 [workspace.package]
@@ -81,6 +82,7 @@ wis-core = { path = "crates/core" }
 wis-storage = { path = "crates/storage" }
 wis-network = { path = "crates/network" }
 wis-secrets = { path = "crates/secrets" }
+wis-import = { path = "crates/import" }
 
 # Vendored Tauri-stack crates: each a verbatim registry copy plus a small,
 # documented patch (see each crate's WIS-PATCH.md). Drop a patch once its

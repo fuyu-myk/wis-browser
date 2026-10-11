@@ -36,7 +36,10 @@ where
 }
 
 /// Reject writes to ephemeral (private) workspaces, which are never persisted.
-async fn ensure_persistable(state: &AppState, workspace_id: WorkspaceId) -> WisResult<()> {
+pub(crate) async fn ensure_persistable(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+) -> WisResult<()> {
     let browser = state.browser.lock().await;
     let ephemeral = browser
         .workspace(workspace_id)
@@ -271,9 +274,8 @@ pub async fn export_bookmarks_html(
     Ok(true)
 }
 
-/// Pick a bookmarks HTML file and import it into the workspace: folders are
-/// reused by name or created, duplicate rows skipped, everything appended
-/// unpinned. Resolves `None` when the user cancels.
+/// Pick a bookmarks HTML file and import it into the workspace. Resolves
+/// `None` when the user cancels.
 #[tauri::command]
 pub async fn import_bookmarks_html(
     app: AppHandle,
@@ -297,6 +299,19 @@ pub async fn import_bookmarks_html(
         message: format!("import task failed: {err}"),
     })??;
 
+    import_parsed(&app, &state, workspace_id, parsed)
+        .await
+        .map(Some)
+}
+
+/// Folders are reused by name or created, duplicate rows skipped, everything
+/// appended unpinned.
+pub(crate) async fn import_parsed(
+    app: &AppHandle,
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    parsed: wis_core::ParsedBookmarks,
+) -> WisResult<BookmarkImportStats> {
     let folders = parsed.folders;
     let entries: Vec<BookmarkImport> = parsed
         .bookmarks
@@ -309,7 +324,7 @@ pub async fn import_bookmarks_html(
         .collect();
     let storage = state.storage.clone();
     let stats = run(move || storage.import_bookmarks(workspace_id, &folders, &entries)).await?;
-    notify(&app);
+    notify(app);
 
-    Ok(Some(stats))
+    Ok(stats)
 }

@@ -27,7 +27,7 @@ const NAME_CAP: usize = 1024;
 /// URLs beyond this are dropped.
 const MAX_URL_BYTES: usize = 8 * 1024;
 /// Levels beyond this stop being named (frames still balance).
-const MAX_NESTING: usize = 32;
+pub(crate) const MAX_NESTING: usize = 32;
 
 /// One parsed bookmark. `folder` indexes into [`ParsedBookmarks::folders`]
 /// (`None` = unfiled).
@@ -270,7 +270,7 @@ fn attr_value(
 
 /// Keep only http(s) URLs with a host, canonicalized. Never re-schemes, so
 /// `javascript:`, `file:`, `place:` and friends are dropped here.
-fn accept_web_url(raw: &str) -> Option<String> {
+pub(crate) fn accept_web_url(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.len() > MAX_URL_BYTES {
         return None;
@@ -282,7 +282,7 @@ fn accept_web_url(raw: &str) -> Option<String> {
         .then(|| parsed.to_string())
 }
 
-fn clamp(text: &str) -> String {
+pub(crate) fn clamp(text: &str) -> String {
     text.trim()
         .chars()
         .filter(|c| !c.is_control())

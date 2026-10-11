@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { commands } from '@/bindings/commands'
 import type { WorkspaceId } from '@/bindings/types'
+import { bookmarkImportSummary } from '@/lib/bookmarkImport'
 import { cx } from '@/lib/cx'
 
 interface Status {
@@ -16,10 +17,6 @@ function errorMessage(error: unknown): string {
     if (typeof message === 'string') return message
   }
   return 'unknown error'
-}
-
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
 
 interface BookmarksSectionProps {
@@ -38,23 +35,10 @@ export function BookmarksSection({ workspaceId, ephemeral }: BookmarksSectionPro
     try {
       const stats = await commands.importBookmarksHtml(workspaceId)
       if (!stats) return
-      if (stats.bookmarks_added === 0 && stats.folders_added === 0) {
-        setStatus({
-          kind: 'ok',
-          text:
-            stats.bookmarks_skipped > 0
-              ? `Nothing new: ${plural(stats.bookmarks_skipped, 'bookmark')} already saved.`
-              : 'No bookmarks found in that file.',
-        })
-        return
-      }
-      const bits = [plural(stats.bookmarks_added, 'bookmark')]
-      if (stats.folders_added > 0) bits.push(plural(stats.folders_added, 'folder'))
-      const skipped =
-        stats.bookmarks_skipped > 0
-          ? ` (${plural(stats.bookmarks_skipped, 'duplicate')} skipped)`
-          : ''
-      setStatus({ kind: 'ok', text: `Imported ${bits.join(' and ')}${skipped}.` })
+      setStatus({
+        kind: 'ok',
+        text: bookmarkImportSummary(stats, 'No bookmarks found in that file.'),
+      })
     } catch (error: unknown) {
       setStatus({ kind: 'err', text: errorMessage(error) })
     } finally {

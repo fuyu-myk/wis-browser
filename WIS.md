@@ -44,10 +44,12 @@ This section orients; the deep detail lives under `docs/architecture/` (see Furt
 
 ### Crate layers
 
-**Cargo workspace, five crates; dependencies flow strictly downward** (upper layers import lower, never the reverse).
+**Cargo workspace, six crates; dependencies flow strictly downward** (upper layers import lower, never the reverse).
 
 ```text
 wis-browser-app  (crates/shell/src-tauri)  - Tauri shell, IPC commands, AppState, native macOS glue
+       |       \
+       |    wis-import (crates/import)      - reads other browsers' profiles (wis-core only)
        |
   wis-network    (crates/network)           - privacy decision engine, proxy, DoH, Tor
        |
@@ -57,9 +59,10 @@ wis-browser-app  (crates/shell/src-tauri)  - Tauri shell, IPC commands, AppState
    (pure data model, no I/O)
 ```
 
-- **`wis-core`**: pure, dependency-light data model. `BrowserState` root aggregate, `Workspace`, `Tab`, `UserSettings`, typed IDs, and pure `with_*` builders. Modules include `state`, `workspace`, `tab`, `tab_folder`, `settings`, `layout`, `pane`, `privacy`, `proxy`, `search`, `keybinding`, `link_safety`, `netscape`, `new_tab`, `password_csv`, `user_agent`, `download`, `background`, `icon`, `theme`, `backup`, `design`, `widget`, `userscript`. Detail: `docs/architecture/data-model-and-state.md`.
+- **`wis-core`**: pure, dependency-light data model. `BrowserState` root aggregate, `Workspace`, `Tab`, `UserSettings`, typed IDs, and pure `with_*` builders. Modules include `state`, `workspace`, `tab`, `tab_folder`, `settings`, `layout`, `pane`, `privacy`, `proxy`, `search`, `keybinding`, `link_safety`, `netscape`, `bookmark_tree`, `new_tab`, `password_csv`, `user_agent`, `download`, `background`, `icon`, `theme`, `backup`, `design`, `widget`, `userscript`. Detail: `docs/architecture/data-model-and-state.md`.
 - **`wis-secrets`**: vault cryptography, master-key storage and the password generator, isolated. ChaCha20-Poly1305 AEAD under a CSPRNG master key held in the OS secure store (macOS Keychain / Windows DPAPI blob), released after a biometric check and zeroized on drop. Detail: `docs/architecture/security-vault-and-permissions.md`.
 - **`wis-storage`**: persistence. `Storage` trait + sole `SqliteStorage` impl (bundled SQLite, WAL, `synchronous=NORMAL`); normalized tables (not a JSON blob), append-only migrations `M0001`..`M0019`, `VACUUM INTO` backup + resilient open (a profile is set aside only on a failed integrity check; one from a newer build stops launch instead of being discarded, and dev runs under its own identifier). Detail: `docs/architecture/data-model-and-state.md`.
+- **`wis-import`**: discovers other browsers' profiles on this machine and reads them with size caps (only Chromium family currently). Profile files are untrusted. Detail: `docs/architecture/tabs-panels-and-media.md`.
 - **`wis-network`**: privacy decision engine. `TrackerBlocker` (adblock crate, disk-memoized engine), `content_filter` (`WKContentRuleList`), `HttpsUpgrader`, `DohResolver`, `RequestPolicy`, per-workspace loopback proxy (SOCKS5 / built-in Tor via `arti-client`, `tor` feature default-on). Detail: `docs/architecture/privacy-and-network-engine.md`.
 - **`wis-browser-app`** (`shell/src-tauri`): Tauri wiring. `AppState` (browser mutex, per-window active workspace, storage, blocker, resolver, proxies, vault key, screenshots, Tor); native modules for IPC `commands`, `menu`, `overlay`, `find`, `cookies`, `biometrics`, `vault`, `capture`, `peek`, `reader`, `screenshot`, `backup`, `permissions`, `video_popout`, `audio`, `load_progress`, `tab_preview`, and the `win_*`/`gtk_dispatch` cross-platform seams. Detail: split across the docs below.
 
@@ -138,7 +141,7 @@ Each group maps to a `docs/architecture/` doc that carries the mechanism details
 - **Page capture**: clipboard-default screenshots (visible / region / whole-window composite) with a Save toast; window composite is macOS-only (page-only fallback elsewhere).
 - **Downloads**: safety-first `~/Downloads` handling (sanitized names, quarantine xattr, no overwrite), persisted history (`M0014`), ask-where option, popup + full page; a navigation that becomes a download leaves the tab on its current page, a tab opened only for a download closes itself, and main-frame PDFs and attachment responses download rather than opening WebKit's inline viewer (macOS).
 - **Sidebar quick-launch widgets**: a curated catalog (social, AI, productivity) plus user-added custom-URL sites placeable in any dock row (picker at add time, or drag across rows; curated widgets stay in their own row), validated at the IPC boundary (`Widget::validate`: http(s) + bounded label + group override customs-only); per-widget floating panels sharing the workspace store/proxy, with LRU count + memory caps, keep-loaded/idle-sleep, and a header bar; a plain click on a link to another site opens it as a foreground tab (`wisOpenInTabFg`), same-site links stay in the panel, and Cmd/middle-click opens a background tab as in tabs. Every remote-webview destroy path (widgets, tabs, peek, window close) closes the WebKit page first via `webview_close`, which makes the WebContent process exit deterministically; panel creation is serialized against a WebView2 message-pump deadlock.
-- **Bookmarks**: per-workspace foldered + independently pinnable quick-access, star flow, drag organize (SQLite, never in `BrowserState`); HTML (Netscape) import/export via Settings > Bookmarks (`wis_core::netscape`, duplicates skipped, nested folders flattened).
+- **Bookmarks**: per-workspace foldered + independently pinnable quick-access, star flow, drag organize (SQLite, never in `BrowserState`); HTML (Netscape) import/export via Settings > Bookmarks (`wis_core::netscape`, duplicates skipped, nested folders flattened); direct import from Chromium-family browsers on this device via Settings > Import (`wis-import`).
 - **Breach check**: saved passwords can be checked against public breach data without being revealed. Each is hashed on the device and only the first five characters of the hash are sent, so the service never learns which password was asked about, and the request follows the workspace's own network route.
 - **Recently closed**: closed tabs are remembered across restarts and browsable in the command palette, which lists the last few before you type anything. Reopening restores the live session when the tab was closed in the same run. Private windows record nothing, and clearing history clears the list.
 - **Zoom**: page zoom belongs to the site, not the tab. Zooming is remembered per host and applies in every tab and on every later visit; a default zoom covers the rest. Reset forgets the site.

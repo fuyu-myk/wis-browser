@@ -14,6 +14,13 @@ test('an object or Error with a string message gives that message', () => {
   assert.equal(errorMessage(new Error('closed')), 'closed')
 })
 
+test('a storage failure gives its reason', () => {
+  assert.equal(
+    errorMessage({ code: 'persistence_failed', reason: 'disk full' }),
+    'disk full',
+  )
+})
+
 test('anything else is an unknown error, never "[object Object]"', () => {
   for (const value of [null, undefined, 42, {}, { message: 7 }]) {
     assert.equal(errorMessage(value), 'unknown error')

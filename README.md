@@ -84,7 +84,7 @@ Wis is an open-source, lightweight, secure, and fast browser with AI integration
 - **AI assistant**: an opt-in side panel that chats, summarises the page you are on, and answers questions about it. Bring your own key (Anthropic or OpenAI), or point it at a model running on your own machine with Ollama or LM Studio, which needs no key at all. It stays completely off until you set one up, conversations are never saved, and page content is only ever sent when you explicitly attach it. An optional web-access toggle lets a local model search the web and read pages through isolated, invisible page loads, so even an offline model can answer with current information
 - **Reader mode** for a clean, distraction-free article view
 - **Clear error pages** when a site fails to load (DNS, unreachable, timeout, certificate), with one-click retry
-- **Bookmarks** with folders, pinning, drag-to-reorder, and HTML import/export
+- **Bookmarks** with folders, pinning, drag-to-reorder, HTML import/export, and import from Chrome, Edge, Brave, Arc and other Chromium browsers
 - **Downloads manager** with history, search, and an optional "ask where to save" prompt
 - **Default browser integration**: set Wis as your system default; links from other apps open in Wis
 - **Two-finger swipe gestures** for back/forward navigation

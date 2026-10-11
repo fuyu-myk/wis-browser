@@ -9,6 +9,7 @@ pub mod app_launch;
 pub mod autoplay;
 pub mod background;
 pub mod backup;
+pub mod bookmark_tree;
 pub mod clear;
 pub mod design;
 pub mod download;

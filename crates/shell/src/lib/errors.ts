@@ -13,5 +13,13 @@ export function errorMessage(error: unknown): string {
   ) {
     return (error as { message: string }).message
   }
+  if (
+    error !== null &&
+    typeof error === 'object' &&
+    'reason' in error &&
+    typeof (error as { reason: unknown }).reason === 'string'
+  ) {
+    return (error as { reason: string }).reason
+  }
   return 'unknown error'
 }

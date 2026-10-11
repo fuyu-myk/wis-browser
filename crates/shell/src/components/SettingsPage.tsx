@@ -9,6 +9,7 @@ import {
   BookmarkIcon,
   DatabaseIcon,
   GridIcon,
+  ImportIcon,
   KeyboardIcon,
   KeyIcon,
   PaletteIcon,
@@ -17,6 +18,7 @@ import {
   WifiIcon,
 } from '@/components/settingsIcons'
 import { BookmarksSection } from '@/components/BookmarksSection'
+import { ImportSection } from '@/components/ImportSection'
 import { SearchSection } from '@/components/SearchSection'
 import { AppearanceSection } from '@/components/AppearanceSection'
 import { DesignSection } from '@/components/DesignSection'
@@ -54,6 +56,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'compatibility', label: 'Compatibility', icon: <GlobeIcon /> },
   { id: 'sitedata', label: 'Site data', icon: <DatabaseIcon /> },
   { id: 'bookmarks', label: 'Bookmarks', icon: <BookmarkIcon /> },
+  { id: 'import', label: 'Import', icon: <ImportIcon /> },
   { id: 'passwords', label: 'Passwords', icon: <KeyIcon /> },
   { id: 'ai', label: 'AI assistant', icon: <SparkleIcon /> },
   { id: 'shortcuts', label: 'Shortcuts', icon: <KeyboardIcon /> },
@@ -216,6 +219,10 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
           workspaceName={activeWorkspace?.name ?? 'workspace'}
         />
         <BookmarksSection
+          workspaceId={activeWorkspace?.id ?? null}
+          ephemeral={activeWorkspace?.ephemeral ?? false}
+        />
+        <ImportSection
           workspaceId={activeWorkspace?.id ?? null}
           ephemeral={activeWorkspace?.ephemeral ?? false}
         />

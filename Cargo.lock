@@ -9069,6 +9069,7 @@ dependencies = [
  "windows",
  "windows-future",
  "wis-core",
+ "wis-import",
  "wis-network",
  "wis-secrets",
  "wis-storage",
@@ -9086,6 +9087,17 @@ dependencies = [
  "thiserror 2.0.18",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "wis-import"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "uuid",
+ "wis-core",
 ]
 
 [[package]]
