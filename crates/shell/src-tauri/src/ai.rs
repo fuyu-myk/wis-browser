@@ -240,9 +240,15 @@ pub async fn ai_chat(
         });
     }
 
-    let key = wis_secrets::ai_key_load().map_err(|e| WisError::InvalidInput {
-        message: format!("could not read key: {e}"),
-    })?;
+    // A local server is never sent the key.
+    let key = if provider == AiProvider::OpenAiCompatible && local_openai_base(base_url.as_deref())
+    {
+        None
+    } else {
+        wis_secrets::ai_key_load().map_err(|e| WisError::InvalidInput {
+            message: format!("could not read key: {e}"),
+        })?
+    };
 
     let thinking = if args.skip_reasoning {
         ThinkingMode::Disabled
@@ -435,6 +441,13 @@ fn anthropic_request(key: &[u8]) -> WisResult<(String, reqwest::header::HeaderMa
     Ok((ANTHROPIC_URL.to_string(), headers))
 }
 
+/// Whether an OpenAI-compatible base URL points at this machine.
+fn local_openai_base(base_url: Option<&str>) -> bool {
+    base_url
+        .and_then(|base| url::Url::parse(base.trim()).ok())
+        .is_some_and(|url| wis_network::is_loopback(&url))
+}
+
 /// An OpenAI-compatible endpoint and its auth headers. The bearer header is
 /// omitted entirely when no key is stored (for local servers like Ollama or
 /// LM Studio).
@@ -495,5 +508,20 @@ fn first_line(s: &str, max: usize) -> String {
         format!("{truncated}…")
     } else {
         line.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_loopback_openai_base_skips_the_key() {
+        assert!(local_openai_base(Some("http://127.0.0.1:11434/v1")));
+        assert!(local_openai_base(Some(" http://localhost:1234/v1/ ")));
+        assert!(!local_openai_base(Some("https://openrouter.ai/api/v1")));
+        assert!(!local_openai_base(Some("http://192.168.1.20:11434/v1")));
+        assert!(!local_openai_base(Some("localhost:11434")));
+        assert!(!local_openai_base(None));
     }
 }
