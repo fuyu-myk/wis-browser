@@ -10,6 +10,7 @@ import type { CaptureInfo } from '@/lib/vaultMenu'
 import type {
   AiBookmarkHit,
   AiFetchResponse,
+  AiGrouped,
   AiHistoryHit,
   AiSearchResult,
   AiTab,
@@ -1115,6 +1116,36 @@ export const commands = {
   /** Resolve a model's tab id within the window's workspace to a readable tab. */
   async aiResolveTab(tab: string): Promise<AiTabRead> {
     return invoke('ai_resolve_tab', { tab })
+  },
+
+  /** The window's workspace tabs a pending action names, for its approval card. */
+  async aiPreviewTabs(tabs: string[]): Promise<AiTabRead[]> {
+    return invoke('ai_preview_tabs', { tabs })
+  },
+
+  /** The URLs a pending `open_tabs` names, exactly as they would open. */
+  async aiPreviewUrls(urls: string[]): Promise<string[]> {
+    return invoke('ai_preview_urls', { urls })
+  },
+
+  /** Open approved web pages in the window's workspace; returns them redacted. */
+  async aiOpenTabs(urls: string[]): Promise<string[]> {
+    return invoke('ai_open_tabs', { urls })
+  },
+
+  /** Bring an approved tab of the window's workspace to the front. */
+  async aiSwitchTab(tab: string): Promise<AiTabRead> {
+    return invoke('ai_switch_tab', { tab })
+  },
+
+  /** Close approved tabs of the window's workspace; they stay reopenable. */
+  async aiCloseTabs(tabs: string[]): Promise<AiTabRead[]> {
+    return invoke('ai_close_tabs', { tabs })
+  },
+
+  /** Put approved tabs in the folder named `folder`, creating it when absent. */
+  async aiGroupTabs(tabs: string[], folder: string): Promise<AiGrouped> {
+    return invoke('ai_group_tabs', { tabs, folder })
   },
 
   /** Search the window's workspace history for the assistant. */

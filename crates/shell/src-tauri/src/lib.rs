@@ -2,6 +2,7 @@
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
 mod ai;
+mod ai_actions;
 mod ai_fetch;
 mod ai_local;
 mod app_launch;
@@ -752,6 +753,12 @@ pub fn run() {
             ai::ai_assess_link,
             ai_fetch::ai_web_search,
             ai_fetch::ai_web_fetch,
+            ai_actions::ai_preview_tabs,
+            ai_actions::ai_preview_urls,
+            ai_actions::ai_open_tabs,
+            ai_actions::ai_switch_tab,
+            ai_actions::ai_close_tabs,
+            ai_actions::ai_group_tabs,
             ai_local::ai_list_tabs,
             ai_local::ai_resolve_tab,
             ai_local::ai_search_history,

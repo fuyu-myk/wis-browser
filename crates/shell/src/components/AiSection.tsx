@@ -193,6 +193,22 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
           />
         </div>
       )}
+      {ai.provider === 'open_ai_compatible' && ai.local_data && (
+        <div className="row">
+          <div className="l">
+            <span>Let the assistant manage tabs</span>
+            <span>
+              Lets the model open, switch to, close and group this workspace's tabs. You approve
+              each action before it happens.
+            </span>
+          </div>
+          <Switch
+            checked={ai.tab_actions}
+            onChange={(tab_actions) => patchAi({ tab_actions })}
+            label="Let the assistant manage tabs"
+          />
+        </div>
+      )}
       {ai.provider === 'open_ai_compatible' && (
         <div className="row">
           <div className="l">

@@ -436,6 +436,8 @@ export interface AiSettings {
   web_access: boolean
   /** Offer tools that read this workspace's tabs, history and bookmarks. */
   local_data: boolean
+  /** Let the model open, switch, close and group tabs, each approved by the user. */
+  tab_actions: boolean
 }
 
 /** One tool call requested by the model (mirror of `wis_core::ai::ToolCall`). */
@@ -483,6 +485,14 @@ export interface AiTabRead {
   id: TabId
   title: string
   url: string
+  pinned: boolean
+}
+
+/** Tabs put in a folder by the assistant (mirror of `ai_actions::AiGrouped`). */
+export interface AiGrouped {
+  folder: string
+  created: boolean
+  tabs: AiTabRead[]
 }
 
 /** A fetched page for the assistant (mirror of `ai_fetch::AiFetchResponse`). */

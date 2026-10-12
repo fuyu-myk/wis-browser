@@ -523,7 +523,7 @@ describe('laying out a round', () => {
     )
   })
 
-  test('a call can settle with its own header, as a declined search does', () => {
+  test('a failed call can settle with its own header', () => {
     let turns = ai.appendToolSegments([turn(2, 'assistant', '', { streaming: true })], 2, [
       toolSeg('search', [invocation('rust')]),
     ])
@@ -639,5 +639,142 @@ describe("what the model reads back from a tool", () => {
       ai.fetchToolContent({ url: 'https://1.example', title: 'One', text: 'Hello.' }),
       'title: One\nurl: https://1.example\n\nHello.',
     )
+  })
+})
+
+describe('tab actions', () => {
+  const plan = (calls) => ai.planToolCalls(calls, new Set(), new Set())
+  const tabs = [
+    { id: 'aaaa-1', title: 'Alpha', url: 'https://a.example/x', pinned: false },
+    { id: 'bbbb-2', title: '', url: 'https://b.example/', pinned: true },
+  ]
+
+  test('each action plans with trimmed arguments', () => {
+    const planned = plan([
+      toolCall('o1', 'open_tabs', { urls: [' https://a.example/x ', 'https://b.example/'] }),
+      toolCall('s1', 'switch_tab', { tab: ' ab12 ' }),
+      toolCall('c1', 'close_tabs', { tabs: ['ab12', ' cd34 '] }),
+      toolCall('g1', 'group_tabs', { tabs: ['ab12'], folder: ' Research ' }),
+    ])
+    assert.deepEqual(
+      planned.map((p) => [p.tool, p.detail, p.action]),
+      [
+        ['open', 'a.example, b.example', { kind: 'open', urls: ['https://a.example/x', 'https://b.example/'] }],
+        ['switch', 'ab12', { kind: 'switch', tab: 'ab12' }],
+        ['close', 'ab12, cd34', { kind: 'close', tabs: ['ab12', 'cd34'] }],
+        ['group', 'Research: ab12', { kind: 'group', tabs: ['ab12'], folder: 'Research' }],
+      ],
+    )
+  })
+
+  test('actions with unusable arguments are rejected with the expected shape', () => {
+    const planned = plan([
+      toolCall('o1', 'open_tabs', { urls: [] }),
+      toolCall('s1', 'switch_tab', {}),
+      toolCall('c1', 'close_tabs', { tabs: [3] }),
+      toolCall('g1', 'group_tabs', { tabs: ['ab12'] }),
+    ])
+    assert.deepEqual(
+      planned.map((p) => [p.tool, p.action.reason]),
+      [
+        ['open', 'open_tabs needs {"urls": ["..."]} as its arguments.'],
+        ['switch', 'switch_tab needs {"tab": "..."} as its arguments.'],
+        ['close', 'close_tabs needs {"tabs": ["..."]} as its arguments.'],
+        ['group', 'group_tabs needs {"tabs": ["..."], "folder": "..."} as its arguments.'],
+      ],
+    )
+  })
+
+  test('a web search after a local read asks with two answers', () => {
+    assert.deepEqual(ai.searchApproval('rust'), {
+      prompt: 'Search the web for \u201crust\u201d?',
+      items: [],
+      note: 'This answer has read your tabs, history or bookmarks, and the query goes to DuckDuckGo.',
+      cancelLabel: 'Skip',
+      confirmLabel: 'Search',
+      retry: false,
+    })
+  })
+
+  test('each action asks with its items and offers a retry', () => {
+    const ask = (action, previewTabs, urls = [], readLocal = false) =>
+      ai.actionApproval(action, { tabs: previewTabs, urls }, readLocal)
+    assert.deepEqual(ask({ kind: 'close', tabs: ['a', 'b'] }, tabs), {
+      prompt: 'Close 2 tabs?',
+      items: ['Alpha \u00b7 a.example', 'b.example'],
+      note: 'Closed tabs can be reopened.',
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Accept',
+      retry: true,
+    })
+    assert.equal(ask({ kind: 'switch', tab: 'a' }, tabs.slice(0, 1)).prompt, 'Switch to this tab?')
+    const open = ask({ kind: 'open', urls: ['HTTPS://A.example/x'] }, [], ['https://a.example/x'])
+    assert.deepEqual([open.prompt, open.items, open.note], ['Open 1 tab?', ['https://a.example/x'], ''])
+    assert.match(
+      ask({ kind: 'open', urls: ['x'] }, [], ['https://a.example/x'], true).note,
+      /has read your tabs, history or bookmarks/,
+    )
+    const group = ask({ kind: 'group', tabs: ['a', 'b'], folder: 'Research' }, tabs)
+    assert.equal(group.prompt, 'Put 2 tabs in the \u201cResearch\u201d folder?')
+    assert.equal(group.note, 'The folder is created if none has that name. Pinned tabs are unpinned.')
+    assert.equal(
+      ask({ kind: 'group', tabs: ['a'], folder: 'Research' }, tabs.slice(0, 1)).note,
+      'The folder is created if none has that name.',
+    )
+  })
+
+  test('a tab is named by its title, or its host when untitled', () => {
+    assert.equal(ai.tabName(tabs[0]), 'Alpha')
+    assert.equal(ai.tabName(tabs[1]), 'b.example')
+  })
+
+  test('a done action says what changed, for the model and the row', () => {
+    assert.deepEqual(ai.actionDone('open', ['https://a.example/x']), {
+      note: 'opened 1 tab',
+      content: 'Opened 1 tab: https://a.example/x.',
+    })
+    assert.deepEqual(ai.actionDone('switch', ['Alpha']), {
+      note: 'switched tab',
+      content: 'Switched to \u201cAlpha\u201d.',
+    })
+    assert.deepEqual(ai.actionDone('close', ['Alpha', 'b.example']), {
+      note: 'closed 2 tabs',
+      content: 'Closed 2 tabs: Alpha; b.example. They can be reopened from recently closed.',
+    })
+    assert.deepEqual(ai.actionDone('group', ['Alpha'], { name: 'Research', created: true }), {
+      note: 'grouped 1 tab',
+      content: 'Put 1 tab in the new \u201cResearch\u201d folder.',
+    })
+    assert.equal(
+      ai.actionDone('group', ['Alpha', 'Beta'], { name: 'Research', created: false }).content,
+      'Put 2 tabs in the \u201cResearch\u201d folder.',
+    )
+  })
+
+  test('a declined action tells the model whether to try again', () => {
+    assert.deepEqual(ai.declinedOutcome('cancel'), {
+      note: 'cancelled',
+      content: 'The user cancelled this action. Do not propose it again unless they ask.',
+    })
+    assert.deepEqual(ai.declinedOutcome('retry'), {
+      note: 'retry asked',
+      content:
+        'The user did not accept this action as proposed and wants another attempt. Check the tab ids or URLs against what they asked, then propose it again.',
+    })
+  })
+
+  test('a settled call with its own note uses it, as actions do', () => {
+    let turns = ai.appendToolSegments([turn(2, 'assistant', '', { streaming: true })], 2, [
+      toolSeg('close', [invocation('ab12')]),
+    ])
+    turns = ai.settleToolCall(turns, 2, 0, 0, true, 'Closed 2 tabs', 2, 'closed 2 tabs')
+    assert.deepEqual([turns[0].segments[0].status, turns[0].segments[0].note], ['ok', 'closed 2 tabs'])
+  })
+
+  test('the actions are described only when they can be offered', () => {
+    const [system] = ai.wireMessages([], 'Hi', null, false, true, true)
+    assert.match(system.content, /open_tabs, switch_tab, close_tabs and group_tabs/)
+    const [plain] = ai.wireMessages([], 'Hi', null, false, true)
+    assert.ok(!plain.content.includes('open_tabs'))
   })
 })

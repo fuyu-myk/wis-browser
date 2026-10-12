@@ -279,6 +279,10 @@ pub struct AiSettings {
     /// and bookmarks. Off by default.
     #[serde(default)]
     pub local_data: bool,
+    /// Let the model open, switch, close and group tabs, each approved by
+    /// the user. Needs `local_data`. Off by default.
+    #[serde(default)]
+    pub tab_actions: bool,
 }
 
 impl Default for AiSettings {
@@ -290,6 +294,7 @@ impl Default for AiSettings {
             show_reasoning: false,
             web_access: false,
             local_data: false,
+            tab_actions: false,
         }
     }
 }

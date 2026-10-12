@@ -8240,7 +8240,14 @@ body.motion-off .kb-ai-think-label.is-live {
   color: var(--text-primary);
 }
 .kb-ai-approval p { margin: 0; overflow-wrap: anywhere; }
-.kb-ai-approval q { font-weight: 600; }
+.kb-ai-approval-prompt { font-weight: 600; }
+.kb-ai-approval-items {
+  margin: 0;
+  padding-left: 16px;
+  max-height: 40vh;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
 .kb-ai-approval-actions { display: flex; justify-content: flex-end; gap: 6px; }
 .kb-ai-btn.is-primary {
   border-color: transparent;

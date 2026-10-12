@@ -57,6 +57,8 @@ interface AiPanelProps {
   webAccess: boolean
   /** Whether the tab, history and bookmark tools can be offered. */
   localData: boolean
+  /** Whether the tab actions can be offered. */
+  tabActions: boolean
   onClose: () => void
   onOpenSettings: () => void
 }
@@ -77,10 +79,11 @@ export function AiPanel({
   model,
   webAccess,
   localData,
+  tabActions,
   onClose,
   onOpenSettings,
 }: AiPanelProps) {
-  const chat = useAiChat(workspaceId, webAccess, localData)
+  const chat = useAiChat(workspaceId, webAccess, localData, tabActions)
   const [draft, setDraft] = useState('')
   const [attachPage, setAttachPage] = useState(false)
   const { width, startResize } = useDockWidth(
@@ -306,22 +309,34 @@ export function AiPanel({
       </div>
 
       <div className="kb-ai-composer">
-        {chat.searchApproval !== null && (
-          <div className="kb-ai-approval" role="group" aria-label="Approve web search">
-            <p aria-live="polite">
-              This answer has read your tabs, history or bookmarks. Search the web for{' '}
-              <q>{chat.searchApproval}</q>? The query goes to DuckDuckGo.
+        {chat.approval !== null && (
+          <div className="kb-ai-approval" role="group" aria-label={chat.approval.prompt}>
+            <p className="kb-ai-approval-prompt" aria-live="polite">
+              {chat.approval.prompt}
             </p>
+            {chat.approval.items.length > 0 && (
+              <ul className="kb-ai-approval-items">
+                {chat.approval.items.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ul>
+            )}
+            {chat.approval.note !== '' && <p>{chat.approval.note}</p>}
             <div className="kb-ai-approval-actions">
-              <button type="button" className="kb-ai-btn" onClick={() => chat.approveSearch(false)}>
-                Skip
+              <button type="button" className="kb-ai-btn" onClick={() => chat.answerApproval('cancel')}>
+                {chat.approval.cancelLabel}
               </button>
+              {chat.approval.retry && (
+                <button type="button" className="kb-ai-btn" onClick={() => chat.answerApproval('retry')}>
+                  Retry
+                </button>
+              )}
               <button
                 type="button"
                 className="kb-ai-btn is-primary"
-                onClick={() => chat.approveSearch(true)}
+                onClick={() => chat.answerApproval('accept')}
               >
-                Search
+                {chat.approval.confirmLabel}
               </button>
             </div>
           </div>
@@ -540,10 +555,14 @@ function ThinkRow({
 const TOOL_LABELS: Record<ToolSegment['tool'], string> = {
   search: 'web search',
   fetch: 'web fetch',
-  tabs: 'open tabs',
+  tabs: 'list tabs',
   read: 'read tab',
   history: 'history search',
   bookmarks: 'bookmark search',
+  open: 'open tabs',
+  switch: 'switch tab',
+  close: 'close tabs',
+  group: 'group tabs',
 }
 
 function ToolRow({

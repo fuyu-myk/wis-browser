@@ -20,7 +20,7 @@ const MAX_HITS: usize = 20;
 const HISTORY_SCAN: u32 = 400;
 const SHORT_ID_LEN: usize = 8;
 const MAX_QUERY_CHARS: usize = 200;
-const MAX_TITLE_CHARS: usize = 200;
+pub(crate) const MAX_TITLE_CHARS: usize = 200;
 const MAX_URL_CHARS: usize = 500;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -53,19 +53,20 @@ pub struct AiTabRead {
     pub id: TabId,
     pub title: String,
     pub url: String,
+    pub pinned: bool,
 }
 
 fn short_id(id: TabId) -> String {
     id.as_uuid().simple().to_string()[..SHORT_ID_LEN].to_string()
 }
 
-fn clip(text: &str, max: usize) -> String {
+pub(crate) fn clip(text: &str, max: usize) -> String {
     text.chars().take(max).collect()
 }
 
 /// A URL without its query, fragment or credentials, which can carry login
 /// and reset tokens, clipped for the model.
-fn redact_url(raw: &str) -> String {
+pub(crate) fn redact_url(raw: &str) -> String {
     let redacted = match url::Url::parse(raw) {
         Ok(mut url) => {
             url.set_query(None);
@@ -89,7 +90,7 @@ fn contains_all(text: &str, words: &[String]) -> bool {
 }
 
 /// The one tab whose id starts with `wanted` (hyphens and case ignored).
-fn resolve_tab<'a>(tabs: &[&'a Tab], wanted: &str) -> Option<&'a Tab> {
+pub(crate) fn resolve_tab<'a>(tabs: &[&'a Tab], wanted: &str) -> Option<&'a Tab> {
     let wanted = wanted.trim().to_lowercase().replace('-', "");
     if wanted.is_empty() {
         return None;
@@ -281,6 +282,7 @@ pub async fn ai_resolve_tab(
         })?;
         AiTabRead {
             id: found.id,
+            pinned: found.pinned,
             title: clip(&found.title, MAX_TITLE_CHARS),
             url: redact_url(found.url.as_str()),
         }

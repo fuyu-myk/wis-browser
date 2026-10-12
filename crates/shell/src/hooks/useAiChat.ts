@@ -3,7 +3,7 @@ import { Channel } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
-import type { AiToolCall, StreamEvent, TabId, WorkspaceId } from '@/bindings/types'
+import type { AiTabRead, AiToolCall, StreamEvent, TabId, WorkspaceId } from '@/bindings/types'
 import {
   ANSWER_NOW_DIRECTIVE,
   appendDelta,
@@ -18,8 +18,13 @@ import {
   hostOf,
   MAX_TOOL_ROUNDS,
   planToolCalls,
+  actionApproval,
+  actionDone,
+  declinedOutcome,
   previewToolResponse,
   readsLocalData,
+  searchApproval,
+  tabName,
   roundSegments,
   SEARCH_DECLINED,
   searchToolContent,
@@ -30,7 +35,10 @@ import {
   TOOL_BUDGET_DIRECTIVE,
   wireMessages,
   type AiTurn,
+  type ApprovalAnswer,
+  type ApprovalRequest,
   type PlannedAction,
+  type TabAction,
   type SharedPage,
   type WireMessage,
 } from '@/lib/ai'
@@ -80,9 +88,9 @@ export interface AiChat {
   answerNow: () => void
   stop: () => void
   reset: () => void
-  /** The web search awaiting the user's approval, if any. */
-  searchApproval: string | null
-  approveSearch: (allowed: boolean) => void
+  /** The tool call awaiting the user's answer, if any. */
+  approval: ApprovalRequest | null
+  answerApproval: (answer: ApprovalAnswer) => void
 }
 
 interface ToolOutcome {
@@ -101,8 +109,8 @@ interface ToolContext {
   /** URLs a fetch may load; search results add to it. */
   allowedUrls: Set<string>
   readTab: (source: AiPageSource) => Promise<SharedPage>
-  /** Asks the user before a web search, once the turn has read local data. */
-  approveSearch: (query: string) => Promise<boolean>
+  /** Asks the user before a tab action, or a web search once the turn has read local data. */
+  confirm: (request: ApprovalRequest) => Promise<ApprovalAnswer>
   /** Set once the turn has read tabs, history or bookmarks. */
   readLocal: boolean
 }
@@ -115,7 +123,23 @@ const FAILED_AS: Record<Exclude<PlannedAction['kind'], 'reject'>, string> = {
   read: 'read_tab',
   history: 'search_history',
   bookmarks: 'search_bookmarks',
+  open: 'open_tabs',
+  switch: 'switch_tab',
+  close: 'close_tabs',
+  group: 'group_tabs',
 }
+
+const TAB_ACTIONS: ReadonlySet<PlannedAction['kind']> = new Set(['open', 'switch', 'close', 'group'])
+
+const isTabAction = (action: PlannedAction): action is TabAction => TAB_ACTIONS.has(action.kind)
+
+const finished = (done: { note: string; content: string }, resultCount?: number): ToolOutcome => ({
+  ok: true,
+  display: done.content,
+  content: done.content,
+  note: done.note,
+  resultCount,
+})
 
 const succeeded = (content: string, resultCount?: number): ToolOutcome => ({
   ok: true,
@@ -153,7 +177,77 @@ async function executeAction(
       const hits = await commands.aiSearchBookmarks(action.query)
       return succeeded(bookmarksToolContent(hits), hits.length)
     }
+    case 'open': {
+      const opened = await commands.aiOpenTabs(action.urls)
+      return finished(actionDone('open', opened), opened.length)
+    }
+    case 'switch': {
+      const tab = await commands.aiSwitchTab(action.tab)
+      return finished(actionDone('switch', [tabName(tab)]))
+    }
+    case 'close': {
+      const closed = await commands.aiCloseTabs(action.tabs)
+      return finished(actionDone('close', closed.map(tabName)), closed.length)
+    }
+    case 'group': {
+      const grouped = await commands.aiGroupTabs(action.tabs, action.folder)
+      const done = actionDone('group', grouped.tabs.map(tabName), {
+        name: grouped.folder,
+        created: grouped.created,
+      })
+      return finished(done, grouped.tabs.length)
+    }
   }
+}
+
+type Approved = { action: Exclude<PlannedAction, { kind: 'reject' }> } | { declined: ToolOutcome }
+
+const CANCELLED = declinedOutcome('cancel')
+
+/** A call the user turned down, or that a stop left behind, settled as a plain row. */
+const declined = ({ note, content }: { note: string; content: string }): Approved => ({
+  declined: { ok: true, display: content, content, note },
+})
+
+/** The action bound to what its approval card showed: full tab ids, parsed URLs. */
+function boundTo(action: TabAction, tabs: readonly AiTabRead[], urls: readonly string[]): TabAction {
+  const ids = tabs.map((t) => t.id)
+  switch (action.kind) {
+    case 'open':
+      return { ...action, urls: [...urls] }
+    case 'switch':
+      return { ...action, tab: ids[0] ?? action.tab }
+    case 'close':
+    case 'group':
+      return { ...action, tabs: ids }
+  }
+}
+
+/**
+ * Ask the user first where a call needs it: every tab action, and a web search
+ * once the turn has read local data. An accepted tab action runs on exactly
+ * what its card showed. `live` turns false once a stop, Answer now or
+ * workspace change abandons the turn, so no card outlives it.
+ */
+async function askFirst(
+  action: Exclude<PlannedAction, { kind: 'reject' }>,
+  ctx: ToolContext,
+  live: () => boolean,
+): Promise<Approved> {
+  if (action.kind === 'search') {
+    if (!ctx.readLocal || (await ctx.confirm(searchApproval(action.query))) === 'accept') {
+      return { action }
+    }
+    return declined({ note: 'search declined', content: SEARCH_DECLINED })
+  }
+  if (!isTabAction(action)) return { action }
+  const named = action.kind === 'switch' ? [action.tab] : action.kind === 'open' ? [] : action.tabs
+  const urls = action.kind === 'open' ? await commands.aiPreviewUrls(action.urls) : []
+  const tabs = named.length > 0 ? await commands.aiPreviewTabs(named) : []
+  if (!live()) return declined(CANCELLED)
+  const answer = await ctx.confirm(actionApproval(action, { tabs, urls }, ctx.readLocal))
+  if (answer !== 'accept') return declined(declinedOutcome(answer))
+  return live() ? { action: boundTo(action, tabs, urls) } : declined(CANCELLED)
 }
 
 /**
@@ -162,13 +256,16 @@ async function executeAction(
  * read local data, a web search waits for the user, since its query is the
  * one place that data could leave for a third party.
  */
-async function runToolAction(action: PlannedAction, ctx: ToolContext): Promise<ToolOutcome> {
+async function runToolAction(
+  action: PlannedAction,
+  ctx: ToolContext,
+  live: () => boolean,
+): Promise<ToolOutcome> {
   if (action.kind === 'reject') return { ok: false, display: action.reason, content: action.reason }
-  if (action.kind === 'search' && ctx.readLocal && !(await ctx.approveSearch(action.query))) {
-    return { ok: false, display: SEARCH_DECLINED, content: SEARCH_DECLINED, note: 'search declined' }
-  }
   try {
-    const outcome = await executeAction(action, ctx)
+    const approved = await askFirst(action, ctx, live)
+    if ('declined' in approved) return approved.declined
+    const outcome = await executeAction(approved.action, ctx)
     if (readsLocalData(action.kind)) ctx.readLocal = true
     return outcome
   } catch (error: unknown) {
@@ -198,7 +295,7 @@ function errorMessage(error: unknown): string {
  *
  * Streaming deltas are coalesced into one state update per frame.
  *
- * `webEnabled` and `localEnabled` mark that the web or local-data tools can
+ * `webEnabled`, `localEnabled` and `actionsEnabled` mark which tools can
  * actually be offered for the current settings; they steer the system prompt
  * and nothing else.
  */
@@ -206,6 +303,7 @@ export function useAiChat(
   workspaceId: WorkspaceId | null,
   webEnabled: boolean,
   localEnabled: boolean,
+  actionsEnabled: boolean,
 ): AiChat {
   const [turns, setTurns] = useState<readonly AiTurn[]>([])
   const [phase, setPhase] = useState<AiPhase>('idle')
@@ -336,22 +434,22 @@ export function useAiChat(
     })
   }, [])
 
-  const approvalRef = useRef<((allowed: boolean) => void) | null>(null)
-  const [searchApproval, setSearchApproval] = useState<string | null>(null)
+  const approvalRef = useRef<((answer: ApprovalAnswer) => void) | null>(null)
+  const [approval, setApproval] = useState<ApprovalRequest | null>(null)
 
-  const approveSearch = useCallback((allowed: boolean) => {
+  const answerApproval = useCallback((answer: ApprovalAnswer) => {
     const resolve = approvalRef.current
     approvalRef.current = null
-    setSearchApproval(null)
-    resolve?.(allowed)
+    setApproval(null)
+    resolve?.(answer)
   }, [])
 
-  const askSearchApproval = useCallback(
-    (query: string) =>
-      new Promise<boolean>((resolve) => {
-        approvalRef.current?.(false)
+  const askApproval = useCallback(
+    (request: ApprovalRequest) =>
+      new Promise<ApprovalAnswer>((resolve) => {
+        approvalRef.current?.('cancel')
         approvalRef.current = resolve
-        setSearchApproval(query)
+        setApproval(request)
       }),
     [],
   )
@@ -359,7 +457,7 @@ export function useAiChat(
   /** Abandon whatever is in flight, upstream request included. */
   const abandonInFlight = useCallback(() => {
     genRef.current += 1
-    approveSearch(false)
+    answerApproval('cancel')
     abandonPageRead()
     restartRef.current = null
     const requestId = requestIdRef.current
@@ -367,12 +465,12 @@ export function useAiChat(
       requestIdRef.current = null
       void commands.aiCancel(requestId).catch(() => undefined)
     }
-  }, [abandonPageRead, approveSearch])
+  }, [abandonPageRead, answerApproval])
 
   const answerNow = useCallback(() => {
     const restart = restartRef.current
     if (restart === null) return
-    approveSearch(false)
+    answerApproval('cancel')
     const requestId = requestIdRef.current
     if (requestId !== null) {
       requestIdRef.current = null
@@ -380,7 +478,7 @@ export function useAiChat(
     }
     flushDeltas()
     restart(++genRef.current, true)
-  }, [flushDeltas, approveSearch])
+  }, [flushDeltas, answerApproval])
 
   const stop = useCallback(() => {
     abandonInFlight()
@@ -434,7 +532,14 @@ export function useAiChat(
       const requestWorkspaceId = workspaceId
 
       // The exchange's wire, grown in place by tool rounds.
-      let convo: WireMessage[] = wireMessages(history, asked, shared, webEnabled, localEnabled)
+      let convo: WireMessage[] = wireMessages(
+        history,
+        asked,
+        shared,
+        webEnabled,
+        localEnabled,
+        actionsEnabled,
+      )
       // Fetches are allowed only for URLs the user wrote or a search returned.
       const allowedUrls = new Set<string>(extractUrls(asked))
       for (const t of history) {
@@ -444,7 +549,7 @@ export function useAiChat(
       const toolContext: ToolContext = {
         allowedUrls,
         readTab: readPage,
-        approveSearch: askSearchApproval,
+        confirm: askApproval,
         readLocal: false,
       }
       const seenQueries = new Set<string>()
@@ -585,6 +690,7 @@ export function useAiChat(
           const { ok, display, content, resultCount, note } = await runToolAction(
             p.action,
             toolContext,
+            () => genRef.current === streamGen,
           )
           if (genRef.current !== streamGen) return
           setTurns((prev) =>
@@ -620,8 +726,17 @@ export function useAiChat(
 
       return true
     },
-    [workspaceId, webEnabled, localEnabled, readPage, askSearchApproval, flushDeltas, queueDelta],
+    [
+      workspaceId,
+      webEnabled,
+      localEnabled,
+      actionsEnabled,
+      readPage,
+      askApproval,
+      flushDeltas,
+      queueDelta,
+    ],
   )
 
-  return { turns, phase, notice, send, answerNow, stop, reset, searchApproval, approveSearch }
+  return { turns, phase, notice, send, answerNow, stop, reset, approval, answerApproval }
 }

@@ -86,6 +86,8 @@ pub struct ChatRequest {
     /// Offer the tools that read this workspace's tabs, history and
     /// bookmarks.
     pub local_tools: bool,
+    /// Offer the tab actions, each approved by the user before it runs.
+    pub action_tools: bool,
     pub thinking: ThinkingMode,
 }
 
@@ -211,6 +213,46 @@ fn local_tool_definitions() -> Vec<serde_json::Value> {
     ]
 }
 
+fn tab_list(description: &str) -> serde_json::Value {
+    serde_json::json!({
+        "type": "array",
+        "items": { "type": "string" },
+        "description": description,
+    })
+}
+
+/// Tab actions. The user approves each call before it runs, and the native
+/// side re-checks the setting and the workspace.
+fn action_tool_definitions() -> Vec<serde_json::Value> {
+    vec![
+        function_tool(
+            "open_tabs",
+            "Open web pages as new tabs in this workspace. The user approves first.",
+            serde_json::json!({ "urls": tab_list("The http(s) URLs to open, at most 5.") }),
+        ),
+        function_tool(
+            "switch_tab",
+            "Bring one open tab to the front. Use an id from list_tabs. The user approves first.",
+            serde_json::json!({
+                "tab": { "type": "string", "description": "The tab id from list_tabs." }
+            }),
+        ),
+        function_tool(
+            "close_tabs",
+            "Close open tabs. Use ids from list_tabs. The user approves first, and closed tabs can be reopened.",
+            serde_json::json!({ "tabs": tab_list("Tab ids from list_tabs.") }),
+        ),
+        function_tool(
+            "group_tabs",
+            "Put open tabs into a tab folder, creating it when no folder has that name. Use ids from list_tabs. The user approves first.",
+            serde_json::json!({
+                "tabs": tab_list("Tab ids from list_tabs."),
+                "folder": { "type": "string", "description": "The folder's name." }
+            }),
+        ),
+    ]
+}
+
 /// Build the JSON request body for `provider`. `stream` is always set; the
 /// system prompt (the first `System` message, if any) is placed where each
 /// provider expects it. Extra `System` messages after the first are folded
@@ -320,6 +362,9 @@ pub fn chat_body(provider: AiProvider, req: &ChatRequest) -> serde_json::Value {
                 }
                 if req.local_tools {
                     tools.extend(local_tool_definitions());
+                }
+                if req.action_tools {
+                    tools.extend(action_tool_definitions());
                 }
                 if !tools.is_empty() {
                     body["tools"] = serde_json::Value::Array(tools);
@@ -821,6 +866,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             max_tokens: 4096,
             web_tools: true,
             local_tools: false,
+            action_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -848,6 +894,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             max_tokens: 4096,
             web_tools: false,
             local_tools: true,
+            action_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("what did I read about rust")],
         };
@@ -890,6 +937,38 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
     }
 
     #[test]
+    fn tab_actions_are_declared_after_the_local_tools() {
+        let mut req = ChatRequest {
+            model: "qwen3.5:9b".into(),
+            max_tokens: 4096,
+            web_tools: false,
+            local_tools: true,
+            action_tools: true,
+            thinking: ThinkingMode::ProviderDefault,
+            messages: vec![ChatMessage::user("close my youtube tabs")],
+        };
+        let body = chat_body(AiProvider::OpenAiCompatible, &req);
+        let names: Vec<&str> = body["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["function"]["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names[4..],
+            ["open_tabs", "switch_tab", "close_tabs", "group_tabs"]
+        );
+        let close = &body["tools"][6]["function"]["parameters"];
+        assert_eq!(close["properties"]["tabs"]["type"], "array");
+        assert_eq!(close["required"], serde_json::json!(["tabs"]));
+
+        req.thinking = ThinkingMode::Disabled;
+        assert!(chat_body(AiProvider::OpenAiCompatible, &req)
+            .get("tools")
+            .is_none());
+    }
+
+    #[test]
     fn tool_turns_serialize_for_openai_and_are_dropped_for_anthropic() {
         let messages = vec![
             ChatMessage::user("what is new in rust"),
@@ -915,6 +994,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             max_tokens: 4096,
             web_tools: true,
             local_tools: false,
+            action_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages,
         };
@@ -1068,6 +1148,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             max_tokens: 1024,
             web_tools: false,
             local_tools: false,
+            action_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![
                 ChatMessage {
@@ -1095,6 +1176,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             max_tokens: 1024,
             web_tools: false,
             local_tools: false,
+            action_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1113,6 +1195,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             max_tokens: 2048,
             web_tools: false,
             local_tools: false,
+            action_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1127,6 +1210,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             max_tokens: 16000,
             web_tools: false,
             local_tools: false,
+            action_tools: false,
             thinking: ThinkingMode::Summarized,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1146,6 +1230,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             max_tokens: 4096,
             web_tools: false,
             local_tools: false,
+            action_tools: false,
             thinking: ThinkingMode::Disabled,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1161,6 +1246,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             max_tokens: 4096,
             web_tools: false,
             local_tools: false,
+            action_tools: false,
             thinking: ThinkingMode::Disabled,
             messages: vec![
                 ChatMessage::user("first"),
@@ -1187,6 +1273,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             max_tokens: 16000,
             web_tools: false,
             local_tools: false,
+            action_tools: false,
             thinking: ThinkingMode::Summarized,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1204,6 +1291,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             max_tokens: 1024,
             web_tools: false,
             local_tools: false,
+            action_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![
                 ChatMessage {

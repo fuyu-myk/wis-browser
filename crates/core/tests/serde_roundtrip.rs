@@ -218,6 +218,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
             show_reasoning: true,
             web_access: true,
             local_data: true,
+            tab_actions: true,
         }),
     };
     let after: UserSettingsPatch = roundtrip(&patch);
@@ -313,7 +314,9 @@ fn ai_settings_without_local_data_keep_it_off() {
     let parsed: wis_core::AiSettings = serde_json::from_str(json).unwrap();
     assert!(parsed.web_access);
     assert!(!parsed.local_data);
+    assert!(!parsed.tab_actions);
     assert!(!wis_core::AiSettings::default().local_data);
+    assert!(!wis_core::AiSettings::default().tab_actions);
 }
 
 #[test]
