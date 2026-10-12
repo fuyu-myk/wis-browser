@@ -103,17 +103,26 @@ pub fn import(
     Ok(stats)
 }
 
+/// `text` as a LIKE pattern that matches it literally anywhere, with `ESCAPE '\'`.
+fn contains_pattern(text: &str) -> String {
+    let escaped = text
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    format!("%{escaped}%")
+}
+
 /// Newest-first history, filtered by a case-insensitive substring over
 /// url + title (empty matches all), optionally scoped to one workspace, and
 /// paginated.
 pub fn query_history(conn: &Connection, query: &HistoryQuery) -> StorageResult<Vec<HistoryEntry>> {
-    let pattern = format!("%{}%", query.search);
+    let pattern = contains_pattern(&query.search);
     let ws_filter: Option<String> = query.workspace_id.map(|w| w.as_uuid().to_string());
     let mut stmt = conn.prepare(
         r#"
         SELECT id, workspace_id, url, title, visited_at, visit_count
         FROM history
-        WHERE (url LIKE ?1 OR title LIKE ?1)
+        WHERE (url LIKE ?1 ESCAPE '\' OR title LIKE ?1 ESCAPE '\')
           AND (?2 IS NULL OR workspace_id = ?2)
         ORDER BY visited_at DESC
         LIMIT ?3 OFFSET ?4

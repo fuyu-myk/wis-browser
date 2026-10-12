@@ -174,6 +174,35 @@ fn search_filters_on_url_and_title_case_insensitively() {
 }
 
 #[test]
+fn search_treats_like_wildcards_as_plain_text() {
+    let s = store();
+    let ws = WorkspaceId::new();
+    s.record_visit(ws, "https://example.com/my_notes", "Notes")
+        .unwrap();
+    s.record_visit(ws, "https://example.com/myXnotes", "Other")
+        .unwrap();
+    s.record_visit(ws, "https://example.com/100%25", "Percent 100%")
+        .unwrap();
+    s.record_visit(ws, "https://example.com/1000", "Thousand")
+        .unwrap();
+
+    let search = |text: &str| -> Vec<String> {
+        s.query_history(&HistoryQuery {
+            search: text.into(),
+            workspace_id: Some(ws),
+            ..Default::default()
+        })
+        .unwrap()
+        .into_iter()
+        .map(|e| e.title)
+        .collect()
+    };
+    assert_eq!(search("my_notes"), ["Notes"]);
+    assert_eq!(search("100%"), ["Percent 100%"]);
+    assert_eq!(search("\\"), Vec::<String>::new());
+}
+
+#[test]
 fn limit_and_offset_paginate() {
     let s = store();
     let ws = WorkspaceId::new();
