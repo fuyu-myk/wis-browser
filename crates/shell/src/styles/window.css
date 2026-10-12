@@ -7855,6 +7855,7 @@ body[data-close-btn="hidden"] .kb-topbar .h-tab .close { display: none; }
   background: rgba(255, 255, 255, 0.10);
   border-color: rgba(255, 255, 255, 0.14);
 }
+.kb-ai-panel .kb-modal-backdrop { position: absolute; }
 @keyframes kb-ai-in {
   from { opacity: 0; transform: translateX(8px); }
   to { opacity: 1; transform: translateX(0); }
