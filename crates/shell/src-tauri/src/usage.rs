@@ -92,10 +92,11 @@ pub fn window_focused(app: &AppHandle, label: &str, focused: bool) {
 /// Drops held, pending and stored usage a clear covers. Holding the flush
 /// lock keeps an in-flight write from landing after the clear.
 pub async fn clear(
-    state: &AppState,
+    app: &AppHandle,
     workspace_id: Option<WorkspaceId>,
     from: Option<(NaiveDate, u8)>,
 ) -> WisResult<()> {
+    let state = app.state::<AppState>();
     let _io = state.usage_io.lock().await;
     state
         .usage
@@ -110,7 +111,10 @@ pub async fn clear(
         })?
         .map_err(|err| WisError::PersistenceFailed {
             reason: err.to_string(),
-        })
+        })?;
+
+    let _ = app.emit(USAGE_CHANGED_EVENT, ());
+    Ok(())
 }
 
 /// Synchronous, for app exit. A flush already writing covers the rest.

@@ -22,6 +22,7 @@ pub async fn delete_history(state: State<'_, AppState>, ids: Vec<i64>) -> WisRes
 
 #[tauri::command]
 pub async fn clear_history(
+    app: AppHandle,
     state: State<'_, AppState>,
     workspace_id: Option<WorkspaceId>,
     since_unix: Option<i64>,
@@ -38,7 +39,7 @@ pub async fn clear_history(
         let local = instant.with_timezone(&chrono::Local);
         (local.date_naive(), chrono::Timelike::hour(&local) as u8)
     });
-    crate::usage::clear(&state, workspace_id, usage_from).await?;
+    crate::usage::clear(&app, workspace_id, usage_from).await?;
     state.closed_tab_sessions.lock().await.clear();
 
     Ok(())
