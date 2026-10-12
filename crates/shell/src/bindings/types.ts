@@ -432,8 +432,10 @@ export interface AiSettings {
   base_url: string | null
   /** Ask Anthropic for summarized reasoning (billed as output tokens). */
   show_reasoning: boolean
-  /** Offer web search/fetch tools to OpenAI-compatible models (macOS only). */
+  /** Offer web search/fetch tools to OpenAI-compatible models. */
   web_access: boolean
+  /** Offer tools that read this workspace's tabs, history and bookmarks. */
+  local_data: boolean
 }
 
 /** One tool call requested by the model (mirror of `wis_core::ai::ToolCall`). */
@@ -449,6 +451,38 @@ export interface AiSearchResult {
   title: string
   url: string
   snippet: string
+}
+
+/** An open tab for the assistant, under a short id (mirror of `ai_local::AiTab`). */
+export interface AiTab {
+  id: string
+  title: string
+  url: string
+  active: boolean
+  pinned: boolean
+}
+
+/** A history match for the assistant (mirror of `ai_local::AiHistoryHit`). */
+export interface AiHistoryHit {
+  title: string
+  url: string
+  /** RFC 3339. */
+  last_visited: string
+  visits: number
+}
+
+/** A bookmark match for the assistant (mirror of `ai_local::AiBookmarkHit`). */
+export interface AiBookmarkHit {
+  title: string
+  url: string
+  folder: string | null
+}
+
+/** A readable tab resolved from the model's id (mirror of `ai_local::AiTabRead`). */
+export interface AiTabRead {
+  id: TabId
+  title: string
+  url: string
 }
 
 /** A fetched page for the assistant (mirror of `ai_fetch::AiFetchResponse`). */

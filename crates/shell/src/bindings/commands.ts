@@ -8,8 +8,12 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 import type { CaptureInfo } from '@/lib/vaultMenu'
 import type {
+  AiBookmarkHit,
   AiFetchResponse,
+  AiHistoryHit,
   AiSearchResult,
+  AiTab,
+  AiTabRead,
   AiToolCall,
   StreamEvent,
   AccentColor,
@@ -1101,6 +1105,26 @@ export const commands = {
   /** Fetch one public web page's readable text for the assistant. */
   async aiWebFetch(url: string): Promise<AiFetchResponse> {
     return invoke('ai_web_fetch', { url })
+  },
+
+  /** The calling window's workspace tabs, for the assistant. */
+  async aiListTabs(): Promise<AiTab[]> {
+    return invoke('ai_list_tabs')
+  },
+
+  /** Resolve a model's tab id within the window's workspace to a readable tab. */
+  async aiResolveTab(tab: string): Promise<AiTabRead> {
+    return invoke('ai_resolve_tab', { tab })
+  },
+
+  /** Search the window's workspace history for the assistant. */
+  async aiSearchHistory(query: string): Promise<AiHistoryHit[]> {
+    return invoke('ai_search_history', { query })
+  },
+
+  /** Search the window's workspace bookmarks for the assistant. */
+  async aiSearchBookmarks(query: string): Promise<AiBookmarkHit[]> {
+    return invoke('ai_search_bookmarks', { query })
   },
 
   /** Ask a tab to extract its readable text; arrives as a `wis-page-text` event. */

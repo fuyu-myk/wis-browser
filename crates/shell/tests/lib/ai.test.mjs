@@ -144,6 +144,14 @@ describe('prompt assembly', () => {
     const [system] = ai.wireMessages([], 'Hi', null, true)
     assert.match(system.content, /web_search/)
     assert.match(system.content, /web_fetch/)
+    assert.ok(!system.content.includes('list_tabs'))
+  })
+
+  test('the local tools are described only when they can be offered, as untrusted data', () => {
+    const [system] = ai.wireMessages([], 'Hi', null, false, true)
+    assert.match(system.content, /list_tabs, read_tab, search_history and search_bookmarks/)
+    assert.match(system.content, /same untrusted data/)
+    assert.ok(!system.content.includes('web_search'))
   })
 
   test('earlier exchanges are replayed as sent, and failed or empty answers drop with their question', () => {
@@ -416,7 +424,58 @@ describe('planning a tool round', () => {
   test('an unknown tool is rejected by name and filed by what it sounds like', () => {
     const planned = plan([toolCall('u1', 'DeepSearch', {}), toolCall('u2', 'browse', {})])
     assert.deepEqual(planned.map((p) => [p.tool, p.detail]), [['search', 'DeepSearch'], ['fetch', 'browse']])
-    assert.equal(planned[0].action.reason, 'Unknown tool "DeepSearch". Only web_search and web_fetch exist.')
+    assert.equal(planned[0].action.reason, 'Unknown tool "DeepSearch". Use only the tools you were given.')
+  })
+
+  test('the local tools plan with trimmed arguments, and an empty search lists the latest', () => {
+    const planned = plan([
+      toolCall('t1', 'list_tabs', {}),
+      toolCall('r1', 'read_tab', { tab: ' ab12cd34 ' }),
+      toolCall('h1', 'search_history', { query: '  rust  ' }),
+      toolCall('h2', 'search_history', {}),
+      toolCall('b1', 'search_bookmarks', { query: '' }),
+    ])
+    assert.deepEqual(
+      planned.map((p) => [p.tool, p.detail, p.action]),
+      [
+        ['tabs', 'open tabs', { kind: 'tabs' }],
+        ['read', 'ab12cd34', { kind: 'read', tab: 'ab12cd34' }],
+        ['history', 'rust', { kind: 'history', query: 'rust' }],
+        ['history', 'latest visits', { kind: 'history', query: '' }],
+        ['bookmarks', 'all bookmarks', { kind: 'bookmarks', query: '' }],
+      ],
+    )
+  })
+
+  test('calls past the per-round cap are rejected rather than run', () => {
+    assert.equal(ai.MAX_CALLS_PER_ROUND, 8)
+    const calls = Array.from({ length: 10 }, (_, i) =>
+      toolCall(`r${i}`, 'read_tab', { tab: `tab${i}` }),
+    )
+    const planned = plan(calls)
+    assert.equal(planned.length, calls.length)
+    assert.ok(planned.slice(0, ai.MAX_CALLS_PER_ROUND).every((p) => p.action.kind === 'read'))
+    for (const p of planned.slice(ai.MAX_CALLS_PER_ROUND)) {
+      assert.equal(p.tool, 'read')
+      assert.equal(p.rejectNote, 'too many calls')
+      assert.match(p.action.reason, /at most 8 tool calls per round/)
+    }
+  })
+
+  test('local tools with unusable arguments are rejected with the expected shape', () => {
+    const planned = plan([
+      toolCall('r1', 'read_tab', {}),
+      toolCall('h1', 'search_history', { query: 3 }),
+      toolCall('b1', 'search_bookmarks', 'not json'),
+    ])
+    assert.deepEqual(
+      planned.map((p) => [p.tool, p.detail, p.action.reason]),
+      [
+        ['read', 'invalid arguments', 'read_tab needs {"tab": "..."} as its arguments.'],
+        ['history', 'invalid arguments', 'search_history needs {"query": "..."} as its arguments.'],
+        ['bookmarks', 'invalid arguments', 'search_bookmarks needs {"query": "..."} as its arguments.'],
+      ],
+    )
   })
 })
 
@@ -444,6 +503,58 @@ describe('laying out a round', () => {
       { seg: 2, call: 0 },
       { seg: 1, call: 1 },
     ])
+  })
+
+  test('tab reads share one segment and the other local tools stand alone', () => {
+    const planned = ai.planToolCalls(
+      [
+        toolCall('t1', 'list_tabs', {}),
+        toolCall('r1', 'read_tab', { tab: 'aaaa' }),
+        toolCall('h1', 'search_history', { query: 'x' }),
+        toolCall('r2', 'read_tab', { tab: 'bbbb' }),
+      ],
+      new Set(),
+      new Set(),
+    )
+    const { segments } = ai.roundSegments(planned)
+    assert.deepEqual(
+      segments.map((s) => [s.tool, s.calls.length]),
+      [['tabs', 1], ['read', 2], ['history', 1]],
+    )
+  })
+
+  test('a call can settle with its own header, as a declined search does', () => {
+    let turns = ai.appendToolSegments([turn(2, 'assistant', '', { streaming: true })], 2, [
+      toolSeg('search', [invocation('rust')]),
+    ])
+    turns = ai.settleToolCall(turns, 2, 0, 0, false, 'declined', undefined, 'search declined')
+    assert.equal(turns[0].segments[0].note, 'search declined')
+    assert.equal(turns[0].segments[0].status, 'failed')
+  })
+
+  test('only the tab, history and bookmark tools count as reading local data', () => {
+    assert.deepEqual(
+      ['tabs', 'read', 'history', 'bookmarks', 'search', 'fetch', 'reject'].map(ai.readsLocalData),
+      [true, true, true, true, false, false, false],
+    )
+  })
+
+  test('settled local segments say what they found', () => {
+    const settle = (tool, outcomes, count) => {
+      const seg = toolSeg(tool, outcomes.map(() => invocation('x')))
+      let turns = ai.appendToolSegments([turn(2, 'assistant', '', { streaming: true })], 2, [seg])
+      outcomes.forEach((ok, i) => {
+        turns = ai.settleToolCall(turns, 2, 0, i, ok, 'r', count)
+      })
+      return turns[0].segments[0].note
+    }
+    assert.equal(settle('tabs', [true], 3), 'found 3 open tabs')
+    assert.equal(settle('history', [true], 1), 'history returned 1 match')
+    assert.equal(settle('bookmarks', [true], 2), 'bookmarks returned 2 matches')
+    assert.equal(settle('read', [true], undefined), 'read 1 tab')
+    assert.equal(settle('read', [true, false], undefined), 'read 1 of 2 tabs')
+    assert.equal(settle('read', [false, false], undefined), 'reading failed')
+    assert.equal(settle('history', [false], undefined), 'history search failed')
   })
 
   test('settling a round slot by slot, as the chat hook does, leaves every segment settled', () => {
@@ -480,6 +591,47 @@ describe("what the model reads back from a tool", () => {
       ]),
       '1. One\n   https://1.example\n   first\n2. Two\n   https://2.example\n   second',
     )
+  })
+
+  test('open tabs list their short id, marks and URL', () => {
+    assert.equal(ai.tabsToolContent([]), 'No open tabs.')
+    assert.equal(
+      ai.tabsToolContent([
+        { id: 'ab12cd34', title: 'One', url: 'https://1.example', active: true, pinned: true },
+        { id: 'ef56ab78', title: 'Two', url: 'https://2.example', active: false, pinned: false },
+      ]),
+      '[ab12cd34] One (active, pinned)\n   https://1.example\n[ef56ab78] Two\n   https://2.example',
+    )
+  })
+
+  test('history matches carry their local visit time and count', () => {
+    assert.equal(ai.historyToolContent([]), 'No matching history.')
+    const last = new Date(2026, 9, 8, 14, 5).toISOString()
+    assert.equal(
+      ai.historyToolContent([{ title: 'One', url: 'https://1.example', last_visited: last, visits: 3 }]),
+      '1. One\n   https://1.example\n   last visited 2026-10-08 14:05, 3 visits',
+    )
+    assert.match(
+      ai.historyToolContent([{ title: 'One', url: 'https://1.example', last_visited: last, visits: 1 }]),
+      /, 1 visit$/,
+    )
+  })
+
+  test('bookmark matches name their folder when filed', () => {
+    assert.equal(ai.bookmarksToolContent([]), 'No matching bookmarks.')
+    assert.equal(
+      ai.bookmarksToolContent([
+        { title: 'One', url: 'https://1.example', folder: 'Reading' },
+        { title: 'Two', url: 'https://2.example', folder: null },
+      ]),
+      '1. One\n   https://1.example\n   folder: Reading\n2. Two\n   https://2.example',
+    )
+  })
+
+  test('a read tab is its title and URL, then its text cut to the cap', () => {
+    const text = 'w'.repeat(ai.READ_TAB_CHARS + 10)
+    const content = ai.tabToolContent({ url: 'https://1.example', title: 'One', text })
+    assert.equal(content, `title: One\nurl: https://1.example\n\n${'w'.repeat(ai.READ_TAB_CHARS)}`)
   })
 
   test('a fetched page is its title and URL, then its text', () => {

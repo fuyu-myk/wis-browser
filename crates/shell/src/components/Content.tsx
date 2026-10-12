@@ -54,8 +54,9 @@ export function Content({
       ? 'left'
       : 'right'
 
-  const aiWebAccess =
-    state.settings.ai.web_access && state.settings.ai.provider === 'open_ai_compatible'
+  const aiToolsOffered = state.settings.ai.provider === 'open_ai_compatible'
+  const aiWebAccess = state.settings.ai.web_access && aiToolsOffered
+  const aiLocalData = state.settings.ai.local_data && aiToolsOffered
 
   // Kept mounted after the first open.
   const aiMountedRef = useRef(false)
@@ -84,6 +85,7 @@ export function Content({
           page={page}
           model={state.settings.ai.model}
           webAccess={aiWebAccess}
+          localData={aiLocalData}
           onClose={onCloseAi}
           onOpenSettings={onOpenSettings}
         />

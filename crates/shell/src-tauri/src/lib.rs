@@ -3,6 +3,7 @@
 
 mod ai;
 mod ai_fetch;
+mod ai_local;
 mod app_launch;
 mod audio;
 mod autoplay;
@@ -751,6 +752,10 @@ pub fn run() {
             ai::ai_assess_link,
             ai_fetch::ai_web_search,
             ai_fetch::ai_web_fetch,
+            ai_local::ai_list_tabs,
+            ai_local::ai_resolve_tab,
+            ai_local::ai_search_history,
+            ai_local::ai_search_bookmarks,
             page_text::request_page_text,
             permissions::resolve_media_permission,
             app_launch::app_launch_decide,

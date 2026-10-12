@@ -83,6 +83,9 @@ pub struct ChatRequest {
     pub max_tokens: u32,
     /// Offer the web tools (OpenAI-compatible arm only).
     pub web_tools: bool,
+    /// Offer the tools that read this workspace's tabs, history and
+    /// bookmarks.
+    pub local_tools: bool,
     pub thinking: ThinkingMode,
 }
 
@@ -150,6 +153,62 @@ fn web_tool_definitions() -> serde_json::Value {
             }
         }
     ])
+}
+
+fn function_tool(
+    name: &str,
+    description: &str,
+    properties: serde_json::Value,
+) -> serde_json::Value {
+    let required: Vec<&String> = properties
+        .as_object()
+        .map(|props| props.keys().collect())
+        .unwrap_or_default();
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": description,
+            "parameters": {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+            }
+        }
+    })
+}
+
+/// The tools that read the asking workspace's own data. Each one is checked
+/// again natively before it runs.
+fn local_tool_definitions() -> Vec<serde_json::Value> {
+    vec![
+        function_tool(
+            "list_tabs",
+            "List the tabs open in this workspace: an id, title and URL for each, with the active and pinned tabs marked.",
+            serde_json::json!({}),
+        ),
+        function_tool(
+            "read_tab",
+            "Read the main text of one open tab. Use an id from list_tabs.",
+            serde_json::json!({
+                "tab": { "type": "string", "description": "The tab id from list_tabs." }
+            }),
+        ),
+        function_tool(
+            "search_history",
+            "Search this workspace's browsing history by words in the title or URL. Returns the most recent matches with when each was last visited. An empty query returns the latest visits.",
+            serde_json::json!({
+                "query": { "type": "string", "description": "Words to look for." }
+            }),
+        ),
+        function_tool(
+            "search_bookmarks",
+            "Search this workspace's bookmarks by words in the title, URL or folder. An empty query lists bookmarks.",
+            serde_json::json!({
+                "query": { "type": "string", "description": "Words to look for." }
+            }),
+        ),
+    ]
 }
 
 /// Build the JSON request body for `provider`. `stream` is always set; the
@@ -249,8 +308,22 @@ pub fn chat_body(provider: AiProvider, req: &ChatRequest) -> serde_json::Value {
             });
 
             // Tools are never offered on an answer-now retry.
-            if req.web_tools && req.thinking != ThinkingMode::Disabled {
-                body["tools"] = web_tool_definitions();
+            if req.thinking != ThinkingMode::Disabled {
+                let mut tools = Vec::new();
+                if req.web_tools {
+                    tools.extend(
+                        web_tool_definitions()
+                            .as_array()
+                            .cloned()
+                            .unwrap_or_default(),
+                    );
+                }
+                if req.local_tools {
+                    tools.extend(local_tool_definitions());
+                }
+                if !tools.is_empty() {
+                    body["tools"] = serde_json::Value::Array(tools);
+                }
             }
 
             body
@@ -747,6 +820,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             model: "qwen3.5:9b".into(),
             max_tokens: 4096,
             web_tools: true,
+            local_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -765,6 +839,54 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
         req.web_tools = false;
         let body = chat_body(AiProvider::OpenAiCompatible, &req);
         assert!(body.get("tools").is_none());
+    }
+
+    #[test]
+    fn local_tools_are_declared_on_their_own_or_after_the_web_tools() {
+        let mut req = ChatRequest {
+            model: "qwen3.5:9b".into(),
+            max_tokens: 4096,
+            web_tools: false,
+            local_tools: true,
+            thinking: ThinkingMode::ProviderDefault,
+            messages: vec![ChatMessage::user("what did I read about rust")],
+        };
+        let names = |body: &serde_json::Value| -> Vec<String> {
+            body["tools"]
+                .as_array()
+                .map(|tools| {
+                    tools
+                        .iter()
+                        .map(|t| t["function"]["name"].as_str().unwrap().to_string())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+
+        let body = chat_body(AiProvider::OpenAiCompatible, &req);
+        assert_eq!(
+            names(&body),
+            [
+                "list_tabs",
+                "read_tab",
+                "search_history",
+                "search_bookmarks"
+            ]
+        );
+
+        req.web_tools = true;
+        let body = chat_body(AiProvider::OpenAiCompatible, &req);
+        assert_eq!(names(&body).len(), 6);
+        assert_eq!(names(&body)[0], "web_search");
+
+        req.thinking = ThinkingMode::Disabled;
+        assert!(chat_body(AiProvider::OpenAiCompatible, &req)
+            .get("tools")
+            .is_none());
+        req.thinking = ThinkingMode::ProviderDefault;
+        assert!(chat_body(AiProvider::Anthropic, &req)
+            .get("tools")
+            .is_none());
     }
 
     #[test]
@@ -792,6 +914,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             model: "qwen3.5:9b".into(),
             max_tokens: 4096,
             web_tools: true,
+            local_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages,
         };
@@ -944,6 +1067,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             model: "claude-x".into(),
             max_tokens: 1024,
             web_tools: false,
+            local_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![
                 ChatMessage {
@@ -970,6 +1094,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             model: "qwen3".into(),
             max_tokens: 1024,
             web_tools: false,
+            local_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -987,6 +1112,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             model: "claude-x".into(),
             max_tokens: 2048,
             web_tools: false,
+            local_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1000,6 +1126,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             model: "claude-opus-5".into(),
             max_tokens: 16000,
             web_tools: false,
+            local_tools: false,
             thinking: ThinkingMode::Summarized,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1018,6 +1145,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             model: "claude-opus-5".into(),
             max_tokens: 4096,
             web_tools: false,
+            local_tools: false,
             thinking: ThinkingMode::Disabled,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1032,6 +1160,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             model: "qwen3.5:9b".into(),
             max_tokens: 4096,
             web_tools: false,
+            local_tools: false,
             thinking: ThinkingMode::Disabled,
             messages: vec![
                 ChatMessage::user("first"),
@@ -1057,6 +1186,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             model: "qwen3".into(),
             max_tokens: 16000,
             web_tools: false,
+            local_tools: false,
             thinking: ThinkingMode::Summarized,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1073,6 +1203,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             model: "gpt-x".into(),
             max_tokens: 1024,
             web_tools: false,
+            local_tools: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![
                 ChatMessage {

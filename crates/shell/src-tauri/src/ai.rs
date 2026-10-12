@@ -222,7 +222,7 @@ pub async fn ai_chat(
         request_id: args.request_id.clone(),
     };
 
-    let (provider, model, base_url, show_reasoning, web_access) = {
+    let (provider, model, base_url, show_reasoning, web_access, local_data) = {
         let browser = state.browser.lock().await;
         let ai = &browser.settings.ai;
         (
@@ -231,6 +231,7 @@ pub async fn ai_chat(
             ai.base_url.clone(),
             ai.show_reasoning,
             ai.web_access,
+            ai.local_data,
         )
     };
     if model.trim().is_empty() {
@@ -259,6 +260,7 @@ pub async fn ai_chat(
         model,
         max_tokens,
         web_tools: web_access && provider == AiProvider::OpenAiCompatible && !args.no_tools,
+        local_tools: local_data && provider == AiProvider::OpenAiCompatible && !args.no_tools,
         thinking,
         messages: args
             .messages

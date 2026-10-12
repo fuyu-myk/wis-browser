@@ -275,6 +275,10 @@ pub struct AiSettings {
     /// Offer the model web search + page fetch tools. Off by default.
     #[serde(default)]
     pub web_access: bool,
+    /// Offer the model tools that read the asking workspace's tabs, history
+    /// and bookmarks. Off by default.
+    #[serde(default)]
+    pub local_data: bool,
 }
 
 impl Default for AiSettings {
@@ -285,6 +289,7 @@ impl Default for AiSettings {
             base_url: None,
             show_reasoning: false,
             web_access: false,
+            local_data: false,
         }
     }
 }

@@ -180,6 +180,22 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
       {ai.provider === 'open_ai_compatible' && (
         <div className="row">
           <div className="l">
+            <span>Read tabs, history and bookmarks</span>
+            <span>
+              Lets the model list this workspace's open tabs, read a tab's text, and search its
+              history and bookmarks. What it reads goes to your endpoint.
+            </span>
+          </div>
+          <Switch
+            checked={ai.local_data}
+            onChange={(local_data) => patchAi({ local_data })}
+            label="Read tabs, history and bookmarks"
+          />
+        </div>
+      )}
+      {ai.provider === 'open_ai_compatible' && (
+        <div className="row">
+          <div className="l">
             <span>Base URL</span>
             <span className={cx({ 'is-error': baseProblem !== null })}>
               {baseProblem ?? 'Setting one turns the assistant on. Blank uses OpenAI.'}

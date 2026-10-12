@@ -8,22 +8,29 @@ import {
   ANSWER_NOW_DIRECTIVE,
   appendDelta,
   appendToolSegments,
+  bookmarksToolContent,
   cancelRunningTools,
   closeThink,
   extractUrls,
   fetchToolContent,
   finalizeInterrupted,
+  historyToolContent,
   hostOf,
   MAX_TOOL_ROUNDS,
   planToolCalls,
   previewToolResponse,
+  readsLocalData,
   roundSegments,
+  SEARCH_DECLINED,
   searchToolContent,
   settleToolCall,
   settleTurn,
+  tabsToolContent,
+  tabToolContent,
   TOOL_BUDGET_DIRECTIVE,
   wireMessages,
   type AiTurn,
+  type PlannedAction,
   type SharedPage,
   type WireMessage,
 } from '@/lib/ai'
@@ -73,6 +80,101 @@ export interface AiChat {
   answerNow: () => void
   stop: () => void
   reset: () => void
+  /** The web search awaiting the user's approval, if any. */
+  searchApproval: string | null
+  approveSearch: (allowed: boolean) => void
+}
+
+interface ToolOutcome {
+  ok: boolean
+  /** What the segment's dropdown shows. */
+  display: string
+  /** What the model reads back. */
+  content: string
+  resultCount?: number
+  /** Header for the settled segment, overriding the usual one. */
+  note?: string
+}
+
+/** One turn's tool state, shared by its rounds. */
+interface ToolContext {
+  /** URLs a fetch may load; search results add to it. */
+  allowedUrls: Set<string>
+  readTab: (source: AiPageSource) => Promise<SharedPage>
+  /** Asks the user before a web search, once the turn has read local data. */
+  approveSearch: (query: string) => Promise<boolean>
+  /** Set once the turn has read tabs, history or bookmarks. */
+  readLocal: boolean
+}
+
+/** The tool name a failure is reported under, as the model knows it. */
+const FAILED_AS: Record<Exclude<PlannedAction['kind'], 'reject'>, string> = {
+  search: 'search',
+  fetch: 'fetch',
+  tabs: 'list_tabs',
+  read: 'read_tab',
+  history: 'search_history',
+  bookmarks: 'search_bookmarks',
+}
+
+const succeeded = (content: string, resultCount?: number): ToolOutcome => ({
+  ok: true,
+  display: content,
+  content,
+  resultCount,
+})
+
+async function executeAction(
+  action: Exclude<PlannedAction, { kind: 'reject' }>,
+  ctx: ToolContext,
+): Promise<ToolOutcome> {
+  switch (action.kind) {
+    case 'search': {
+      const results = await commands.aiWebSearch(action.query)
+      for (const r of results) ctx.allowedUrls.add(r.url)
+      return succeeded(searchToolContent(results), results.length)
+    }
+    case 'fetch':
+      return succeeded(fetchToolContent(await commands.aiWebFetch(action.url)))
+    case 'tabs': {
+      const tabs = await commands.aiListTabs()
+      return succeeded(tabsToolContent(tabs), tabs.length)
+    }
+    case 'read': {
+      const target = await commands.aiResolveTab(action.tab)
+      const page = await ctx.readTab(target)
+      return succeeded(tabToolContent({ ...page, url: target.url }))
+    }
+    case 'history': {
+      const hits = await commands.aiSearchHistory(action.query)
+      return succeeded(historyToolContent(hits), hits.length)
+    }
+    case 'bookmarks': {
+      const hits = await commands.aiSearchBookmarks(action.query)
+      return succeeded(bookmarksToolContent(hits), hits.length)
+    }
+  }
+}
+
+/**
+ * Run one vetted tool call. Every native command re-checks its own setting,
+ * so a call the model was never offered still fails safe. Once the turn has
+ * read local data, a web search waits for the user, since its query is the
+ * one place that data could leave for a third party.
+ */
+async function runToolAction(action: PlannedAction, ctx: ToolContext): Promise<ToolOutcome> {
+  if (action.kind === 'reject') return { ok: false, display: action.reason, content: action.reason }
+  if (action.kind === 'search' && ctx.readLocal && !(await ctx.approveSearch(action.query))) {
+    return { ok: false, display: SEARCH_DECLINED, content: SEARCH_DECLINED, note: 'search declined' }
+  }
+  try {
+    const outcome = await executeAction(action, ctx)
+    if (readsLocalData(action.kind)) ctx.readLocal = true
+    return outcome
+  } catch (error: unknown) {
+    const display = errorMessage(error)
+    return { ok: false, display, content: `${FAILED_AS[action.kind]} failed: ${display}` }
+  }
 }
 
 function errorMessage(error: unknown): string {
@@ -96,10 +198,15 @@ function errorMessage(error: unknown): string {
  *
  * Streaming deltas are coalesced into one state update per frame.
  *
- * `webEnabled` marks that web tools can actually be offered for the current
- * settings and platform; it steers the system prompt and nothing else.
+ * `webEnabled` and `localEnabled` mark that the web or local-data tools can
+ * actually be offered for the current settings; they steer the system prompt
+ * and nothing else.
  */
-export function useAiChat(workspaceId: WorkspaceId | null, webEnabled: boolean): AiChat {
+export function useAiChat(
+  workspaceId: WorkspaceId | null,
+  webEnabled: boolean,
+  localEnabled: boolean,
+): AiChat {
   const [turns, setTurns] = useState<readonly AiTurn[]>([])
   const [phase, setPhase] = useState<AiPhase>('idle')
   const [notice, setNotice] = useState<string | null>(null)
@@ -229,9 +336,30 @@ export function useAiChat(workspaceId: WorkspaceId | null, webEnabled: boolean):
     })
   }, [])
 
+  const approvalRef = useRef<((allowed: boolean) => void) | null>(null)
+  const [searchApproval, setSearchApproval] = useState<string | null>(null)
+
+  const approveSearch = useCallback((allowed: boolean) => {
+    const resolve = approvalRef.current
+    approvalRef.current = null
+    setSearchApproval(null)
+    resolve?.(allowed)
+  }, [])
+
+  const askSearchApproval = useCallback(
+    (query: string) =>
+      new Promise<boolean>((resolve) => {
+        approvalRef.current?.(false)
+        approvalRef.current = resolve
+        setSearchApproval(query)
+      }),
+    [],
+  )
+
   /** Abandon whatever is in flight, upstream request included. */
   const abandonInFlight = useCallback(() => {
     genRef.current += 1
+    approveSearch(false)
     abandonPageRead()
     restartRef.current = null
     const requestId = requestIdRef.current
@@ -239,11 +367,12 @@ export function useAiChat(workspaceId: WorkspaceId | null, webEnabled: boolean):
       requestIdRef.current = null
       void commands.aiCancel(requestId).catch(() => undefined)
     }
-  }, [abandonPageRead])
+  }, [abandonPageRead, approveSearch])
 
   const answerNow = useCallback(() => {
     const restart = restartRef.current
     if (restart === null) return
+    approveSearch(false)
     const requestId = requestIdRef.current
     if (requestId !== null) {
       requestIdRef.current = null
@@ -251,7 +380,7 @@ export function useAiChat(workspaceId: WorkspaceId | null, webEnabled: boolean):
     }
     flushDeltas()
     restart(++genRef.current, true)
-  }, [flushDeltas])
+  }, [flushDeltas, approveSearch])
 
   const stop = useCallback(() => {
     abandonInFlight()
@@ -305,12 +434,18 @@ export function useAiChat(workspaceId: WorkspaceId | null, webEnabled: boolean):
       const requestWorkspaceId = workspaceId
 
       // The exchange's wire, grown in place by tool rounds.
-      let convo: WireMessage[] = wireMessages(history, asked, shared, webEnabled)
+      let convo: WireMessage[] = wireMessages(history, asked, shared, webEnabled, localEnabled)
       // Fetches are allowed only for URLs the user wrote or a search returned.
       const allowedUrls = new Set<string>(extractUrls(asked))
       for (const t of history) {
         if (t.role !== 'user') continue
         for (const u of extractUrls(t.content)) allowedUrls.add(u)
+      }
+      const toolContext: ToolContext = {
+        allowedUrls,
+        readTab: readPage,
+        approveSearch: askSearchApproval,
+        readLocal: false,
       }
       const seenQueries = new Set<string>()
       let rounds = 0
@@ -447,36 +582,10 @@ export function useAiChat(workspaceId: WorkspaceId | null, webEnabled: boolean):
           if (genRef.current !== streamGen) return
           const p = planned[i]
           const slot = round.slots[i]
-          let ok = false
-          let display = ''
-          let content = ''
-          let resultCount: number | undefined
-          if (p.action.kind === 'reject') {
-            content = p.action.reason
-            display = p.action.reason
-          } else if (p.action.kind === 'search') {
-            try {
-              const results = await commands.aiWebSearch(p.action.query)
-              for (const r of results) allowedUrls.add(r.url)
-              ok = true
-              resultCount = results.length
-              content = searchToolContent(results)
-              display = content
-            } catch (error: unknown) {
-              display = errorMessage(error)
-              content = `search failed: ${display}`
-            }
-          } else {
-            try {
-              const fetched = await commands.aiWebFetch(p.action.url)
-              ok = true
-              content = fetchToolContent(fetched)
-              display = content
-            } catch (error: unknown) {
-              display = errorMessage(error)
-              content = `fetch failed: ${display}`
-            }
-          }
+          const { ok, display, content, resultCount, note } = await runToolAction(
+            p.action,
+            toolContext,
+          )
           if (genRef.current !== streamGen) return
           setTurns((prev) =>
             settleToolCall(
@@ -487,6 +596,7 @@ export function useAiChat(workspaceId: WorkspaceId | null, webEnabled: boolean):
               ok,
               previewToolResponse(display),
               resultCount,
+              note,
             ),
           )
           toolMessages.push({ role: 'tool', content, tool_call_id: p.callId })
@@ -510,8 +620,8 @@ export function useAiChat(workspaceId: WorkspaceId | null, webEnabled: boolean):
 
       return true
     },
-    [workspaceId, webEnabled, readPage, flushDeltas, queueDelta],
+    [workspaceId, webEnabled, localEnabled, readPage, askSearchApproval, flushDeltas, queueDelta],
   )
 
-  return { turns, phase, notice, send, answerNow, stop, reset }
+  return { turns, phase, notice, send, answerNow, stop, reset, searchApproval, approveSearch }
 }

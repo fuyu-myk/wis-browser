@@ -217,6 +217,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
             base_url: Some("http://localhost:11434/v1".into()),
             show_reasoning: true,
             web_access: true,
+            local_data: true,
         }),
     };
     let after: UserSettingsPatch = roundtrip(&patch);
@@ -304,6 +305,15 @@ fn user_settings_without_week_start_deserialises_to_auto() {
     }"#;
     let parsed: UserSettings = serde_json::from_str(json).unwrap();
     assert_eq!(parsed.week_start, wis_core::usage::WeekStart::Auto);
+}
+
+#[test]
+fn ai_settings_without_local_data_keep_it_off() {
+    let json = r#"{ "provider": "open_ai_compatible", "model": "qwen", "web_access": true }"#;
+    let parsed: wis_core::AiSettings = serde_json::from_str(json).unwrap();
+    assert!(parsed.web_access);
+    assert!(!parsed.local_data);
+    assert!(!wis_core::AiSettings::default().local_data);
 }
 
 #[test]

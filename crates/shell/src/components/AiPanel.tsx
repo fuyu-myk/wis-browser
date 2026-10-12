@@ -55,6 +55,8 @@ interface AiPanelProps {
   model: string
   /** Whether web tools can be offered for the current settings and platform. */
   webAccess: boolean
+  /** Whether the tab, history and bookmark tools can be offered. */
+  localData: boolean
   onClose: () => void
   onOpenSettings: () => void
 }
@@ -63,7 +65,8 @@ interface AiPanelProps {
  * The docked assistant. It reserves chrome width rather than floating;
  * shrinking the content host is what makes the page reflow beside it.
  *
- * Page text only ever leaves the device when the user attaches it to a send.
+ * Page text only leaves the device when the user attaches it to a send, or
+ * when local-data tools are on and the model reads a tab.
  */
 export function AiPanel({
   open,
@@ -73,10 +76,11 @@ export function AiPanel({
   page,
   model,
   webAccess,
+  localData,
   onClose,
   onOpenSettings,
 }: AiPanelProps) {
-  const chat = useAiChat(workspaceId, webAccess)
+  const chat = useAiChat(workspaceId, webAccess, localData)
   const [draft, setDraft] = useState('')
   const [attachPage, setAttachPage] = useState(false)
   const { width, startResize } = useDockWidth(
@@ -302,6 +306,26 @@ export function AiPanel({
       </div>
 
       <div className="kb-ai-composer">
+        {chat.searchApproval !== null && (
+          <div className="kb-ai-approval" role="group" aria-label="Approve web search">
+            <p aria-live="polite">
+              This answer has read your tabs, history or bookmarks. Search the web for{' '}
+              <q>{chat.searchApproval}</q>? The query goes to DuckDuckGo.
+            </p>
+            <div className="kb-ai-approval-actions">
+              <button type="button" className="kb-ai-btn" onClick={() => chat.approveSearch(false)}>
+                Skip
+              </button>
+              <button
+                type="button"
+                className="kb-ai-btn is-primary"
+                onClick={() => chat.approveSearch(true)}
+              >
+                Search
+              </button>
+            </div>
+          </div>
+        )}
         {chat.notice !== null && <div className="kb-ai-notice">{chat.notice}</div>}
         {page !== null && (
           <button
@@ -513,6 +537,15 @@ function ThinkRow({
   )
 }
 
+const TOOL_LABELS: Record<ToolSegment['tool'], string> = {
+  search: 'web search',
+  fetch: 'web fetch',
+  tabs: 'open tabs',
+  read: 'read tab',
+  history: 'history search',
+  bookmarks: 'bookmark search',
+}
+
 function ToolRow({
   seg,
   open,
@@ -525,8 +558,7 @@ function ToolRow({
   answerNow: (() => void) | null
 }) {
   const running = seg.status === 'running'
-  const label =
-    seg.note ?? `using tool: ${seg.tool === 'search' ? 'web search' : 'web fetch'}`
+  const label = seg.note ?? `using tool: ${TOOL_LABELS[seg.tool]}`
 
   return (
     <div className="kb-ai-think">
