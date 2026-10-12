@@ -34,6 +34,8 @@ pub async fn clear_history(
         storage.clear_closed_tabs(workspace_id, since)
     })
     .await?;
+    let usage_from = since.map(|instant| instant.with_timezone(&chrono::Local).date_naive());
+    crate::usage::clear(&state, workspace_id, usage_from).await?;
     state.closed_tab_sessions.lock().await.clear();
 
     Ok(())

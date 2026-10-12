@@ -501,6 +501,10 @@ export interface UserSettings {
   tab_sleep_enabled: boolean
   /** Idle minutes before a hidden tab's webview is discarded. */
   tab_sleep_minutes: number
+  /** Count active time per site (never in private workspaces). */
+  usage_tracking: boolean
+  /** Seconds without input before usage stops counting. */
+  usage_idle_timeout_secs: number
   /** Persist (encrypted) login sessions across restarts; auto-expire after a cap. */
   persist_sessions: boolean
   /** WebKit fraudulent-website warning (Apple-proxied Safe Browsing). */
@@ -595,6 +599,8 @@ export interface UserSettingsPatch {
   always_private?: boolean
   tab_sleep_enabled?: boolean
   tab_sleep_minutes?: number
+  usage_tracking?: boolean
+  usage_idle_timeout_secs?: number
   persist_sessions?: boolean
   fraud_warning_enabled?: boolean
   global_privacy_control?: boolean

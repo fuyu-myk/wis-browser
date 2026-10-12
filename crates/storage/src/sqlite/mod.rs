@@ -18,6 +18,7 @@ mod history;
 mod migrations;
 mod repo;
 mod searches;
+mod usage;
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -144,6 +145,30 @@ impl Storage for SqliteStorage {
     ) -> StorageResult<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         history::record_visit(&conn, workspace_id, url, title)
+    }
+
+    fn add_usage(&self, credits: &[wis_core::usage::Credit]) -> StorageResult<()> {
+        let mut conn = self.conn.lock().expect("storage mutex poisoned");
+        usage::add(&mut conn, credits)
+    }
+
+    fn usage(
+        &self,
+        workspace_id: Option<wis_core::WorkspaceId>,
+        from: chrono::NaiveDate,
+        to: chrono::NaiveDate,
+    ) -> StorageResult<Vec<crate::usage::UsageEntry>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        usage::query(&conn, workspace_id, from, to)
+    }
+
+    fn clear_usage(
+        &self,
+        workspace_id: Option<wis_core::WorkspaceId>,
+        from: Option<chrono::NaiveDate>,
+    ) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        usage::clear(&conn, workspace_id, from)
     }
 
     fn import_history(

@@ -130,6 +130,12 @@ pub struct AppState {
     /// Tab uuids whose webview reported audible playback on the last audio
     /// poll (see [`crate::audio`]).
     pub audible_tabs: std::sync::Mutex<HashSet<String>>,
+    /// Label of the focused Wis window, from window focus events.
+    pub focused_window: std::sync::Mutex<Option<String>>,
+    /// Site usage being metered and not yet stored (see [`crate::usage`]).
+    pub usage: std::sync::Mutex<wis_core::usage::UsageLedger>,
+    /// Serialises usage flushes with clears.
+    pub usage_io: tokio::sync::Mutex<()>,
     /// Tab uuids the user muted (session-scoped; re-applied when a slept
     /// tab's webview is recreated).
     pub muted_tabs: std::sync::Mutex<HashSet<String>>,
@@ -241,6 +247,15 @@ impl AppState {
             download_prefs: std::sync::Mutex::new(download_prefs),
             video_popout: std::sync::Mutex::new(Default::default()),
             audible_tabs: std::sync::Mutex::new(HashSet::new()),
+            focused_window: std::sync::Mutex::new(None),
+            usage: std::sync::Mutex::new(wis_core::usage::UsageLedger::new(
+                std::time::Duration::from_secs(
+                    wis_core::UserSettings::default()
+                        .usage_idle_timeout_secs
+                        .into(),
+                ),
+            )),
+            usage_io: tokio::sync::Mutex::new(()),
             muted_tabs: std::sync::Mutex::new(HashSet::new()),
             muted_widgets: std::sync::Mutex::new(HashSet::new()),
             media_permissions: std::sync::RwLock::new(initial_media_permissions),

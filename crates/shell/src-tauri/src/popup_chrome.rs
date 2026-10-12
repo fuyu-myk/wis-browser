@@ -39,32 +39,11 @@ pub fn same_site(a: &tauri::Url, b: &tauri::Url) -> bool {
 
 /// [`same_site`] for bare hosts.
 pub(crate) fn same_site_hosts(a: &str, b: &str) -> bool {
-    let (ra, rb) = (registrable(a), registrable(b));
+    let (ra, rb) = (
+        wis_core::site::registrable_domain(a),
+        wis_core::site::registrable_domain(b),
+    );
     !ra.is_empty() && ra == rb
-}
-
-fn registrable(host: &str) -> String {
-    let host = host.trim_end_matches('.').to_ascii_lowercase();
-    if host.chars().all(|c| c.is_ascii_digit() || c == '.') || host.starts_with('[') {
-        return host;
-    }
-
-    let labels: Vec<&str> = host.split('.').filter(|l| !l.is_empty()).collect();
-    if labels.len() <= 2 {
-        return labels.join(".");
-    }
-
-    // ccSLD shapes ("co.uk", "com.au"): the registrable name is one label deeper.
-    const CC_SECOND: &[&str] = &["co", "com", "org", "net", "ac", "gov", "edu", "ne", "or"];
-    let tld = labels[labels.len() - 1];
-    let second = labels[labels.len() - 2];
-    let take = if tld.len() == 2 && CC_SECOND.contains(&second) {
-        3
-    } else {
-        2
-    };
-
-    labels[labels.len() - take.min(labels.len())..].join(".")
 }
 
 /// Called from `on_new_window` with the popup's target URL. Records that URL

@@ -31,6 +31,7 @@ mod gpc;
 #[cfg(target_os = "linux")]
 mod gtk_dispatch;
 mod hover_guard;
+mod idle;
 mod interaction_state;
 mod keybind;
 mod link_open;
@@ -68,6 +69,7 @@ mod swipe_nav;
 mod tab_preview;
 mod tab_session;
 mod themes;
+mod usage;
 mod vault;
 mod video_popout;
 mod wake;
@@ -476,6 +478,7 @@ pub fn run() {
 
             // Per-tab audibility poll (tab audio icons + click-to-mute).
             audio::start_poll(app.handle().clone());
+            usage::start(app.handle().clone());
 
             // Periodically snapshot session cookies for activated workspaces so
             // logins survive a restart even when no page reload occurs (e.g. a
@@ -792,6 +795,16 @@ pub fn run() {
             ) {
                 let state = app_handle.state::<state::AppState>();
                 state.save_coalescer.flush(&state.storage);
+                usage::flush_now(&state);
+            }
+
+            if let tauri::RunEvent::WindowEvent {
+                label,
+                event: tauri::WindowEvent::Focused(focused),
+                ..
+            } = &event
+            {
+                usage::window_focused(app_handle, label, *focused);
             }
 
             // The floating video popout must not outlive the main window

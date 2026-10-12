@@ -89,6 +89,13 @@ pub struct UserSettings {
     /// discarded. Only consulted when [`Self::tab_sleep_enabled`].
     #[serde(default = "default_tab_sleep_minutes")]
     pub tab_sleep_minutes: u32,
+    /// Count active time per site (never in private workspaces).
+    #[serde(default = "default_usage_tracking")]
+    pub usage_tracking: bool,
+    /// Seconds without input before usage stops counting; the quiet stretch
+    /// before it is not counted either.
+    #[serde(default = "default_usage_idle_timeout_secs")]
+    pub usage_idle_timeout_secs: u32,
     /// When true, in-memory session cookies (login sessions) are snapshotted,
     /// encrypted, and restored on the next launch, so logins survive a restart.
     /// Restored sessions still expire after a fixed cap (see the shell's session
@@ -294,6 +301,14 @@ fn default_tab_sleep_minutes() -> u32 {
     15
 }
 
+fn default_usage_tracking() -> bool {
+    true
+}
+
+fn default_usage_idle_timeout_secs() -> u32 {
+    120
+}
+
 fn default_persist_sessions() -> bool {
     true
 }
@@ -404,6 +419,8 @@ impl Default for UserSettings {
             always_private: false,
             tab_sleep_enabled: true,
             tab_sleep_minutes: 15,
+            usage_tracking: true,
+            usage_idle_timeout_secs: default_usage_idle_timeout_secs(),
             persist_sessions: true,
             fraud_warning_enabled: true,
             global_privacy_control: true,
@@ -495,6 +512,10 @@ pub struct UserSettingsPatch {
     pub tab_sleep_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tab_sleep_minutes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage_tracking: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage_idle_timeout_secs: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persist_sessions: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -621,6 +642,10 @@ impl UserSettings {
             always_private: patch.always_private.unwrap_or(self.always_private),
             tab_sleep_enabled: patch.tab_sleep_enabled.unwrap_or(self.tab_sleep_enabled),
             tab_sleep_minutes: patch.tab_sleep_minutes.unwrap_or(self.tab_sleep_minutes),
+            usage_tracking: patch.usage_tracking.unwrap_or(self.usage_tracking),
+            usage_idle_timeout_secs: patch
+                .usage_idle_timeout_secs
+                .unwrap_or(self.usage_idle_timeout_secs),
             persist_sessions: patch.persist_sessions.unwrap_or(self.persist_sessions),
             fraud_warning_enabled: patch
                 .fraud_warning_enabled

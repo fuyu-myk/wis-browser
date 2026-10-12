@@ -264,6 +264,18 @@ CREATE TABLE closed_tabs (
 CREATE INDEX idx_closed_tabs_closed_at ON closed_tabs(closed_at);
 "#;
 
+/// Active time per workspace, local day and site. Private workspaces never
+/// write here, and clearing browsing history clears this too.
+const M0020_SITE_USAGE: &str = r#"
+CREATE TABLE site_usage (
+    workspace_id TEXT    NOT NULL,
+    day          TEXT    NOT NULL,
+    site         TEXT    NOT NULL,
+    seconds      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, workspace_id, site)
+) WITHOUT ROWID;
+"#;
+
 /// Every migration, in order. The index of the last entry is the schema
 /// version a fresh database lands on.
 const ALL: &[&str] = &[
@@ -286,6 +298,7 @@ const ALL: &[&str] = &[
     M0017_BACKGROUND_DRAFTS,
     M0018_TAB_SESSIONS,
     M0019_CLOSED_TABS,
+    M0020_SITE_USAGE,
 ];
 
 fn all() -> Migrations<'static> {
