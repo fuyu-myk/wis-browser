@@ -63,6 +63,10 @@ Refetch and re-render are coalesced so unrelated state churn stays cheap:
 - The startup widget-favicon prefetch runs through a concurrency cap of 4 (`WidgetFavicon.tsx` `PREFETCH_CONCURRENCY`), deferred a few seconds after mount, so a cold-cache launch does not flood the favicon path.
 - `open_widget_panel`'s main-thread surface hop is awaited on the blocking pool, so the calling task never blocks the async runtime on it.
 
+## Settings page
+
+`SettingsPage` is one scrolling column of `.sec` sections; the nav marks the section in view. Its search field (`SettingsSearch`) indexes the rendered `.row` elements (title, description, section heading) on each query, so it cannot drift from the page. `lib/settingsSearch.ts` keeps rows holding every word, titles starting with the query first. Matches replace the section list; picking one scrolls the row to the centre and flashes it. Segmented controls in rows never shrink, so descriptions wrap before pill labels do.
+
 ## Layout modes
 
 `wis_core::layout::LayoutMode` has three variants: `SidebarLeft`, `SidebarRight`, `TopTabs`. `RailSide` (Left/Right) is the docked-controls edge; in `TopTabs` it decides which side the rail and its pinned circles anchor to, in sidebar layouts it mirrors the sidebar side. `Window` (the root host) picks the tree per mode.

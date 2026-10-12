@@ -5511,6 +5511,79 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   flex: 1 1 260px;
   min-width: 220px;
 }
+.kb-settings-page .row > .kb-segmented { flex-shrink: 0; }
+.kb-settings-page .row.is-found {
+  border-radius: var(--radius-md);
+  animation: kb-settings-found 1.6s var(--ease-standard);
+}
+@keyframes kb-settings-found {
+  0%, 35% {
+    background: color-mix(in oklab, var(--primary-400) 16%, transparent);
+    box-shadow: 0 0 0 8px color-mix(in oklab, var(--primary-400) 16%, transparent);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+.kb-settings-nav .kb-settings-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--overlay);
+  color: var(--text-tertiary);
+}
+.kb-settings-nav .kb-settings-search:focus-within { border-color: var(--primary-400); }
+.kb-settings-nav .kb-settings-search > svg { width: 14px; height: 14px; flex-shrink: 0; }
+.kb-settings-nav .kb-settings-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.kb-settings-nav .kb-settings-search input::placeholder { color: var(--text-tertiary); }
+.kb-settings-nav .kb-settings-search button {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+}
+.kb-settings-nav .kb-settings-search button:hover { background: var(--overlay); color: var(--text-primary); }
+.kb-settings-nav .kb-settings-search button svg { width: 12px; height: 12px; opacity: 1; }
+.kb-settings-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.kb-settings-results li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.kb-settings-results li span:first-child { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.kb-settings-results li span:last-child { font-size: 11.5px; color: var(--text-tertiary); }
+.kb-settings-results li.is-active { background: color-mix(in oklab, var(--primary-400) 18%, transparent); }
+.kb-settings-noresults { margin: 4px 10px; font-size: 12.5px; color: var(--text-tertiary); }
 
 /* ─── keybinding editor ───────────────────────────────────────── */
 .kb-keybind-list {
@@ -5664,6 +5737,7 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .kb-segmented button {
   height: 24px;
   padding: 0 10px;
+  white-space: nowrap;
   border-radius: 100px;
   font-size: 11.5px;
   font-family: var(--font-ui);

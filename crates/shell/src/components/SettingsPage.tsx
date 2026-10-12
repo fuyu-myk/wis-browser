@@ -35,6 +35,7 @@ import { PasswordsSection } from '@/components/PasswordsSection'
 import { KeyboardShortcutsSection } from '@/components/KeyboardShortcutsSection'
 import { BackupSection } from '@/components/BackupSection'
 import { AiSection } from '@/components/AiSection'
+import { SettingsSearch } from '@/components/SettingsSearch'
 
 interface NavSection {
   id: string
@@ -77,6 +78,9 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
     },
     [attachScroll],
   )
+  const mainEl = useCallback(() => mainRef.current, [])
+  const [query, setQuery] = useState('')
+  const searching = query !== ''
   const [activeSection, setActiveSection] = useState<string>(NAV_SECTIONS[0].id)
   // Non-null while a click-initiated smooth scroll is in flight.
   const scrollLockRef = useRef<number | null>(null)
@@ -99,7 +103,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
       left: btn.offsetLeft,
       width: btn.offsetWidth,
     })
-  }, [activeSection])
+  }, [activeSection, searching])
 
   // Highlight the section currently dominating the viewport.
   useEffect(() => {
@@ -131,15 +135,29 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
     settings.layout === 'sidebar_right' ||
     (settings.layout === 'top_tabs' && settings.top_tabs_rail_side === 'right')
 
-  const scrollTo = (id: string) => {
-    // Optimistic: the indicator moves on the click.
+  // Optimistic: the indicator moves before the smooth scroll lands.
+  const showSection = (id: string) => {
     setActiveSection(id)
     if (scrollLockRef.current !== null) window.clearTimeout(scrollLockRef.current)
     scrollLockRef.current = window.setTimeout(() => {
       scrollLockRef.current = null
     }, 700)
+  }
+
+  const scrollTo = (id: string) => {
+    showSection(id)
     const el = mainRef.current?.querySelector(`#${id}`)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const reveal = (row: HTMLElement) => {
+    const section = row.closest<HTMLElement>('.sec')?.id
+    if (section) showSection(section)
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    row.classList.remove('is-found')
+    void row.offsetWidth
+    row.classList.add('is-found')
+    row.addEventListener('animationend', () => row.classList.remove('is-found'), { once: true })
   }
 
   return (
@@ -163,7 +181,8 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
     >
       <aside className="kb-settings-nav" aria-label="Settings sections" ref={navRef}>
         <div className="kb-settings-nav-title">Settings</div>
-        {navInd !== null && (
+        <SettingsSearch query={query} onQuery={setQuery} root={mainEl} onPick={reveal} />
+        {!searching && navInd !== null && (
           <span
             className="kb-settings-nav-ind"
             style={{
@@ -175,17 +194,18 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
             aria-hidden
           />
         )}
-        {NAV_SECTIONS.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            className={cx({ 'is-active': activeSection === s.id })}
-            onClick={() => scrollTo(s.id)}
-          >
-            {s.icon}
-            <span>{s.label}</span>
-          </button>
-        ))}
+        {!searching &&
+          NAV_SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={cx({ 'is-active': activeSection === s.id })}
+              onClick={() => scrollTo(s.id)}
+            >
+              {s.icon}
+              <span>{s.label}</span>
+            </button>
+          ))}
       </aside>
       <div className="kb-settings-main" ref={setMain}>
         <AppearanceSection
