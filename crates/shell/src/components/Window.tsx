@@ -3,7 +3,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import type { BrowserState, Tab, TabId, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { HISTORY_URL, SETTINGS_URL } from '@/lib/url'
+import { HISTORY_URL, SETTINGS_URL, USAGE_URL } from '@/lib/url'
 import { useBookmarksOverlay } from '@/hooks/useBookmarksOverlay'
 import { useClearDataOverlay } from '@/hooks/useClearDataOverlay'
 import { useDownloadsOverlay } from '@/hooks/useDownloadsOverlay'
@@ -87,6 +87,10 @@ export function Window({ state, settings }: WindowProps) {
   const navigateOrCreate = useNavigateOrCreateTab(activeWorkspace?.id ?? null, activeTab)
   const openSettings = () => navigateOrCreate(SETTINGS_URL)
   const openHistory = () => navigateOrCreate(HISTORY_URL)
+  const openUsagePage = () => {
+    navigateOrCreate(USAGE_URL)
+    setUsageOpen(false)
+  }
 
   const isPrivate = activeWorkspace?.ephemeral ?? false
   useDockIcon(isPrivate)
@@ -176,6 +180,7 @@ export function Window({ state, settings }: WindowProps) {
         onCloseAi={() => setAiOpen(false)}
         usageOpen={usageOpen}
         onCloseUsage={() => setUsageOpen(false)}
+        onOpenUsagePage={openUsagePage}
         onOpenSettings={openSettings}
         onDiscardedChange={onDiscardedChange}
       />

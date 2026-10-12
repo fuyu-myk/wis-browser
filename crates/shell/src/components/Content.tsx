@@ -18,6 +18,7 @@ interface ContentProps {
   onCloseAi: () => void
   usageOpen: boolean
   onCloseUsage: () => void
+  onOpenUsagePage: () => void
   onOpenSettings: () => void
   onDiscardedChange?: (discarded: Set<TabId>) => void
 }
@@ -29,6 +30,7 @@ export function Content({
   onCloseAi,
   usageOpen,
   onCloseUsage,
+  onOpenUsagePage,
   onOpenSettings,
   onDiscardedChange,
 }: ContentProps) {
@@ -70,6 +72,7 @@ export function Content({
         tracking={state.settings.usage_tracking}
         onClose={onCloseUsage}
         onOpenSettings={onOpenSettings}
+        onOpenPage={onOpenUsagePage}
       />
       {aiMountedRef.current && (
         <AiPanel

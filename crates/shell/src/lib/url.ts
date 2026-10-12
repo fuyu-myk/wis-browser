@@ -201,6 +201,7 @@ export function resolveNewTabUrl(settings: UserSettings | undefined): string {
 export const SETTINGS_URL = 'about:settings'
 export const HISTORY_URL = 'about:history'
 export const DOWNLOADS_URL = 'about:downloads'
+export const USAGE_URL = 'about:usage'
 export const SOURCE_URL = 'about:source'
 
 /** A source tab's URL: the page it shows, and the tab captured from. */
@@ -229,6 +230,7 @@ export function tabDisplayName(tab: { title: string; url: string }): string {
   if (tab.url === SETTINGS_URL) return 'Settings'
   if (tab.url === HISTORY_URL) return 'History'
   if (tab.url === DOWNLOADS_URL) return 'Downloads'
+  if (tab.url === USAGE_URL) return 'Usage'
   try {
     const u = new URL(tab.url)
     if (u.protocol === 'about:') {

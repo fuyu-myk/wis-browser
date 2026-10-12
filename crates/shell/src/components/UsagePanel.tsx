@@ -1,22 +1,21 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { listen } from '@tauri-apps/api/event'
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 
 import { commands } from '@/bindings/commands'
 import type { UsageSummary } from '@/bindings/types'
 import { Segmented } from '@/components/controls'
-import { SiteFavicon } from '@/components/SiteFavicon'
 import { UsageBars } from '@/components/UsageBars'
+import { UsageSites } from '@/components/UsageSites'
 import { useDockWidth } from '@/hooks/useDockWidth'
+import { useUsageClock } from '@/hooks/useUsageClock'
 import { cx } from '@/lib/cx'
 import { errorMessage } from '@/lib/errors'
-import { LockIcon, XIcon } from '@/lib/icons'
+import { ExpandIcon, LockIcon, XIcon } from '@/lib/icons'
 import {
   clampUsagePanelWidth,
   formatDuration,
   hourLabel,
   localDay,
-  sharePercent,
   USAGE_PANEL_WIDTH_DEFAULT,
   weekdayLabel,
   weekOf,
@@ -30,7 +29,6 @@ const RANGES = [
 ]
 const HOUR_TICKS = [0, 6, 12, 18].map((index) => ({ index, label: hourLabel(index) }))
 const HOUR_LABELS = Array.from({ length: 24 }, (_, hour) => hourLabel(hour))
-const SITE_LIMIT = 25
 
 const clampWidth = (width: number) => clampUsagePanelWidth(width, window.innerWidth)
 
@@ -41,32 +39,26 @@ interface UsagePanelProps {
   tracking: boolean
   onClose: () => void
   onOpenSettings: () => void
+  onOpenPage: () => void
 }
 
 /** Today's or this week's active time per site, docked beside the page. */
-export function UsagePanel({ open, side, tracking, onClose, onOpenSettings }: UsagePanelProps) {
+export function UsagePanel({
+  open,
+  side,
+  tracking,
+  onClose,
+  onOpenSettings,
+  onOpenPage,
+}: UsagePanelProps) {
   const [range, setRange] = useState<Range>('today')
-  const [now, setNow] = useState(() => new Date())
+  const now = useUsageClock(open)
   const { width, startResize } = useDockWidth(
     'wis-usage-panel-width',
     USAGE_PANEL_WIDTH_DEFAULT,
     clampWidth,
     side,
   )
-  const queryClient = useQueryClient()
-
-  useEffect(() => {
-    if (!open) return
-    setNow(new Date())
-    const timer = window.setInterval(() => setNow(new Date()), 60_000)
-    const unlisten = listen('usage-changed', () => {
-      void queryClient.invalidateQueries({ queryKey: ['usage'] })
-    }).catch(() => null)
-    return () => {
-      window.clearInterval(timer)
-      void unlisten.then((stop) => stop?.())
-    }
-  }, [open, queryClient])
 
   const span =
     range === 'today' ? { from: localDay(now), to: localDay(now) } : weekOf(now)
@@ -101,6 +93,15 @@ export function UsagePanel({ open, side, tracking, onClose, onOpenSettings }: Us
       <div className="kb-ai-head">
         <span className="kb-ai-title">Usage</span>
         <div className="kb-ai-head-actions">
+          <button
+            type="button"
+            className="kb-ai-btn kb-ai-icon"
+            onClick={onOpenPage}
+            aria-label="Open usage page"
+            title="Open usage page"
+          >
+            <ExpandIcon />
+          </button>
           <button
             type="button"
             className="kb-ai-btn kb-ai-icon"
@@ -139,9 +140,7 @@ export function UsagePanel({ open, side, tracking, onClose, onOpenSettings }: Us
 }
 
 function UsageBody({ summary, range, now }: { summary: UsageSummary; range: Range; now: Date }) {
-  const [showAll, setShowAll] = useState(false)
   const today = localDay(now)
-  const sites = showAll ? summary.sites : summary.sites.slice(0, SITE_LIMIT)
   const total = summary.total_seconds
   const chart =
     range === 'today'
@@ -178,34 +177,7 @@ function UsageBody({ summary, range, now }: { summary: UsageSummary; range: Rang
       ) : (
         <>
           <div className="kb-usage-heading">Sites</div>
-          <ul className="kb-usage-sites">
-            {sites.map((entry) => {
-              const share = sharePercent(entry.seconds, total)
-              return (
-                <li key={entry.site} className="kb-usage-site">
-                  <span className="kb-usage-fav">
-                    <SiteFavicon site={entry.site} />
-                  </span>
-                  <div className="kb-usage-site-main">
-                    <div className="kb-usage-site-line">
-                      <span className="kb-usage-site-name">{entry.site}</span>
-                      <span className="kb-usage-site-time">
-                        {formatDuration(entry.seconds)} · {share}%
-                      </span>
-                    </div>
-                    <div className="kb-usage-share" aria-hidden="true">
-                      <span style={{ width: `${share}%` }} />
-                    </div>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-          {sites.length < summary.sites.length && (
-            <button type="button" className="kb-ai-btn" onClick={() => setShowAll(true)}>
-              Show all {summary.sites.length} sites
-            </button>
-          )}
+          <UsageSites sites={summary.sites} total={total} />
         </>
       )}
     </>

@@ -1,17 +1,25 @@
-// Formatting and ranges for the usage panel (`lib/usage.ts`).
+// Formatting and ranges for the usage panel and page (`lib/usage.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import {
   clampUsagePanelWidth,
+  dailyAverage,
+  dayLabel,
+  durationTicks,
   formatDuration,
   hourLabel,
   localDay,
   sharePercent,
+  shiftWeek,
+  stepSlot,
   weekOf,
+  weekRangeLabel,
   weekdayLabel,
 } from '../../src/lib/usage.ts'
+
+const HOUR = 3600
 
 test('durations read in the largest sensible unit', () => {
   assert.equal(formatDuration(0), '0s')
@@ -55,4 +63,56 @@ test('the panel width stays within its bounds and half the window', () => {
   assert.equal(clampUsagePanelWidth(900, 2000), 520)
   assert.equal(clampUsagePanelWidth(400, 700), 350)
   assert.equal(clampUsagePanelWidth(Number.NaN, 2000), 280)
+})
+
+test('weeks shift by whole weeks across months and years', () => {
+  assert.deepEqual(shiftWeek('2026-10-05', -1), { from: '2026-09-28', to: '2026-10-04' })
+  assert.deepEqual(shiftWeek('2025-12-29', 1), { from: '2026-01-05', to: '2026-01-11' })
+  assert.deepEqual(shiftWeek('2026-03-23', 1), { from: '2026-03-30', to: '2026-04-05' })
+  assert.deepEqual(shiftWeek('2026-10-05', 0), { from: '2026-10-05', to: '2026-10-11' })
+})
+
+test('duration ticks use round steps and cover the peak', () => {
+  assert.deepEqual(durationTicks(0), [0, 300])
+  assert.deepEqual(durationTicks(25 * 60), [0, 600, 1200, 1800])
+  assert.deepEqual(durationTicks(HOUR), [0, 900, 1800, 2700, 3600])
+  assert.deepEqual(durationTicks(5 * HOUR), [0, 2 * HOUR, 4 * HOUR, 6 * HOUR])
+  assert.deepEqual(durationTicks(24 * HOUR), [0, 6 * HOUR, 12 * HOUR, 18 * HOUR, 24 * HOUR])
+})
+
+test('a smaller chart can ask for fewer duration intervals', () => {
+  assert.deepEqual(durationTicks(HOUR, 2), [0, 1800, 3600])
+  assert.deepEqual(durationTicks(20 * 60, 2), [0, 600, 1200])
+  assert.deepEqual(durationTicks(5 * HOUR, 2), [0, 3 * HOUR, 6 * HOUR])
+  assert.deepEqual(durationTicks(0, 2), [0, 300])
+})
+
+test('week ranges name the year only outside the current one', () => {
+  const now = new Date(2026, 9, 11)
+  const label = (from, to) => weekRangeLabel(from, to, now, 'en-US').replace(/\s/g, ' ')
+  assert.equal(label('2026-10-05', '2026-10-11'), 'Oct 5 – 11')
+  assert.equal(label('2026-09-28', '2026-10-04'), 'Sep 28 – Oct 4')
+  assert.equal(label('2025-12-29', '2026-01-04'), 'Dec 29, 2025 – Jan 4, 2026')
+  assert.equal(dayLabel('2026-10-05', 'en-US'), 'Mon, Oct 5')
+})
+
+test('the daily average counts only days that have started', () => {
+  const week = ['05', '06', '07', '08', '09', '10', '11'].map((d) => ({
+    day: `2026-10-${d}`,
+    seconds: HOUR,
+  }))
+  assert.equal(dailyAverage(week, '2026-10-20'), HOUR)
+  assert.equal(dailyAverage(week, '2026-10-07'), HOUR)
+  assert.equal(dailyAverage(week.map((d, i) => ({ ...d, seconds: i < 3 ? 2 * HOUR : 0 })), '2026-10-07'), 2 * HOUR)
+  assert.equal(dailyAverage(week, '2026-10-01'), 0)
+})
+
+test('chart keys step within the slots', () => {
+  assert.equal(stepSlot('ArrowLeft', 0, 6), 0)
+  assert.equal(stepSlot('ArrowLeft', 3, 6), 2)
+  assert.equal(stepSlot('ArrowRight', 6, 6), 6)
+  assert.equal(stepSlot('ArrowRight', 2, 6), 3)
+  assert.equal(stepSlot('Home', 4, 6), 0)
+  assert.equal(stepSlot('End', 1, 6), 6)
+  assert.equal(stepSlot('Enter', 1, 6), null)
 })

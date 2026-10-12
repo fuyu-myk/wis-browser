@@ -76,6 +76,27 @@ export const ChevronDownIcon = (p: Props) => (
   </Icon>
 )
 
+export const ChevronLeftIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="m15 18-6-6 6-6" />
+  </Icon>
+)
+
+export const ChevronRightIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="m9 18 6-6-6-6" />
+  </Icon>
+)
+
+export const ExpandIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="M15 3h6v6" />
+    <path d="M9 21H3v-6" />
+    <path d="m21 3-7 7" />
+    <path d="m3 21 7-7" />
+  </Icon>
+)
+
 export const GripIcon = (p: Props) => (
   <Icon {...p} fill="currentColor" stroke="none">
     <circle cx="9" cy="5" r="1.4" />

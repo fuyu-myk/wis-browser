@@ -17,6 +17,7 @@ import {
   SEARCH_ENGINES,
   SETTINGS_URL,
   SOURCE_URL,
+  USAGE_URL,
   sourceTargetOf,
   sourceUrlFor,
   tabDisplayName,
@@ -379,6 +380,7 @@ describe('tab names', () => {
     assert.equal(named('', SETTINGS_URL), 'Settings')
     assert.equal(named(HISTORY_URL, HISTORY_URL), 'History')
     assert.equal(named('', DOWNLOADS_URL), 'Downloads')
+    assert.equal(named('', USAGE_URL), 'Usage')
     assert.equal(named('', NEW_TAB_URL), 'Launchpad')
   })
 

@@ -305,9 +305,10 @@ import { NewTabPage } from '@/components/NewTabPage'
 import { SettingsPage } from '@/components/SettingsPage'
 import { HistoryPage } from '@/components/HistoryPage'
 import { DownloadsPage } from '@/components/DownloadsPage'
+import { UsagePage } from '@/components/UsagePage'
 import { NetErrorPage } from '@/components/NetErrorPage'
 import { TlsErrorPage } from '@/components/TlsErrorPage'
-import { DOWNLOADS_URL, HISTORY_URL, SETTINGS_URL, sourceTargetOf } from '@/lib/url'
+import { DOWNLOADS_URL, HISTORY_URL, SETTINGS_URL, sourceTargetOf, USAGE_URL } from '@/lib/url'
 import { SourcePage } from '@/components/SourcePage'
 
 function ChromePane({ tab }: { tab: Tab }) {
@@ -319,5 +320,6 @@ function ChromePane({ tab }: { tab: Tab }) {
   if (tab.url === SETTINGS_URL) return <SettingsPage tabId={tab.id} />
   if (tab.url === HISTORY_URL) return <HistoryPage activeTab={tab} />
   if (tab.url === DOWNLOADS_URL) return <DownloadsPage tabId={tab.id} />
+  if (tab.url === USAGE_URL) return <UsagePage activeTab={tab} />
   return <NewTabPage activeTab={tab} />
 }
