@@ -45,6 +45,7 @@ interface WindowProps {
 export function Window({ state, settings }: WindowProps) {
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
+  const [usageOpen, setUsageOpen] = useState(false)
   const [discardedTabs, setDiscardedTabs] = useState<ReadonlySet<TabId>>(new Set())
   const onDiscardedChange = useCallback(
     (next: Set<TabId>) => setDiscardedTabs(next),
@@ -149,6 +150,8 @@ export function Window({ state, settings }: WindowProps) {
             aiAvailable={aiAvailable}
             aiOpen={aiOpen}
             onToggleAi={() => setAiOpen((v) => !v)}
+            usageOpen={usageOpen}
+            onToggleUsage={() => setUsageOpen((v) => !v)}
           />
         </>
       ) : (
@@ -162,6 +165,8 @@ export function Window({ state, settings }: WindowProps) {
           aiAvailable={aiAvailable}
           aiOpen={aiOpen}
           onToggleAi={() => setAiOpen((v) => !v)}
+          usageOpen={usageOpen}
+          onToggleUsage={() => setUsageOpen((v) => !v)}
         />
       )}
       <Content
@@ -169,6 +174,8 @@ export function Window({ state, settings }: WindowProps) {
         aiOpen={aiOpen}
         aiAsk={aiAsk}
         onCloseAi={() => setAiOpen(false)}
+        usageOpen={usageOpen}
+        onCloseUsage={() => setUsageOpen(false)}
         onOpenSettings={openSettings}
         onDiscardedChange={onDiscardedChange}
       />

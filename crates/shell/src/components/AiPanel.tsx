@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AiAskRequest } from '@/lib/aiAsk'
 
 import { commands } from '@/bindings/commands'
@@ -18,6 +18,7 @@ import { cx } from '@/lib/cx'
 import { ChevronDownIcon, FileIcon, PlusIcon, SendIcon, StopIcon, XIcon } from '@/lib/icons'
 import { showToast } from '@/lib/toast'
 import { useAiChat, type AiPageSource } from '@/hooks/useAiChat'
+import { useDockWidth } from '@/hooks/useDockWidth'
 
 import { AiMarkdown } from '@/components/AiMarkdown'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -58,12 +59,6 @@ interface AiPanelProps {
   onOpenSettings: () => void
 }
 
-function readStoredWidth(): number {
-  const raw = window.localStorage.getItem(WIDTH_STORAGE_KEY)
-  const parsed = raw === null ? Number.NaN : Number.parseInt(raw, 10)
-  return clampPanelWidth(Number.isNaN(parsed) ? AI_PANEL_WIDTH_DEFAULT : parsed)
-}
-
 /**
  * The docked assistant. It reserves chrome width rather than floating;
  * shrinking the content host is what makes the page reflow beside it.
@@ -84,15 +79,18 @@ export function AiPanel({
   const chat = useAiChat(workspaceId, webAccess)
   const [draft, setDraft] = useState('')
   const [attachPage, setAttachPage] = useState(false)
-  const [width, setWidth] = useState(readStoredWidth)
+  const { width, startResize } = useDockWidth(
+    WIDTH_STORAGE_KEY,
+    AI_PANEL_WIDTH_DEFAULT,
+    clampPanelWidth,
+    side,
+  )
   /** A link whose text claims a different destination, held for confirmation. */
   const [linkPrompt, setLinkPrompt] = useState<{ href: string; text: string } | null>(null)
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
   const stickRef = useRef(true)
-  const widthRef = useRef(width)
-  widthRef.current = width
 
   const modelReady = model.trim() !== ''
   const busy = chat.phase !== 'idle'
@@ -219,33 +217,6 @@ export function AiPanel({
         })
     },
     [createLinkTab],
-  )
-
-  const startResize = useCallback(
-    (e: PointerEvent<HTMLDivElement>) => {
-      if (e.button !== 0) return
-      e.preventDefault()
-      const startX = e.clientX
-      const startWidth = widthRef.current
-      const setActive = (active: boolean) =>
-        window.dispatchEvent(new CustomEvent('wis-pane-resize', { detail: active }))
-
-      const onMove = (ev: globalThis.PointerEvent) => {
-        const delta = side === 'right' ? startX - ev.clientX : ev.clientX - startX
-        setWidth(clampPanelWidth(startWidth + delta))
-      }
-      const onUp = () => {
-        window.removeEventListener('pointermove', onMove)
-        window.removeEventListener('pointerup', onUp)
-        setActive(false)
-        window.localStorage.setItem(WIDTH_STORAGE_KEY, String(widthRef.current))
-      }
-
-      setActive(true)
-      window.addEventListener('pointermove', onMove)
-      window.addEventListener('pointerup', onUp)
-    },
-    [side],
   )
 
   if (!open) return null

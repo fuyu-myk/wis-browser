@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use chrono::NaiveDate;
+use serde::Serialize;
 use url::Url;
 
 use crate::ids::WorkspaceId;
@@ -32,6 +33,8 @@ pub struct Focus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Observation {
     pub day: NaiveDate,
+    /// Local hour of the day, 0 to 23.
+    pub hour: u8,
     /// Time since the last keyboard or pointer input anywhere; `None` where the
     /// platform cannot tell.
     pub idle: Option<Duration>,
@@ -45,6 +48,7 @@ pub struct Observation {
 pub struct Credit {
     pub workspace: WorkspaceId,
     pub day: NaiveDate,
+    pub hour: u8,
     pub site: String,
     pub seconds: u32,
 }
@@ -104,6 +108,7 @@ impl UsageMeter {
         let second = |focus: &Focus| Credit {
             workspace: focus.workspace,
             day: observation.day,
+            hour: observation.hour,
             site: focus.site.clone(),
             seconds: 1,
         };
@@ -174,12 +179,81 @@ pub fn merge(credits: &mut Vec<Credit>, more: impl IntoIterator<Item = Credit>) 
 }
 
 fn add(credits: &mut Vec<Credit>, credit: Credit) {
-    match credits
-        .iter_mut()
-        .find(|c| c.workspace == credit.workspace && c.day == credit.day && c.site == credit.site)
-    {
+    match credits.iter_mut().find(|c| {
+        c.workspace == credit.workspace
+            && c.day == credit.day
+            && c.hour == credit.hour
+            && c.site == credit.site
+    }) {
         Some(existing) => existing.seconds += credit.seconds,
         None => credits.push(credit),
+    }
+}
+
+/// Stored time for one local day, hour and site.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UsageRow {
+    pub day: NaiveDate,
+    pub hour: u8,
+    pub site: String,
+    pub seconds: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SiteTime {
+    pub site: String,
+    pub seconds: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DayTime {
+    pub day: NaiveDate,
+    pub seconds: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UsageSummary {
+    pub total_seconds: i64,
+    /// Busiest first.
+    pub sites: Vec<SiteTime>,
+    /// Seconds per local hour, summed over the range.
+    pub hours: Vec<i64>,
+    /// Every day of the range, quiet days included.
+    pub days: Vec<DayTime>,
+}
+
+pub fn summarize(rows: &[UsageRow], from: NaiveDate, to: NaiveDate) -> UsageSummary {
+    let mut sites: Vec<SiteTime> = Vec::new();
+    let mut hours = vec![0i64; 24];
+    let mut days: Vec<DayTime> = from
+        .iter_days()
+        .take_while(|day| *day <= to)
+        .map(|day| DayTime { day, seconds: 0 })
+        .collect();
+
+    for row in rows
+        .iter()
+        .filter(|row| row.day >= from && row.day <= to && row.hour < 24 && row.seconds > 0)
+    {
+        hours[usize::from(row.hour)] += row.seconds;
+        if let Some(day) = days.iter_mut().find(|d| d.day == row.day) {
+            day.seconds += row.seconds;
+        }
+        match sites.iter_mut().find(|s| s.site == row.site) {
+            Some(site) => site.seconds += row.seconds,
+            None => sites.push(SiteTime {
+                site: row.site.clone(),
+                seconds: row.seconds,
+            }),
+        }
+    }
+    sites.sort_by(|a, b| b.seconds.cmp(&a.seconds).then_with(|| a.site.cmp(&b.site)));
+
+    UsageSummary {
+        total_seconds: hours.iter().sum(),
+        sites,
+        hours,
+        days,
     }
 }
 
@@ -204,6 +278,7 @@ mod tests {
     fn seen(idle: u64, focused: Option<Focus>, playing: Option<Focus>) -> Observation {
         Observation {
             day: day(),
+            hour: 10,
             idle: Some(Duration::from_secs(idle)),
             focused,
             playing,
@@ -233,6 +308,67 @@ mod tests {
         assert_eq!(site("file:///tmp/a.html"), None);
     }
 
+    fn row(d: u32, hour: u8, site: &str, seconds: i64) -> UsageRow {
+        UsageRow {
+            day: NaiveDate::from_ymd_opt(2026, 10, d).unwrap(),
+            hour,
+            site: site.to_string(),
+            seconds,
+        }
+    }
+
+    #[test]
+    fn a_summary_totals_sites_hours_and_every_day_of_the_range() {
+        let from = NaiveDate::from_ymd_opt(2026, 10, 5).unwrap();
+        let to = NaiveDate::from_ymd_opt(2026, 10, 7).unwrap();
+        let rows = [
+            row(5, 9, "a.example", 60),
+            row(5, 9, "b.example", 600),
+            row(7, 21, "a.example", 120),
+            row(8, 1, "late.example", 999),
+            row(4, 1, "early.example", 999),
+        ];
+
+        let summary = summarize(&rows, from, to);
+
+        assert_eq!(summary.total_seconds, 780);
+        assert_eq!(
+            summary.sites,
+            vec![
+                SiteTime {
+                    site: "b.example".to_string(),
+                    seconds: 600
+                },
+                SiteTime {
+                    site: "a.example".to_string(),
+                    seconds: 180
+                },
+            ]
+        );
+        assert_eq!(summary.hours.len(), 24);
+        assert_eq!((summary.hours[9], summary.hours[21]), (660, 120));
+        assert_eq!(
+            summary.days.iter().map(|d| d.seconds).collect::<Vec<_>>(),
+            vec![660, 0, 120]
+        );
+    }
+
+    #[test]
+    fn credits_in_different_hours_stay_apart() {
+        let ws = WorkspaceId::new();
+        let mut meter = UsageMeter::new(TIMEOUT);
+        let reading = Some(focus(ws, "a.example", false));
+
+        let mut credits = meter.tick(&seen(0, reading.clone(), None));
+        credits.extend(meter.tick(&Observation {
+            hour: 11,
+            ..seen(0, reading, None)
+        }));
+
+        assert_eq!(credits.len(), 2);
+        assert_eq!((credits[0].hour, credits[1].hour), (10, 11));
+    }
+
     #[test]
     fn active_input_on_the_focused_site_counts_at_once() {
         let ws = WorkspaceId::new();
@@ -245,6 +381,7 @@ mod tests {
             vec![Credit {
                 workspace: ws,
                 day: day(),
+                hour: 10,
                 site: "a.example".to_string(),
                 seconds: 1,
             }]

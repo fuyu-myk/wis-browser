@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { BrowserState, RailSide } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { AssistantIcon, HistoryIcon, SettingsIcon } from '@/lib/icons'
+import { AssistantIcon, HistoryIcon, SettingsIcon, UsageIcon } from '@/lib/icons'
 
 import { BookmarksButton } from '@/components/BookmarksButton'
 import { Brand } from '@/components/Brand'
@@ -20,6 +20,8 @@ interface TopTabsRailProps {
   aiAvailable: boolean
   aiOpen: boolean
   onToggleAi: () => void
+  usageOpen: boolean
+  onToggleUsage: () => void
 }
 
 /**
@@ -36,6 +38,8 @@ export function TopTabsRail({
   aiAvailable,
   aiOpen,
   onToggleAi,
+  usageOpen,
+  onToggleUsage,
 }: TopTabsRailProps) {
   const [workspacePopoverOpen, setWorkspacePopoverOpen] = useState(false)
   // Hold the expansion briefly after the popover closes.
@@ -78,6 +82,15 @@ export function TopTabsRail({
             <AssistantIcon />
           </button>
         )}
+        <button
+          type="button"
+          className={cx('kb-circle-btn', 'kb-rail-settings', { 'is-active': usageOpen })}
+          aria-label="Usage"
+          aria-pressed={usageOpen}
+          onClick={onToggleUsage}
+        >
+          <UsageIcon />
+        </button>
         <button
           type="button"
           className="kb-circle-btn kb-rail-settings"

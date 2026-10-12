@@ -8,6 +8,7 @@ import type { AiPageSource } from '@/hooks/useAiChat'
 
 import { AiPanel } from '@/components/AiPanel'
 import { TabWebViewHost } from '@/components/TabWebViewHost'
+import { UsagePanel } from '@/components/UsagePanel'
 
 interface ContentProps {
   state: BrowserState
@@ -15,6 +16,8 @@ interface ContentProps {
   /** A question from the page menu, seeded into the panel on arrival. */
   aiAsk: AiAskRequest | null
   onCloseAi: () => void
+  usageOpen: boolean
+  onCloseUsage: () => void
   onOpenSettings: () => void
   onDiscardedChange?: (discarded: Set<TabId>) => void
 }
@@ -24,6 +27,8 @@ export function Content({
   aiOpen,
   aiAsk,
   onCloseAi,
+  usageOpen,
+  onCloseUsage,
   onOpenSettings,
   onDiscardedChange,
 }: ContentProps) {
@@ -55,10 +60,17 @@ export function Content({
   if (aiOpen) aiMountedRef.current = true
 
   return (
-    <main className={cx('kb-main', { 'has-ai': aiOpen })}>
+    <main className={cx('kb-main', { 'has-ai': aiOpen, 'has-usage': usageOpen })}>
       <div className={cx('kb-content', { 'is-split': isSplit })}>
         <TabWebViewHost state={state} onDiscardedChange={onDiscardedChange} />
       </div>
+      <UsagePanel
+        open={usageOpen}
+        side={aiSide === 'right' ? 'left' : 'right'}
+        tracking={state.settings.usage_tracking}
+        onClose={onCloseUsage}
+        onOpenSettings={onOpenSettings}
+      />
       {aiMountedRef.current && (
         <AiPanel
           open={aiOpen}

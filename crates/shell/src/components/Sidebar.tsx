@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react'
 
 import type { BrowserState, Tab, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { AssistantIcon, HistoryIcon, SettingsIcon } from '@/lib/icons'
+import { AssistantIcon, HistoryIcon, SettingsIcon, UsageIcon } from '@/lib/icons'
 
 import { BookmarksButton } from '@/components/BookmarksButton'
 import { Brand } from '@/components/Brand'
@@ -25,6 +25,8 @@ interface SidebarProps {
   aiAvailable: boolean
   aiOpen: boolean
   onToggleAi: () => void
+  usageOpen: boolean
+  onToggleUsage: () => void
 }
 
 // Expands on edge hover, empty-area click, or URL bar activation when
@@ -39,6 +41,8 @@ export function Sidebar({
   aiAvailable,
   aiOpen,
   onToggleAi,
+  usageOpen,
+  onToggleUsage,
 }: SidebarProps) {
   const activeWorkspace = state.workspaces.find((w) => w.id === state.active_workspace_id)
   const tabs: Tab[] = activeWorkspace
@@ -185,6 +189,16 @@ export function Sidebar({
             <AssistantIcon />
           </button>
         )}
+        <button
+          type="button"
+          className={cx('kb-circle-btn', { 'is-active': usageOpen })}
+          aria-label="Usage"
+          aria-pressed={usageOpen}
+          title="Usage"
+          onClick={onToggleUsage}
+        >
+          <UsageIcon />
+        </button>
         <button
           type="button"
           className="kb-circle-btn"

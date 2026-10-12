@@ -276,6 +276,23 @@ CREATE TABLE site_usage (
 ) WITHOUT ROWID;
 "#;
 
+/// Site usage gains the local hour, for the time-of-day chart. Earlier rows
+/// land in hour 0.
+const M0021_SITE_USAGE_HOURS: &str = r#"
+CREATE TABLE site_usage_hourly (
+    day          TEXT    NOT NULL,
+    hour         INTEGER NOT NULL,
+    workspace_id TEXT    NOT NULL,
+    site         TEXT    NOT NULL,
+    seconds      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, workspace_id, site, hour)
+) WITHOUT ROWID;
+INSERT INTO site_usage_hourly (day, hour, workspace_id, site, seconds)
+    SELECT day, 0, workspace_id, site, seconds FROM site_usage;
+DROP TABLE site_usage;
+ALTER TABLE site_usage_hourly RENAME TO site_usage;
+"#;
+
 /// Every migration, in order. The index of the last entry is the schema
 /// version a fresh database lands on.
 const ALL: &[&str] = &[
@@ -299,6 +316,7 @@ const ALL: &[&str] = &[
     M0018_TAB_SESSIONS,
     M0019_CLOSED_TABS,
     M0020_SITE_USAGE,
+    M0021_SITE_USAGE_HOURS,
 ];
 
 fn all() -> Migrations<'static> {
@@ -331,9 +349,10 @@ pub fn run(conn: &mut Connection) -> StorageResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{all, run, schema_version, supported_version};
+    use super::{all, run, schema_version, supported_version, ALL};
     use crate::error::StorageError;
     use rusqlite::Connection;
+    use rusqlite_migration::{Migrations, M};
 
     #[test]
     fn migrations_validate() {
@@ -349,6 +368,31 @@ mod tests {
             schema_version(&conn).expect("read version"),
             supported_version()
         );
+    }
+
+    #[test]
+    fn hourly_usage_keeps_daily_rows_at_hour_zero() {
+        let mut conn = Connection::open_in_memory().expect("open in-memory db");
+        Migrations::new(ALL[..20].iter().copied().map(M::up).collect())
+            .to_latest(&mut conn)
+            .expect("migrate to version 20");
+        conn.execute(
+            "INSERT INTO site_usage (workspace_id, day, site, seconds)
+             VALUES ('ws', '2026-10-11', 'a.example', 42)",
+            [],
+        )
+        .expect("daily row");
+
+        run(&mut conn).expect("migrate to latest");
+
+        let (hour, seconds): (i64, i64) = conn
+            .query_row(
+                "SELECT hour, seconds FROM site_usage WHERE site = 'a.example'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("migrated row");
+        assert_eq!((hour, seconds), (0, 42));
     }
 
     #[test]

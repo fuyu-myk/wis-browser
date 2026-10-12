@@ -4,15 +4,16 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
-use chrono::{Local, NaiveDate};
+use chrono::{Local, NaiveDate, Timelike};
 use tauri::{AppHandle, Emitter, Manager};
-use wis_core::usage::{site_of, Focus, Observation, PRESENT};
+use wis_core::usage::{site_of, summarize, Focus, Observation, UsageSummary, PRESENT};
 use wis_core::{BrowserState, WisError, WisResult, WorkspaceId};
 
 use crate::state::AppState;
 
 pub const USAGE_CHANGED_EVENT: &str = "usage-changed";
 const FLUSH_EVERY_TICKS: u32 = 15;
+const MAX_SUMMARY_DAYS: i64 = 400;
 
 pub fn start(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
@@ -42,6 +43,39 @@ pub fn start(app: AppHandle) {
     });
 }
 
+/// Totals for local days `from..=to` (`YYYY-MM-DD`) across workspaces.
+#[tauri::command]
+pub async fn usage_summary(
+    state: tauri::State<'_, AppState>,
+    from: String,
+    to: String,
+) -> WisResult<UsageSummary> {
+    let parse = |raw: &str| {
+        NaiveDate::parse_from_str(raw, "%Y-%m-%d").map_err(|_| WisError::InvalidInput {
+            message: format!("not a date: {raw}"),
+        })
+    };
+    let (from, to) = (parse(&from)?, parse(&to)?);
+    let span = (to - from).num_days();
+    if !(0..MAX_SUMMARY_DAYS).contains(&span) {
+        return Err(WisError::InvalidInput {
+            message: "usage range must run forward and span at most a year".to_string(),
+        });
+    }
+
+    let storage = state.storage.clone();
+    let rows = tokio::task::spawn_blocking(move || storage.usage(None, from, to))
+        .await
+        .map_err(|err| WisError::PersistenceFailed {
+            reason: format!("usage read panicked: {err}"),
+        })?
+        .map_err(|err| WisError::PersistenceFailed {
+            reason: err.to_string(),
+        })?;
+
+    Ok(summarize(&rows, from, to))
+}
+
 pub fn window_focused(app: &AppHandle, label: &str, focused: bool) {
     let state = app.state::<AppState>();
     let mut current = state
@@ -60,7 +94,7 @@ pub fn window_focused(app: &AppHandle, label: &str, focused: bool) {
 pub async fn clear(
     state: &AppState,
     workspace_id: Option<WorkspaceId>,
-    from: Option<NaiveDate>,
+    from: Option<(NaiveDate, u8)>,
 ) -> WisResult<()> {
     let _io = state.usage_io.lock().await;
     state
@@ -178,9 +212,11 @@ async fn observe(app: &AppHandle) -> Option<(Observation, Duration)> {
             .find_map(|(_, ws)| playing_site(&browser, *ws, &audible))
     };
 
+    let now = Local::now();
     Some((
         Observation {
-            day: Local::now().date_naive(),
+            day: now.date_naive(),
+            hour: now.hour() as u8,
             idle,
             focused,
             playing,

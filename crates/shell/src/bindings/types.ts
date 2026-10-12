@@ -894,6 +894,17 @@ export interface HistoryImportStats {
   merged: number
 }
 
+/** Active time over a range of local days (mirror of `wis_core::usage::UsageSummary`). */
+export interface UsageSummary {
+  total_seconds: number
+  /** Busiest first. */
+  sites: { site: string; seconds: number }[]
+  /** Seconds per local hour, 24 entries. */
+  hours: number[]
+  /** Every day of the range as `YYYY-MM-DD`, quiet days included. */
+  days: { day: string; seconds: number }[]
+}
+
 // ---------------------------------------------------------------------------
 // Password vault (mirror of `vault.rs`).
 // ---------------------------------------------------------------------------

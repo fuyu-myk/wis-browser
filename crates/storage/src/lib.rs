@@ -13,7 +13,6 @@ pub mod history;
 pub mod searches;
 pub mod sqlite;
 pub mod traits;
-pub mod usage;
 
 pub use bookmarks::{Bookmark, BookmarkFolder, BookmarkImport, BookmarkImportStats};
 pub use closed_tabs::ClosedTabRecord;
@@ -24,4 +23,3 @@ pub use history::{HistoryEntry, HistoryImport, HistoryImportStats, HistoryQuery}
 pub use searches::SearchEntry;
 pub use sqlite::{is_intact, SqliteStorage};
 pub use traits::Storage;
-pub use usage::UsageEntry;

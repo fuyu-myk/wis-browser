@@ -157,7 +157,7 @@ impl Storage for SqliteStorage {
         workspace_id: Option<wis_core::WorkspaceId>,
         from: chrono::NaiveDate,
         to: chrono::NaiveDate,
-    ) -> StorageResult<Vec<crate::usage::UsageEntry>> {
+    ) -> StorageResult<Vec<wis_core::usage::UsageRow>> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         usage::query(&conn, workspace_id, from, to)
     }
@@ -165,7 +165,7 @@ impl Storage for SqliteStorage {
     fn clear_usage(
         &self,
         workspace_id: Option<wis_core::WorkspaceId>,
-        from: Option<chrono::NaiveDate>,
+        from: Option<(chrono::NaiveDate, u8)>,
     ) -> StorageResult<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         usage::clear(&conn, workspace_id, from)

@@ -10,7 +10,7 @@ import type {
   WorkspaceId,
 } from '@/bindings/types'
 import { Segmented, Switch } from '@/components/controls'
-import { isMacOS } from '@/lib/platform'
+import { currentPlatform, isMacOS } from '@/lib/platform'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { AutoplayRows } from '@/components/AutoplayRows'
 import { FilterListsSection } from '@/components/FilterListsSection'
@@ -18,6 +18,14 @@ import { UserscriptsSection } from '@/components/UserscriptsSection'
 import { AppLaunchSection } from '@/components/AppLaunchSection'
 import { SitePermissionsSection } from '@/components/SitePermissionsSection'
 import { OPEN_CLEAR_DATA_EVENT } from '@/hooks/useClearDataOverlay'
+
+const USAGE_IDLE_OPTIONS = [
+  { value: '60' as const, label: '1 min' },
+  { value: '120' as const, label: '2 min' },
+  { value: '300' as const, label: '5 min' },
+  { value: '600' as const, label: '10 min' },
+]
+type UsageIdle = (typeof USAGE_IDLE_OPTIONS)[number]['value']
 
 const PRIVACY_OPTIONS = [
   { value: 'strict' as const, label: 'Strict' },
@@ -110,6 +118,37 @@ export function PrivacySection({ settings, activeWorkspace, onUpdate }: PrivacyS
             checked={settings.persist_sessions}
             onChange={(persist_sessions) => onUpdate({ persist_sessions })}
             label="Stay logged in across restarts"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
+            <span>Count time on sites</span>
+            <span>
+              Keep an on-device tally of active time per site for the Usage panel.
+              Private workspaces are never counted; clearing history clears it.
+            </span>
+          </div>
+          <Switch
+            checked={settings.usage_tracking}
+            onChange={(usage_tracking) => onUpdate({ usage_tracking })}
+            label="Count time on sites"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
+            <span>Stop counting after</span>
+            <span>
+              {currentPlatform() === 'linux'
+                ? 'Not available on Linux yet: time counts while Wis is in front.'
+                : 'Without keyboard or mouse input. The quiet stretch is not counted; playing audio keeps counting.'}
+            </span>
+          </div>
+          <Segmented
+            value={String(settings.usage_idle_timeout_secs) as UsageIdle}
+            onChange={(v) => onUpdate({ usage_idle_timeout_secs: Number(v) })}
+            options={USAGE_IDLE_OPTIONS}
+            ariaLabel="Stop counting after"
+            disabled={!settings.usage_tracking || currentPlatform() === 'linux'}
           />
         </div>
         <div className="row">

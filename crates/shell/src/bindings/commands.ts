@@ -21,6 +21,7 @@ import type {
   BookmarkImportStats,
   ImportSource,
   HistoryImportStats,
+  UsageSummary,
   CsvImportStats,
   BrowserState,
   CredentialSummary,
@@ -1476,6 +1477,11 @@ export const commands = {
 
   async importBrowserHistory(workspaceId: WorkspaceId, sourceId: string): Promise<HistoryImportStats> {
     return invoke('import_browser_history', { workspaceId, sourceId })
+  },
+
+  /** Active time for local days `from..=to` (`YYYY-MM-DD`). */
+  async usageSummary(from: string, to: string): Promise<UsageSummary> {
+    return invoke('usage_summary', { from, to })
   },
 
   // -- favicons -------------------------------------------------------------

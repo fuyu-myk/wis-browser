@@ -105,23 +105,24 @@ pub trait Storage: Send + Sync {
 
     // -- site usage (see `crate::usage`) ------------------------------------
 
-    /// Add active seconds; credits for the same workspace, day and site sum.
+    /// Add active seconds; credits for the same workspace, day, hour and site sum.
     fn add_usage(&self, credits: &[wis_core::usage::Credit]) -> StorageResult<()>;
 
-    /// Per day and site within `from..=to`, summed across workspaces when
-    /// `workspace_id` is `None`.
+    /// Per day, hour and site within `from..=to`, summed across workspaces
+    /// when `workspace_id` is `None`.
     fn usage(
         &self,
         workspace_id: Option<WorkspaceId>,
         from: chrono::NaiveDate,
         to: chrono::NaiveDate,
-    ) -> StorageResult<Vec<crate::usage::UsageEntry>>;
+    ) -> StorageResult<Vec<wis_core::usage::UsageRow>>;
 
-    /// Scoped to `workspace_id` when set; with `from`, only that day and later go.
+    /// Scoped to `workspace_id` when set; with `from`, only that local day
+    /// and hour onward go.
     fn clear_usage(
         &self,
         workspace_id: Option<WorkspaceId>,
-        from: Option<chrono::NaiveDate>,
+        from: Option<(chrono::NaiveDate, u8)>,
     ) -> StorageResult<()>;
 
     // -- password vault (see [`crate::credentials`]) -----------------------

@@ -1,23 +1,24 @@
 use chrono::NaiveDate;
 use rusqlite::{params, Connection};
-use wis_core::usage::Credit;
+use wis_core::usage::{Credit, UsageRow};
 use wis_core::WorkspaceId;
 
 use crate::error::StorageResult;
-use crate::usage::UsageEntry;
 
 pub fn add(conn: &mut Connection, credits: &[Credit]) -> StorageResult<()> {
     let tx = conn.transaction()?;
     {
         let mut upsert = tx.prepare(
-            "INSERT INTO site_usage (workspace_id, day, site, seconds) VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(day, workspace_id, site) DO UPDATE SET
+            "INSERT INTO site_usage (day, hour, workspace_id, site, seconds)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(day, workspace_id, site, hour) DO UPDATE SET
                  seconds = site_usage.seconds + excluded.seconds",
         )?;
         for credit in credits {
             upsert.execute(params![
-                credit.workspace.as_uuid().to_string(),
                 credit.day,
+                credit.hour,
+                credit.workspace.as_uuid().to_string(),
                 credit.site,
                 credit.seconds
             ])?;
@@ -27,40 +28,47 @@ pub fn add(conn: &mut Connection, credits: &[Credit]) -> StorageResult<()> {
     Ok(())
 }
 
-/// Per day and site within `from..=to`, summed across workspaces when
-/// `workspace_id` is `None`. Busiest first within each day.
+/// Rows within `from..=to`, summed across workspaces when `workspace_id` is
+/// `None`.
 pub fn query(
     conn: &Connection,
     workspace_id: Option<WorkspaceId>,
     from: NaiveDate,
     to: NaiveDate,
-) -> StorageResult<Vec<UsageEntry>> {
+) -> StorageResult<Vec<UsageRow>> {
     let ws = workspace_id.map(|w| w.as_uuid().to_string());
     let mut statement = conn.prepare(
-        "SELECT day, site, SUM(seconds) FROM site_usage
+        "SELECT day, hour, site, SUM(seconds) FROM site_usage
          WHERE day >= ?1 AND day <= ?2 AND (?3 IS NULL OR workspace_id = ?3)
-         GROUP BY day, site ORDER BY day DESC, SUM(seconds) DESC, site",
+         GROUP BY day, hour, site ORDER BY day, hour, site",
     )?;
     let rows = statement.query_map(params![from, to, ws], |row| {
-        Ok(UsageEntry {
+        Ok(UsageRow {
             day: row.get(0)?,
-            site: row.get(1)?,
-            seconds: row.get(2)?,
+            hour: row.get(1)?,
+            site: row.get(2)?,
+            seconds: row.get(3)?,
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
-/// Scoped to `workspace_id` when set; with `from`, only that day and later go.
+/// Scoped to `workspace_id` when set; with `from`, only that local hour and
+/// later go.
 pub fn clear(
     conn: &Connection,
     workspace_id: Option<WorkspaceId>,
-    from: Option<NaiveDate>,
+    from: Option<(NaiveDate, u8)>,
 ) -> StorageResult<()> {
     conn.execute(
         "DELETE FROM site_usage
-         WHERE (?1 IS NULL OR workspace_id = ?1) AND (?2 IS NULL OR day >= ?2)",
-        params![workspace_id.map(|w| w.as_uuid().to_string()), from],
+         WHERE (?1 IS NULL OR workspace_id = ?1)
+           AND (?2 IS NULL OR day > ?2 OR (day = ?2 AND hour >= ?3))",
+        params![
+            workspace_id.map(|w| w.as_uuid().to_string()),
+            from.map(|(day, _)| day),
+            from.map(|(_, hour)| hour)
+        ],
     )?;
     Ok(())
 }
@@ -79,40 +87,42 @@ mod tests {
         NaiveDate::from_ymd_opt(2026, 10, d).unwrap()
     }
 
-    fn credit(ws: WorkspaceId, d: u32, site: &str, seconds: u32) -> Credit {
+    fn credit(ws: WorkspaceId, d: u32, hour: u8, site: &str, seconds: u32) -> Credit {
         Credit {
             workspace: ws,
             day: day(d),
+            hour,
             site: site.to_string(),
             seconds,
         }
     }
 
-    fn entry(d: u32, site: &str, seconds: i64) -> UsageEntry {
-        UsageEntry {
+    fn row(d: u32, hour: u8, site: &str, seconds: i64) -> UsageRow {
+        UsageRow {
             day: day(d),
+            hour,
             site: site.to_string(),
             seconds,
         }
     }
 
     #[test]
-    fn credits_accumulate_per_day_and_site() {
+    fn credits_accumulate_per_day_hour_and_site() {
         let mut conn = conn();
         let ws = WorkspaceId::new();
-        add(&mut conn, &[credit(ws, 10, "a.example", 30)]).unwrap();
+        add(&mut conn, &[credit(ws, 10, 9, "a.example", 30)]).unwrap();
         add(
             &mut conn,
             &[
-                credit(ws, 10, "a.example", 15),
-                credit(ws, 10, "b.example", 90),
+                credit(ws, 10, 9, "a.example", 15),
+                credit(ws, 10, 14, "a.example", 5),
             ],
         )
         .unwrap();
 
         assert_eq!(
             query(&conn, Some(ws), day(10), day(10)).unwrap(),
-            vec![entry(10, "b.example", 90), entry(10, "a.example", 45)]
+            vec![row(10, 9, "a.example", 45), row(10, 14, "a.example", 5)]
         );
     }
 
@@ -123,43 +133,45 @@ mod tests {
         add(
             &mut conn,
             &[
-                credit(a, 9, "x.example", 10),
-                credit(b, 9, "x.example", 5),
-                credit(a, 11, "x.example", 7),
-                credit(a, 12, "x.example", 1),
+                credit(a, 9, 8, "x.example", 10),
+                credit(b, 9, 8, "x.example", 5),
+                credit(a, 11, 8, "x.example", 7),
+                credit(a, 12, 8, "x.example", 1),
             ],
         )
         .unwrap();
 
         assert_eq!(
             query(&conn, None, day(9), day(11)).unwrap(),
-            vec![entry(11, "x.example", 7), entry(9, "x.example", 15)]
+            vec![row(9, 8, "x.example", 15), row(11, 8, "x.example", 7)]
         );
         assert_eq!(
             query(&conn, Some(b), day(1), day(31)).unwrap(),
-            vec![entry(9, "x.example", 5)]
+            vec![row(9, 8, "x.example", 5)]
         );
     }
 
     #[test]
-    fn clearing_honours_the_workspace_and_the_first_day() {
+    fn clearing_from_an_hour_keeps_what_came_before() {
         let mut conn = conn();
         let (a, b) = (WorkspaceId::new(), WorkspaceId::new());
         add(
             &mut conn,
             &[
-                credit(a, 9, "x.example", 1),
-                credit(a, 11, "x.example", 1),
-                credit(b, 11, "x.example", 1),
+                credit(a, 9, 23, "x.example", 1),
+                credit(a, 10, 8, "x.example", 1),
+                credit(a, 10, 9, "x.example", 1),
+                credit(a, 11, 0, "x.example", 1),
+                credit(b, 11, 0, "x.example", 1),
             ],
         )
         .unwrap();
 
-        clear(&conn, Some(a), Some(day(10))).unwrap();
+        clear(&conn, Some(a), Some((day(10), 9))).unwrap();
 
         assert_eq!(
             query(&conn, Some(a), day(1), day(31)).unwrap(),
-            vec![entry(9, "x.example", 1)]
+            vec![row(9, 23, "x.example", 1), row(10, 8, "x.example", 1)]
         );
         assert_eq!(query(&conn, Some(b), day(1), day(31)).unwrap().len(), 1);
 
