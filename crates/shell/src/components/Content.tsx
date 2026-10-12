@@ -70,6 +70,7 @@ export function Content({
         open={usageOpen}
         side={aiSide === 'right' ? 'left' : 'right'}
         tracking={state.settings.usage_tracking}
+        weekStart={state.settings.week_start}
         onClose={onCloseUsage}
         onOpenSettings={onOpenSettings}
         onOpenPage={onOpenUsagePage}

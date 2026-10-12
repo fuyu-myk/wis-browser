@@ -1,3 +1,5 @@
+import type { WeekStart } from '@/bindings/types'
+
 export const USAGE_PANEL_WIDTH_MIN = 280
 export const USAGE_PANEL_WIDTH_MAX = 520
 export const USAGE_PANEL_WIDTH_DEFAULT = 320
@@ -11,7 +13,7 @@ export interface DaySeconds {
   seconds: number
 }
 
-function parseDay(day: string): Date {
+export function parseDay(day: string): Date {
   const [year, month, date] = day.split('-').map(Number)
   return new Date(year, month - 1, date)
 }
@@ -33,18 +35,38 @@ export function localDay(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-/** The Monday-to-Sunday week holding `date`. */
-export function weekOf(date: Date): { from: string; to: string } {
-  const sinceMonday = (date.getDay() + 6) % 7
-  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate() - sinceMonday)
-  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6)
-  return { from: localDay(monday), to: localDay(sunday) }
+type WeekInfoLocale = Intl.Locale & {
+  getWeekInfo?: () => { firstDay: number }
+  weekInfo?: { firstDay: number }
+}
+
+/** The week's first day as `Date.getDay()` counts (0 is Sunday); Monday when the region is unknown. */
+export function firstWeekday(start: WeekStart, locale?: string): number {
+  if (start === 'monday') return 1
+  if (start === 'sunday') return 0
+  try {
+    const region = new Intl.Locale(
+      locale ?? Intl.DateTimeFormat().resolvedOptions().locale,
+    ) as WeekInfoLocale
+    const info = region.getWeekInfo?.() ?? region.weekInfo
+    return info ? info.firstDay % 7 : 1
+  } catch {
+    return 1
+  }
+}
+
+/** The week holding `date`, starting on `firstDay` (0 is Sunday). */
+export function weekOf(date: Date, firstDay = 1): { from: string; to: string } {
+  const since = (date.getDay() - firstDay + 7) % 7
+  return shiftWeek(localDay(new Date(date.getFullYear(), date.getMonth(), date.getDate() - since)), 0)
 }
 
 /** The week `weeks` away from the one starting on `from`. */
 export function shiftWeek(from: string, weeks: number): { from: string; to: string } {
   const start = parseDay(from)
-  return weekOf(new Date(start.getFullYear(), start.getMonth(), start.getDate() + weeks * 7))
+  const day = (offset: number) =>
+    localDay(new Date(start.getFullYear(), start.getMonth(), start.getDate() + offset))
+  return { from: day(weeks * 7), to: day(weeks * 7 + 6) }
 }
 
 /** A week's dates, with years only when the week is outside `now`'s year. */
@@ -67,11 +89,53 @@ export function dayLabel(day: string, locale?: string): string {
   )
 }
 
+const sum = (days: ReadonlyArray<DaySeconds>) => days.reduce((total, d) => total + d.seconds, 0)
+
+/** Each run of seven days summed under its first day; `days` starts on a week's first day. */
+export function weekTotals(days: ReadonlyArray<DaySeconds>): DaySeconds[] {
+  return Array.from({ length: Math.ceil(days.length / 7) }, (_, i) => {
+    const week = days.slice(i * 7, i * 7 + 7)
+    return { day: week[0].day, seconds: sum(week) }
+  })
+}
+
+/** The mean of finished weeks since the first with any time, or null. */
+export function weeklyAverage(weeks: ReadonlyArray<DaySeconds>, running: boolean): number | null {
+  const finished = running ? weeks.slice(0, -1) : weeks
+  const first = finished.findIndex((w) => w.seconds > 0)
+  if (first < 0) return null
+  const counted = finished.slice(first)
+  return sum(counted) / counted.length
+}
+
+/**
+ * The week's change from the one before over the same weekdays, as a
+ * fraction; null when there is nothing to compare.
+ */
+export function weekChange(
+  week: ReadonlyArray<DaySeconds>,
+  before: ReadonlyArray<DaySeconds>,
+  today: string,
+): number | null {
+  const started = week.filter((d) => d.day <= today).length
+  const prior = sum(before.slice(0, started))
+  if (started === 0 || prior === 0) return null
+  return sum(week.slice(0, started)) / prior - 1
+}
+
+/** `partial` when the week is still running. */
+export function changeLabel(change: number, partial: boolean): string {
+  const percent = Math.round(Math.abs(change) * 100)
+  const than = partial ? 'this time last week' : 'the week before'
+  if (percent === 0) return `Same as ${than}`
+  return `${percent}% ${change > 0 ? 'more' : 'less'} than ${than}`
+}
+
 /** Average over the days up to and including `today`. */
 export function dailyAverage(days: ReadonlyArray<DaySeconds>, today: string): number {
   const started = days.filter((d) => d.day <= today)
   if (started.length === 0) return 0
-  return started.reduce((sum, d) => sum + d.seconds, 0) / started.length
+  return sum(started) / started.length
 }
 
 /** Gridline values from zero: a round step, at most `intervals` of them, reaching `max`. */

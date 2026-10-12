@@ -6,11 +6,13 @@ import type {
   PrivacyMode,
   UserSettings,
   UserSettingsPatch,
+  WeekStart,
   Workspace,
   WorkspaceId,
 } from '@/bindings/types'
 import { Segmented, Switch } from '@/components/controls'
 import { currentPlatform, isMacOS } from '@/lib/platform'
+import { firstWeekday } from '@/lib/usage'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { AutoplayRows } from '@/components/AutoplayRows'
 import { FilterListsSection } from '@/components/FilterListsSection'
@@ -26,6 +28,13 @@ const USAGE_IDLE_OPTIONS = [
   { value: '600' as const, label: '10 min' },
 ]
 type UsageIdle = (typeof USAGE_IDLE_OPTIONS)[number]['value']
+
+const WEEK_START_OPTIONS = [
+  { value: 'auto' as const, label: 'Automatic' },
+  { value: 'sunday' as const, label: 'Sunday' },
+  { value: 'monday' as const, label: 'Monday' },
+] satisfies ReadonlyArray<{ value: WeekStart; label: string }>
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 const PRIVACY_OPTIONS = [
   { value: 'strict' as const, label: 'Strict' },
@@ -149,6 +158,21 @@ export function PrivacySection({ settings, activeWorkspace, onUpdate }: PrivacyS
             options={USAGE_IDLE_OPTIONS}
             ariaLabel="Stop counting after"
             disabled={!settings.usage_tracking || currentPlatform() === 'linux'}
+          />
+        </div>
+        <div className="row">
+          <div className="l">
+            <span>Week starts on</span>
+            <span>
+              {`For the Usage panel and page. Automatic follows your region (${WEEKDAY_NAMES[firstWeekday('auto')]}).`}
+            </span>
+          </div>
+          <Segmented
+            value={settings.week_start}
+            onChange={(week_start) => onUpdate({ week_start })}
+            options={WEEK_START_OPTIONS}
+            ariaLabel="Week starts on"
+            disabled={!settings.usage_tracking}
           />
         </div>
         <div className="row">

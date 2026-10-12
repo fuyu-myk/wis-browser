@@ -11,6 +11,7 @@ use crate::new_tab::{default_shortcuts, NewTabTarget, ShortcutTile};
 use crate::privacy::PrivacyMode;
 use crate::search::{CustomSearchEngine, SearchEngine};
 use crate::theme::CustomTheme;
+use crate::usage::WeekStart;
 use crate::user_agent::UaProfile;
 use crate::userscript::Userscript;
 use crate::widget::Widget;
@@ -96,6 +97,9 @@ pub struct UserSettings {
     /// before it is not counted either.
     #[serde(default = "default_usage_idle_timeout_secs")]
     pub usage_idle_timeout_secs: u32,
+    /// First day of the week in usage summaries.
+    #[serde(default)]
+    pub week_start: WeekStart,
     /// When true, in-memory session cookies (login sessions) are snapshotted,
     /// encrypted, and restored on the next launch, so logins survive a restart.
     /// Restored sessions still expire after a fixed cap (see the shell's session
@@ -421,6 +425,7 @@ impl Default for UserSettings {
             tab_sleep_minutes: 15,
             usage_tracking: true,
             usage_idle_timeout_secs: default_usage_idle_timeout_secs(),
+            week_start: WeekStart::default(),
             persist_sessions: true,
             fraud_warning_enabled: true,
             global_privacy_control: true,
@@ -516,6 +521,8 @@ pub struct UserSettingsPatch {
     pub usage_tracking: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage_idle_timeout_secs: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub week_start: Option<WeekStart>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persist_sessions: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -646,6 +653,7 @@ impl UserSettings {
             usage_idle_timeout_secs: patch
                 .usage_idle_timeout_secs
                 .unwrap_or(self.usage_idle_timeout_secs),
+            week_start: patch.week_start.unwrap_or(self.week_start),
             persist_sessions: patch.persist_sessions.unwrap_or(self.persist_sessions),
             fraud_warning_enabled: patch
                 .fraud_warning_enabled

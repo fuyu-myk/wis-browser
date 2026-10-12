@@ -8795,12 +8795,29 @@ body.motion-off .kb-ai-think-label.is-live {
 .kb-usage-card-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
 }
-.kb-usage-line { position: relative; }
+.kb-usage-card-head .kb-segmented { margin-left: auto; }
+.kb-usage-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.kb-usage-legend svg { overflow: visible; }
+.kb-usage-avg {
+  stroke: var(--text-secondary);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 0 5;
+}
+.kb-usage-card-body { height: 264px; }
+.kb-usage-card-body.is-table { overflow-y: auto; }
+.kb-usage-line { position: relative; height: 100%; }
 .kb-usage-line svg { display: block; overflow: visible; }
-.kb-usage-line .kb-usage-plot { min-height: 220px; }
+.kb-usage-line .kb-usage-plot { height: 100%; }
 .kb-usage-ylabel {
   fill: var(--text-tertiary);
   font-size: 11px;
@@ -8864,7 +8881,8 @@ body.motion-off .kb-ai-think-label.is-live {
 }
 .kb-usage-table th,
 .kb-usage-table td {
-  padding: 8px 4px;
+  height: 28px;
+  padding: 0 4px;
   text-align: right;
   border-bottom: 1px solid var(--border);
 }

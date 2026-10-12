@@ -3,11 +3,22 @@
 use std::time::Duration;
 
 use chrono::NaiveDate;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::ids::WorkspaceId;
 use crate::site::registrable_domain;
+
+/// The first day of a usage week.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WeekStart {
+    /// The region's convention.
+    #[default]
+    Auto,
+    Monday,
+    Sunday,
+}
 
 /// Input within this long counts as presence and confirms held time.
 pub const PRESENT: Duration = Duration::from_secs(2);

@@ -3,8 +3,7 @@ import { useState } from 'react'
 
 import { commands } from '@/bindings/commands'
 import type { Tab, UsageSummary } from '@/bindings/types'
-import { Segmented } from '@/components/controls'
-import { UsageLine } from '@/components/UsageLine'
+import { UsageChartCard } from '@/components/UsageChartCard'
 import { UsageSites } from '@/components/UsageSites'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
@@ -15,22 +14,24 @@ import { errorMessage } from '@/lib/errors'
 import { ChevronLeftIcon, ChevronRightIcon, LockIcon } from '@/lib/icons'
 import { SETTINGS_URL } from '@/lib/url'
 import {
+  changeLabel,
   dailyAverage,
   dayLabel,
+  firstWeekday,
   formatDuration,
   localDay,
-  sharePercent,
+  parseDay,
   shiftWeek,
+  weekChange,
+  weekdayLabel,
   weekOf,
   weekRangeLabel,
+  weekTotals,
+  weeklyAverage,
+  type DaySeconds,
 } from '@/lib/usage'
 
-type View = 'chart' | 'table'
-
-const VIEWS = [
-  { value: 'chart' as const, label: 'Chart' },
-  { value: 'table' as const, label: 'Table' },
-]
+const TREND_WEEKS = 8
 
 /** Weekly active time per day and per site (`about:usage`). */
 export function UsagePage({ activeTab }: { activeTab: Tab }) {
@@ -41,17 +42,25 @@ export function UsagePage({ activeTab }: { activeTab: Tab }) {
   const navigate = useNavigateOrCreateTab(state?.active_workspace_id ?? null, activeTab)
   const attachScroll = useScrollMemory(activeTab.id)
 
-  const current = weekOf(now)
-  const week = anchor === null ? current : shiftWeek(anchor, 0)
+  const firstDay = firstWeekday(state?.settings.week_start ?? 'auto')
+  const current = weekOf(now, firstDay)
+  const week = anchor === null ? current : weekOf(parseDay(anchor), firstDay)
   const isCurrent = week.from >= current.from
   const stepWeek = (weeks: number) => {
     const next = shiftWeek(week.from, weeks)
     setAnchor(next.from >= current.from ? null : next.from)
   }
   const label = weekRangeLabel(week.from, week.to, now)
+  const trendFrom = shiftWeek(week.from, 1 - TREND_WEEKS).from
   const { data, error, isPlaceholderData } = useQuery({
-    queryKey: ['usage', 'week', week.from, week.to],
-    queryFn: () => commands.usageSummary(week.from, week.to),
+    queryKey: ['usage', 'page', week.from, week.to],
+    queryFn: async () => {
+      const [summary, trend] = await Promise.all([
+        commands.usageSummary(week.from, week.to),
+        commands.usageSummary(trendFrom, week.to),
+      ])
+      return { summary, trend: trend.days }
+    },
     enabled: tracking,
     placeholderData: keepPreviousData,
   })
@@ -108,7 +117,13 @@ export function UsagePage({ activeTab }: { activeTab: Tab }) {
             <p className="kb-history-empty">{errorMessage(error)}</p>
           ) : data ? (
             <div className={cx('kb-usage-week-body', { 'is-stale': isPlaceholderData })}>
-              <WeekSummary summary={data} today={localDay(now)} caption={`Time per day, ${label}`} />
+              <WeekSummary
+                summary={data.summary}
+                trend={data.trend}
+                now={now}
+                isCurrent={isCurrent}
+                label={label}
+              />
             </div>
           ) : null}
           <p className="kb-usage-note">
@@ -123,24 +138,37 @@ export function UsagePage({ activeTab }: { activeTab: Tab }) {
 
 interface WeekSummaryProps {
   summary: UsageSummary
-  today: string
-  caption: string
+  /** Every day of the trend's weeks, ending with this one. */
+  trend: ReadonlyArray<DaySeconds>
+  now: Date
+  isCurrent: boolean
+  label: string
 }
 
-function WeekSummary({ summary, today, caption }: WeekSummaryProps) {
-  const [view, setView] = useState<View>('chart')
+function WeekSummary({ summary, trend, now, isCurrent, label }: WeekSummaryProps) {
+  const today = localDay(now)
   const total = summary.total_seconds
-  const started = summary.days.filter((d) => d.day <= today)
   const busiest = summary.days.reduce(
     (best, d) => (best === null || d.seconds > best.seconds ? d : best),
-    null as UsageSummary['days'][number] | null,
+    null as DaySeconds | null,
   )
+  const change = weekChange(trend.slice(-7), trend.slice(-14, -7), today)
+  const weeks = weekTotals(trend)
+  const todayIndex = summary.days.findIndex((d) => d.day === today)
+  const average = dailyAverage(summary.days, today)
+  const running = isCurrent ? weeks[weeks.length - 1]?.day : undefined
+  const weekTitle = (day: string) =>
+    `${weekRangeLabel(day, shiftWeek(day, 0).to, now)}${day === running ? ' so far' : ''}`
 
   return (
     <>
       <div className="kb-usage-stats">
-        <Stat label="Total" value={formatDuration(total)} />
-        <Stat label="Daily average" value={formatDuration(dailyAverage(summary.days, today))} />
+        <Stat
+          label="Total"
+          value={formatDuration(total)}
+          detail={change === null ? undefined : changeLabel(change, isCurrent)}
+        />
+        <Stat label="Daily average" value={formatDuration(average)} />
         <Stat
           label="Busiest day"
           value={busiest && busiest.seconds > 0 ? dayLabel(busiest.day) : 'None yet'}
@@ -148,34 +176,30 @@ function WeekSummary({ summary, today, caption }: WeekSummaryProps) {
         />
       </div>
 
-      <section className="kb-usage-card">
-        <div className="kb-usage-card-head">
-          <h2 className="kb-usage-heading">Time per day</h2>
-          <Segmented value={view} onChange={setView} options={VIEWS} ariaLabel="View" />
-        </div>
-        {view === 'chart' ? (
-          <UsageLine key={summary.days[0]?.day} days={summary.days} today={today} caption={caption} />
-        ) : (
-          <table className="kb-usage-table">
-            <thead>
-              <tr>
-                <th scope="col">Day</th>
-                <th scope="col">Time</th>
-                <th scope="col">Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {started.map((d) => (
-                <tr key={d.day} className={cx({ 'is-now': d.day === today })}>
-                  <th scope="row">{dayLabel(d.day)}</th>
-                  <td>{formatDuration(d.seconds)}</td>
-                  <td>{sharePercent(d.seconds, total)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      <UsageChartCard
+        heading="Time per day"
+        unit="Day"
+        points={summary.days}
+        shown={summary.days.filter((d) => d.day <= today).length}
+        current={todayIndex < 0 ? null : todayIndex}
+        label={weekdayLabel}
+        title={dayLabel}
+        average={average > 0 ? average : null}
+        caption={`Time per day, ${label}`}
+        total={total}
+      />
+
+      <UsageChartCard
+        heading={`Last ${TREND_WEEKS} weeks`}
+        unit="Week"
+        points={weeks}
+        shown={weeks.length}
+        current={isCurrent ? weeks.length - 1 : null}
+        axisTitle="Week"
+        title={weekTitle}
+        average={weeklyAverage(weeks, isCurrent)}
+        caption={`Time per week, ${TREND_WEEKS} weeks to ${label}`}
+      />
 
       <section className="kb-usage-card">
         <h2 className="kb-usage-heading">Sites</h2>

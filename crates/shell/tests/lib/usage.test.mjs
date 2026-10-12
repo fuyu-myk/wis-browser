@@ -8,15 +8,20 @@ import {
   dailyAverage,
   dayLabel,
   durationTicks,
+  firstWeekday,
   formatDuration,
   hourLabel,
+  changeLabel,
   localDay,
   sharePercent,
   shiftWeek,
   stepSlot,
   weekOf,
+  weekChange,
   weekRangeLabel,
+  weekTotals,
   weekdayLabel,
+  weeklyAverage,
 } from '../../src/lib/usage.ts'
 
 const HOUR = 3600
@@ -115,4 +120,60 @@ test('chart keys step within the slots', () => {
   assert.equal(stepSlot('Home', 4, 6), 0)
   assert.equal(stepSlot('End', 1, 6), 6)
   assert.equal(stepSlot('Enter', 1, 6), null)
+})
+
+const daysFrom = (start, seconds) =>
+  seconds.map((value, i) => {
+    const date = new Date(2026, 8, start + i)
+    return { day: localDay(date), seconds: value }
+  })
+
+test('weekly totals sum each run of seven days under its first day', () => {
+  const days = daysFrom(28, [1, 2, 3, 4, 5, 6, 7, 10, 10, 10, 10, 10, 10, 10])
+  assert.deepEqual(weekTotals(days), [
+    { day: '2026-09-28', seconds: 28 },
+    { day: '2026-10-05', seconds: 70 },
+  ])
+  assert.deepEqual(weekTotals([]), [])
+})
+
+test('a week is compared with the same weekdays of the week before', () => {
+  const before = daysFrom(28, [HOUR, HOUR, HOUR, 5 * HOUR, 0, 0, 0])
+  const week = daysFrom(35, [2 * HOUR, HOUR, 0, 0, 0, 0, 0])
+  assert.equal(weekChange(week, before, '2026-10-07'), 0)
+  assert.equal(weekChange(week, before, '2026-10-06'), 0.5)
+  assert.equal(weekChange(week, before, '2026-10-20'), -0.625)
+  assert.equal(weekChange(week, daysFrom(28, [0, 0, 0, 0, 0, 0, 0]), '2026-10-20'), null)
+  assert.equal(weekChange(week, before, '2026-10-01'), null)
+})
+
+test('changes read as more, less or the same', () => {
+  assert.equal(changeLabel(0.123, true), '12% more than this time last week')
+  assert.equal(changeLabel(-0.5, false), '50% less than the week before')
+  assert.equal(changeLabel(0.001, true), 'Same as this time last week')
+  assert.equal(changeLabel(-0.004, false), 'Same as the week before')
+})
+
+test('the weekly average skips the running week and weeks before tracking began', () => {
+  const weeks = [0, 0, 10, 20, 30, 40].map((seconds, i) => ({ day: `w${i}`, seconds }))
+  assert.equal(weeklyAverage(weeks, true), 20)
+  assert.equal(weeklyAverage(weeks, false), 25)
+  assert.equal(weeklyAverage(weeks.map((w) => ({ ...w, seconds: 0 })), false), null)
+  assert.equal(weeklyAverage([{ day: 'w0', seconds: 50 }], true), null)
+})
+
+test('weeks can start on any day', () => {
+  assert.deepEqual(weekOf(new Date(2026, 9, 11), 0), { from: '2026-10-11', to: '2026-10-17' })
+  assert.deepEqual(weekOf(new Date(2026, 9, 10), 0), { from: '2026-10-04', to: '2026-10-10' })
+  assert.deepEqual(weekOf(new Date(2026, 9, 11), 6), { from: '2026-10-10', to: '2026-10-16' })
+  assert.deepEqual(shiftWeek('2026-10-11', -1), { from: '2026-10-04', to: '2026-10-10' })
+})
+
+test('the first weekday follows the setting, else the region', () => {
+  assert.equal(firstWeekday('monday', 'en-US'), 1)
+  assert.equal(firstWeekday('sunday', 'en-GB'), 0)
+  assert.equal(firstWeekday('auto', 'en-US'), 0)
+  assert.equal(firstWeekday('auto', 'en-GB'), 1)
+  assert.equal(firstWeekday('auto', 'ar-EG'), 6)
+  assert.equal(firstWeekday('auto', 'not a locale!'), 1)
 })

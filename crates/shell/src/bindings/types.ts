@@ -505,6 +505,8 @@ export interface UserSettings {
   usage_tracking: boolean
   /** Seconds without input before usage stops counting. */
   usage_idle_timeout_secs: number
+  /** First day of the week in usage summaries. */
+  week_start: WeekStart
   /** Persist (encrypted) login sessions across restarts; auto-expire after a cap. */
   persist_sessions: boolean
   /** WebKit fraudulent-website warning (Apple-proxied Safe Browsing). */
@@ -601,6 +603,7 @@ export interface UserSettingsPatch {
   tab_sleep_minutes?: number
   usage_tracking?: boolean
   usage_idle_timeout_secs?: number
+  week_start?: WeekStart
   persist_sessions?: boolean
   fraud_warning_enabled?: boolean
   global_privacy_control?: boolean
@@ -893,6 +896,9 @@ export interface HistoryImportStats {
   added: number
   merged: number
 }
+
+/** Mirror of `wis_core::usage::WeekStart`; `auto` follows the region. */
+export type WeekStart = 'auto' | 'monday' | 'sunday'
 
 /** Active time over a range of local days (mirror of `wis_core::usage::UsageSummary`). */
 export interface UsageSummary {

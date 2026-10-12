@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { commands } from '@/bindings/commands'
-import type { UsageSummary } from '@/bindings/types'
+import type { UsageSummary, WeekStart } from '@/bindings/types'
 import { Segmented } from '@/components/controls'
 import { UsageBars } from '@/components/UsageBars'
 import { UsageSites } from '@/components/UsageSites'
@@ -13,6 +13,7 @@ import { errorMessage } from '@/lib/errors'
 import { ExpandIcon, LockIcon, XIcon } from '@/lib/icons'
 import {
   clampUsagePanelWidth,
+  firstWeekday,
   formatDuration,
   hourLabel,
   localDay,
@@ -37,6 +38,7 @@ interface UsagePanelProps {
   /** Docked beside the sidebar, opposite the assistant. */
   side: 'left' | 'right'
   tracking: boolean
+  weekStart: WeekStart
   onClose: () => void
   onOpenSettings: () => void
   onOpenPage: () => void
@@ -47,6 +49,7 @@ export function UsagePanel({
   open,
   side,
   tracking,
+  weekStart,
   onClose,
   onOpenSettings,
   onOpenPage,
@@ -61,7 +64,9 @@ export function UsagePanel({
   )
 
   const span =
-    range === 'today' ? { from: localDay(now), to: localDay(now) } : weekOf(now)
+    range === 'today'
+      ? { from: localDay(now), to: localDay(now) }
+      : weekOf(now, firstWeekday(weekStart))
   const { data, error, isPlaceholderData } = useQuery({
     queryKey: ['usage', range, span.from, span.to],
     queryFn: () => commands.usageSummary(span.from, span.to),

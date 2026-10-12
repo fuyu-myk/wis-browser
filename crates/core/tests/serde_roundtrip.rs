@@ -128,6 +128,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
         tab_sleep_minutes: Some(30),
         usage_tracking: Some(false),
         usage_idle_timeout_secs: Some(300),
+        week_start: Some(wis_core::usage::WeekStart::Sunday),
         persist_sessions: Some(false),
         fraud_warning_enabled: Some(false),
         global_privacy_control: Some(false),
@@ -286,6 +287,36 @@ fn user_settings_without_expanded_folder_limit_deserialises_to_default() {
     }"#;
     let parsed: UserSettings = serde_json::from_str(json).unwrap();
     assert_eq!(parsed.top_tabs_max_expanded_folders, 2);
+}
+
+#[test]
+fn user_settings_without_week_start_deserialises_to_auto() {
+    let json = r#"{
+        "layout": "sidebar_left",
+        "theme": "system",
+        "accent": "primary",
+        "glass_enabled": true,
+        "sidebar_collapsible": true,
+        "compact": false,
+        "default_privacy_mode": "balanced",
+        "doh_resolver": null,
+        "homepage": null
+    }"#;
+    let parsed: UserSettings = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.week_start, wis_core::usage::WeekStart::Auto);
+}
+
+#[test]
+fn week_start_roundtrips_as_snake_case() {
+    use wis_core::usage::WeekStart;
+    for (start, json) in [
+        (WeekStart::Auto, "\"auto\""),
+        (WeekStart::Monday, "\"monday\""),
+        (WeekStart::Sunday, "\"sunday\""),
+    ] {
+        assert_eq!(serde_json::to_string(&start).unwrap(), json);
+        assert_eq!(roundtrip(&start), start);
+    }
 }
 
 #[test]
