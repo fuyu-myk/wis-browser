@@ -109,6 +109,8 @@ export interface WireMessage {
   content: string
   tool_calls?: AiToolCall[]
   tool_call_id?: string
+  /** An Anthropic tool-use turn as it streamed, echoed back verbatim. */
+  content_blocks?: unknown[]
 }
 
 /**

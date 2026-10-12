@@ -54,9 +54,8 @@ export function Content({
       ? 'left'
       : 'right'
 
-  const aiToolsOffered = state.settings.ai.provider === 'open_ai_compatible'
-  const aiWebAccess = state.settings.ai.web_access && aiToolsOffered
-  const aiLocalData = state.settings.ai.local_data && aiToolsOffered
+  const aiWebAccess = state.settings.ai.web_access
+  const aiLocalData = state.settings.ai.local_data
   const aiTabActions = aiLocalData && state.settings.ai.tab_actions
 
   // Kept mounted after the first open.

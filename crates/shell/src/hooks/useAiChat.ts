@@ -610,6 +610,7 @@ export function useAiChat(
 
         let settled = false
         let toolCalls: AiToolCall[] | null = null
+        let toolBlocks: unknown[] = []
         let handedOff = false
         const settle = (error: string | null) => {
           if (settled || genRef.current !== streamGen) return
@@ -635,6 +636,7 @@ export function useAiChat(
           } else if (event.type === 'tool_calls') {
             closeReasoning()
             toolCalls = event.calls
+            toolBlocks = event.blocks ?? []
           } else if (event.type === 'truncated') truncated = true
           else if (event.type === 'done') {
             // The budget is a hard stop.
@@ -643,7 +645,7 @@ export function useAiChat(
               toolCalls = null
               handedOff = true
               if (requestIdRef.current === requestId) requestIdRef.current = null
-              void executeRound(streamGen, calls)
+              void executeRound(streamGen, calls, toolBlocks)
             } else settle(null)
           } else settle(event.message)
         }
@@ -671,7 +673,11 @@ export function useAiChat(
 
       // One tool round: vet the calls, run them in order, feed the results
       // back, and stream again.
-      const executeRound = async (streamGen: number, rawCalls: AiToolCall[]) => {
+      const executeRound = async (
+        streamGen: number,
+        rawCalls: AiToolCall[],
+        rawBlocks: unknown[],
+      ) => {
         rounds += 1
         if (roundText !== '') queueDelta(assistantId, '\n\n', '')
         const planned = planToolCalls(rawCalls, allowedUrls, seenQueries)
@@ -710,7 +716,12 @@ export function useAiChat(
 
         convo = [
           ...convo,
-          { role: 'assistant', content: roundText, tool_calls: rawCalls },
+          {
+            role: 'assistant',
+            content: roundText,
+            tool_calls: rawCalls,
+            ...(rawBlocks.length > 0 ? { content_blocks: rawBlocks } : {}),
+          },
           ...toolMessages,
         ]
         roundText = ''

@@ -506,7 +506,7 @@ export interface AiFetchResponse {
 export type StreamEvent =
   | { type: 'delta'; text: string }
   | { type: 'reasoning'; text: string }
-  | { type: 'tool_calls'; calls: AiToolCall[] }
+  | { type: 'tool_calls'; calls: AiToolCall[]; blocks?: unknown[] }
   | { type: 'truncated' }
   | { type: 'done' }
   | { type: 'error'; message: string }

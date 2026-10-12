@@ -161,39 +161,35 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
           />
         </div>
       )}
-      {ai.provider === 'open_ai_compatible' && (
-        <div className="row">
-          <div className="l">
-            <span>Allow web access</span>
-            <span>
-              Lets the model search the web and read public pages through isolated,
-              invisible page loads. What it reads goes to your endpoint.
-            </span>
-          </div>
-          <Switch
-            checked={ai.web_access}
-            onChange={(web_access) => patchAi({ web_access })}
-            label="Allow web access"
-          />
+      <div className="row">
+        <div className="l">
+          <span>Allow web access</span>
+          <span>
+            Lets the model search the web and read public pages through isolated,
+            invisible page loads. What it reads goes to your model.
+          </span>
         </div>
-      )}
-      {ai.provider === 'open_ai_compatible' && (
-        <div className="row">
-          <div className="l">
-            <span>Read tabs, history and bookmarks</span>
-            <span>
-              Lets the model list this workspace's open tabs, read a tab's text, and search its
-              history and bookmarks. What it reads goes to your endpoint.
-            </span>
-          </div>
-          <Switch
-            checked={ai.local_data}
-            onChange={(local_data) => patchAi({ local_data })}
-            label="Read tabs, history and bookmarks"
-          />
+        <Switch
+          checked={ai.web_access}
+          onChange={(web_access) => patchAi({ web_access })}
+          label="Allow web access"
+        />
+      </div>
+      <div className="row">
+        <div className="l">
+          <span>Read tabs, history and bookmarks</span>
+          <span>
+            Lets the model list this workspace's open tabs, read a tab's text, and search its
+            history and bookmarks. What it reads goes to your model.
+          </span>
         </div>
-      )}
-      {ai.provider === 'open_ai_compatible' && ai.local_data && (
+        <Switch
+          checked={ai.local_data}
+          onChange={(local_data) => patchAi({ local_data })}
+          label="Read tabs, history and bookmarks"
+        />
+      </div>
+      {ai.local_data && (
         <div className="row">
           <div className="l">
             <span>Let the assistant manage tabs</span>

@@ -49,6 +49,9 @@ pub struct ChatMessage {
     pub content: String,
     pub tool_calls: Vec<ToolCall>,
     pub tool_call_id: Option<String>,
+    /// An Anthropic tool-use turn exactly as it streamed (thinking with its
+    /// signature, text, tool_use), sent back verbatim as the API requires.
+    pub content_blocks: Vec<serde_json::Value>,
 }
 
 impl ChatMessage {
@@ -58,6 +61,7 @@ impl ChatMessage {
             content: content.into(),
             tool_calls: Vec::new(),
             tool_call_id: None,
+            content_blocks: Vec::new(),
         }
     }
 }
@@ -70,7 +74,8 @@ pub enum ThinkingMode {
     ProviderDefault,
     /// Ask for adaptive thinking with a summarized display.
     Summarized,
-    /// Explicitly forbid thinking.
+    /// Answer now: skip reasoning where the provider allows it. Anthropic
+    /// leaves thinking to the model, since current models reject turning it off.
     Disabled,
 }
 
@@ -88,6 +93,8 @@ pub struct ChatRequest {
     pub local_tools: bool,
     /// Offer the tab actions, each approved by the user before it runs.
     pub action_tools: bool,
+    /// Allow no further tool calls this request (round cap, answer now).
+    pub tools_closed: bool,
     pub thinking: ThinkingMode,
 }
 
@@ -104,7 +111,12 @@ pub enum StreamEvent {
     Reasoning { text: String },
     /// The model asked for tools instead of (or before) answering. Emitted
     /// once per request round, after every fragment has been reassembled.
-    ToolCalls { calls: Vec<ToolCall> },
+    ToolCalls {
+        calls: Vec<ToolCall>,
+        /// The Anthropic turn's content blocks, to send back with the results.
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        blocks: Vec<serde_json::Value>,
+    },
     /// An incomplete answer.
     Truncated,
     /// The stream finished normally.
@@ -253,6 +265,138 @@ fn action_tool_definitions() -> Vec<serde_json::Value> {
     ]
 }
 
+/// The tools a request declares, in OpenAI function form.
+fn declared_tools(req: &ChatRequest) -> Vec<serde_json::Value> {
+    let mut tools = Vec::new();
+    if req.web_tools {
+        tools.extend(
+            web_tool_definitions()
+                .as_array()
+                .cloned()
+                .unwrap_or_default(),
+        );
+    }
+    if req.local_tools {
+        tools.extend(local_tool_definitions());
+    }
+    if req.action_tools {
+        tools.extend(action_tool_definitions());
+    }
+    tools
+}
+
+/// An OpenAI function declaration in Anthropic's tool form.
+fn anthropic_tool(function: serde_json::Value) -> serde_json::Value {
+    let f = &function["function"];
+    serde_json::json!({
+        "name": f["name"],
+        "description": f["description"],
+        "input_schema": f["parameters"],
+    })
+}
+
+/// Stored blocks are echoed only when they hold nothing but turn content and
+/// carry every call the turn made; anything else is rebuilt.
+///
+/// Server tools and citations are never requested, so their block types are
+/// not expected and a turn holding them is rebuilt.
+fn verbatim_blocks(m: &ChatMessage) -> Option<&[serde_json::Value]> {
+    const KINDS: [&str; 4] = ["text", "thinking", "redacted_thinking", "tool_use"];
+    let blocks = &m.content_blocks;
+    let typed = blocks.len() <= MAX_BLOCKS as usize
+        && blocks
+            .iter()
+            .all(|b| b["type"].as_str().is_some_and(|t| KINDS.contains(&t)));
+    let has_calls = m.tool_calls.iter().all(|call| {
+        blocks
+            .iter()
+            .any(|b| b["type"] == "tool_use" && b["id"] == call.id.as_str())
+    });
+    (!blocks.is_empty() && typed && has_calls).then_some(blocks.as_slice())
+}
+
+/// An assistant tool-use turn as Anthropic content blocks.
+fn anthropic_tool_turn(m: &ChatMessage) -> serde_json::Value {
+    if let Some(blocks) = verbatim_blocks(m) {
+        // The API rejects an empty text block; thinking blocks stay untouched.
+        return blocks
+            .iter()
+            .filter(|b| !(b["type"] == "text" && b["text"].as_str().is_some_and(str::is_empty)))
+            .cloned()
+            .collect();
+    }
+    let text =
+        (!m.content.is_empty()).then(|| serde_json::json!({ "type": "text", "text": m.content }));
+    let uses = m.tool_calls.iter().map(|call| {
+        let input = serde_json::from_str::<serde_json::Value>(&call.arguments)
+            .ok()
+            .filter(serde_json::Value::is_object)
+            .unwrap_or_else(|| serde_json::json!({}));
+        serde_json::json!({ "type": "tool_use", "id": call.id, "name": call.name, "input": input })
+    });
+    text.into_iter().chain(uses).collect()
+}
+
+/// The conversation in Anthropic's shape: no system turns (the first is
+/// top-level), tool-use turns as content blocks, and each turn's tool
+/// results together in the next user message.
+fn anthropic_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
+    let mut wire: Vec<serde_json::Value> = Vec::new();
+    let first_system = messages.iter().position(|m| m.role == Role::System);
+    for (i, m) in messages.iter().enumerate() {
+        match m.role {
+            Role::System if Some(i) == first_system => {}
+            Role::System => append_user_text(&mut wire, &m.content),
+            Role::Tool => {
+                let result = serde_json::json!({
+                    "type": "tool_result",
+                    "tool_use_id": m.tool_call_id.clone().unwrap_or_default(),
+                    "content": m.content,
+                });
+                let joins_last = wire.last().is_some_and(|last| {
+                    last["role"] == "user"
+                        && last["content"]
+                            .as_array()
+                            .is_some_and(|c| c.iter().all(|b| b["type"] == "tool_result"))
+                });
+                match wire.last_mut() {
+                    Some(last) if joins_last => {
+                        if let Some(content) = last["content"].as_array_mut() {
+                            content.push(result);
+                        }
+                    }
+                    _ => wire.push(serde_json::json!({ "role": "user", "content": [result] })),
+                }
+            }
+            Role::Assistant if !m.tool_calls.is_empty() => wire.push(serde_json::json!({
+                "role": "assistant",
+                "content": anthropic_tool_turn(m),
+            })),
+            _ => wire.push(serde_json::json!({ "role": role_wire(m.role), "content": m.content })),
+        }
+    }
+
+    wire
+}
+
+/// A later system directive (answer now, tool budget) as a text block on the
+/// latest user turn, after any tool results, since only the leading system
+/// prompt has a top-level place.
+fn append_user_text(wire: &mut Vec<serde_json::Value>, text: &str) {
+    let block = serde_json::json!({ "type": "text", "text": text });
+    match wire.last_mut() {
+        Some(last) if last["role"] == "user" => {
+            if let Some(content) = last["content"].as_array_mut() {
+                content.push(block);
+            } else {
+                let earlier = serde_json::json!({ "type": "text", "text": last["content"] });
+                last["content"] = serde_json::json!([earlier, block]);
+            }
+        }
+        _ => wire.push(serde_json::json!({ "role": "user", "content": [block] })),
+    }
+}
+
 /// Build the JSON request body for `provider`. `stream` is always set; the
 /// system prompt (the first `System` message, if any) is placed where each
 /// provider expects it. Extra `System` messages after the first are folded
@@ -267,23 +411,11 @@ pub fn chat_body(provider: AiProvider, req: &ChatRequest) -> serde_json::Value {
 
     match provider {
         AiProvider::Anthropic => {
-            let messages: Vec<serde_json::Value> = req
-                .messages
-                .iter()
-                .filter(|m| {
-                    m.role != Role::System
-                        && m.role != Role::Tool
-                        && !(m.role == Role::Assistant
-                            && m.content.is_empty()
-                            && !m.tool_calls.is_empty())
-                })
-                .map(|m| serde_json::json!({ "role": role_wire(m.role), "content": m.content }))
-                .collect();
             let mut body = serde_json::json!({
                 "model": req.model,
                 "max_tokens": req.max_tokens,
                 "stream": true,
-                "messages": messages,
+                "messages": anthropic_messages(&req.messages),
             });
             if let Some(system) = system {
                 body["system"] = serde_json::Value::String(system);
@@ -296,8 +428,16 @@ pub fn chat_body(provider: AiProvider, req: &ChatRequest) -> serde_json::Value {
                         "display": "summarized",
                     });
                 }
-                ThinkingMode::Disabled => {
-                    body["thinking"] = serde_json::json!({ "type": "disabled" });
+                // Current Claude models reject disabled thinking, so answer
+                // now leaves thinking to the model; closed tools and the
+                // answer-now directive end the turn instead.
+                ThinkingMode::Disabled => {}
+            }
+            let tools = declared_tools(req);
+            if !tools.is_empty() {
+                body["tools"] = tools.into_iter().map(anthropic_tool).collect();
+                if req.tools_closed || req.thinking == ThinkingMode::Disabled {
+                    body["tool_choice"] = serde_json::json!({ "type": "none" });
                 }
             }
 
@@ -350,22 +490,8 @@ pub fn chat_body(provider: AiProvider, req: &ChatRequest) -> serde_json::Value {
             });
 
             // Tools are never offered on an answer-now retry.
-            if req.thinking != ThinkingMode::Disabled {
-                let mut tools = Vec::new();
-                if req.web_tools {
-                    tools.extend(
-                        web_tool_definitions()
-                            .as_array()
-                            .cloned()
-                            .unwrap_or_default(),
-                    );
-                }
-                if req.local_tools {
-                    tools.extend(local_tool_definitions());
-                }
-                if req.action_tools {
-                    tools.extend(action_tool_definitions());
-                }
+            if req.thinking != ThinkingMode::Disabled && !req.tools_closed {
+                let tools = declared_tools(req);
                 if !tools.is_empty() {
                     body["tools"] = serde_json::Value::Array(tools);
                 }
@@ -395,6 +521,10 @@ pub struct SseParser {
     pending_tools: Vec<ToolCall>,
     /// Set once the accumulated calls were emitted, so EOF cannot re-emit.
     tools_flushed: bool,
+    /// Anthropic content blocks by wire index, rebuilt as they stream.
+    blocks: std::collections::BTreeMap<u64, serde_json::Value>,
+    /// Anthropic tool input JSON by wire index, as streamed.
+    block_json: std::collections::BTreeMap<u64, String>,
 }
 
 impl SseParser {
@@ -405,6 +535,8 @@ impl SseParser {
             finished: false,
             pending_tools: Vec::new(),
             tools_flushed: false,
+            blocks: std::collections::BTreeMap::new(),
+            block_json: std::collections::BTreeMap::new(),
         }
     }
 
@@ -471,7 +603,7 @@ impl SseParser {
             return Vec::new();
         };
         match self.provider {
-            AiProvider::Anthropic => parse_anthropic(&json),
+            AiProvider::Anthropic => self.parse_anthropic(&json),
             AiProvider::OpenAiCompatible => self.parse_openai(&json),
         }
     }
@@ -507,7 +639,10 @@ impl SseParser {
             return Vec::new();
         }
 
-        vec![StreamEvent::ToolCalls { calls }]
+        vec![StreamEvent::ToolCalls {
+            calls,
+            blocks: Vec::new(),
+        }]
     }
 
     fn parse_openai(&mut self, json: &serde_json::Value) -> Vec<StreamEvent> {
@@ -616,52 +751,138 @@ fn delta_event(
     Some(make(text.to_string()))
 }
 
-fn parse_anthropic(json: &serde_json::Value) -> Vec<StreamEvent> {
-    match json.get("type").and_then(|t| t.as_str()) {
-        Some("content_block_delta") => {
-            let Some(delta) = json.get("delta") else {
-                return Vec::new();
-            };
+/// Blocks a streamed Anthropic turn may hold; more is a broken stream.
+const MAX_BLOCKS: u64 = 64;
 
-            match delta.get("type").and_then(|t| t.as_str()) {
-                Some("text_delta") => {
-                    delta_event(delta, "text", |text| StreamEvent::Delta { text })
-                        .into_iter()
-                        .collect()
+impl SseParser {
+    fn parse_anthropic(&mut self, json: &serde_json::Value) -> Vec<StreamEvent> {
+        let index = json
+            .get("index")
+            .and_then(|i| i.as_u64())
+            .filter(|i| *i < MAX_BLOCKS);
+        match json.get("type").and_then(|t| t.as_str()) {
+            Some("content_block_start") => match (index, json.get("content_block")) {
+                (Some(index), Some(block)) => {
+                    self.blocks.insert(index, block.clone());
+                    Vec::new()
                 }
-                Some("thinking_delta") => {
-                    delta_event(delta, "thinking", |text| StreamEvent::Reasoning { text })
-                        .into_iter()
-                        .collect()
+                // A call could be lost silently otherwise.
+                _ => vec![StreamEvent::Error {
+                    message: "malformed stream: unexpected content block".into(),
+                }],
+            },
+            Some("content_block_delta") => {
+                let Some(delta) = json.get("delta") else {
+                    return Vec::new();
+                };
+                self.accumulate_block(index, delta);
+                match delta.get("type").and_then(|t| t.as_str()) {
+                    Some("text_delta") => {
+                        delta_event(delta, "text", |text| StreamEvent::Delta { text })
+                            .into_iter()
+                            .collect()
+                    }
+                    Some("thinking_delta") => {
+                        delta_event(delta, "thinking", |text| StreamEvent::Reasoning { text })
+                            .into_iter()
+                            .collect()
+                    }
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
             }
-        }
-        Some("message_delta") => {
-            let capped = json
-                .get("delta")
-                .and_then(|d| d.get("stop_reason"))
-                .and_then(|s| s.as_str())
-                == Some("max_tokens");
-            if capped {
-                vec![StreamEvent::Truncated]
-            } else {
-                Vec::new()
+            Some("message_delta") => {
+                match json
+                    .get("delta")
+                    .and_then(|d| d.get("stop_reason"))
+                    .and_then(|s| s.as_str())
+                {
+                    Some("max_tokens") => vec![StreamEvent::Truncated],
+                    Some("tool_use") => self.flush_anthropic_tools(),
+                    _ => Vec::new(),
+                }
             }
+            Some("message_stop") => vec![StreamEvent::Done],
+            Some("error") => {
+                let message = json
+                    .get("error")
+                    .and_then(|e| e.get("message"))
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("provider error");
+                vec![StreamEvent::Error {
+                    message: message.to_string(),
+                }]
+            }
+            // message_start, content_block_stop, ping: nothing to emit.
+            _ => Vec::new(),
         }
-        Some("message_stop") => vec![StreamEvent::Done],
-        Some("error") => {
-            let message = json
-                .get("error")
-                .and_then(|e| e.get("message"))
-                .and_then(|m| m.as_str())
-                .unwrap_or("provider error");
-            vec![StreamEvent::Error {
-                message: message.to_string(),
-            }]
+    }
+
+    /// Fold a delta into the block it extends, so the turn can be sent back.
+    fn accumulate_block(&mut self, index: Option<u64>, delta: &serde_json::Value) {
+        let Some(index) = index else {
+            return;
+        };
+        let text_of = |field: &str| delta.get(field).and_then(|v| v.as_str()).unwrap_or("");
+        match delta.get("type").and_then(|t| t.as_str()) {
+            Some("input_json_delta") => self
+                .block_json
+                .entry(index)
+                .or_default()
+                .push_str(text_of("partial_json")),
+            Some(kind @ ("text_delta" | "thinking_delta")) => {
+                let field = if kind == "text_delta" {
+                    "text"
+                } else {
+                    "thinking"
+                };
+                if let Some(block) = self.blocks.get_mut(&index) {
+                    let joined =
+                        format!("{}{}", block[field].as_str().unwrap_or(""), text_of(field));
+                    block[field] = serde_json::Value::String(joined);
+                }
+            }
+            Some("signature_delta") => {
+                if let Some(block) = self.blocks.get_mut(&index) {
+                    block["signature"] = serde_json::Value::String(text_of("signature").into());
+                }
+            }
+            _ => {}
         }
-        // message_start, content_block_start/stop, message_delta, ping: no text.
-        _ => Vec::new(),
+    }
+
+    /// The turn's tool calls and its full content, in block order. A tool
+    /// whose input never streamed takes `{}`.
+    fn flush_anthropic_tools(&mut self) -> Vec<StreamEvent> {
+        if self.tools_flushed {
+            return Vec::new();
+        }
+        self.tools_flushed = true;
+
+        let mut calls = Vec::new();
+        let mut blocks = Vec::new();
+        for (index, mut block) in std::mem::take(&mut self.blocks) {
+            if block["type"] == "tool_use" {
+                let raw = self.block_json.remove(&index).unwrap_or_default();
+                // Unreadable input becomes `{}` for the call and the echoed
+                // block alike, so the two never disagree.
+                let (arguments, input) = match serde_json::from_str::<serde_json::Value>(&raw) {
+                    Ok(input) if input.is_object() => (raw, input),
+                    _ => ("{}".to_string(), serde_json::json!({})),
+                };
+                block["input"] = input;
+                calls.push(ToolCall {
+                    id: block["id"].as_str().unwrap_or_default().to_string(),
+                    name: block["name"].as_str().unwrap_or_default().to_string(),
+                    arguments,
+                });
+            }
+            blocks.push(block);
+        }
+        if calls.is_empty() {
+            return Vec::new();
+        }
+
+        vec![StreamEvent::ToolCalls { calls, blocks }]
     }
 }
 
@@ -676,6 +897,287 @@ mod tests {
             out.extend(p.feed(c));
         }
         out
+    }
+
+    fn anthropic_req(messages: Vec<ChatMessage>) -> ChatRequest {
+        ChatRequest {
+            model: "claude-opus-5-5".into(),
+            max_tokens: 16000,
+            web_tools: false,
+            local_tools: true,
+            action_tools: false,
+            tools_closed: false,
+            thinking: ThinkingMode::ProviderDefault,
+            messages,
+        }
+    }
+
+    fn assistant_calls(calls: Vec<ToolCall>, blocks: Vec<serde_json::Value>) -> ChatMessage {
+        ChatMessage {
+            role: Role::Assistant,
+            content: String::new(),
+            tool_calls: calls,
+            tool_call_id: None,
+            content_blocks: blocks,
+        }
+    }
+
+    fn tool_result(id: &str, content: &str) -> ChatMessage {
+        ChatMessage {
+            role: Role::Tool,
+            content: content.into(),
+            tool_calls: Vec::new(),
+            tool_call_id: Some(id.into()),
+            content_blocks: Vec::new(),
+        }
+    }
+
+    fn call(id: &str, name: &str, arguments: &str) -> ToolCall {
+        ToolCall {
+            id: id.into(),
+            name: name.into(),
+            arguments: arguments.into(),
+        }
+    }
+
+    #[test]
+    fn anthropic_tool_rounds_rebuild_the_whole_assistant_turn() {
+        let stream = br#"data: {"type":"message_start","message":{}}
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}}
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig"}}
+data: {"type":"content_block_stop","index":0}
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Let me check."}}
+data: {"type":"content_block_stop","index":1}
+data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_1","name":"list_tabs","input":{}}}
+data: {"type":"content_block_stop","index":2}
+data: {"type":"content_block_start","index":3,"content_block":{"type":"tool_use","id":"toolu_2","name":"search_history","input":{}}}
+data: {"type":"content_block_delta","index":3,"delta":{"type":"input_json_delta","partial_json":"{\"query\": \"ru"}}
+data: {"type":"content_block_delta","index":3,"delta":{"type":"input_json_delta","partial_json":"st\"}"}}
+data: {"type":"content_block_stop","index":3}
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}
+data: {"type":"message_stop"}
+"#;
+        assert_eq!(
+            feed_all(AiProvider::Anthropic, &[stream]),
+            vec![
+                StreamEvent::Delta {
+                    text: "Let me check.".into()
+                },
+                StreamEvent::ToolCalls {
+                    calls: vec![
+                        call("toolu_1", "list_tabs", "{}"),
+                        call("toolu_2", "search_history", "{\"query\": \"rust\"}"),
+                    ],
+                    blocks: vec![
+                        serde_json::json!({"type": "thinking", "thinking": "", "signature": "sig"}),
+                        serde_json::json!({"type": "text", "text": "Let me check."}),
+                        serde_json::json!({"type": "tool_use", "id": "toolu_1", "name": "list_tabs", "input": {}}),
+                        serde_json::json!({"type": "tool_use", "id": "toolu_2", "name": "search_history", "input": {"query": "rust"}}),
+                    ],
+                },
+                StreamEvent::Done,
+            ]
+        );
+    }
+
+    #[test]
+    fn anthropic_redacted_thinking_is_kept_as_streamed() {
+        let stream = br#"data: {"type":"content_block_start","index":0,"content_block":{"type":"redacted_thinking","data":"opaque"}}
+data: {"type":"content_block_stop","index":0}
+data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"list_tabs","input":{}}}
+data: {"type":"content_block_stop","index":1}
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}
+"#;
+        let events = feed_all(AiProvider::Anthropic, &[stream]);
+        let StreamEvent::ToolCalls { blocks, .. } = &events[0] else {
+            panic!("expected tool calls, got {events:?}");
+        };
+        assert_eq!(
+            blocks[0],
+            serde_json::json!({"type": "redacted_thinking", "data": "opaque"})
+        );
+    }
+
+    #[test]
+    fn anthropic_body_declares_tools_in_its_own_format_and_closes_them_with_tool_choice() {
+        let mut req = anthropic_req(vec![ChatMessage::user("what tabs are open")]);
+        let body = chat_body(AiProvider::Anthropic, &req);
+        let tools = body["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["name"], "list_tabs");
+        assert!(tools[0]["description"].is_string());
+        assert_eq!(tools[0]["input_schema"]["type"], "object");
+        assert!(body.get("tool_choice").is_none());
+
+        req.tools_closed = true;
+        let closed = chat_body(AiProvider::Anthropic, &req);
+        assert_eq!(closed["tools"], body["tools"]);
+        assert_eq!(closed["tool_choice"], serde_json::json!({"type": "none"}));
+
+        req.tools_closed = false;
+        req.thinking = ThinkingMode::Disabled;
+        let answer_now = chat_body(AiProvider::Anthropic, &req);
+        assert_eq!(answer_now["tools"], body["tools"]);
+        assert_eq!(
+            answer_now["tool_choice"],
+            serde_json::json!({"type": "none"})
+        );
+
+        req.local_tools = false;
+        assert!(chat_body(AiProvider::Anthropic, &req)
+            .get("tools")
+            .is_none());
+    }
+
+    #[test]
+    fn anthropic_body_echoes_a_tool_turn_and_groups_its_results() {
+        let blocks = vec![
+            serde_json::json!({"type": "thinking", "thinking": "", "signature": "sig"}),
+            serde_json::json!({"type": "tool_use", "id": "toolu_1", "name": "list_tabs", "input": {}}),
+            serde_json::json!({"type": "tool_use", "id": "toolu_2", "name": "search_history", "input": {"query": "rust"}}),
+        ];
+        let req = anthropic_req(vec![
+            ChatMessage::user("what did I read"),
+            assistant_calls(
+                vec![
+                    call("toolu_1", "list_tabs", "{}"),
+                    call("toolu_2", "search_history", "{\"query\": \"rust\"}"),
+                ],
+                blocks.clone(),
+            ),
+            tool_result("toolu_1", "No open tabs."),
+            tool_result("toolu_2", "No matching history."),
+        ]);
+        let body = chat_body(AiProvider::Anthropic, &req);
+        let wire = body["messages"].as_array().unwrap();
+        assert_eq!(wire.len(), 3);
+        assert_eq!(wire[1]["role"], "assistant");
+        assert_eq!(wire[1]["content"], serde_json::Value::Array(blocks));
+        assert_eq!(wire[2]["role"], "user");
+        assert_eq!(
+            wire[2]["content"],
+            serde_json::json!([
+                {"type": "tool_result", "tool_use_id": "toolu_1", "content": "No open tabs."},
+                {"type": "tool_result", "tool_use_id": "toolu_2", "content": "No matching history."},
+            ])
+        );
+    }
+
+    #[test]
+    fn anthropic_directives_ride_the_latest_user_turn_as_text() {
+        let system = |text: &str| ChatMessage {
+            role: Role::System,
+            ..ChatMessage::user(text)
+        };
+        let req = anthropic_req(vec![
+            system("prompt"),
+            ChatMessage::user("what tabs"),
+            assistant_calls(vec![call("toolu_1", "list_tabs", "{}")], Vec::new()),
+            tool_result("toolu_1", "No open tabs."),
+            system("Answer now."),
+        ]);
+        let body = chat_body(AiProvider::Anthropic, &req);
+        assert_eq!(body["system"], "prompt");
+        let wire = body["messages"].as_array().unwrap();
+        assert_eq!(wire.len(), 3);
+        assert_eq!(
+            wire[2]["content"],
+            serde_json::json!([
+                {"type": "tool_result", "tool_use_id": "toolu_1", "content": "No open tabs."},
+                {"type": "text", "text": "Answer now."},
+            ])
+        );
+
+        let plain = anthropic_req(vec![
+            system("prompt"),
+            ChatMessage::user("hi"),
+            system("Answer now."),
+        ]);
+        assert_eq!(
+            chat_body(AiProvider::Anthropic, &plain)["messages"][0]["content"],
+            serde_json::json!([{"type": "text", "text": "hi"}, {"type": "text", "text": "Answer now."}])
+        );
+    }
+
+    #[test]
+    fn echoed_turns_leave_out_empty_text_blocks() {
+        let blocks = vec![
+            serde_json::json!({"type": "thinking", "thinking": "", "signature": "sig"}),
+            serde_json::json!({"type": "text", "text": ""}),
+            serde_json::json!({"type": "tool_use", "id": "toolu_1", "name": "list_tabs", "input": {}}),
+        ];
+        let req = anthropic_req(vec![
+            ChatMessage::user("hi"),
+            assistant_calls(vec![call("toolu_1", "list_tabs", "{}")], blocks.clone()),
+            tool_result("toolu_1", "No open tabs."),
+        ]);
+        assert_eq!(
+            chat_body(AiProvider::Anthropic, &req)["messages"][1]["content"],
+            serde_json::json!([blocks[0], blocks[2]])
+        );
+    }
+
+    #[test]
+    fn anthropic_unreadable_tool_input_becomes_an_empty_object_everywhere() {
+        let stream = br#"data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"read_tab","input":{}}}
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"tab\": "}}
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}
+"#;
+        let events = feed_all(AiProvider::Anthropic, &[stream]);
+        let StreamEvent::ToolCalls { calls, blocks } = &events[0] else {
+            panic!("expected tool calls, got {events:?}");
+        };
+        assert_eq!(calls[0].arguments, "{}");
+        assert_eq!(blocks[0]["input"], serde_json::json!({}));
+    }
+
+    #[test]
+    fn anthropic_block_starts_past_the_cap_or_without_an_index_fail_the_stream() {
+        for start in [
+            br#"data: {"type":"content_block_start","index":64,"content_block":{"type":"text","text":""}}
+"#
+            .as_slice(),
+            br#"data: {"type":"content_block_start","content_block":{"type":"tool_use","id":"t","name":"x","input":{}}}
+"#
+            .as_slice(),
+        ] {
+            let events = feed_all(AiProvider::Anthropic, &[start]);
+            assert!(
+                matches!(events.as_slice(), [StreamEvent::Error { .. }]),
+                "{events:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn anthropic_tool_turns_without_usable_blocks_are_rebuilt() {
+        let rebuilt = |blocks: Vec<serde_json::Value>| {
+            let req = anthropic_req(vec![
+                ChatMessage::user("hi"),
+                ChatMessage {
+                    content: "Checking.".into(),
+                    ..assistant_calls(vec![call("toolu_1", "read_tab", "not json")], blocks)
+                },
+                tool_result("toolu_1", "failed"),
+            ]);
+            chat_body(AiProvider::Anthropic, &req)["messages"][1]["content"].clone()
+        };
+        let expected = serde_json::json!([
+            {"type": "text", "text": "Checking."},
+            {"type": "tool_use", "id": "toolu_1", "name": "read_tab", "input": {}},
+        ]);
+        assert_eq!(rebuilt(Vec::new()), expected);
+        assert_eq!(
+            rebuilt(vec![serde_json::json!({"type": "image"})]),
+            expected
+        );
+        assert_eq!(
+            rebuilt(vec![
+                serde_json::json!({"type": "tool_use", "id": "other", "name": "x", "input": {}})
+            ]),
+            expected
+        );
     }
 
     #[test]
@@ -829,7 +1331,8 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
                         id: "call_1".into(),
                         name: "web_search".into(),
                         arguments: "{\"query\": \"rust\"}".into(),
-                    }]
+                    }],
+                    blocks: Vec::new(),
                 },
                 StreamEvent::Done
             ]
@@ -867,6 +1370,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: true,
             local_tools: false,
             action_tools: false,
+            tools_closed: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -895,6 +1399,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: true,
             action_tools: false,
+            tools_closed: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("what did I read about rust")],
         };
@@ -931,9 +1436,9 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             .get("tools")
             .is_none());
         req.thinking = ThinkingMode::ProviderDefault;
-        assert!(chat_body(AiProvider::Anthropic, &req)
-            .get("tools")
-            .is_none());
+        let anthropic = chat_body(AiProvider::Anthropic, &req);
+        assert_eq!(anthropic["tools"][0]["name"], "web_search");
+        assert_eq!(anthropic["tools"].as_array().unwrap().len(), 6);
     }
 
     #[test]
@@ -944,6 +1449,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: true,
             action_tools: true,
+            tools_closed: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("close my youtube tabs")],
         };
@@ -969,7 +1475,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
     }
 
     #[test]
-    fn tool_turns_serialize_for_openai_and_are_dropped_for_anthropic() {
+    fn tool_turns_serialize_for_openai_and_anthropic() {
         let messages = vec![
             ChatMessage::user("what is new in rust"),
             ChatMessage {
@@ -981,12 +1487,14 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
                     arguments: "{\"query\":\"rust news\"}".into(),
                 }],
                 tool_call_id: None,
+                content_blocks: Vec::new(),
             },
             ChatMessage {
                 role: Role::Tool,
                 content: "results here".into(),
                 tool_calls: Vec::new(),
                 tool_call_id: Some("call_1".into()),
+                content_blocks: Vec::new(),
             },
         ];
         let req = ChatRequest {
@@ -995,6 +1503,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: true,
             local_tools: false,
             action_tools: false,
+            tools_closed: false,
             thinking: ThinkingMode::ProviderDefault,
             messages,
         };
@@ -1009,8 +1518,10 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
 
         let body = chat_body(AiProvider::Anthropic, &req);
         let wire = body["messages"].as_array().unwrap();
-        assert_eq!(wire.len(), 1, "a tool round is not Anthropic-expressible");
-        assert_eq!(wire[0]["role"], "user");
+        assert_eq!(wire.len(), 3);
+        assert_eq!(wire[1]["content"][0]["type"], "tool_use");
+        assert_eq!(wire[1]["content"][0]["input"]["query"], "rust news");
+        assert_eq!(wire[2]["content"][0]["tool_use_id"], "call_1");
     }
 
     #[test]
@@ -1019,7 +1530,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"web_search\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
         ];
         let events = feed_all(AiProvider::OpenAiCompatible, chunks);
-        let StreamEvent::ToolCalls { calls } = &events[0] else {
+        let StreamEvent::ToolCalls { calls, .. } = &events[0] else {
             panic!("expected tool calls, got {events:?}");
         };
         assert_eq!(calls[0].id, "call_0");
@@ -1033,7 +1544,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             b"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
         ];
         let events = feed_all(AiProvider::OpenAiCompatible, chunks);
-        let StreamEvent::ToolCalls { calls } = &events[0] else {
+        let StreamEvent::ToolCalls { calls, .. } = &events[0] else {
             panic!("expected tool calls, got {events:?}");
         };
         assert_eq!(calls.len(), 1);
@@ -1149,6 +1660,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            tools_closed: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![
                 ChatMessage {
@@ -1156,6 +1668,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
                     content: "be brief".into(),
                     tool_calls: Vec::new(),
                     tool_call_id: None,
+                    content_blocks: Vec::new(),
                 },
                 ChatMessage::user("hi"),
             ],
@@ -1177,6 +1690,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            tools_closed: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1196,6 +1710,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            tools_closed: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1211,6 +1726,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            tools_closed: false,
             thinking: ThinkingMode::Summarized,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1224,18 +1740,19 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
     }
 
     #[test]
-    fn anthropic_body_can_forbid_thinking_outright() {
+    fn anthropic_disabled_thinking_leaves_thinking_to_the_model() {
         let req = ChatRequest {
             model: "claude-opus-5".into(),
             max_tokens: 4096,
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            tools_closed: false,
             thinking: ThinkingMode::Disabled,
             messages: vec![ChatMessage::user("hi")],
         };
         let body = chat_body(AiProvider::Anthropic, &req);
-        assert_eq!(body["thinking"]["type"], "disabled");
+        assert!(body.get("thinking").is_none());
         assert_eq!(body["messages"][0]["content"], "hi");
     }
 
@@ -1247,6 +1764,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            tools_closed: false,
             thinking: ThinkingMode::Disabled,
             messages: vec![
                 ChatMessage::user("first"),
@@ -1255,6 +1773,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
                     content: "answer".into(),
                     tool_calls: Vec::new(),
                     tool_call_id: None,
+                    content_blocks: Vec::new(),
                 },
                 ChatMessage::user("second"),
             ],
@@ -1274,6 +1793,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            tools_closed: false,
             thinking: ThinkingMode::Summarized,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1292,6 +1812,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            tools_closed: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![
                 ChatMessage {
@@ -1299,6 +1820,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
                     content: "be brief".into(),
                     tool_calls: Vec::new(),
                     tool_call_id: None,
+                    content_blocks: Vec::new(),
                 },
                 ChatMessage::user("hi"),
             ],

@@ -128,6 +128,9 @@ pub struct AiMessage {
     pub tool_calls: Vec<wis_core::ai::ToolCall>,
     #[serde(default)]
     pub tool_call_id: Option<String>,
+    /// An Anthropic tool-use turn as streamed, echoed back verbatim.
+    #[serde(default)]
+    pub content_blocks: Vec<serde_json::Value>,
 }
 
 /// Arguments for [`ai_chat`]. The model and provider come from settings; the
@@ -251,13 +254,7 @@ pub async fn ai_chat(
         })?
     };
 
-    let thinking = if args.skip_reasoning {
-        ThinkingMode::Disabled
-    } else if provider == AiProvider::Anthropic && show_reasoning {
-        ThinkingMode::Summarized
-    } else {
-        ThinkingMode::ProviderDefault
-    };
+    let thinking = thinking_for(provider, show_reasoning, args.skip_reasoning);
     let max_tokens = if thinking == ThinkingMode::Summarized {
         args.max_tokens.max(16000)
     } else {
@@ -266,12 +263,10 @@ pub async fn ai_chat(
     let req = ChatRequest {
         model,
         max_tokens,
-        web_tools: web_access && provider == AiProvider::OpenAiCompatible && !args.no_tools,
-        local_tools: local_data && provider == AiProvider::OpenAiCompatible && !args.no_tools,
-        action_tools: local_data
-            && tab_actions
-            && provider == AiProvider::OpenAiCompatible
-            && !args.no_tools,
+        web_tools: web_access,
+        local_tools: local_data,
+        action_tools: local_data && tab_actions,
+        tools_closed: args.no_tools || args.skip_reasoning,
         thinking,
         messages: args
             .messages
@@ -281,6 +276,7 @@ pub async fn ai_chat(
                 content: m.content,
                 tool_calls: m.tool_calls,
                 tool_call_id: m.tool_call_id,
+                content_blocks: m.content_blocks,
             })
             .collect(),
     };
@@ -446,6 +442,18 @@ fn anthropic_request(key: &[u8]) -> WisResult<(String, reqwest::header::HeaderMa
     Ok((ANTHROPIC_URL.to_string(), headers))
 }
 
+/// How a request treats reasoning. Answer now skips it on OpenAI-compatible
+/// models; Anthropic keeps the turn's thinking and ends the turn with closed
+/// tools and the answer-now directive.
+fn thinking_for(provider: AiProvider, show_reasoning: bool, skip_reasoning: bool) -> ThinkingMode {
+    match provider {
+        AiProvider::OpenAiCompatible if skip_reasoning => ThinkingMode::Disabled,
+        AiProvider::OpenAiCompatible => ThinkingMode::ProviderDefault,
+        AiProvider::Anthropic if show_reasoning => ThinkingMode::Summarized,
+        AiProvider::Anthropic => ThinkingMode::ProviderDefault,
+    }
+}
+
 /// Whether an OpenAI-compatible base URL points at this machine.
 fn local_openai_base(base_url: Option<&str>) -> bool {
     base_url
@@ -519,6 +527,31 @@ fn first_line(s: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn answer_now_skips_reasoning_only_where_the_provider_allows_it() {
+        use AiProvider::{Anthropic, OpenAiCompatible};
+        assert_eq!(
+            thinking_for(OpenAiCompatible, false, true),
+            ThinkingMode::Disabled
+        );
+        assert_eq!(
+            thinking_for(OpenAiCompatible, true, false),
+            ThinkingMode::ProviderDefault
+        );
+        assert_eq!(
+            thinking_for(Anthropic, true, false),
+            ThinkingMode::Summarized
+        );
+        assert_eq!(
+            thinking_for(Anthropic, true, true),
+            ThinkingMode::Summarized
+        );
+        assert_eq!(
+            thinking_for(Anthropic, false, true),
+            ThinkingMode::ProviderDefault
+        );
+    }
 
     #[test]
     fn only_a_loopback_openai_base_skips_the_key() {
