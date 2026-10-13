@@ -7839,6 +7839,8 @@ body[data-close-btn="hidden"] .kb-topbar .h-tab .close { display: none; }
   border-radius: calc(14px * var(--radius-scale));
   box-shadow: var(--shadow-soft);
   animation: kb-ai-in var(--dur-med) var(--ease-standard);
+  --ai-btn-line: color-mix(in oklab, var(--text-primary) 8%, transparent);
+  --ai-btn-line-hover: color-mix(in oklab, var(--text-primary) 16%, transparent);
 }
 .kb-ai-panel.is-left { order: -1; }
 [data-mode="dark"] .kb-ai-panel {
@@ -7914,7 +7916,7 @@ body[data-close-btn="hidden"] .kb-topbar .h-tab .close { display: none; }
   font-weight: 500;
   color: var(--text-primary);
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ai-btn-line);
   border-radius: var(--radius-md);
   padding: 5px 10px;
   cursor: pointer;
@@ -7923,7 +7925,7 @@ body[data-close-btn="hidden"] .kb-topbar .h-tab .close { display: none; }
 }
 .kb-ai-btn:hover:not(:disabled) {
   background: var(--overlay);
-  border-color: var(--border-strong);
+  border-color: var(--ai-btn-line-hover);
 }
 .kb-ai-btn:disabled { opacity: 0.35; cursor: default; }
 .kb-ai-btn.kb-ai-icon {
@@ -8334,14 +8336,14 @@ body.motion-off .kb-ai-think-label.is-live {
   font-size: 11.5px;
   color: var(--text-secondary);
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ai-btn-line);
   border-radius: 999px;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-standard),
               border-color var(--dur-fast) var(--ease-standard),
               color var(--dur-fast) var(--ease-standard);
 }
-.kb-ai-attach:hover:not(:disabled) { background: var(--overlay); border-color: var(--border-strong); }
+.kb-ai-attach:hover:not(:disabled) { background: var(--overlay); border-color: var(--ai-btn-line-hover); }
 .kb-ai-attach.on {
   color: var(--primary-500);
   border-color: color-mix(in oklab, var(--primary-500) 55%, transparent);
@@ -8383,13 +8385,13 @@ body.motion-off .kb-ai-think-label.is-live {
   height: var(--ai-field-h);
   color: var(--text-primary);
   background: var(--surface-raised);
-  border: var(--ai-field-border) solid var(--border);
+  border: var(--ai-field-border) solid var(--ai-btn-line);
   border-radius: var(--radius-lg);
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-standard),
               border-color var(--dur-fast) var(--ease-standard);
 }
-.kb-ai-send:hover:not(:disabled) { background: var(--overlay); border-color: var(--border-strong); }
+.kb-ai-send:hover:not(:disabled) { background: var(--overlay); border-color: var(--ai-btn-line-hover); }
 .kb-ai-send.is-primary {
   background: var(--primary-500);
   border-color: transparent;
