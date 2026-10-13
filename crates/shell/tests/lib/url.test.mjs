@@ -5,6 +5,7 @@ import { describe, test } from 'node:test'
 
 import {
   activeEngine,
+  connectionKind,
   DOWNLOADS_URL,
   HISTORY_URL,
   isChromeUrl,
@@ -386,5 +387,41 @@ describe('tab names', () => {
 
   test('an untitled tab with an unparseable URL shows the URL', () => {
     assert.equal(named('', 'not a url'), 'not a url')
+  })
+})
+
+describe('connectionKind', () => {
+  test('https is secure, wherever it points', () => {
+    assert.equal(connectionKind('https://example.com/'), 'secure')
+    assert.equal(connectionKind('https://localhost:8443/'), 'secure')
+  })
+
+  test('plain http stays on this device only for loopback hosts', () => {
+    for (const local of [
+      'http://localhost:3000/',
+      'http://app.localhost/',
+      'http://127.0.0.1:8000/',
+      'http://127.5.6.7/',
+      'http://[::1]:4000/',
+    ]) {
+      assert.equal(connectionKind(local), 'local', local)
+    }
+  })
+
+  test('other plain http, including the local network and lookalikes, is not secure', () => {
+    for (const remote of [
+      'http://example.com/',
+      'http://192.168.1.5:8080/',
+      'http://localhost.evil.example/',
+      'http://127.0.0.1.nip.io/',
+      'not a url',
+    ]) {
+      assert.equal(connectionKind(remote), 'insecure', remote)
+    }
+  })
+
+  test("Wis's own pages are neither", () => {
+    assert.equal(connectionKind('about:settings'), 'wis')
+    assert.equal(connectionKind('wis-canvas://localhost/?canvas=x'), 'wis')
   })
 })

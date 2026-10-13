@@ -2741,6 +2741,8 @@ body.glass-chrome .kb-content {
 .kb-urlpill-inline .ico.kb-secure svg { opacity: 0.85; }
 .kb-urlpill-inline .ico.kb-insecure { color: var(--danger); }
 .kb-urlpill-inline .ico.kb-insecure svg { opacity: 1; }
+.kb-urlpill-inline .ico.kb-local { color: var(--text-secondary); }
+.kb-urlpill-inline .ico.kb-local svg { opacity: 0.85; }
 .kb-urlpill-inline .ico.kb-chrome-page { color: var(--primary-400); }
 .kb-urlpill-inline .ico.kb-chrome-page svg { opacity: 1; }
 .kb-urlpill-inline .protocol { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 11px; }

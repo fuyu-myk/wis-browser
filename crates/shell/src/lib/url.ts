@@ -207,6 +207,33 @@ export const CANVAS_URL = 'wis-canvas://localhost/'
 export function isCanvasUrl(url: string): boolean {
   return url.startsWith('wis-canvas:')
 }
+
+/**
+ * How a page reached the user: Wis's own page, over HTTPS, over plain HTTP
+ * that never leaves this device (loopback, a secure context in every
+ * engine), or over plain HTTP across a network.
+ */
+export function connectionKind(url: string): 'wis' | 'secure' | 'local' | 'insecure' {
+  if (isChromeUrl(url) || isCanvasUrl(url)) return 'wis'
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return 'insecure'
+  }
+  if (parsed.protocol === 'https:') return 'secure'
+  return parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname) ? 'local' : 'insecure'
+}
+
+function isLoopbackHost(host: string): boolean {
+  if (host === 'localhost' || host.endsWith('.localhost') || host === '[::1]') return true
+  const octets = host.split('.')
+  return (
+    octets.length === 4 &&
+    octets[0] === '127' &&
+    octets.every((o) => /^\d{1,3}$/.test(o) && Number(o) <= 255)
+  )
+}
 export const SOURCE_URL = 'about:source'
 
 /** A source tab's URL: the page it shows, and the tab captured from. */

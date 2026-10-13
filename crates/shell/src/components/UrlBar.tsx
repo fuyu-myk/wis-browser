@@ -19,7 +19,7 @@ import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { LoadProgressBar } from '@/components/LoadProgressBar'
 import { cx } from '@/lib/cx'
 import { SearchIcon } from '@/lib/icons'
-import { activeEngine, isChromeUrl, NEW_TAB_URL, resolveInput } from '@/lib/url'
+import { activeEngine, connectionKind, isChromeUrl, NEW_TAB_URL, resolveInput } from '@/lib/url'
 import { bookmarkFoldersKey, bookmarksKey } from '@/lib/bookmarkKeys'
 import { useBookmarkSync } from '@/hooks/useBookmarkSync'
 import { BMPICKER_OPEN_EVENT, BOOKMARK_PAGE_EVENT, lastFolderKey, PIN_CAP } from '@/lib/bookmarkMenu'
@@ -416,13 +416,15 @@ function useSelectAllOnChromeClick(inputRef: RefObject<HTMLInputElement>) {
 
 /**
  * Leading URL-bar icon that reflects the active tab's connection security:
- * a padlock for HTTPS, a "not secure" mark for plain HTTP, and the neutral
- * search glyph for chrome pages / the launchpad (where the bar is a search box).
+ * a padlock for HTTPS, a device mark for plain HTTP to this machine, a "not
+ * secure" mark for other plain HTTP, the Wis mark for Wis's own pages, and the
+ * neutral search glyph for the launchpad (where the bar is a search box).
  */
 function SecurityIndicator({ activeTab }: { activeTab: Tab | null }) {
   const url = activeTab?.url ?? ''
   if (!url || url === NEW_TAB_URL) return <SearchIcon className="ico" />
-  if (isChromeUrl(url)) {
+  const kind = connectionKind(url)
+  if (kind === 'wis') {
     return (
       <span className="ico kb-chrome-page" title="Wis page" aria-label="Wis page">
         <WisMark variant="solid-closed" size={14} />
@@ -430,14 +432,15 @@ function SecurityIndicator({ activeTab }: { activeTab: Tab | null }) {
     )
   }
 
-  let secure = false
-  try {
-    secure = new URL(url).protocol === 'https:'
-  } catch {
-    /* not parseable → treat as not secure */
+  if (kind === 'local') {
+    return (
+      <span className="ico kb-local" title="Local address: served from this device" aria-label="Local address">
+        <LocalGlyph />
+      </span>
+    )
   }
 
-  if (secure) {
+  if (kind === 'secure') {
     return (
       <span className="ico kb-secure" title="Connection is secure (HTTPS)" aria-label="Secure connection">
         <LockGlyph />
@@ -460,6 +463,15 @@ function LockGlyph() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <rect x="5" y="11" width="14" height="9" rx="2" />
       <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  )
+}
+
+function LocalGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="4" y="5" width="16" height="11" rx="2" />
+      <path d="M2 20h20" />
     </svg>
   )
 }
