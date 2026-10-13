@@ -7,20 +7,16 @@ interface CanvasSwitcherProps {
   name: string
   currentId: string
   canvases: readonly CanvasSummary[]
-  /** The list is about to open; refresh it. */
   onList: () => void
   onOpen: (id: string) => void
   onCreate: () => void
   onRename: (name: string) => void
-  /** Delete the open canvas. */
   onDelete: () => void
 }
 
 type Mode =
-  /** `shrinkFrom` is the rename field's width, which the pill eases down from. */
   | { kind: 'idle'; shrinkFrom?: number }
   | { kind: 'list' }
-  /** `from` is the pill's width, which the field grows out of. */
   | { kind: 'rename'; from: number }
   | { kind: 'menu'; x: number; y: number; confirming: boolean }
 
@@ -28,10 +24,6 @@ const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)'
 /** Longest the resize transition (`canvas.css`) can take, plus a frame. */
 const RESIZE_MS = 320
 
-/**
- * The open canvas's name, top left: click to switch or create, double-click
- * or the right-click menu to rename.
- */
 export function CanvasSwitcher(props: CanvasSwitcherProps) {
   const [mode, setMode] = useState<Mode>({ kind: 'idle' })
   const rootRef = useRef<HTMLDivElement>(null)
@@ -163,7 +155,6 @@ interface CanvasListProps {
   onClose: () => void
 }
 
-/** "New canvas", then the canvases matching the search. */
 function CanvasList({ canvases, currentId, onPick, onCreate, onClose }: CanvasListProps) {
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)

@@ -14,6 +14,7 @@ mod bookmarks;
 mod browser_import;
 mod canvas;
 mod canvas_store;
+mod canvas_webview;
 mod capture;
 mod clipboard;
 mod commands;

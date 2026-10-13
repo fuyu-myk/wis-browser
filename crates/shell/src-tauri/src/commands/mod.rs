@@ -264,7 +264,8 @@ pub(crate) async fn note_in_page_navigation(
     live_url: Url,
     title: String,
 ) {
-    if !matches!(live_url.scheme(), "http" | "https") {
+    let canvas = crate::canvas::is_canvas_url(&live_url);
+    if !canvas && !matches!(live_url.scheme(), "http" | "https") {
         return;
     }
 
@@ -301,7 +302,7 @@ pub(crate) async fn note_in_page_navigation(
             return;
         }
         record_history_visit(app, tab_id, fallback_workspace_id, &live_url).await;
-    } else {
+    } else if !canvas {
         let storage = state.storage.clone();
         let url_string = live_url.to_string();
         let changed = tokio::task::spawn_blocking(move || {

@@ -65,6 +65,13 @@ body,
   background-size: 24px 24px;
 }
 
+.canvas-viewport.is-panning {
+  cursor: grab;
+}
+.canvas-viewport.is-panning:active {
+  cursor: grabbing;
+}
+
 .canvas-layer {
   position: absolute;
   left: 0;
@@ -103,11 +110,6 @@ body,
   -webkit-user-select: text;
 }
 
-.canvas-card-empty {
-  margin: 0;
-  color: var(--text-muted);
-}
-
 .canvas-card-editor {
   display: block;
   box-sizing: border-box;
@@ -122,6 +124,40 @@ body,
   background: transparent;
   color: var(--text-primary);
   font: 12.5px/1.5 var(--font-mono);
+}
+
+.canvas-layer.is-far .canvas-card > * {
+  visibility: hidden;
+}
+
+.canvas-marquee {
+  position: absolute;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  pointer-events: none;
+}
+
+.canvas-zoom {
+  position: fixed;
+  right: 16px;
+  top: 14px;
+  z-index: 10;
+  min-width: 58px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+  color: var(--text-secondary);
+  font: 600 12px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.canvas-zoom:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
 .canvas-hint {
@@ -153,6 +189,13 @@ body,
   color: var(--text-primary);
   font: 600 13px var(--font-sans);
   box-shadow: var(--card-shadow);
+}
+.canvas-name,
+.canvas-zoom,
+.canvas-option,
+.canvas-menu button {
+  user-select: none;
+  -webkit-user-select: none;
 }
 .canvas-name {
   display: inline-flex;

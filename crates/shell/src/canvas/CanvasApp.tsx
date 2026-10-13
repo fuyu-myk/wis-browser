@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { parseDoc, serializeDoc, tidyName, type CanvasDoc, type CanvasSummary } from '@/lib/canvas'
+import {
+  emptyHistory,
+  parseDoc,
+  record,
+  redo,
+  serializeDoc,
+  tidyName,
+  undo,
+  withView,
+  type CanvasDoc,
+  type CanvasSummary,
+  type CanvasView,
+  type History,
+} from '@/lib/canvas'
 import type { CanvasChannel, LoadedCanvas } from '@/lib/canvasChannel'
 
 import { CanvasSurface } from './CanvasSurface'
 import { CanvasSwitcher } from './CanvasSwitcher'
 
-/** Rust keeps each save in memory and writes it to disk every few minutes. */
 const SAVE_DELAY_MS = 500
 
 interface OpenCanvas {
@@ -24,7 +36,6 @@ type State =
 const messageOf = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback
 
-/** The canvas in the address, else the most recent, else a new one. */
 async function firstCanvas(channel: CanvasChannel): Promise<LoadedCanvas> {
   const wanted = new URLSearchParams(window.location.search).get('canvas')
   const canvases = await channel.list()
@@ -32,7 +43,6 @@ async function firstCanvas(channel: CanvasChannel): Promise<LoadedCanvas> {
   return channel.load(pick.id)
 }
 
-/** Saves shortly after each change, and at once when the page goes away. */
 function useCanvasSaver(channel: CanvasChannel, canvasId: string | null) {
   const pending = useRef<string | null>(null)
   const timer = useRef(0)
@@ -58,7 +68,6 @@ function useCanvasSaver(channel: CanvasChannel, canvasId: string | null) {
     [flush],
   )
 
-  /** Drop an unsaved change, for a canvas about to be deleted. */
   const discard = useCallback(() => {
     window.clearTimeout(timer.current)
     pending.current = null
@@ -86,17 +95,20 @@ export function CanvasApp({ channel }: { channel: CanvasChannel }) {
   const saver = useCanvasSaver(channel, state.kind === 'ready' ? state.id : null)
   const { save, flush, discard } = saver
   const openId = useRef<string | null>(null)
-  /** Each switch takes a ticket; only the latest one may show its canvas. */
   const ticket = useRef(0)
   const creating = useRef(false)
+  const history = useRef<History>(emptyHistory())
+  const docRef = useRef<CanvasDoc | null>(null)
+  docRef.current = state.kind === 'ready' ? state.doc : null
 
   const show = useCallback(
     async (loaded: LoadedCanvas, mine: number) => {
       const canvases = await channel.list()
       if (mine !== ticket.current) return
       openId.current = loaded.id
-      document.title = loaded.name
+      history.current = emptyHistory()
       window.history.replaceState(null, '', `?canvas=${encodeURIComponent(loaded.id)}`)
+      document.title = loaded.name
       setState({ kind: 'ready', id: loaded.id, name: loaded.name, doc: parseDoc(loaded.doc), canvases })
     },
     [channel],
@@ -122,13 +134,39 @@ export function CanvasApp({ channel }: { channel: CanvasChannel }) {
     }
   }, [channel, show])
 
-  const onChange = useCallback(
+  const apply = useCallback(
     (doc: CanvasDoc) => {
+      docRef.current = doc
       setState((s) => (s.kind === 'ready' ? { ...s, doc } : s))
       save(doc)
     },
     [save],
   )
+  const onChange = useCallback(
+    (doc: CanvasDoc) => {
+      if (docRef.current) history.current = record(history.current, docRef.current)
+      apply(doc)
+    },
+    [apply],
+  )
+  const onView = useCallback(
+    (view: CanvasView) => {
+      if (docRef.current) apply(withView(docRef.current, view))
+    },
+    [apply],
+  )
+  const step = useCallback(
+    (direction: typeof undo) => {
+      const current = docRef.current
+      const next = current && direction(history.current, current)
+      if (!next) return
+      history.current = next.history
+      apply(next.doc)
+    },
+    [apply],
+  )
+  const onUndo = useCallback(() => step(undo), [step])
+  const onRedo = useCallback(() => step(redo), [step])
 
   const refreshList = () =>
     attempt(
@@ -159,7 +197,6 @@ export function CanvasApp({ channel }: { channel: CanvasChannel }) {
       'A canvas could not be made.',
     )
   }
-  /** Show a canvas under `name` at once; Rust's answer confirms or reverts it. */
   const named = (id: string, name: string) => {
     if (openId.current === id) document.title = name
     setState((s) =>
@@ -215,7 +252,14 @@ export function CanvasApp({ channel }: { channel: CanvasChannel }) {
   const shownNotice = notice ?? saver.notice
   return (
     <div className="canvas-root">
-      <CanvasSurface key={state.id} doc={state.doc} onChange={onChange} />
+      <CanvasSurface
+        key={state.id}
+        doc={state.doc}
+        onChange={onChange}
+        onView={onView}
+        onUndo={onUndo}
+        onRedo={onRedo}
+      />
       <CanvasSwitcher
         name={state.name}
         currentId={state.id}

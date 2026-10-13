@@ -1,7 +1,5 @@
-//! Canvas tabs: a bundled page on the `wis-canvas` scheme, without Tauri IPC,
-//! that reads and writes its workspace's canvases over the narrow `wisCanvas`
-//! channel. Messages run one at a time, so saves land in order; documents
-//! reach the disk every [`FLUSH_EVERY`], when a canvas tab closes, and on quit.
+//! Canvas tabs: a bundled page on `wis-canvas` without Tauri IPC, reading and
+//! writing its workspace's canvases over `wisCanvas`, one message at a time.
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex, OnceLock};
@@ -20,10 +18,8 @@ use crate::state::AppState;
 
 pub use wis_core::canvas::SCHEME;
 const FLUSH_EVERY: Duration = Duration::from_secs(120);
-/// A whole document plus its envelope.
 const MAX_MESSAGE_BYTES: usize = wis_core::canvas::MAX_DOC_BYTES + 64 * 1024;
 
-/// The canvas page runs only its own bundle: no network, frames or forms.
 const PAGE_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
      img-src 'self' data:; font-src 'self' data:; connect-src 'none'; frame-src 'none'; \
      base-uri 'none'; form-action 'none'";
@@ -31,10 +27,8 @@ const PAGE_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self' 
 static TABS: LazyLock<Mutex<HashMap<String, CanvasTab>>> = LazyLock::new(Default::default);
 static MEMORY: LazyLock<Mutex<CanvasMemory>> = LazyLock::new(Default::default);
 static WORKER: OnceLock<tokio::sync::mpsc::Sender<(String, String)>> = OnceLock::new();
-/// Messages waiting for the worker; a flooding page loses the excess.
 const QUEUE: usize = 32;
 
-/// The theme a canvas page starts with, set before its scripts run.
 pub fn theme_script(theme: wis_core::canvas::CanvasTheme) -> String {
     format!(
         "window.__wisCanvasTheme={};",
@@ -42,7 +36,6 @@ pub fn theme_script(theme: wis_core::canvas::CanvasTheme) -> String {
     )
 }
 
-/// Restyle every open canvas tab.
 pub fn push_theme(app: &AppHandle, theme: wis_core::canvas::CanvasTheme) {
     let script = theme_script(theme);
     let labels: Vec<String> = TABS
@@ -79,7 +72,7 @@ pub fn register(label: &str, tab: CanvasTab) {
         .insert(label.to_string(), tab);
 }
 
-/// A canvas tab closed: forget it and write what it saved.
+/// Also writes what the tab saved.
 pub fn forget(app: &AppHandle, label: &str) {
     let known = TABS
         .lock()
@@ -98,7 +91,6 @@ fn tab_for(label: &str) -> Option<CanvasTab> {
         .copied()
 }
 
-/// A deleted workspace's canvases: drop what is in memory and on disk.
 pub async fn release_workspace(app: &AppHandle, workspace: wis_core::WorkspaceId) {
     MEMORY
         .lock()
@@ -112,7 +104,7 @@ pub async fn release_workspace(app: &AppHandle, workspace: wis_core::WorkspaceId
     }
 }
 
-/// Write pending documents now. Safe from the exit hook.
+/// Safe from the exit hook.
 pub fn flush_now(storage: &dyn Storage) -> WisResult<()> {
     MEMORY
         .lock()
@@ -120,7 +112,6 @@ pub fn flush_now(storage: &dyn Storage) -> WisResult<()> {
         .flush(storage)
 }
 
-/// [`flush_now`] for callers with nobody to tell.
 pub fn flush_logged(storage: &dyn Storage) {
     if let Err(err) = flush_now(storage) {
         log::warn!("writing canvases: {err}");
@@ -132,7 +123,6 @@ fn flush_soon(app: &AppHandle) {
     tauri::async_runtime::spawn_blocking(move || flush_logged(storage.as_ref()));
 }
 
-/// Start the message worker and the periodic write.
 pub fn start(app: AppHandle) {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String)>(QUEUE);
     if WORKER.set(tx).is_err() {
@@ -169,7 +159,6 @@ pub fn start(app: AppHandle) {
     });
 }
 
-/// Queue a message a canvas page posted.
 fn receive(label: String, text: String) {
     if text.len() > MAX_MESSAGE_BYTES {
         log::warn!("dropped an oversized canvas message from {label}");
@@ -211,7 +200,6 @@ enum Request {
     Delete { canvas: CanvasId },
 }
 
-/// Run one page message and return the reply the page receives.
 fn handle(storage: &dyn Storage, label: &str, text: &str, now: i64) -> String {
     let (id, result) = match serde_json::from_str::<Envelope>(text) {
         Ok(envelope) => (
@@ -267,8 +255,7 @@ fn user_message(err: &WisError) -> String {
     }
 }
 
-/// `wis-canvas://localhost/...`: the canvas page and its built assets, only
-/// for registered canvas tabs.
+/// Answers registered canvas tabs only.
 pub fn handle_request(
     ctx: UriSchemeContext<'_, tauri::Wry>,
     request: http::Request<Vec<u8>>,
@@ -291,7 +278,7 @@ pub fn handle_request(
     });
 }
 
-/// The bundled file a canvas page may load: the page itself or a built asset.
+/// Only the page itself or a built asset.
 fn asset_path(path: &str) -> Option<String> {
     if path.is_empty() || path == "/" {
         return Some("canvas.html".into());
@@ -322,7 +309,6 @@ fn bundled_asset(app: &AppHandle, path: &str) -> http::Response<Vec<u8>> {
     }
 }
 
-/// A path the dev server may be asked for: never another host or a parent.
 fn dev_path(path: &str) -> Option<&str> {
     if path == "/" {
         return Some("/canvas.html");
@@ -331,7 +317,6 @@ fn dev_path(path: &str) -> Option<&str> {
     (path.starts_with('/') && !path.starts_with("//") && !path.contains("..")).then_some(path)
 }
 
-/// Development: the page and its modules come from the dev server.
 async fn dev_asset(app: &AppHandle, uri: &http::Uri) -> http::Response<Vec<u8>> {
     let Some(base) = app.config().build.dev_url.clone() else {
         return status(500, "no dev server");
@@ -390,8 +375,6 @@ fn status(code: u16, msg: &str) -> http::Response<Vec<u8>> {
 #[cfg(target_os = "macos")]
 pub use macos::install;
 
-/// The `wisCanvas` handler: main-frame messages from a page still on the
-/// canvas scheme, read as one JSON string.
 #[cfg(target_os = "macos")]
 mod macos {
     use std::ffi::{CStr, CString};
@@ -489,7 +472,6 @@ mod macos {
         nsstring_to_string(msg_send![message, body])
     }
 
-    /// Register `wisCanvas` on a canvas tab, in the page's own world.
     pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, label: String) {
         let result = webview.with_webview(move |w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
@@ -520,8 +502,7 @@ mod macos {
 
         type Obj = *mut AnyObject;
 
-        /// A wrong message type aborts at runtime only, so check each send
-        /// against its method.
+        /// A wrong message type aborts at runtime only.
         #[test]
         fn every_send_matches_its_method() {
             let message = class!(WKScriptMessage);

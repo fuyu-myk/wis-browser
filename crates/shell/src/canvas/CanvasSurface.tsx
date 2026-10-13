@@ -10,12 +10,16 @@ import {
 import { AiMarkdown } from '@/components/AiMarkdown'
 import {
   addCard,
+  boxBetween,
+  cardsTouching,
+  moveCards,
   newCard,
   removeCard,
+  removeCards,
   toCanvas,
   updateCard,
-  withView,
   zoomAt,
+  type Box,
   type CanvasCard,
   type CanvasDoc,
   type CanvasView,
@@ -23,13 +27,11 @@ import {
 import { cx } from '@/lib/cx'
 import { isWebUrl } from '@/lib/url'
 
-/** How long the view rests before it is saved. */
 const VIEW_SETTLE_MS = 400
-/** Pointer travel that turns a press on a card into a drag. */
 const DRAG_SLOP = 3
 const LINE_PX = 16
+const FAR_ZOOM = 0.35
 
-/** Safari's pinch event; not in the DOM typings. */
 interface GestureEvent extends UIEvent {
   scale: number
   clientX: number
@@ -39,41 +41,66 @@ interface GestureEvent extends UIEvent {
 interface CanvasSurfaceProps {
   doc: CanvasDoc
   onChange: (doc: CanvasDoc) => void
+  onView: (view: CanvasView) => void
+  onUndo: () => void
+  onRedo: () => void
 }
 
+type Selection = ReadonlySet<string>
+
+const NONE: Selection = new Set()
 const transformOf = (x: number, y: number) => `translate3d(${x}px,${y}px,0)`
 const viewTransform = ({ x, y, k }: CanvasView) => `translate3d(${x}px,${y}px,0) scale(${k})`
+const sameSet = (a: Selection, b: Selection) => a.size === b.size && [...a].every((id) => b.has(id))
+const typing = (target: EventTarget | null) =>
+  target instanceof Element && target.closest('input, textarea') !== null
 
 function openLink(href: string) {
   if (isWebUrl(href)) window.open(href, '_blank', 'noopener,noreferrer')
 }
 
-/**
- * The canvas: React renders cards when the document changes, while pan, zoom
- * and drags write transforms directly, once per frame.
- */
-export function CanvasSurface({ doc, onChange }: CanvasSurfaceProps) {
+export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasSurfaceProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const layerRef = useRef<HTMLDivElement>(null)
+  const zoomRef = useRef<HTMLButtonElement>(null)
   const view = useRef<CanvasView>(doc.view)
   const docRef = useRef(doc)
   docRef.current = doc
-  const changeRef = useRef(onChange)
-  changeRef.current = onChange
+  const props = useRef({ onChange, onView, onUndo, onRedo })
+  props.current = { onChange, onView, onUndo, onRedo }
   const cardEls = useRef(new Map<string, HTMLElement>())
-  const dragged = useRef<{ id: string; x: number; y: number } | null>(null)
+  const dragged = useRef<{ bases: Map<string, CanvasCard>; dx: number; dy: number } | null>(null)
   const frame = useRef(0)
   const viewTimer = useRef(0)
-  const [selected, setSelected] = useState<string | null>(null)
+  const spaceHeld = useRef(false)
+  const [selected, setSelectedState] = useState<Selection>(NONE)
+  const selectedRef = useRef(selected)
   const [editing, setEditing] = useState<string | null>(null)
+  const [draft, setDraft] = useState<CanvasCard | null>(null)
+  const [marquee, setMarquee] = useState<Box | null>(null)
+  const [panning, setPanning] = useState(false)
+
+  const select = (next: Selection) => {
+    if (sameSet(next, selectedRef.current)) return
+    selectedRef.current = next
+    setSelectedState(next)
+  }
 
   const paint = () => {
     frame.current = 0
-    if (layerRef.current) layerRef.current.style.transform = viewTransform(view.current)
+    const { k } = view.current
+    const layer = layerRef.current
+    if (layer) {
+      layer.style.transform = viewTransform(view.current)
+      layer.classList.toggle('is-far', k < FAR_ZOOM)
+    }
+    if (zoomRef.current) zoomRef.current.textContent = `${Math.round(k * 100)}%`
     const d = dragged.current
     if (d) {
-      const el = cardEls.current.get(d.id)
-      if (el) el.style.transform = transformOf(d.x, d.y)
+      for (const [id, base] of d.bases) {
+        const el = cardEls.current.get(id)
+        if (el) el.style.transform = transformOf(base.x + d.dx, base.y + d.dy)
+      }
     }
   }
   const schedule = () => {
@@ -81,14 +108,17 @@ export function CanvasSurface({ doc, onChange }: CanvasSurfaceProps) {
   }
   const settleView = () => {
     window.clearTimeout(viewTimer.current)
-    viewTimer.current = window.setTimeout(
-      () => changeRef.current(withView(docRef.current, view.current)),
-      VIEW_SETTLE_MS,
-    )
+    viewTimer.current = window.setTimeout(() => props.current.onView(view.current), VIEW_SETTLE_MS)
   }
   const localPoint = (clientX: number, clientY: number) => {
     const rect = viewportRef.current?.getBoundingClientRect()
     return { x: clientX - (rect?.left ?? 0), y: clientY - (rect?.top ?? 0) }
+  }
+  const zoomBy = (factor: number) => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    view.current = zoomAt(view.current, (rect?.width ?? 0) / 2, (rect?.height ?? 0) / 2, factor)
+    schedule()
+    settleView()
   }
 
   useEffect(() => {
@@ -122,6 +152,7 @@ export function CanvasSurface({ doc, onChange }: CanvasSurfaceProps) {
     el.addEventListener('wheel', onWheel, { passive: false })
     el.addEventListener('gesturestart', onGestureStart)
     el.addEventListener('gesturechange', onGestureChange)
+    schedule()
     return () => {
       el.removeEventListener('wheel', onWheel)
       el.removeEventListener('gesturestart', onGestureStart)
@@ -129,27 +160,49 @@ export function CanvasSurface({ doc, onChange }: CanvasSurfaceProps) {
       window.clearTimeout(viewTimer.current)
       cancelAnimationFrame(frame.current)
     }
-    // The handlers read refs only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (editing !== null || (e.target as Element).closest('input, textarea')) return
-      if (e.key === 'Escape') setSelected(null)
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selected !== null) {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (typing(e.target)) return
+      const mod = e.metaKey || e.ctrlKey
+      if (e.key === ' ') {
         e.preventDefault()
-        changeRef.current(removeCard(docRef.current, selected))
-        setSelected(null)
+        if (!spaceHeld.current) {
+          spaceHeld.current = true
+          setPanning(true)
+        }
+      } else if (e.key === 'Escape') {
+        select(NONE)
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedRef.current.size > 0) {
+        e.preventDefault()
+        props.current.onChange(removeCards(docRef.current, selectedRef.current))
+        select(NONE)
+      } else if (mod && e.key.toLowerCase() === 'a') {
+        e.preventDefault()
+        select(new Set(docRef.current.cards.map((c) => c.id)))
+      } else if (mod && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) props.current.onRedo()
+        else props.current.onUndo()
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [editing, selected])
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === ' ') {
+        spaceHeld.current = false
+        setPanning(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [])
 
-  const onBackgroundDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0 || (e.target as Element).closest('.canvas-card')) return
-    setSelected(null)
+  const pan = (e: ReactPointerEvent<HTMLDivElement>) => {
     const start = { px: e.clientX, py: e.clientY, x: view.current.x, y: view.current.y }
     const move = (ev: PointerEvent) => {
       view.current = { ...view.current, x: start.x + ev.clientX - start.px, y: start.y + ev.clientY - start.py }
@@ -164,14 +217,67 @@ export function CanvasSurface({ doc, onChange }: CanvasSurfaceProps) {
     window.addEventListener('pointerup', up)
   }
 
+  const boxSelect = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const keep = e.shiftKey || e.metaKey ? selectedRef.current : NONE
+    const start = localPoint(e.clientX, e.clientY)
+    const boxes = docRef.current.cards.map((c) => ({
+      id: c.id,
+      x: c.x,
+      y: c.y,
+      w: c.w,
+      h: cardEls.current.get(c.id)?.offsetHeight ?? 0,
+    }))
+    select(keep)
+    let latest = start
+    let pending = 0
+    const update = () => {
+      pending = 0
+      const box = boxBetween(start.x, start.y, latest.x, latest.y)
+      setMarquee(box)
+      const a = toCanvas(view.current, box.x, box.y)
+      const b = toCanvas(view.current, box.x + box.w, box.y + box.h)
+      const hits = cardsTouching(boxes, boxBetween(a.x, a.y, b.x, b.y))
+      select(new Set([...keep, ...hits]))
+    }
+    const move = (ev: PointerEvent) => {
+      latest = localPoint(ev.clientX, ev.clientY)
+      if (pending === 0) pending = requestAnimationFrame(update)
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      cancelAnimationFrame(pending)
+      setMarquee(null)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  const onBackgroundDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button === 1 || (e.button === 0 && spaceHeld.current)) {
+      e.preventDefault()
+      pan(e)
+      return
+    }
+    if (e.button !== 0 || (e.target as Element).closest('.canvas-card')) return
+    boxSelect(e)
+  }
+
   const onBackgroundDoubleClick = (e: ReactMouseEvent<HTMLDivElement>) => {
     if ((e.target as Element).closest('.canvas-card')) return
     const p = localPoint(e.clientX, e.clientY)
     const at = toCanvas(view.current, p.x, p.y)
-    const card = newCard(at.x, at.y)
-    changeRef.current(addCard(docRef.current, card))
-    setSelected(card.id)
-    setEditing(card.id)
+    select(NONE)
+    setDraft(newCard(at.x, at.y))
+  }
+
+  const commitDraft = (text: string) => {
+    const card = draft
+    setDraft(null)
+    if (card && text.trim() !== '') {
+      props.current.onChange(addCard(docRef.current, { ...card, text }))
+      select(new Set([card.id]))
+    }
   }
 
   const handlers = useRef({
@@ -180,9 +286,22 @@ export function CanvasSurface({ doc, onChange }: CanvasSurfaceProps) {
       else cardEls.current.delete(id)
     },
     down(card: CanvasCard, e: ReactPointerEvent<HTMLElement>) {
-      if (e.button !== 0) return
+      if (e.button !== 0 || spaceHeld.current) return
       e.stopPropagation()
-      setSelected(card.id)
+      const current = selectedRef.current
+      if (e.shiftKey || e.metaKey) {
+        const next = new Set(current)
+        if (next.has(card.id)) next.delete(card.id)
+        else next.add(card.id)
+        select(next)
+        return
+      }
+      const wasSelected = current.has(card.id)
+      const group = wasSelected ? current : new Set([card.id])
+      if (!wasSelected) select(group)
+      const bases = new Map(
+        docRef.current.cards.filter((c) => group.has(c.id)).map((c) => [c.id, c] as const),
+      )
       const start = { px: e.clientX, py: e.clientY }
       let moving = false
       const move = (ev: PointerEvent) => {
@@ -191,7 +310,7 @@ export function CanvasSurface({ doc, onChange }: CanvasSurfaceProps) {
         if (!moving && Math.hypot(dx, dy) < DRAG_SLOP) return
         moving = true
         const k = view.current.k
-        dragged.current = { id: card.id, x: card.x + dx / k, y: card.y + dy / k }
+        dragged.current = { bases, dx: dx / k, dy: dy / k }
         schedule()
       }
       const up = () => {
@@ -199,27 +318,28 @@ export function CanvasSurface({ doc, onChange }: CanvasSurfaceProps) {
         window.removeEventListener('pointerup', up)
         const d = dragged.current
         dragged.current = null
-        if (moving && d) changeRef.current(updateCard(docRef.current, d.id, { x: d.x, y: d.y }))
+        if (moving && d) props.current.onChange(moveCards(docRef.current, new Set(d.bases.keys()), d.dx, d.dy))
+        else if (wasSelected && group.size > 1) select(new Set([card.id]))
       }
       window.addEventListener('pointermove', move)
       window.addEventListener('pointerup', up)
     },
     edit(id: string) {
-      setSelected(id)
+      select(new Set([id]))
       setEditing(id)
     },
     commit(id: string, text: string) {
       setEditing(null)
       const current = docRef.current.cards.find((c) => c.id === id)
       if (!current) return
-      if (text.trim() === '') changeRef.current(removeCard(docRef.current, id))
-      else if (text !== current.text) changeRef.current(updateCard(docRef.current, id, { text }))
+      if (text.trim() === '') props.current.onChange(removeCard(docRef.current, id))
+      else if (text !== current.text) props.current.onChange(updateCard(docRef.current, id, { text }))
     },
   }).current
 
   return (
     <div
-      className="canvas-viewport"
+      className={cx('canvas-viewport', { 'is-panning': panning })}
       ref={viewportRef}
       onPointerDown={onBackgroundDown}
       onDoubleClick={onBackgroundDoubleClick}
@@ -229,13 +349,35 @@ export function CanvasSurface({ doc, onChange }: CanvasSurfaceProps) {
           <Card
             key={card.id}
             card={card}
-            selected={selected === card.id}
+            selected={selected.has(card.id)}
             editing={editing === card.id}
             handlers={handlers}
           />
         ))}
+        {draft && (
+          <div
+            className="canvas-card is-selected is-editing"
+            style={{ width: draft.w, transform: transformOf(draft.x, draft.y) }}
+          >
+            <CardEditor text="" onDone={commitDraft} />
+          </div>
+        )}
       </div>
-      {doc.cards.length === 0 && <p className="canvas-hint">Double-click anywhere to add a card</p>}
+      {marquee && (
+        <div
+          className="canvas-marquee"
+          style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }}
+        />
+      )}
+      {doc.cards.length === 0 && !draft && <p className="canvas-hint">Double-click anywhere to add a card</p>}
+      <button
+        ref={zoomRef}
+        type="button"
+        className="canvas-zoom"
+        title="Back to 100%"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => zoomBy(1 / view.current.k)}
+      />
     </div>
   )
 }
@@ -266,8 +408,6 @@ const Card = memo(function Card({ card, selected, editing, handlers }: CardProps
     >
       {editing ? (
         <CardEditor text={card.text} onDone={(text) => handlers.commit(card.id, text)} />
-      ) : card.text.trim() === '' ? (
-        <p className="canvas-card-empty">Empty card</p>
       ) : (
         <AiMarkdown text={card.text} onOpenLink={openLink} />
       )}
@@ -299,6 +439,7 @@ function CardEditor({ text, onDone }: { text: string; onDone: (text: string) => 
       placeholder="Write in Markdown"
       onInput={fit}
       onBlur={(e) => onDone(e.currentTarget.value)}
+      onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         if (e.key === 'Escape') e.currentTarget.blur()
       }}

@@ -167,3 +167,69 @@ describe('canvas names', () => {
     assert.equal(Array.from(canvas.tidyName('😀'.repeat(200))).length, 120, 'capped by character')
   })
 })
+
+describe('editing several cards', () => {
+  const doc = { version: 1, view: { x: 0, y: 0, k: 1 }, cards: [card('a', 0, 0), card('b', 10, 10), card('c', 20, 20)] }
+
+  test('moving shifts only the chosen cards', () => {
+    const moved = canvas.moveCards(doc, new Set(['a', 'c']), 5, -5)
+    assert.deepEqual(
+      moved.cards.map((c) => [c.id, c.x, c.y]),
+      [['a', 5, -5], ['b', 10, 10], ['c', 25, 15]],
+    )
+    assert.equal(doc.cards[0].x, 0)
+  })
+
+  test('removing drops only the chosen cards', () => {
+    assert.deepEqual(canvas.removeCards(doc, new Set(['a', 'b'])).cards.map((c) => c.id), ['c'])
+  })
+})
+
+describe('box selection', () => {
+  test('a box is the same whichever way it was dragged', () => {
+    assert.deepEqual(canvas.boxBetween(10, 20, 4, 2), { x: 4, y: 2, w: 6, h: 18 })
+  })
+
+  test('cards touching the box are picked', () => {
+    const boxes = [
+      { id: 'in', x: 10, y: 10, w: 20, h: 20 },
+      { id: 'edge', x: 45, y: 10, w: 20, h: 20 },
+      { id: 'out', x: 100, y: 100, w: 20, h: 20 },
+    ]
+    assert.deepEqual(canvas.cardsTouching(boxes, { x: 0, y: 0, w: 50, h: 50 }), ['in', 'edge'])
+    assert.deepEqual(canvas.cardsTouching(boxes, { x: 200, y: 200, w: 5, h: 5 }), [])
+  })
+})
+
+describe('undo history', () => {
+  const at = (x, k = 1) => ({ version: 1, view: { x: 0, y: 0, k }, cards: [card('a', x, 0)] })
+
+  test('undo and redo step through recorded documents, keeping the current view', () => {
+    let history = canvas.record(canvas.emptyHistory(), at(0))
+    history = canvas.record(history, at(1))
+    const current = at(2, 3)
+
+    const back = canvas.undo(history, current)
+    assert.equal(back.doc.cards[0].x, 1)
+    assert.equal(back.doc.view.k, 3, 'the view stays where it is')
+
+    const again = canvas.undo(back.history, back.doc)
+    assert.equal(again.doc.cards[0].x, 0)
+    assert.equal(canvas.undo(again.history, again.doc), null)
+
+    const forward = canvas.redo(again.history, again.doc)
+    assert.equal(forward.doc.cards[0].x, 1)
+  })
+
+  test('a new change clears redo, and history keeps a bounded past', () => {
+    let history = canvas.record(canvas.emptyHistory(), at(0))
+    const back = canvas.undo(history, at(1))
+    history = canvas.record(back.history, back.doc)
+    assert.equal(canvas.redo(history, at(5)), null)
+
+    let long = canvas.emptyHistory()
+    for (let i = 0; i < 500; i += 1) long = canvas.record(long, at(i))
+    assert.equal(long.past.length, canvas.HISTORY_LIMIT)
+    assert.equal(long.past[long.past.length - 1].cards[0].x, 499)
+  })
+})

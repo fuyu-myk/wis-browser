@@ -233,7 +233,12 @@ pub async fn create_tab_webview(
     if let Some(ua) = &user_agent {
         builder = builder.user_agent(ua);
     }
-    if ephemeral {
+    if canvas_tab && cfg!(target_os = "macos") {
+        #[cfg(target_os = "macos")]
+        {
+            builder = crate::canvas_webview::with_canvas_configuration(&app, builder).await?;
+        }
+    } else if ephemeral {
         #[cfg(target_os = "macos")]
         {
             builder =
@@ -534,8 +539,8 @@ pub async fn create_tab_webview(
 
     // Restore this workspace's saved session cookies into its data store before
     // the first page loads, so logins survive a restart. Once per workspace per run;
-    // never for ephemeral (private) workspaces.
-    if !ephemeral {
+    // never for ephemeral (private) workspaces or canvas tabs.
+    if !ephemeral && !canvas_tab {
         let first = state.restored_cookies.lock().await.insert(workspace_id);
         if first {
             crate::cookies::restore_session_cookies(&app, workspace_id).await;

@@ -1,7 +1,4 @@
-/**
- * The document behind a canvas: its cards and where the view rests. Stored as JSON by
- * Rust, which only bounds it, so reading one back trusts nothing.
- */
+/** Rust stores the document opaquely, so reading one back trusts nothing. */
 
 import { fuzzyMatch } from '@/lib/palette'
 
@@ -73,7 +70,6 @@ function readCard(raw: unknown): CanvasCard | null {
   }
 }
 
-/** A stored document, or a blank canvas when it cannot be read. */
 export function parseDoc(text: string): CanvasDoc {
   let raw: unknown
   try {
@@ -115,19 +111,84 @@ export function removeCard(doc: CanvasDoc, id: string): CanvasDoc {
   return { ...doc, cards: doc.cards.filter((c) => c.id !== id) }
 }
 
+export function moveCards(
+  doc: CanvasDoc,
+  ids: ReadonlySet<string>,
+  dx: number,
+  dy: number,
+): CanvasDoc {
+  return {
+    ...doc,
+    cards: doc.cards.map((c) => (ids.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)),
+  }
+}
+
+export function removeCards(doc: CanvasDoc, ids: ReadonlySet<string>): CanvasDoc {
+  return { ...doc, cards: doc.cards.filter((c) => !ids.has(c.id)) }
+}
+
+export interface Box {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export function boxBetween(ax: number, ay: number, bx: number, by: number): Box {
+  return { x: Math.min(ax, bx), y: Math.min(ay, by), w: Math.abs(bx - ax), h: Math.abs(by - ay) }
+}
+
+export function cardsTouching(boxes: ReadonlyArray<Box & { id: string }>, box: Box): string[] {
+  return boxes
+    .filter((b) => b.x <= box.x + box.w && b.x + b.w >= box.x && b.y <= box.y + box.h && b.y + b.h >= box.y)
+    .map((b) => b.id)
+}
+
+export const HISTORY_LIMIT = 100
+
+export interface History {
+  past: CanvasDoc[]
+  future: CanvasDoc[]
+}
+
+export function emptyHistory(): History {
+  return { past: [], future: [] }
+}
+
+export function record(history: History, before: CanvasDoc): History {
+  return { past: [...history.past, before].slice(-HISTORY_LIMIT), future: [] }
+}
+
+export function undo(history: History, current: CanvasDoc): { history: History; doc: CanvasDoc } | null {
+  const previous = history.past[history.past.length - 1]
+  if (previous === undefined) return null
+  return {
+    history: { past: history.past.slice(0, -1), future: [current, ...history.future] },
+    doc: { ...previous, view: current.view },
+  }
+}
+
+export function redo(history: History, current: CanvasDoc): { history: History; doc: CanvasDoc } | null {
+  const next = history.future[0]
+  if (next === undefined) return null
+  return {
+    history: { past: [...history.past, current], future: history.future.slice(1) },
+    doc: { ...next, view: current.view },
+  }
+}
+
 export function withView(doc: CanvasDoc, view: CanvasView): CanvasDoc {
   return { ...doc, view }
 }
 
 const MAX_NAME_CHARS = 120
 
-/** A name as Rust stores it (`canvas_name`): whitespace collapsed, at most 120 characters. */
+/** Matches Rust's `canvas_name`. */
 export function tidyName(raw: string): string {
   const name = raw.split(/\s+/).filter(Boolean).join(' ')
   return Array.from(name).slice(0, MAX_NAME_CHARS).join('')
 }
 
-/** Canvases matching `query`, best first; all of them, newest first, without one. */
 export function matchCanvases(
   canvases: readonly CanvasSummary[],
   query: string,
@@ -141,17 +202,14 @@ export function matchCanvases(
     .map((m) => m.canvas)
 }
 
-/** A blank card centred on a canvas point. */
 export function newCard(x: number, y: number, id: string = crypto.randomUUID()): CanvasCard {
   return { id, x: x - CARD_WIDTH / 2, y: y - 20, w: CARD_WIDTH, text: '' }
 }
 
-/** The canvas point under a screen point. */
 export function toCanvas(view: CanvasView, sx: number, sy: number): { x: number; y: number } {
   return { x: (sx - view.x) / view.k, y: (sy - view.y) / view.k }
 }
 
-/** Zoom by `factor` about a screen point, keeping that point still. */
 export function zoomAt(view: CanvasView, sx: number, sy: number, factor: number): CanvasView {
   const k = clamp(view.k * factor, MIN_ZOOM, MAX_ZOOM)
   return { x: sx - ((sx - view.x) * k) / view.k, y: sy - ((sy - view.y) * k) / view.k, k }

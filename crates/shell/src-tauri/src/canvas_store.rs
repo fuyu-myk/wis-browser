@@ -1,6 +1,5 @@
-//! What canvas pages read and write: stored canvases with their unsaved
-//! documents laid over them, and private workspaces' canvases, which live only
-//! in memory.
+//! Stored canvases with unsaved documents laid over them, and private
+//! workspaces' canvases, which live only in memory.
 
 use std::collections::HashMap;
 
@@ -11,7 +10,6 @@ use wis_core::canvas::{
 use wis_core::{CanvasId, WisError, WisResult, WorkspaceId};
 use wis_storage::Storage;
 
-/// The workspace a canvas tab belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CanvasTab {
     pub workspace: WorkspaceId,
@@ -19,15 +17,12 @@ pub struct CanvasTab {
     pub ephemeral: bool,
 }
 
-/// Canvases with unsaved documents between writes.
 const MAX_PENDING: usize = 64;
 const MAX_PRIVATE_CANVASES: usize = 200;
-/// All private canvases' documents together.
 const MAX_PRIVATE_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Debug, Default)]
 pub struct CanvasMemory {
-    /// Documents pages have saved since the last write, newest per canvas.
     pending: HashMap<(WorkspaceId, CanvasId), CanvasDocUpdate>,
     private: HashMap<CanvasId, CanvasRecord>,
 }
@@ -157,7 +152,6 @@ impl CanvasMemory {
         })
     }
 
-    /// Keep a page's newer document until the next write.
     pub fn save(&mut self, tab: CanvasTab, id: CanvasId, doc: String, now: i64) -> WisResult<()> {
         check_doc(&doc)?;
         if tab.ephemeral {
@@ -217,8 +211,7 @@ impl CanvasMemory {
         Ok(())
     }
 
-    /// Write every pending document. One that cannot be written stays pending
-    /// unless a newer one arrived meanwhile.
+    /// A document that fails to write stays pending unless a newer one arrived.
     pub fn flush(&mut self, storage: &dyn Storage) -> WisResult<()> {
         if self.pending.is_empty() {
             return Ok(());
@@ -239,7 +232,6 @@ impl CanvasMemory {
         Ok(())
     }
 
-    /// Forget a deleted workspace's canvases still in memory.
     pub fn release_workspace(&mut self, workspace: WorkspaceId) {
         self.private
             .retain(|_, canvas| canvas.workspace_id != workspace);
