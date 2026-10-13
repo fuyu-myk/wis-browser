@@ -277,6 +277,15 @@ export const UsageIcon = (p: Props) => (
   </Icon>
 )
 
+export const CanvasIcon = (p: Props) => (
+  <Icon {...p}>
+    <rect x="3" y="3" width="7" height="9" rx="1.5" />
+    <rect x="14" y="3" width="7" height="5" rx="1.5" />
+    <rect x="14" y="12" width="7" height="9" rx="1.5" />
+    <rect x="3" y="16" width="7" height="5" rx="1.5" />
+  </Icon>
+)
+
 export const DownloadIcon = (p: Props) => (
   <Icon {...p}>
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />

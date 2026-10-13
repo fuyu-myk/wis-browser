@@ -202,6 +202,11 @@ export const SETTINGS_URL = 'about:settings'
 export const HISTORY_URL = 'about:history'
 export const DOWNLOADS_URL = 'about:downloads'
 export const USAGE_URL = 'about:usage'
+export const CANVAS_URL = 'wis-canvas://localhost/'
+
+export function isCanvasUrl(url: string): boolean {
+  return url.startsWith('wis-canvas:')
+}
 export const SOURCE_URL = 'about:source'
 
 /** A source tab's URL: the page it shows, and the tab captured from. */
@@ -231,6 +236,7 @@ export function tabDisplayName(tab: { title: string; url: string }): string {
   if (tab.url === HISTORY_URL) return 'History'
   if (tab.url === DOWNLOADS_URL) return 'Downloads'
   if (tab.url === USAGE_URL) return 'Usage'
+  if (isCanvasUrl(tab.url)) return 'Canvas'
   try {
     const u = new URL(tab.url)
     if (u.protocol === 'about:') {

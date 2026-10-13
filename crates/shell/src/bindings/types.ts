@@ -136,6 +136,7 @@ export type KeyAction =
   | 'open_command_palette'
   | 'open_settings'
   | 'open_history'
+  | 'open_canvases'
   | 'clear_browsing_data'
   | 'new_private_window'
   | 'toggle_private_workspace'

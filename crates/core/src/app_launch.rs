@@ -18,6 +18,7 @@ const BLOCKED_SCHEMES: &[&str] = &[
     "ipc",
     "wry",
     "wis",
+    "wis-canvas",
     "vbscript",
     "ms-msdt",
     "ms-officecmd",

@@ -16,6 +16,12 @@ export default defineConfig(async () => ({
   },
   envPrefix: ["VITE_", "TAURI_"],
   build: {
+    rollupOptions: {
+      input: {
+        main: resolve(import.meta.dirname, "index.html"),
+        canvas: resolve(import.meta.dirname, "canvas.html"),
+      },
+    },
     target: ["es2021", "chrome100", "safari13"],
     minify: !process.env.TAURI_DEBUG,
     sourcemap: !!process.env.TAURI_DEBUG,

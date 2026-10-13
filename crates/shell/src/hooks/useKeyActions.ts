@@ -31,6 +31,7 @@ import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { usePendingRename } from '@/hooks/usePendingRename'
 import { currentPlatform } from '@/lib/platform'
 import { guardFeatureUnavailable } from '@/lib/platformSupport'
+import { openCanvases } from '@/hooks/openCanvases'
 import { useQueryClient } from '@tanstack/react-query'
 
 const KEYACTION_EVENT = 'wis-keyaction'
@@ -194,6 +195,12 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
         await commands.createTab(ctx.activeWorkspace.id, HISTORY_URL)
         ctx.invalidate()
       }
+      return
+    }
+    case 'open_canvases': {
+      if (!ctx.activeWorkspace) return
+      await openCanvases(ctx.activeWorkspace.id, ctx.tabs, ctx.activeTab?.id ?? null)
+      ctx.invalidate()
       return
     }
     case 'clear_browsing_data': {

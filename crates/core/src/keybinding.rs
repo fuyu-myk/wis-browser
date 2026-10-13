@@ -46,6 +46,8 @@ pub enum KeyAction {
     OpenCommandPalette,
     OpenSettings,
     OpenHistory,
+    /// Switch to this workspace's canvas tab, opening one if there is none.
+    OpenCanvases,
     ClearBrowsingData,
     NewPrivateWindow,
     /// Go to this window's private workspace, creating one if there is none,
@@ -152,6 +154,7 @@ impl KeyAction {
             Self::OpenCommandPalette => "open_command_palette",
             Self::OpenSettings => "open_settings",
             Self::OpenHistory => "open_history",
+            Self::OpenCanvases => "open_canvases",
             Self::ClearBrowsingData => "clear_browsing_data",
             Self::NewPrivateWindow => "new_private_window",
             Self::TogglePrivateWorkspace => "toggle_private_workspace",
@@ -205,7 +208,7 @@ impl KeyAction {
     }
 }
 
-const ALL_ACTIONS: [KeyAction; 63] = [
+const ALL_ACTIONS: [KeyAction; 64] = [
     KeyAction::NewTab,
     KeyAction::NewWorkspace,
     KeyAction::CloseTab,
@@ -232,6 +235,7 @@ const ALL_ACTIONS: [KeyAction; 63] = [
     KeyAction::OpenCommandPalette,
     KeyAction::OpenSettings,
     KeyAction::OpenHistory,
+    KeyAction::OpenCanvases,
     KeyAction::ClearBrowsingData,
     KeyAction::NewPrivateWindow,
     KeyAction::TogglePrivateWorkspace,
@@ -387,8 +391,10 @@ mod tests {
     fn default_keymap_includes_every_action_except_reserved() {
         // These ship unbound on purpose: `FocusUrlBarAlt`/`SwitchToTab9` are
         // spare slots, `FocusNextPane` is covered by the directional pane binds,
-        // and `NewPrivateWindow` gave its key to the private-workspace toggle.
+        // `NewPrivateWindow` gave its key to the private-workspace toggle, and
+        // `OpenCanvases` lives in the dock and the palette.
         const UNBOUND: &[KeyAction] = &[
+            KeyAction::OpenCanvases,
             KeyAction::FocusUrlBarAlt,
             KeyAction::NewPrivateWindow,
             KeyAction::FocusNextPane,

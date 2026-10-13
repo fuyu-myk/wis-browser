@@ -12,6 +12,8 @@ mod backup;
 mod biometrics;
 mod bookmarks;
 mod browser_import;
+mod canvas;
+mod canvas_store;
 mod capture;
 mod clipboard;
 mod commands;
@@ -124,6 +126,12 @@ pub fn run() {
                 }
             }
         }));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .register_asynchronous_uri_scheme_protocol(canvas::SCHEME, canvas::handle_request);
     }
 
     builder = builder
@@ -481,6 +489,7 @@ pub fn run() {
             // Per-tab audibility poll (tab audio icons + click-to-mute).
             audio::start_poll(app.handle().clone());
             usage::start(app.handle().clone());
+            canvas::start(app.handle().clone());
 
             // Periodically snapshot session cookies for activated workspaces so
             // logins survive a restart even when no page reload occurs (e.g. a
@@ -809,6 +818,7 @@ pub fn run() {
                 let state = app_handle.state::<state::AppState>();
                 state.save_coalescer.flush(&state.storage);
                 usage::flush_now(&state);
+                canvas::flush_now(state.storage.as_ref());
             }
 
             if let tauri::RunEvent::WindowEvent {

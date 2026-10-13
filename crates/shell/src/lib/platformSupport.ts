@@ -37,6 +37,8 @@ const FEATURES: Readonly<Record<string, FeatureSupport>> = {
   // The provider key is sealed in the OS key store (Keychain / DPAPI), and
   // Linux has none. Mirrors `ai_supported()` in `ai.rs`.
   ai_assistant: { label: 'AI assistant', unavailableOn: ['linux'] },
+  // The `wisCanvas` page channel is macOS only so far.
+  canvases: { label: 'Canvases', unavailableOn: ['windows', 'linux'] },
 }
 
 /** True when `featureId` is not available on the running platform. */

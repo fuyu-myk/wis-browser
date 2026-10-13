@@ -4,8 +4,8 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { commands } from '@/bindings/commands'
 import type { Tab } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { SettingsIcon, UsageIcon } from '@/lib/icons'
-import { HISTORY_URL, isChromeUrl, SETTINGS_URL, USAGE_URL } from '@/lib/url'
+import { CanvasIcon, SettingsIcon, UsageIcon } from '@/lib/icons'
+import { HISTORY_URL, isCanvasUrl, isChromeUrl, SETTINGS_URL, USAGE_URL } from '@/lib/url'
 import { WisMark } from '@/components/WisMark'
 
 const FAVICON_CACHED_EVENT = 'favicon-cached'
@@ -210,6 +210,14 @@ export function TabFavicon({ tab, className }: TabFaviconProps) {
     return (
       <span className={cx('fav', 'fav-usage', className)} aria-label="usage">
         <UsageIcon aria-hidden />
+      </span>
+    )
+  }
+
+  if (isCanvasUrl(tab.url)) {
+    return (
+      <span className={cx('fav', 'fav-canvas', className)} aria-label="canvas">
+        <CanvasIcon aria-hidden />
       </span>
     )
   }

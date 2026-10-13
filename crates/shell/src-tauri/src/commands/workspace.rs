@@ -76,6 +76,7 @@ pub async fn delete_workspace(
     if let Err(err) = crate::usage::clear(&app, Some(id), None).await {
         log::warn!("clearing a deleted workspace's usage: {err:?}");
     }
+    crate::canvas::release_workspace(&app, id).await;
 
     Ok(())
 }

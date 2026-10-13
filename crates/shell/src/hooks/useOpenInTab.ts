@@ -5,6 +5,7 @@ import { commands } from '@/bindings/commands'
 import type { WorkspaceId } from '@/bindings/types'
 import { isWindowFocused } from '@/lib/windowFocus'
 import { useBrowserState } from '@/hooks/useBrowserState'
+import { isCanvasUrl } from '@/lib/url'
 
 const OPEN_IN_TAB_EVENT = 'wis-open-in-tab'
 const OPEN_TAB_FOREGROUND_EVENT = 'wis-open-in-tab-fg'
@@ -32,7 +33,7 @@ export function useOpenInTab(): void {
         if (!isWindowFocused()) return
         const ws = wsRef.current
         const href = e.payload
-        if (!ws || !href) return
+        if (!ws || !href || isCanvasUrl(href)) return
         void open(ws, href).catch(() => undefined)
       }).then((fn) => {
         if (cancelled) fn()

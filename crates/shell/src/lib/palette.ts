@@ -204,6 +204,7 @@ const ACTION_LABELS: Record<KeyAction, string> = {
   open_command_palette: 'Open command palette',
   open_settings: 'Open settings',
   open_history: 'Show history',
+  open_canvases: 'Open canvases',
   clear_browsing_data: 'Clear browsing data',
   new_private_window: 'New private window',
   toggle_private_workspace: 'Toggle private workspace',

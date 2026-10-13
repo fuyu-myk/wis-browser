@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { useQueryClient } from '@tanstack/react-query'
 
 import type { BrowserState, Tab, TabId, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
+import { showToast } from '@/lib/toast'
 import { HISTORY_URL, SETTINGS_URL, USAGE_URL } from '@/lib/url'
+import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import { openCanvases } from '@/hooks/openCanvases'
 import { useBookmarksOverlay } from '@/hooks/useBookmarksOverlay'
 import { useClearDataOverlay } from '@/hooks/useClearDataOverlay'
 import { useDownloadsOverlay } from '@/hooks/useDownloadsOverlay'
@@ -84,9 +88,16 @@ export function Window({ state, settings }: WindowProps) {
 
   useWorkspaceBackground(activeWorkspace ?? null)
 
+  const qc = useQueryClient()
   const navigateOrCreate = useNavigateOrCreateTab(activeWorkspace?.id ?? null, activeTab)
   const openSettings = () => navigateOrCreate(SETTINGS_URL)
   const openHistory = () => navigateOrCreate(HISTORY_URL)
+  const openCanvasesTab = () => {
+    if (!activeWorkspace) return
+    void openCanvases(activeWorkspace.id, state.tabs, activeTab?.id ?? null)
+      .then(() => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }))
+      .catch(() => showToast('Canvases could not be opened.'))
+  }
   const openUsagePage = () => {
     navigateOrCreate(USAGE_URL)
     setUsageOpen(false)
@@ -151,6 +162,7 @@ export function Window({ state, settings }: WindowProps) {
             side={railSide}
             onOpenSettings={openSettings}
             onOpenHistory={openHistory}
+            onOpenCanvases={openCanvasesTab}
             aiAvailable={aiAvailable}
             aiOpen={aiOpen}
             onToggleAi={() => setAiOpen((v) => !v)}
@@ -165,6 +177,7 @@ export function Window({ state, settings }: WindowProps) {
           expanded={sidebarExpanded}
           setExpanded={setSidebarExpanded}
           onOpenHistory={openHistory}
+          onOpenCanvases={openCanvasesTab}
           onOpenSettings={openSettings}
           aiAvailable={aiAvailable}
           aiOpen={aiOpen}

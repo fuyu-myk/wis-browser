@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react'
 
 import type { BrowserState, Tab, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { AssistantIcon, HistoryIcon, SettingsIcon, UsageIcon } from '@/lib/icons'
+import { AssistantIcon, CanvasIcon, HistoryIcon, SettingsIcon, UsageIcon } from '@/lib/icons'
 
 import { BookmarksButton } from '@/components/BookmarksButton'
 import { Brand } from '@/components/Brand'
@@ -20,6 +20,7 @@ interface SidebarProps {
   expanded: boolean
   setExpanded: (v: boolean) => void
   onOpenHistory: () => void
+  onOpenCanvases: () => void
   onOpenSettings: () => void
   /** False until a provider key is stored, which hides the assistant entirely. */
   aiAvailable: boolean
@@ -37,6 +38,7 @@ export function Sidebar({
   expanded,
   setExpanded,
   onOpenHistory,
+  onOpenCanvases,
   onOpenSettings,
   aiAvailable,
   aiOpen,
@@ -198,6 +200,15 @@ export function Sidebar({
           onClick={onToggleUsage}
         >
           <UsageIcon />
+        </button>
+        <button
+          type="button"
+          className="kb-circle-btn"
+          aria-label="Canvases"
+          title="Canvases"
+          onClick={onOpenCanvases}
+        >
+          <CanvasIcon />
         </button>
         <button
           type="button"

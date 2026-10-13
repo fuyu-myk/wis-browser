@@ -5849,16 +5849,19 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 }
 .fav.fav-wis svg { width: 100%; height: 100%; display: block; }
 
-/* about:settings cog / about:history clock / about:usage hourglass: periwinkle, sized to the slot. */
+/* Settings cog, history clock, usage hourglass and canvas tiles: periwinkle, sized to the slot. */
 .fav.fav-settings,
 .fav.fav-history,
 .fav.fav-usage,
+.fav.fav-canvas,
 .kb-tab .fav.fav-settings,
 .kb-tab .fav.fav-history,
 .kb-tab .fav.fav-usage,
+.kb-tab .fav.fav-canvas,
 .kb-topbar .h-tab .fav.fav-settings,
 .kb-topbar .h-tab .fav.fav-history,
-.kb-topbar .h-tab .fav.fav-usage {
+.kb-topbar .h-tab .fav.fav-usage,
+.kb-topbar .h-tab .fav.fav-canvas {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5868,7 +5871,8 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 }
 .fav.fav-settings svg,
 .fav.fav-history svg,
-.fav.fav-usage svg { width: 90%; height: 90%; display: block; }
+.fav.fav-usage svg,
+.fav.fav-canvas svg { width: 90%; height: 90%; display: block; }
 
 /* Loading spinner shown while the VPN connection is being set up. */
 .kb-vpn-spinner {

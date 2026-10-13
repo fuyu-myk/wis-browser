@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { BrowserState, RailSide } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { AssistantIcon, HistoryIcon, SettingsIcon, UsageIcon } from '@/lib/icons'
+import { AssistantIcon, CanvasIcon, HistoryIcon, SettingsIcon, UsageIcon } from '@/lib/icons'
 
 import { BookmarksButton } from '@/components/BookmarksButton'
 import { Brand } from '@/components/Brand'
@@ -16,6 +16,7 @@ interface TopTabsRailProps {
   side: RailSide
   onOpenSettings: () => void
   onOpenHistory: () => void
+  onOpenCanvases: () => void
   /** False until a provider key is stored, which hides the assistant entirely. */
   aiAvailable: boolean
   aiOpen: boolean
@@ -35,6 +36,7 @@ export function TopTabsRail({
   side,
   onOpenSettings,
   onOpenHistory,
+  onOpenCanvases,
   aiAvailable,
   aiOpen,
   onToggleAi,
@@ -90,6 +92,14 @@ export function TopTabsRail({
           onClick={onToggleUsage}
         >
           <UsageIcon />
+        </button>
+        <button
+          type="button"
+          className="kb-circle-btn kb-rail-settings"
+          aria-label="Canvases"
+          onClick={onOpenCanvases}
+        >
+          <CanvasIcon />
         </button>
         <button
           type="button"

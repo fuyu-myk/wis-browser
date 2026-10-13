@@ -28,6 +28,8 @@ pub async fn create_tab_webview(
         })?;
 
     let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
+    // A canvas tab loads its bundled page and may read its workspace's canvases.
+    let canvas_tab = crate::canvas::is_canvas_url(&parsed);
     // Session restore: the frontend passes a blob when waking a slept tab; a
     // reopened (Cmd+Shift+T) tab's blob waits Rust-side keyed by tab id.
     let restore_state = match restore_state {
@@ -209,6 +211,13 @@ pub async fn create_tab_webview(
         let label_for_nav = label_ident.clone();
         let scriptlets = nav_privacy_mode != wis_core::PrivacyMode::Permissive;
         builder = builder.on_navigation(move |url| {
+            if !crate::canvas::navigation_allowed(canvas_tab, url) {
+                return false;
+            }
+            if canvas_tab {
+                return true;
+            }
+
             if crate::app_launch::should_intercept(url) {
                 crate::app_launch::intake_from_tab(&app_for_nav, tab_id, url.clone());
                 return false;
@@ -483,6 +492,9 @@ pub async fn create_tab_webview(
         let app = app.clone();
         let opener_label = label_ident.clone();
         move |url, features| {
+            if crate::canvas::is_canvas_url(&url) {
+                return tauri::webview::NewWindowResponse::Deny;
+            }
             if crate::app_launch::should_intercept(&url) {
                 crate::app_launch::intake_from_tab(&app, tab_id, url.clone());
                 return tauri::webview::NewWindowResponse::Deny;
@@ -530,14 +542,26 @@ pub async fn create_tab_webview(
         }
     }
 
+    if canvas_tab {
+        crate::canvas::register(
+            &label_ident,
+            crate::canvas_store::CanvasTab {
+                workspace: workspace_id,
+                ephemeral,
+            },
+        );
+    }
     let child = window
         .add_child(
             builder,
             tauri::LogicalPosition::new(x, y),
             tauri::LogicalSize::new(width, height),
         )
-        .map_err(|err| WisError::InvalidInput {
-            message: format!("add_child failed: {err}"),
+        .map_err(|err| {
+            crate::canvas::forget(&app, &label_ident);
+            WisError::InvalidInput {
+                message: format!("add_child failed: {err}"),
+            }
         })?;
 
     crate::pane_container::wrap(&child);
@@ -629,6 +653,11 @@ pub async fn create_tab_webview(
     // "Save password?" capture.
     if !ephemeral {
         crate::capture::install(&child);
+    }
+
+    #[cfg(target_os = "macos")]
+    if canvas_tab {
+        crate::canvas::install(&child, label_ident.clone());
     }
 
     // Opt+click "Peek" trigger (safe on all tabs; forwards only the link).
@@ -796,6 +825,7 @@ pub async fn close_tab_webview(app: AppHandle, label: String) -> WisResult<()> {
 
     crate::webview_close::terminate_page(&webview);
     crate::content_world::forget(&label);
+    crate::canvas::forget(&app, &label);
     #[cfg(windows)]
     crate::win_dispatch::forget(&label);
     webview.close().map_err(|err| WisError::InvalidInput {

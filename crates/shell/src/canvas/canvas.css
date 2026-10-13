@@ -1,0 +1,245 @@
+:root {
+  color-scheme: dark;
+  --canvas-bg: #16171c;
+  --canvas-dot: rgba(255, 255, 255, 0.06);
+  --card-bg: #23242c;
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 6px 18px rgba(0, 0, 0, 0.25);
+  --accent: #7c7ff5;
+  --text-primary: #e8e8ee;
+  --text-secondary: #a4a5b2;
+  --text-muted: #73747f;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.22);
+  --surface-raised: #1b1c22;
+  --overlay: rgba(255, 255, 255, 0.04);
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html,
+body,
+#root,
+.canvas-root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--canvas-bg);
+  color: var(--text-primary);
+  font: 13px/1.5 var(--font-sans);
+}
+
+.canvas-viewport {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+  cursor: default;
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.canvas-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.canvas-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.canvas-card:active {
+  cursor: grabbing;
+}
+.canvas-card.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.canvas-card.is-editing {
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.canvas-card-empty {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.canvas-card-editor {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 60px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: var(--text-primary);
+  font: 12.5px/1.5 var(--font-mono);
+}
+
+.canvas-hint {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  margin: 0;
+  transform: translate(-50%, -50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.canvas-name {
+  position: fixed;
+  left: 16px;
+  top: 14px;
+  max-width: 40vw;
+  padding: 6px 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card-bg);
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.canvas-notice,
+.canvas-error {
+  position: fixed;
+  left: 50%;
+  margin: 0;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+}
+.canvas-notice {
+  bottom: 18px;
+}
+.canvas-error {
+  top: 45%;
+}
+
+/* Markdown, as the assistant panel renders it. */
+.kb-ai-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.kb-ai-md {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.kb-ai-md p {
+  margin: 0;
+}
+.kb-ai-md h3,
+.kb-ai-md h4,
+.kb-ai-md h5 {
+  margin: 2px 0 0;
+  line-height: 1.35;
+}
+.kb-ai-md h3 {
+  font-size: 15px;
+  font-weight: 650;
+}
+.kb-ai-md h4 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.kb-ai-md h5 {
+  font-size: 13px;
+  font-weight: 600;
+}
+.kb-ai-md ul,
+.kb-ai-md ol {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding-left: 18px;
+}
+.kb-ai-md blockquote {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-secondary);
+}
+.kb-ai-md hr {
+  margin: 2px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.kb-ai-md-code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  font: 11.5px var(--font-mono);
+}
+.kb-ai-md-pre {
+  margin: 0;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+.kb-ai-md-pre > code {
+  font: 11.5px/1.5 var(--font-mono);
+  white-space: pre;
+}
+.kb-ai-md-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.kb-ai-md-tablewrap {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.kb-ai-md table {
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.kb-ai-md th,
+.kb-ai-md td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.kb-ai-md th {
+  background: var(--overlay);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.kb-ai-md tbody tr:last-child td {
+  border-bottom: 0;
+}
