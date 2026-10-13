@@ -144,6 +144,7 @@ export function CanvasApp({ channel }: { channel: CanvasChannel }) {
   )
   const onChange = useCallback(
     (doc: CanvasDoc) => {
+      if (doc === docRef.current) return
       if (docRef.current) history.current = record(history.current, docRef.current)
       apply(doc)
     },

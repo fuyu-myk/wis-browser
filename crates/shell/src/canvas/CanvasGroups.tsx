@@ -1,0 +1,39 @@
+import { frameAround, type Box } from '@/lib/canvas'
+
+import { transformOf } from './dom'
+
+const GROUP_PAD = 8
+
+export interface GroupOutline {
+  el: HTMLElement
+  x: number
+  y: number
+  member: string
+}
+
+interface CanvasGroupsProps {
+  groups: ReadonlyMap<string, readonly string[]>
+  boxOf: (id: string) => Box | null
+  register: (group: string, outline: GroupOutline | null) => void
+}
+
+export function CanvasGroups({ groups, boxOf, register }: CanvasGroupsProps) {
+  return (
+    <>
+      {[...groups].map(([group, ids]) => {
+        const boxes = ids.flatMap((id) => boxOf(id) ?? [])
+        const member = ids[0]
+        if (boxes.length === 0 || member === undefined) return null
+        const box = frameAround(boxes, GROUP_PAD)
+        return (
+          <div
+            key={group}
+            className="canvas-group"
+            ref={(el) => register(group, el && { el, x: box.x, y: box.y, member })}
+            style={{ width: box.w, height: box.h, transform: transformOf(box.x, box.y) }}
+          />
+        )
+      })}
+    </>
+  )
+}

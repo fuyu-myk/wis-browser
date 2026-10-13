@@ -316,3 +316,151 @@ describe('arrows', () => {
     assert.deepEqual([end.x, end.y], [100, 25])
   })
 })
+
+describe('groups', () => {
+  const doc = {
+    version: 1,
+    view: { x: 0, y: 0, k: 1 },
+    cards: [card('a'), card('b', 300), card('c', 600)],
+    edges: [],
+    frames: [],
+  }
+
+  test('grouping ties two or more cards, and selecting one picks them all', () => {
+    const grouped = canvas.groupCards(doc, new Set(['a', 'b']), 'g1')
+    assert.deepEqual(grouped.cards.map((c) => c.group), ['g1', 'g1', undefined])
+    assert.deepEqual([...canvas.expandToGroups(grouped, new Set(['a']))].sort(), ['a', 'b'])
+    assert.equal(canvas.groupCards(doc, new Set(['a']), 'g2'), doc, 'one card is not a group')
+  })
+
+  test('ungrouping frees every card of the touched groups', () => {
+    const grouped = canvas.groupCards(doc, new Set(['a', 'b']), 'g1')
+    const freed = canvas.ungroupCards(grouped, new Set(['a']))
+    assert.deepEqual(freed.cards.map((c) => c.group), [undefined, undefined, undefined])
+  })
+
+  test('grouping is offered for loose cards, ungrouping once a group is picked', () => {
+    const grouped = canvas.groupCards(doc, new Set(['a', 'b']), 'g1')
+    assert.equal(canvas.canGroup(doc, new Set(['a'])), false)
+    assert.equal(canvas.canGroup(doc, new Set(['a', 'b'])), true)
+    assert.equal(canvas.canGroup(grouped, new Set(['a', 'b'])), false, 'already one group')
+    assert.equal(canvas.canGroup(grouped, new Set(['a', 'b', 'c'])), true)
+    assert.equal(canvas.canUngroup(doc, new Set(['a', 'b'])), false)
+    assert.equal(canvas.canUngroup(grouped, new Set(['b'])), true)
+  })
+
+  test('the picked groups are listed with their cards', () => {
+    const grouped = canvas.groupCards(
+      canvas.groupCards(doc, new Set(['a', 'b']), 'g1'),
+      new Set(['c']),
+      'g2',
+    )
+    assert.deepEqual([...canvas.groupsIn(grouped, new Set(['a', 'b', 'c']))], [['g1', ['a', 'b']]])
+    assert.deepEqual([...canvas.groupsIn(grouped, new Set(['c']))], [])
+  })
+
+  test('groups and frames survive a save', () => {
+    const grouped = canvas.addFrame(canvas.groupCards(doc, new Set(['a', 'b']), 'g1'), {
+      id: 'f1',
+      x: -20,
+      y: -40,
+      w: 700,
+      h: 300,
+      title: 'Ideas',
+    })
+    const back = canvas.parseDoc(canvas.serializeDoc(grouped))
+    assert.deepEqual(back.cards.map((c) => c.group), ['g1', 'g1', undefined])
+    assert.deepEqual(back.frames, grouped.frames)
+  })
+})
+
+describe('frames', () => {
+  const boxes = [
+    { id: 'a', x: 0, y: 0, w: 100, h: 50 },
+    { id: 'b', x: 200, y: 100, w: 100, h: 50 },
+    { id: 'c', x: 900, y: 900, w: 100, h: 50 },
+  ]
+
+  test('a frame around cards leaves a margin on every side', () => {
+    const box = canvas.frameAround(boxes.slice(0, 2))
+    assert.deepEqual(box, {
+      x: -canvas.FRAME_PAD,
+      y: -canvas.FRAME_PAD,
+      w: 300 + 2 * canvas.FRAME_PAD,
+      h: 150 + 2 * canvas.FRAME_PAD,
+    })
+  })
+
+  test('a tighter margin can be asked for', () => {
+    assert.deepEqual(canvas.frameAround(boxes.slice(0, 1), 8), { x: -8, y: -8, w: 116, h: 66 })
+  })
+
+  test('frames wholly inside another travel with it', () => {
+    const frames = [
+      { id: 'outer', x: 0, y: 0, w: 1000, h: 1000, title: '' },
+      { id: 'inner', x: 100, y: 100, w: 200, h: 200, title: '' },
+      { id: 'across', x: 900, y: 900, w: 200, h: 200, title: '' },
+    ]
+    assert.deepEqual(canvas.framesInside(frames, frames[0]), ['inner'])
+  })
+
+  test('a card is in a frame when its centre is', () => {
+    const frame = { id: 'f', x: -10, y: -10, w: 260, h: 120, title: '' }
+    assert.deepEqual(canvas.cardsInFrame(boxes, frame), ['a'])
+  })
+
+  test('moving a frame carries the cards given with it', () => {
+    const doc = {
+      version: 1,
+      view: { x: 0, y: 0, k: 1 },
+      cards: [card('a'), card('b', 900)],
+      edges: [],
+      frames: [{ id: 'f', x: 0, y: 0, w: 400, h: 300, title: 'F' }],
+    }
+    const moved = canvas.moveFrames(doc, new Set(['f']), new Set(['a']), 10, 20)
+    assert.deepEqual([moved.frames[0].x, moved.frames[0].y], [10, 20])
+    assert.deepEqual(moved.cards.map((c) => [c.x, c.y]), [[10, 20], [900, 0]])
+  })
+
+  test('frames resize within limits, rename, and go without taking their cards', () => {
+    const doc = {
+      version: 1,
+      view: { x: 0, y: 0, k: 1 },
+      cards: [card('a')],
+      edges: [],
+      frames: [{ id: 'f', x: 0, y: 0, w: 400, h: 300, title: 'F' }],
+    }
+    const small = canvas.resizeFrame(doc, 'f', 5, 5)
+    assert.deepEqual([small.frames[0].w, small.frames[0].h], [canvas.MIN_FRAME_W, canvas.MIN_FRAME_H])
+    assert.equal(canvas.renameFrame(doc, 'f', '  Plan  ').frames[0].title, 'Plan')
+    assert.equal(canvas.renameFrame(doc, 'f', '   ').frames[0].title, 'F', 'a blank title keeps the old one')
+    const gone = canvas.removeFrame(doc, 'f')
+    assert.deepEqual([gone.frames.length, gone.cards.length], [0, 1])
+  })
+
+  test('edits that change nothing hand back the same document', () => {
+    const doc = {
+      version: 1,
+      view: { x: 0, y: 0, k: 1 },
+      cards: [card('a')],
+      edges: [],
+      frames: [{ id: 'f', x: 0, y: 0, w: 400, h: 300, title: 'F' }],
+    }
+    assert.equal(canvas.removeCards(doc, new Set(['gone'])), doc)
+    assert.equal(canvas.removeEdge(doc, 'gone'), doc)
+    assert.equal(canvas.removeFrame(doc, 'gone'), doc)
+    assert.equal(canvas.moveFrames(doc, new Set(['f']), new Set(['a']), 0, 0), doc)
+    assert.equal(canvas.resizeFrame(doc, 'f', 400, 300), doc)
+    assert.equal(canvas.resizeFrame(doc, 'gone', 500, 500), doc)
+    assert.equal(canvas.renameFrame(doc, 'f', 'F'), doc)
+  })
+
+  test('stored frames that cannot stand are dropped', () => {
+    const stored = JSON.stringify({
+      version: 1,
+      cards: [],
+      frames: [{ id: 'f', x: 0, y: 0, w: 400, h: 300, title: 'ok' }, { id: 'g', x: 'no' }, null, { id: 'f', x: 0, y: 0, w: 400, h: 300, title: 'dup' }],
+    })
+    assert.deepEqual(canvas.parseDoc(stored).frames.map((f) => f.title), ['ok'])
+  })
+})

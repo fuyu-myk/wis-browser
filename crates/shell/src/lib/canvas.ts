@@ -14,6 +14,16 @@ export interface CanvasCard {
   y: number
   w: number
   text: string
+  group?: string
+}
+
+export interface CanvasFrame {
+  id: string
+  x: number
+  y: number
+  w: number
+  h: number
+  title: string
 }
 
 export interface CanvasEdge {
@@ -27,6 +37,7 @@ export interface CanvasDoc {
   view: CanvasView
   cards: CanvasCard[]
   edges: CanvasEdge[]
+  frames: CanvasFrame[]
 }
 
 export interface CanvasSummary {
@@ -43,6 +54,11 @@ export const MAX_CARD_WIDTH = 1200
 const MAX_CARD_TEXT = 20_000
 const MAX_CARDS = 5000
 const MAX_EDGES = 10_000
+const MAX_FRAMES = 1000
+export const MAX_FRAME_SIZE = 20_000
+export const MIN_FRAME_W = 160
+export const MIN_FRAME_H = 120
+export const FRAME_PAD = 32
 const MAX_COORD = 10_000_000
 const MAX_ID = 64
 
@@ -52,7 +68,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
 export function emptyDoc(): CanvasDoc {
-  return { version: 1, view: { x: 0, y: 0, k: 1 }, cards: [], edges: [] }
+  return { version: 1, view: { x: 0, y: 0, k: 1 }, cards: [], edges: [], frames: [] }
 }
 
 function readView(raw: unknown): CanvasView {
@@ -66,16 +82,18 @@ function readView(raw: unknown): CanvasView {
 
 function readCard(raw: unknown): CanvasCard | null {
   if (!isRecord(raw)) return null
-  const { id, x, y, w, text } = raw
+  const { id, x, y, w, text, group } = raw
   if (typeof id !== 'string' || id === '' || id.length > MAX_ID) return null
   if (!finite(x) || !finite(y) || typeof text !== 'string') return null
-  return {
+  const card: CanvasCard = {
     id,
     x: clamp(x, -MAX_COORD, MAX_COORD),
     y: clamp(y, -MAX_COORD, MAX_COORD),
     w: clamp(finite(w) ? w : CARD_WIDTH, MIN_CARD_WIDTH, MAX_CARD_WIDTH),
     text: text.slice(0, MAX_CARD_TEXT),
   }
+  if (typeof group === 'string' && group !== '' && group.length <= MAX_ID) card.group = group
+  return card
 }
 
 export function parseDoc(text: string): CanvasDoc {
@@ -95,7 +113,35 @@ export function parseDoc(text: string): CanvasDoc {
     cards.push(card)
     if (cards.length === MAX_CARDS) break
   }
-  return { version: 1, view: readView(raw.view), cards, edges: readEdges(raw.edges, seen) }
+  return {
+    version: 1,
+    view: readView(raw.view),
+    cards,
+    edges: readEdges(raw.edges, seen),
+    frames: readFrames(raw.frames),
+  }
+}
+
+function readFrames(raw: unknown): CanvasFrame[] {
+  const frames: CanvasFrame[] = []
+  const ids = new Set<string>()
+  for (const entry of Array.isArray(raw) ? raw : []) {
+    if (!isRecord(entry)) continue
+    const { id, x, y, w, h, title } = entry
+    if (typeof id !== 'string' || id === '' || id.length > MAX_ID || ids.has(id)) continue
+    if (!finite(x) || !finite(y) || !finite(w) || !finite(h) || typeof title !== 'string') continue
+    ids.add(id)
+    frames.push({
+      id,
+      x: clamp(x, -MAX_COORD, MAX_COORD),
+      y: clamp(y, -MAX_COORD, MAX_COORD),
+      w: clamp(w, MIN_FRAME_W, MAX_FRAME_SIZE),
+      h: clamp(h, MIN_FRAME_H, MAX_FRAME_SIZE),
+      title: tidyName(title),
+    })
+    if (frames.length === MAX_FRAMES) break
+  }
+  return frames
 }
 
 function readEdges(raw: unknown, cardIds: ReadonlySet<string>): CanvasEdge[] {
@@ -141,6 +187,7 @@ export function moveCards(
   dx: number,
   dy: number,
 ): CanvasDoc {
+  if (dx === 0 && dy === 0) return doc
   return {
     ...doc,
     cards: doc.cards.map((c) => (ids.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)),
@@ -148,11 +195,137 @@ export function moveCards(
 }
 
 export function removeCards(doc: CanvasDoc, ids: ReadonlySet<string>): CanvasDoc {
+  if (!doc.cards.some((c) => ids.has(c.id))) return doc
   return {
     ...doc,
     cards: doc.cards.filter((c) => !ids.has(c.id)),
     edges: doc.edges.filter((e) => !ids.has(e.from) && !ids.has(e.to)),
   }
+}
+
+export function groupCards(
+  doc: CanvasDoc,
+  ids: ReadonlySet<string>,
+  group: string = crypto.randomUUID(),
+): CanvasDoc {
+  if (doc.cards.filter((c) => ids.has(c.id)).length < 2) return doc
+  return { ...doc, cards: doc.cards.map((c) => (ids.has(c.id) ? { ...c, group } : c)) }
+}
+
+export function ungroupCards(doc: CanvasDoc, ids: ReadonlySet<string>): CanvasDoc {
+  const groups = new Set(doc.cards.filter((c) => ids.has(c.id) && c.group).map((c) => c.group))
+  if (groups.size === 0) return doc
+  return {
+    ...doc,
+    cards: doc.cards.map((c) => {
+      if (!c.group || !groups.has(c.group)) return c
+      const free = { ...c }
+      delete free.group
+      return free
+    }),
+  }
+}
+
+export function canGroup(doc: CanvasDoc, ids: ReadonlySet<string>): boolean {
+  const picked = doc.cards.filter((c) => ids.has(c.id))
+  return picked.length >= 2 && !(picked[0]?.group && picked.every((c) => c.group === picked[0]?.group))
+}
+
+export function canUngroup(doc: CanvasDoc, ids: ReadonlySet<string>): boolean {
+  return doc.cards.some((c) => ids.has(c.id) && c.group)
+}
+
+export function groupsIn(doc: CanvasDoc, ids: ReadonlySet<string>): Map<string, string[]> {
+  const groups = new Map<string, string[]>()
+  for (const c of doc.cards) {
+    if (!c.group) continue
+    const cards = groups.get(c.group)
+    if (cards) cards.push(c.id)
+    else groups.set(c.group, [c.id])
+  }
+  return new Map([...groups].filter(([, cards]) => cards.length > 1 && cards.some((id) => ids.has(id))))
+}
+
+export function expandToGroups(doc: CanvasDoc, ids: ReadonlySet<string>): Set<string> {
+  const groups = new Set(doc.cards.filter((c) => ids.has(c.id) && c.group).map((c) => c.group))
+  return new Set(doc.cards.filter((c) => ids.has(c.id) || (c.group && groups.has(c.group))).map((c) => c.id))
+}
+
+export function frameAround(boxes: readonly Box[], pad: number = FRAME_PAD): Box {
+  const left = Math.min(...boxes.map((b) => b.x))
+  const top = Math.min(...boxes.map((b) => b.y))
+  const right = Math.max(...boxes.map((b) => b.x + b.w))
+  const bottom = Math.max(...boxes.map((b) => b.y + b.h))
+  return { x: left - pad, y: top - pad, w: right - left + 2 * pad, h: bottom - top + 2 * pad }
+}
+
+export function framesInside(frames: readonly CanvasFrame[], outer: CanvasFrame): string[] {
+  return frames
+    .filter(
+      (f) =>
+        f.id !== outer.id &&
+        f.x >= outer.x &&
+        f.y >= outer.y &&
+        f.x + f.w <= outer.x + outer.w &&
+        f.y + f.h <= outer.y + outer.h,
+    )
+    .map((f) => f.id)
+}
+
+export function cardsInFrame(boxes: ReadonlyArray<Box & { id: string }>, frame: Box): string[] {
+  return boxes
+    .filter((b) => {
+      const cx = b.x + b.w / 2
+      const cy = b.y + b.h / 2
+      return cx >= frame.x && cx <= frame.x + frame.w && cy >= frame.y && cy <= frame.y + frame.h
+    })
+    .map((b) => b.id)
+}
+
+export function newFrame(box: Box, id: string = crypto.randomUUID()): CanvasFrame {
+  return {
+    id,
+    x: box.x,
+    y: box.y,
+    w: Math.max(MIN_FRAME_W, box.w),
+    h: Math.max(MIN_FRAME_H, box.h),
+    title: 'Frame',
+  }
+}
+
+export function addFrame(doc: CanvasDoc, frame: CanvasFrame): CanvasDoc {
+  return { ...doc, frames: [...doc.frames, frame] }
+}
+
+export function moveFrames(
+  doc: CanvasDoc,
+  frames: ReadonlySet<string>,
+  cards: ReadonlySet<string>,
+  dx: number,
+  dy: number,
+): CanvasDoc {
+  if (dx === 0 && dy === 0) return doc
+  const moved = moveCards(doc, cards, dx, dy)
+  return { ...moved, frames: doc.frames.map((f) => (frames.has(f.id) ? { ...f, x: f.x + dx, y: f.y + dy } : f)) }
+}
+
+export function resizeFrame(doc: CanvasDoc, id: string, w: number, h: number): CanvasDoc {
+  const width = clamp(w, MIN_FRAME_W, MAX_FRAME_SIZE)
+  const height = clamp(h, MIN_FRAME_H, MAX_FRAME_SIZE)
+  const frame = doc.frames.find((f) => f.id === id)
+  if (!frame || (frame.w === width && frame.h === height)) return doc
+  return { ...doc, frames: doc.frames.map((f) => (f.id === id ? { ...f, w: width, h: height } : f)) }
+}
+
+export function renameFrame(doc: CanvasDoc, id: string, title: string): CanvasDoc {
+  const tidy = tidyName(title)
+  if (tidy === '' || !doc.frames.some((f) => f.id === id && f.title !== tidy)) return doc
+  return { ...doc, frames: doc.frames.map((f) => (f.id === id ? { ...f, title: tidy } : f)) }
+}
+
+export function removeFrame(doc: CanvasDoc, id: string): CanvasDoc {
+  if (!doc.frames.some((f) => f.id === id)) return doc
+  return { ...doc, frames: doc.frames.filter((f) => f.id !== id) }
 }
 
 export function addEdge(
@@ -168,6 +341,7 @@ export function addEdge(
 }
 
 export function removeEdge(doc: CanvasDoc, id: string): CanvasDoc {
+  if (!doc.edges.some((e) => e.id === id)) return doc
   return { ...doc, edges: doc.edges.filter((e) => e.id !== id) }
 }
 
