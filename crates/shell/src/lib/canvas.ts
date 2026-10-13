@@ -16,10 +16,17 @@ export interface CanvasCard {
   text: string
 }
 
+export interface CanvasEdge {
+  id: string
+  from: string
+  to: string
+}
+
 export interface CanvasDoc {
   version: 1
   view: CanvasView
   cards: CanvasCard[]
+  edges: CanvasEdge[]
 }
 
 export interface CanvasSummary {
@@ -35,6 +42,7 @@ export const MIN_CARD_WIDTH = 120
 export const MAX_CARD_WIDTH = 1200
 const MAX_CARD_TEXT = 20_000
 const MAX_CARDS = 5000
+const MAX_EDGES = 10_000
 const MAX_COORD = 10_000_000
 const MAX_ID = 64
 
@@ -44,7 +52,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
 export function emptyDoc(): CanvasDoc {
-  return { version: 1, view: { x: 0, y: 0, k: 1 }, cards: [] }
+  return { version: 1, view: { x: 0, y: 0, k: 1 }, cards: [], edges: [] }
 }
 
 function readView(raw: unknown): CanvasView {
@@ -87,7 +95,23 @@ export function parseDoc(text: string): CanvasDoc {
     cards.push(card)
     if (cards.length === MAX_CARDS) break
   }
-  return { version: 1, view: readView(raw.view), cards }
+  return { version: 1, view: readView(raw.view), cards, edges: readEdges(raw.edges, seen) }
+}
+
+function readEdges(raw: unknown, cardIds: ReadonlySet<string>): CanvasEdge[] {
+  const edges: CanvasEdge[] = []
+  const pairs = new Set<string>()
+  for (const entry of Array.isArray(raw) ? raw : []) {
+    if (!isRecord(entry)) continue
+    const { id, from, to } = entry
+    if (typeof id !== 'string' || id === '' || id.length > MAX_ID) continue
+    if (typeof from !== 'string' || typeof to !== 'string' || from === to) continue
+    if (!cardIds.has(from) || !cardIds.has(to) || pairs.has(`${from}>${to}`)) continue
+    pairs.add(`${from}>${to}`)
+    edges.push({ id, from, to })
+    if (edges.length === MAX_EDGES) break
+  }
+  return edges
 }
 
 export function serializeDoc(doc: CanvasDoc): string {
@@ -108,7 +132,7 @@ export function updateCard(
 }
 
 export function removeCard(doc: CanvasDoc, id: string): CanvasDoc {
-  return { ...doc, cards: doc.cards.filter((c) => c.id !== id) }
+  return removeCards(doc, new Set([id]))
 }
 
 export function moveCards(
@@ -124,7 +148,81 @@ export function moveCards(
 }
 
 export function removeCards(doc: CanvasDoc, ids: ReadonlySet<string>): CanvasDoc {
-  return { ...doc, cards: doc.cards.filter((c) => !ids.has(c.id)) }
+  return {
+    ...doc,
+    cards: doc.cards.filter((c) => !ids.has(c.id)),
+    edges: doc.edges.filter((e) => !ids.has(e.from) && !ids.has(e.to)),
+  }
+}
+
+export function addEdge(
+  doc: CanvasDoc,
+  from: string,
+  to: string,
+  id: string = crypto.randomUUID(),
+): CanvasDoc {
+  const known = (cardId: string) => doc.cards.some((c) => c.id === cardId)
+  const exists = doc.edges.some((e) => e.from === from && e.to === to)
+  if (from === to || exists || !known(from) || !known(to)) return doc
+  return { ...doc, edges: [...doc.edges, { id, from, to }] }
+}
+
+export function removeEdge(doc: CanvasDoc, id: string): CanvasDoc {
+  return { ...doc, edges: doc.edges.filter((e) => e.id !== id) }
+}
+
+export const ARROW_LENGTH = 12
+
+interface Point {
+  x: number
+  y: number
+}
+
+/**
+ * A curve leaving `start` along `out` and arriving at `tip` from roughly
+ * `into`, leaning toward `start` so the head turns with it. It stops one
+ * head-length short, aimed so the head's tip lands on `tip`.
+ */
+export function curvedArrow(start: Point, out: Point, tip: Point, into: Point, reach: number): string {
+  const c1 = { x: start.x + out.x * reach, y: start.y + out.y * reach }
+  const c2 = {
+    x: tip.x + into.x * reach * 0.6 + (start.x - tip.x) * 0.2,
+    y: tip.y + into.y * reach * 0.6 + (start.y - tip.y) * 0.2,
+  }
+  let ux = tip.x - c2.x
+  let uy = tip.y - c2.y
+  if (ux === 0 && uy === 0) {
+    ux = tip.x - start.x
+    uy = tip.y - start.y
+  }
+  const length = Math.hypot(ux, uy) || 1
+  const back = Math.min(ARROW_LENGTH, Math.hypot(tip.x - start.x, tip.y - start.y)) / length
+  return `M${start.x},${start.y} C${c1.x},${c1.y} ${c2.x - ux * back},${c2.y - uy * back} ${tip.x - ux * back},${tip.y - uy * back}`
+}
+
+/** Between the middles of the sides of `a` and `b` that face each other. */
+export function edgeGeometry(a: Box, b: Box): { x1: number; y1: number; x2: number; y2: number; d: string } {
+  const dx = b.x + b.w / 2 - (a.x + a.w / 2)
+  const dy = b.y + b.h / 2 - (a.y + a.h / 2)
+  const across = Math.abs(dx) >= Math.abs(dy)
+  const s = (across ? dx : dy) < 0 ? -1 : 1
+  const start = across
+    ? { x: s > 0 ? a.x + a.w : a.x, y: a.y + a.h / 2 }
+    : { x: a.x + a.w / 2, y: s > 0 ? a.y + a.h : a.y }
+  const tip = across
+    ? { x: s > 0 ? b.x : b.x + b.w, y: b.y + b.h / 2 }
+    : { x: b.x + b.w / 2, y: s > 0 ? b.y : b.y + b.h }
+  const out = across ? { x: s, y: 0 } : { x: 0, y: s }
+  const into = { x: -out.x, y: -out.y }
+  const reach = Math.max(40, Math.abs(across ? tip.x - start.x : tip.y - start.y) / 2)
+  return { x1: start.x, y1: start.y, x2: tip.x, y2: tip.y, d: curvedArrow(start, out, tip, into, reach) }
+}
+
+/** The link being drawn from a side's middle to the pointer. */
+export function pointerArrow(start: Point, out: Point, tip: Point): string {
+  const dist = Math.hypot(tip.x - start.x, tip.y - start.y)
+  const into = dist === 0 ? { x: 0, y: 0 } : { x: (start.x - tip.x) / dist, y: (start.y - tip.y) / dist }
+  return curvedArrow(start, out, tip, into, Math.max(40, dist / 2))
 }
 
 export interface Box {

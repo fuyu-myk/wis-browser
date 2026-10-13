@@ -169,7 +169,15 @@ describe('canvas names', () => {
 })
 
 describe('editing several cards', () => {
-  const doc = { version: 1, view: { x: 0, y: 0, k: 1 }, cards: [card('a', 0, 0), card('b', 10, 10), card('c', 20, 20)] }
+  const doc = {
+    version: 1,
+    view: { x: 0, y: 0, k: 1 },
+    cards: [card('a', 0, 0), card('b', 10, 10), card('c', 20, 20)],
+    edges: [
+      { id: 'ab', from: 'a', to: 'b' },
+      { id: 'bc', from: 'b', to: 'c' },
+    ],
+  }
 
   test('moving shifts only the chosen cards', () => {
     const moved = canvas.moveCards(doc, new Set(['a', 'c']), 5, -5)
@@ -180,8 +188,10 @@ describe('editing several cards', () => {
     assert.equal(doc.cards[0].x, 0)
   })
 
-  test('removing drops only the chosen cards', () => {
-    assert.deepEqual(canvas.removeCards(doc, new Set(['a', 'b'])).cards.map((c) => c.id), ['c'])
+  test('removing drops only the chosen cards, and the arrows touching them', () => {
+    const left = canvas.removeCards(doc, new Set(['a']))
+    assert.deepEqual(left.cards.map((c) => c.id), ['b', 'c'])
+    assert.deepEqual(left.edges.map((e) => e.id), ['bc'])
   })
 })
 
@@ -202,7 +212,7 @@ describe('box selection', () => {
 })
 
 describe('undo history', () => {
-  const at = (x, k = 1) => ({ version: 1, view: { x: 0, y: 0, k }, cards: [card('a', x, 0)] })
+  const at = (x, k = 1) => ({ version: 1, view: { x: 0, y: 0, k }, cards: [card('a', x, 0)], edges: [] })
 
   test('undo and redo step through recorded documents, keeping the current view', () => {
     let history = canvas.record(canvas.emptyHistory(), at(0))
@@ -231,5 +241,78 @@ describe('undo history', () => {
     for (let i = 0; i < 500; i += 1) long = canvas.record(long, at(i))
     assert.equal(long.past.length, canvas.HISTORY_LIMIT)
     assert.equal(long.past[long.past.length - 1].cards[0].x, 499)
+  })
+})
+
+describe('arrows', () => {
+  const doc = {
+    version: 1,
+    view: { x: 0, y: 0, k: 1 },
+    cards: [card('a'), card('b', 400, 0)],
+    edges: [],
+  }
+
+  test('stored arrows read back, and ones that cannot stand are dropped', () => {
+    const stored = JSON.stringify({
+      ...doc,
+      edges: [
+        { id: 'e1', from: 'a', to: 'b' },
+        { id: 'e2', from: 'a', to: 'gone' },
+        { id: 'e3', from: 'a', to: 'a' },
+        { id: 'e4', from: 'a', to: 'b' },
+        { id: 'e5', from: 1, to: 'b' },
+        null,
+      ],
+    })
+    assert.deepEqual(canvas.parseDoc(stored).edges, [{ id: 'e1', from: 'a', to: 'b' }])
+    assert.deepEqual(canvas.parseDoc(JSON.stringify({ version: 1, cards: [] })).edges, [])
+  })
+
+  test('an arrow joins two different cards once', () => {
+    const joined = canvas.addEdge(doc, 'a', 'b', 'e1')
+    assert.deepEqual(joined.edges, [{ id: 'e1', from: 'a', to: 'b' }])
+    assert.equal(canvas.addEdge(joined, 'a', 'b', 'e2'), joined)
+    assert.equal(canvas.addEdge(doc, 'a', 'a', 'e3'), doc)
+    assert.equal(canvas.addEdge(doc, 'a', 'missing', 'e4'), doc)
+    assert.deepEqual(canvas.removeEdge(joined, 'e1').edges, [])
+  })
+
+  test('arrows run between the middles of the facing sides', () => {
+    const across = canvas.edgeGeometry({ x: 0, y: 0, w: 100, h: 50 }, { x: 300, y: 0, w: 100, h: 50 })
+    assert.deepEqual([across.x1, across.y1, across.x2, across.y2], [100, 25, 300, 25])
+    const down = canvas.edgeGeometry({ x: 0, y: 0, w: 100, h: 50 }, { x: 0, y: 300, w: 100, h: 50 })
+    assert.deepEqual([down.x1, down.y1, down.x2, down.y2], [50, 50, 50, 300])
+    const back = canvas.edgeGeometry({ x: 300, y: 0, w: 100, h: 50 }, { x: 0, y: 0, w: 100, h: 50 })
+    assert.deepEqual([back.x1, back.x2], [300, 100])
+  })
+
+  const lastTwo = (d) => {
+    const nums = d.match(/-?\d+(\.\d+)?/g).map(Number)
+    const [cx, cy, x, y] = nums.slice(-4)
+    return { cx, cy, x, y }
+  }
+
+  test('the curve stops a head-length short, aimed so the tip lands on the side middle', () => {
+    const g = canvas.edgeGeometry({ x: 0, y: 0, w: 100, h: 50 }, { x: 300, y: 0, w: 100, h: 50 })
+    assert.match(g.d, /^M100,25 C/)
+    const end = lastTwo(g.d)
+    assert.equal(Math.round(Math.hypot(300 - end.x, 25 - end.y)), canvas.ARROW_LENGTH)
+    assert.equal(end.y, 25, 'level cards meet head-on')
+  })
+
+  test('the head turns with where the source card sits', () => {
+    const below = canvas.edgeGeometry({ x: 0, y: 200, w: 100, h: 50 }, { x: 400, y: 0, w: 100, h: 50 })
+    const above = canvas.edgeGeometry({ x: 0, y: -200, w: 100, h: 50 }, { x: 400, y: 0, w: 100, h: 50 })
+    const up = lastTwo(below.d)
+    const down = lastTwo(above.d)
+    assert.ok(up.y > 25, 'coming from below, the head points up and in')
+    assert.ok(down.y < 25, 'coming from above, the head points down and in')
+    assert.ok(400 - up.x > 0 && 400 - down.x > 0, 'both still enter the left side')
+  })
+
+  test('cards closer than a head get just the head', () => {
+    const touching = canvas.edgeGeometry({ x: 0, y: 0, w: 100, h: 50 }, { x: 105, y: 0, w: 100, h: 50 })
+    const end = lastTwo(touching.d)
+    assert.deepEqual([end.x, end.y], [100, 25])
   })
 })
