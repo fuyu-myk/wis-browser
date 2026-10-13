@@ -2,13 +2,11 @@ import { frameAround, type Box } from '@/lib/canvas'
 
 import { transformOf } from './dom'
 
-const GROUP_PAD = 8
+export const GROUP_PAD = 8
 
 export interface GroupOutline {
   el: HTMLElement
-  x: number
-  y: number
-  member: string
+  members: readonly string[]
 }
 
 interface CanvasGroupsProps {
@@ -22,14 +20,13 @@ export function CanvasGroups({ groups, boxOf, register }: CanvasGroupsProps) {
     <>
       {[...groups].map(([group, ids]) => {
         const boxes = ids.flatMap((id) => boxOf(id) ?? [])
-        const member = ids[0]
-        if (boxes.length === 0 || member === undefined) return null
+        if (boxes.length === 0) return null
         const box = frameAround(boxes, GROUP_PAD)
         return (
           <div
             key={group}
             className="canvas-group"
-            ref={(el) => register(group, el && { el, x: box.x, y: box.y, member })}
+            ref={(el) => register(group, el && { el, members: ids })}
             style={{ width: box.w, height: box.h, transform: transformOf(box.x, box.y) }}
           />
         )

@@ -13,6 +13,16 @@ export interface FrameHandlers {
   renamed: (id: string, title: string | null) => void
 }
 
+const GRIP_DOTS = [
+  [1, 1],
+  [5, 1],
+  [1, 5],
+  [5, 5],
+  [1, 9],
+  [5, 9],
+] as const
+const BANDS = ['top', 'right', 'bottom', 'left'] as const
+
 interface FrameProps {
   frame: CanvasFrame
   selected: boolean
@@ -39,9 +49,22 @@ export const Frame = memo(function Frame({ frame, selected, renaming, handlers }
             handlers.rename(frame.id)
           }}
         >
-          {frame.title}
+          <svg className="canvas-frame-grip" viewBox="0 0 6 10" aria-hidden>
+            {GRIP_DOTS.map(([cx, cy]) => (
+              <circle key={`${cx}${cy}`} cx={cx} cy={cy} r="1" />
+            ))}
+          </svg>
+          <span className="canvas-frame-name">{frame.title}</span>
         </div>
       )}
+      {BANDS.map((side) => (
+        <span
+          key={side}
+          className="canvas-frame-band"
+          data-side={side}
+          onPointerDown={(e) => handlers.down(frame, e)}
+        />
+      ))}
       <span className="canvas-frame-resize" onPointerDown={(e) => handlers.resize(frame, e)} />
     </div>
   )

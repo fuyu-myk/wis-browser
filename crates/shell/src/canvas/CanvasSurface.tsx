@@ -52,7 +52,7 @@ import { cx } from '@/lib/cx'
 import { Card, CardEditor, type CardHandlers, type Side } from './CanvasCard'
 import { CanvasEdges, type Linking } from './CanvasEdges'
 import { Frame, type FrameHandlers } from './CanvasFrame'
-import { CanvasGroups, type GroupOutline } from './CanvasGroups'
+import { CanvasGroups, GROUP_PAD, type GroupOutline } from './CanvasGroups'
 import { canvasMenuItems, CanvasMenu, type CanvasCommands } from './CanvasMenu'
 import { follow, transformOf } from './dom'
 import { useViewGestures } from './useViewGestures'
@@ -180,14 +180,21 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
       const el = frameEls.current.get(id)
       if (el) el.style.transform = transformOf(base.x + d.dx, base.y + d.dy)
     }
-    for (const g of groupEls.current.values()) {
-      if (d.bases.has(g.member)) g.el.style.transform = transformOf(g.x + d.dx, g.y + d.dy)
-    }
     const cards = new Map(docRef.current.cards.map((c) => [c.id, c]))
     const placed = (id: string) => {
       const card = cards.get(id)
       if (!card) return null
       return d.bases.has(id) ? boxOf(card, d.dx, d.dy) : boxOf(card)
+    }
+    for (const g of groupEls.current.values()) {
+      if (!g.members.some((id) => d.bases.has(id))) continue
+      const box = frameAround(
+        g.members.flatMap((id) => placed(id) ?? []),
+        GROUP_PAD,
+      )
+      g.el.style.transform = transformOf(box.x, box.y)
+      g.el.style.width = `${box.w}px`
+      g.el.style.height = `${box.h}px`
     }
     for (const edge of d.edges) {
       const a = placed(edge.from)
@@ -354,7 +361,8 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
   }
 
   const boxSelect = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const keep = e.shiftKey || e.metaKey ? selectedRef.current : NONE
+    const keep = e.shiftKey ? selectedRef.current : NONE
+    const deep = e.metaKey
     const start = localPoint(e.clientX, e.clientY)
     const boxes = docRef.current.cards.map((c) => ({
       id: c.id,
@@ -373,7 +381,8 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
       const a = toCanvas(view.current, box.x, box.y)
       const b = toCanvas(view.current, box.x + box.w, box.y + box.h)
       const hits = cardsTouching(boxes, boxBetween(a.x, a.y, b.x, b.y))
-      select(expandToGroups(docRef.current, new Set([...keep, ...hits])))
+      const picked = new Set([...keep, ...hits])
+      select(deep ? picked : expandToGroups(docRef.current, picked))
     }
     follow(
       (ev) => {
@@ -415,7 +424,8 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
     const card = target.closest<HTMLElement>('[data-card]')?.dataset.card
     const frameId = target.closest<HTMLElement>('[data-frame]')?.dataset.frame
     const edge = target.closest<SVGElement>('[data-edge]')?.dataset.edge
-    if (card && !selectedRef.current.has(card)) select(expandToGroups(docRef.current, new Set([card])))
+    if (card && !selectedRef.current.has(card))
+      select(e.metaKey ? new Set([card]) : expandToGroups(docRef.current, new Set([card])))
     else if (frameId) pick({ kind: 'frame', id: frameId })
     else if (edge) pick({ kind: 'edge', id: edge })
     setMenu({ x: e.clientX, y: e.clientY, at: canvasPoint(e.clientX, e.clientY) })
@@ -478,10 +488,10 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
     down(card, e) {
       if (e.button !== 0 || spaceHeld.current) return
       e.stopPropagation()
-      const own = expandToGroups(docRef.current, new Set([card.id]))
+      const own = e.metaKey ? new Set([card.id]) : expandToGroups(docRef.current, new Set([card.id]))
       const current = selectedRef.current
       const wasSelected = current.has(card.id)
-      if (e.shiftKey || e.metaKey) {
+      if (e.shiftKey) {
         const next = new Set(current)
         for (const id of own) {
           if (wasSelected) next.delete(id)
@@ -490,10 +500,10 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
         select(next)
         return
       }
-      const moving = wasSelected ? current : own
-      if (!wasSelected) select(moving)
+      const moving = wasSelected && !e.metaKey ? current : own
+      if (moving !== current) select(moving)
       drag(e, moving, NONE, () => {
-        if (wasSelected && moving.size > own.size) select(own)
+        if (moving === current && !sameSet(current, own)) select(own)
       })
     },
     edit(id) {

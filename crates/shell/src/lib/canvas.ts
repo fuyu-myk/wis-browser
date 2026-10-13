@@ -228,11 +228,14 @@ export function ungroupCards(doc: CanvasDoc, ids: ReadonlySet<string>): CanvasDo
 
 export function canGroup(doc: CanvasDoc, ids: ReadonlySet<string>): boolean {
   const picked = doc.cards.filter((c) => ids.has(c.id))
-  return picked.length >= 2 && !(picked[0]?.group && picked.every((c) => c.group === picked[0]?.group))
+  const group = picked[0]?.group
+  if (picked.length < 2) return false
+  if (!group || picked.some((c) => c.group !== group)) return true
+  return doc.cards.filter((c) => c.group === group).length !== picked.length
 }
 
 export function canUngroup(doc: CanvasDoc, ids: ReadonlySet<string>): boolean {
-  return doc.cards.some((c) => ids.has(c.id) && c.group)
+  return groupsIn(doc, ids).size > 0
 }
 
 export function groupsIn(doc: CanvasDoc, ids: ReadonlySet<string>): Map<string, string[]> {

@@ -220,10 +220,10 @@ body,
   position: absolute;
   left: 2px;
   bottom: calc(100% + 6px);
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
   max-width: calc(100% - 4px);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   color: var(--text-secondary);
   font: 600 13px/18px var(--font-sans);
   pointer-events: auto;
@@ -238,10 +238,65 @@ body,
 .canvas-frame.is-selected .canvas-frame-title {
   color: var(--accent);
 }
+.canvas-frame-grip {
+  flex: none;
+  width: 0.46em;
+  height: 0.77em;
+  fill: currentColor;
+  opacity: 0.55;
+  transition: opacity var(--edge-fade);
+}
+.canvas-frame-title:hover .canvas-frame-grip,
+.canvas-frame.is-selected .canvas-frame-grip {
+  opacity: 1;
+}
+.canvas-frame-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.canvas-frame-band {
+  --band: 10px;
+  position: absolute;
+  pointer-events: auto;
+  cursor: grab;
+}
+.canvas-frame-band:active {
+  cursor: grabbing;
+}
+.canvas-frame-band[data-side='top'],
+.canvas-frame-band[data-side='bottom'] {
+  left: 0;
+  right: 0;
+  height: var(--band);
+}
+.canvas-frame-band[data-side='left'],
+.canvas-frame-band[data-side='right'] {
+  top: 0;
+  bottom: 0;
+  width: var(--band);
+}
+.canvas-frame-band[data-side='top'] {
+  top: calc(var(--band) / -2);
+}
+.canvas-frame-band[data-side='bottom'] {
+  bottom: calc(var(--band) / -2);
+}
+.canvas-frame-band[data-side='left'] {
+  left: calc(var(--band) / -2);
+}
+.canvas-frame-band[data-side='right'] {
+  right: calc(var(--band) / -2);
+}
+.canvas-frame:not(.is-selected):has(> .canvas-frame-band:hover) {
+  border-color: var(--border-strong);
+}
 .canvas-frame-input {
+  display: block;
   width: 200px;
   height: 22px;
-  margin: 0 0 -2px -6px;
+  margin: 0 0 -2px 6px;
   padding: 0 5px;
   border: 1px solid var(--accent);
   border-radius: 6px;
@@ -286,6 +341,9 @@ body,
 .canvas-layer.is-far .canvas-frame-title {
   font-size: 36px;
   line-height: 44px;
+}
+.canvas-layer.is-far .canvas-frame-band {
+  --band: 32px;
 }
 .canvas-layer.is-far .canvas-card > * {
   visibility: hidden;

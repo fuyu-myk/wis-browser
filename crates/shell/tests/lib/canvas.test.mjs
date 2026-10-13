@@ -349,6 +349,16 @@ describe('groups', () => {
     assert.equal(canvas.canUngroup(grouped, new Set(['b'])), true)
   })
 
+  test('cards picked out of a group can form their own, leaving a lone card free', () => {
+    const grouped = canvas.groupCards(doc, new Set(['a', 'b', 'c']), 'g1')
+    assert.equal(canvas.canGroup(grouped, new Set(['a', 'b'])), true, 'part of a group')
+    const split = canvas.groupCards(grouped, new Set(['a', 'b']), 'g2')
+    assert.deepEqual(split.cards.map((c) => c.group), ['g2', 'g2', 'g1'])
+    assert.deepEqual([...canvas.expandToGroups(split, new Set(['c']))], ['c'])
+    assert.equal(canvas.canUngroup(split, new Set(['c'])), false, 'one card is not a group')
+    assert.deepEqual([...canvas.groupsIn(split, new Set(['c']))], [])
+  })
+
   test('the picked groups are listed with their cards', () => {
     const grouped = canvas.groupCards(
       canvas.groupCards(doc, new Set(['a', 'b']), 'g1'),
