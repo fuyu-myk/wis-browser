@@ -11,7 +11,8 @@ use crate::downloads::DownloadRecord;
 use crate::error::StorageResult;
 use crate::history::{HistoryEntry, HistoryImport, HistoryImportStats, HistoryQuery};
 use crate::searches::SearchEntry;
-use wis_core::{BrowserState, DownloadId, TabId, WorkspaceId};
+use wis_core::canvas::{CanvasDocUpdate, CanvasRecord, CanvasSummary};
+use wis_core::{BrowserState, CanvasId, DownloadId, TabId, WorkspaceId};
 
 /// A pluggable persistent store for the browser's state.
 ///
@@ -102,6 +103,37 @@ pub trait Storage: Send + Sync {
         workspace_id: WorkspaceId,
         entries: &[HistoryImport],
     ) -> StorageResult<HistoryImportStats>;
+
+    // -- canvases (see `wis_core::canvas`) ------------------------------------
+
+    /// A workspace's canvases, most recently changed first.
+    fn list_canvases(&self, workspace_id: WorkspaceId) -> StorageResult<Vec<CanvasSummary>>;
+
+    fn load_canvas(
+        &self,
+        workspace_id: WorkspaceId,
+        id: CanvasId,
+    ) -> StorageResult<Option<CanvasRecord>>;
+
+    fn insert_canvas(&self, canvas: &CanvasRecord) -> StorageResult<()>;
+
+    /// True when the canvas exists in that workspace.
+    fn rename_canvas(
+        &self,
+        workspace_id: WorkspaceId,
+        id: CanvasId,
+        name: &str,
+        updated_at: i64,
+    ) -> StorageResult<bool>;
+
+    /// Write newer documents in one transaction; returns the canvases that still
+    /// existed to take them.
+    fn save_canvas_docs(&self, docs: &[CanvasDocUpdate]) -> StorageResult<Vec<CanvasId>>;
+
+    /// True when the canvas existed in that workspace.
+    fn delete_canvas(&self, workspace_id: WorkspaceId, id: CanvasId) -> StorageResult<bool>;
+
+    fn delete_workspace_canvases(&self, workspace_id: WorkspaceId) -> StorageResult<()>;
 
     // -- site usage (see `crate::usage`) ------------------------------------
 

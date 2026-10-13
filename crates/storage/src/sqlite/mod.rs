@@ -10,6 +10,7 @@
 //! shell can log and fall back to defaults rather than crash.
 
 mod bookmarks;
+mod canvases;
 mod closed_tabs;
 mod convert;
 mod credentials;
@@ -169,6 +170,61 @@ impl Storage for SqliteStorage {
     ) -> StorageResult<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         usage::clear(&conn, workspace_id, from)
+    }
+
+    fn list_canvases(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+    ) -> StorageResult<Vec<wis_core::canvas::CanvasSummary>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        canvases::list(&conn, workspace_id)
+    }
+
+    fn load_canvas(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+        id: wis_core::CanvasId,
+    ) -> StorageResult<Option<wis_core::canvas::CanvasRecord>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        canvases::load(&conn, workspace_id, id)
+    }
+
+    fn insert_canvas(&self, canvas: &wis_core::canvas::CanvasRecord) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        canvases::insert(&conn, canvas)
+    }
+
+    fn rename_canvas(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+        id: wis_core::CanvasId,
+        name: &str,
+        updated_at: i64,
+    ) -> StorageResult<bool> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        canvases::rename(&conn, workspace_id, id, name, updated_at)
+    }
+
+    fn save_canvas_docs(
+        &self,
+        docs: &[wis_core::canvas::CanvasDocUpdate],
+    ) -> StorageResult<Vec<wis_core::CanvasId>> {
+        let mut conn = self.conn.lock().expect("storage mutex poisoned");
+        canvases::save_docs(&mut conn, docs)
+    }
+
+    fn delete_canvas(
+        &self,
+        workspace_id: wis_core::WorkspaceId,
+        id: wis_core::CanvasId,
+    ) -> StorageResult<bool> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        canvases::delete(&conn, workspace_id, id)
+    }
+
+    fn delete_workspace_canvases(&self, workspace_id: wis_core::WorkspaceId) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        canvases::delete_workspace(&conn, workspace_id)
     }
 
     fn import_history(

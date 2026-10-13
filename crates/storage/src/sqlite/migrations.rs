@@ -293,6 +293,19 @@ DROP TABLE site_usage;
 ALTER TABLE site_usage_hourly RENAME TO site_usage;
 "#;
 
+/// Canvases: named spaces of cards per workspace, each one JSON document.
+const M0022_CANVASES: &str = r#"
+CREATE TABLE canvases (
+    id           TEXT    PRIMARY KEY,
+    workspace_id TEXT    NOT NULL,
+    name         TEXT    NOT NULL,
+    doc          TEXT    NOT NULL,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+);
+CREATE INDEX idx_canvases_workspace ON canvases(workspace_id, updated_at);
+"#;
+
 /// Every migration, in order. The index of the last entry is the schema
 /// version a fresh database lands on.
 const ALL: &[&str] = &[
@@ -317,6 +330,7 @@ const ALL: &[&str] = &[
     M0019_CLOSED_TABS,
     M0020_SITE_USAGE,
     M0021_SITE_USAGE_HOURS,
+    M0022_CANVASES,
 ];
 
 fn all() -> Migrations<'static> {

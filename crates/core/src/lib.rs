@@ -10,6 +10,7 @@ pub mod autoplay;
 pub mod background;
 pub mod backup;
 pub mod bookmark_tree;
+pub mod canvas;
 pub mod clear;
 pub mod design;
 pub mod download;
@@ -55,7 +56,9 @@ pub use design::{
 pub use download::{sanitize_filename, unique_filename, DownloadStatus, FALLBACK_FILENAME};
 pub use error::{WisError, WisResult};
 pub use icon::{parse_icon_ref, IconRef};
-pub use ids::{DownloadId, TabFolderId, TabId, ThemeId, UserscriptId, WidgetId, WorkspaceId};
+pub use ids::{
+    CanvasId, DownloadId, TabFolderId, TabId, ThemeId, UserscriptId, WidgetId, WorkspaceId,
+};
 pub use keybinding::{default_keymap, effective_keymap, KeyAction};
 pub use layout::{LayoutMode, MotionLevel, RailSide, ThemeMode};
 pub use link_clean::{clean_link, CleanedLink};

@@ -76,3 +76,4 @@ define_id!(
 define_id!(DownloadId, "dl", "Identifier for a single download.");
 define_id!(ThemeId, "thm", "Identifier for a custom chrome theme.");
 define_id!(UserscriptId, "us", "Identifier for a user script.");
+define_id!(CanvasId, "cnv", "Identifier for a canvas.");
