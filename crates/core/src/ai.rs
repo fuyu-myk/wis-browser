@@ -95,6 +95,8 @@ pub struct ChatRequest {
     pub action_tools: bool,
     /// Allow no further tool calls this request (round cap, answer now).
     pub tools_closed: bool,
+    /// An OpenAI-compatible server on this machine (Ollama, LM Studio).
+    pub local_server: bool,
     pub thinking: ThinkingMode,
 }
 
@@ -488,6 +490,9 @@ pub fn chat_body(provider: AiProvider, req: &ChatRequest) -> serde_json::Value {
                 "stream": true,
                 "messages": messages,
             });
+            if req.thinking == ThinkingMode::Disabled && req.local_server {
+                body["reasoning_effort"] = serde_json::Value::from("none");
+            }
 
             // Tools are never offered on an answer-now retry.
             if req.thinking != ThinkingMode::Disabled && !req.tools_closed {
@@ -907,6 +912,7 @@ mod tests {
             local_tools: true,
             action_tools: false,
             tools_closed: false,
+            local_server: false,
             thinking: ThinkingMode::ProviderDefault,
             messages,
         }
@@ -1371,6 +1377,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             local_tools: false,
             action_tools: false,
             tools_closed: false,
+            local_server: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1400,6 +1407,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             local_tools: true,
             action_tools: false,
             tools_closed: false,
+            local_server: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("what did I read about rust")],
         };
@@ -1450,6 +1458,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             local_tools: true,
             action_tools: true,
             tools_closed: false,
+            local_server: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("close my youtube tabs")],
         };
@@ -1504,6 +1513,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             local_tools: false,
             action_tools: false,
             tools_closed: false,
+            local_server: false,
             thinking: ThinkingMode::ProviderDefault,
             messages,
         };
@@ -1661,6 +1671,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             local_tools: false,
             action_tools: false,
             tools_closed: false,
+            local_server: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![
                 ChatMessage {
@@ -1691,6 +1702,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             local_tools: false,
             action_tools: false,
             tools_closed: false,
+            local_server: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1711,6 +1723,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             local_tools: false,
             action_tools: false,
             tools_closed: false,
+            local_server: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1727,6 +1740,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             local_tools: false,
             action_tools: false,
             tools_closed: false,
+            local_server: false,
             thinking: ThinkingMode::Summarized,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1748,6 +1762,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             local_tools: false,
             action_tools: false,
             tools_closed: false,
+            local_server: false,
             thinking: ThinkingMode::Disabled,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1765,6 +1780,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             local_tools: false,
             action_tools: false,
             tools_closed: false,
+            local_server: false,
             thinking: ThinkingMode::Disabled,
             messages: vec![
                 ChatMessage::user("first"),
@@ -1786,6 +1802,35 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
     }
 
     #[test]
+    fn openai_disabled_thinking_asks_only_a_local_server_for_no_reasoning() {
+        let mut req = ChatRequest {
+            model: "qwen3.5:9b".into(),
+            max_tokens: 4096,
+            web_tools: false,
+            local_tools: false,
+            action_tools: false,
+            tools_closed: false,
+            local_server: true,
+            thinking: ThinkingMode::Disabled,
+            messages: vec![ChatMessage::user("hi")],
+        };
+        let body = chat_body(AiProvider::OpenAiCompatible, &req);
+        assert_eq!(body["reasoning_effort"], "none");
+
+        req.local_server = false;
+        let hosted = chat_body(AiProvider::OpenAiCompatible, &req);
+        assert!(
+            hosted.get("reasoning_effort").is_none(),
+            "hosted APIs reject it on models without reasoning"
+        );
+
+        req.local_server = true;
+        req.thinking = ThinkingMode::ProviderDefault;
+        let thinking = chat_body(AiProvider::OpenAiCompatible, &req);
+        assert!(thinking.get("reasoning_effort").is_none());
+    }
+
+    #[test]
     fn openai_body_never_carries_a_thinking_config() {
         let req = ChatRequest {
             model: "qwen3".into(),
@@ -1794,6 +1839,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             local_tools: false,
             action_tools: false,
             tools_closed: false,
+            local_server: false,
             thinking: ThinkingMode::Summarized,
             messages: vec![ChatMessage::user("hi")],
         };
@@ -1813,6 +1859,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             local_tools: false,
             action_tools: false,
             tools_closed: false,
+            local_server: false,
             thinking: ThinkingMode::ProviderDefault,
             messages: vec![
                 ChatMessage {

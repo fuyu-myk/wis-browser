@@ -244,9 +244,10 @@ pub async fn ai_chat(
         });
     }
 
+    let local_server =
+        provider == AiProvider::OpenAiCompatible && local_openai_base(base_url.as_deref());
     // A local server is never sent the key.
-    let key = if provider == AiProvider::OpenAiCompatible && local_openai_base(base_url.as_deref())
-    {
+    let key = if local_server {
         None
     } else {
         wis_secrets::ai_key_load().map_err(|e| WisError::InvalidInput {
@@ -267,6 +268,7 @@ pub async fn ai_chat(
         local_tools: local_data,
         action_tools: local_data && tab_actions,
         tools_closed: args.no_tools || args.skip_reasoning,
+        local_server,
         thinking,
         messages: args
             .messages
