@@ -69,12 +69,25 @@ pub async fn ai_web_search(
     imp::search(window, state, &query).await
 }
 
-/// Fetch one public web page's readable text for the assistant.
+const DEFAULT_READ_CHARS: u32 = 8000;
+const MIN_READ_CHARS: u32 = 1000;
+/// Research reads more and keeps the passages that matter.
+const MAX_READ_CHARS: u32 = 24_000;
+
+fn read_limit(max_chars: Option<u32>) -> u32 {
+    max_chars
+        .unwrap_or(DEFAULT_READ_CHARS)
+        .clamp(MIN_READ_CHARS, MAX_READ_CHARS)
+}
+
+/// Fetch one public web page's readable text for the assistant, up to
+/// `max_chars` characters (8000 unless research asks for more).
 #[tauri::command]
 pub async fn ai_web_fetch(
     window: tauri::Window,
     state: State<'_, AppState>,
     url: String,
+    max_chars: Option<u32>,
 ) -> wis_core::WisResult<AiFetchResponse> {
     require_web_access(&state).await?;
     let parsed = url::Url::parse(url.trim()).map_err(|_| wis_core::WisError::InvalidInput {
@@ -86,7 +99,7 @@ pub async fn ai_web_fetch(
         });
     }
 
-    imp::fetch_page(window, state, parsed).await
+    imp::fetch_page(window, state, parsed, read_limit(max_chars)).await
 }
 
 async fn require_web_access(state: &State<'_, AppState>) -> wis_core::WisResult<()> {
@@ -236,8 +249,9 @@ mod imp {
         window: tauri::Window,
         state: State<'_, AppState>,
         target: Url,
+        max_chars: u32,
     ) -> wis_core::WisResult<AiFetchResponse> {
-        let fetched = run_fetch(window, state, target, page_script()).await?;
+        let fetched = run_fetch(window, state, target, page_script(max_chars)).await?;
         if fetched.text.trim().is_empty() {
             return Err(wis_core::WisError::InvalidInput {
                 message: "the page had no readable text".into(),
@@ -400,23 +414,23 @@ mod imp {
         text[..end].to_string()
     }
 
-    /// Readable-text extraction, posting to `wisAiFetch`. Caps at 8000 chars.
-    fn page_script() -> String {
-        format!(
-            "{}\n{}",
-            crate::reader::MAIN_CONTENT_FINDER,
-            r#"(function () {
+    /// Readable-text extraction, posting to `wisAiFetch`. Keeps line breaks
+    /// between blocks, so research can pick passages, and caps at `max_chars`.
+    pub(super) fn page_script(max_chars: u32) -> String {
+        let extract = r#"(function () {
   try {
     var best = __wisFindMainContent();
-    var text = ((best && (best.innerText || best.textContent)) || '').replace(/\s+/g, ' ').trim();
-    if (text.length > 8000) text = text.slice(0, 8000);
+    var raw = (best && (best.innerText || best.textContent)) || '';
+    var text = raw.replace(/[^\S\n]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+    if (text.length > MAX_CHARS) text = text.slice(0, MAX_CHARS);
     var title = (document.title || '').trim();
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.wisAiFetch) {
       window.webkit.messageHandlers.wisAiFetch.postMessage({ text: text, title: title });
     }
   } catch (e) {}
 })();"#
-        )
+        .replace("MAX_CHARS", &max_chars.to_string());
+        format!("{}\n{}", crate::reader::MAIN_CONTENT_FINDER, extract)
     }
 
     /// Scrape the no-JS DuckDuckGo results page into a JSON array and post it
@@ -609,5 +623,25 @@ mod imp {
                 let _: () = msg_send![controller, addScriptMessageHandler: &*handler, name: name];
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn page_reads_keep_paragraph_breaks_and_their_own_limit() {
+        let script = imp::page_script(20_000);
+        assert!(script.contains("text.length > 20000"));
+        assert!(script.contains(r"raw.replace(/[^\S\n]+/g, ' ').replace(/\s*\n\s*/g, '\n')"));
+    }
+
+    #[test]
+    fn requested_read_limits_are_clamped() {
+        assert_eq!(read_limit(None), DEFAULT_READ_CHARS);
+        assert_eq!(read_limit(Some(20_000)), 20_000);
+        assert_eq!(read_limit(Some(10)), MIN_READ_CHARS);
+        assert_eq!(read_limit(Some(1_000_000)), MAX_READ_CHARS);
     }
 }

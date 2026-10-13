@@ -1103,9 +1103,10 @@ export const commands = {
     return invoke('ai_web_search', { query })
   },
 
-  /** Fetch one public web page's readable text for the assistant. */
-  async aiWebFetch(url: string): Promise<AiFetchResponse> {
-    return invoke('ai_web_fetch', { url })
+  /** Fetch one public web page's readable text for the assistant, up to
+   *  `maxChars` characters (8000 unless research asks for more). */
+  async aiWebFetch(url: string, maxChars?: number): Promise<AiFetchResponse> {
+    return invoke('ai_web_fetch', { url, maxChars })
   },
 
   /** The calling window's workspace tabs, for the assistant. */

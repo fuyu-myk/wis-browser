@@ -8,8 +8,10 @@ import { h, handlers, page } from '../support/s2-dom.mjs'
 import { rawStringInFn } from '../support/s2-rust.mjs'
 
 const SEARCH = rawStringInFn('ai_fetch.rs', 'search_script')
-// page_script() is `format!("{}\n{}", MAIN_CONTENT_FINDER, r#"..."#)`.
-const PAGE = `${rawStringConst('reader.rs', 'MAIN_CONTENT_FINDER')}\n${rawStringInFn('ai_fetch.rs', 'page_script')}`
+// page_script(max) is MAIN_CONTENT_FINDER, then the extraction with MAX_CHARS replaced by `max`.
+const pageScript = (max) =>
+  `${rawStringConst('reader.rs', 'MAIN_CONTENT_FINDER')}\n${rawStringInFn('ai_fetch.rs', 'page_script').replaceAll('MAX_CHARS', String(max))}`
+const PAGE = pageScript(8000)
 
 /** Run `script` over a page; returns what it posted to wisAiFetch. */
 function run(script, children, { channel = handlers('wisAiFetch'), title = '', setup } = {}) {
@@ -134,17 +136,18 @@ describe('search_script', () => {
 })
 
 describe('page_script', () => {
-  test('posts the main content text, whitespace collapsed, with the trimmed document title', () => {
-    const article = h('article', {}, h('p', {}, `Main   story\n\n${'word '.repeat(60)}`))
+  test('posts the main content text, spaces collapsed and line breaks kept, with the trimmed document title', () => {
+    const article = h('article', {}, h('p', {}, `Main   story \n\n\t ${'word '.repeat(60)}`))
     const sent = run(PAGE, [h('nav', {}, 'Menu'), article], { title: '  Story title ' })
     assert.equal(sent.length, 1)
     assert.equal(sent[0].body.title, 'Story title')
-    assert.equal(sent[0].body.text, `Main story ${'word '.repeat(60).trim()}`)
+    assert.equal(sent[0].body.text, `Main story\n${'word '.repeat(60).trim()}`)
   })
 
-  test('the text is capped at 8000 characters', () => {
-    const sent = run(PAGE, [h('article', {}, 'x'.repeat(9000))])
-    assert.equal(sent[0].body.text.length, 8000)
+  test('the text is capped at the requested length', () => {
+    const article = () => h('article', {}, 'x'.repeat(25_000))
+    assert.equal(run(PAGE, [article()])[0].body.text.length, 8000)
+    assert.equal(run(pageScript(20_000), [article()])[0].body.text.length, 20_000)
   })
 
   test('an empty page posts empty text', () => {
