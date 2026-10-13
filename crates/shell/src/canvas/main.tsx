@@ -1,6 +1,6 @@
 import { createRoot } from 'react-dom/client'
 
-import { followThemeAccent } from '@/lib/canvasAccent'
+import { followPushed } from '@/lib/canvasPushed'
 import { createCanvasChannel } from '@/lib/canvasChannel'
 
 import { CanvasApp } from './CanvasApp'
@@ -11,13 +11,23 @@ declare global {
     webkit?: { messageHandlers?: { wisCanvas?: Handler } }
     __wisCanvas?: { reply: (raw: unknown) => void }
     __wisSwipeAccent?: unknown
+    __wisCanvasTheme?: unknown
   }
 }
 
-followThemeAccent(
+followPushed(
   window,
+  '__wisSwipeAccent',
   (color) => document.documentElement.style.setProperty('--accent', color),
   (value) => CSS.supports('color', value),
+)
+followPushed(
+  window,
+  '__wisCanvasTheme',
+  (theme) => {
+    document.documentElement.dataset.theme = theme
+  },
+  (value) => value === 'dark' || value === 'light',
 )
 
 type Handler = { postMessage: (text: string) => void }

@@ -53,6 +53,7 @@ export function BackupSection({ settings }: BackupSectionProps) {
   const [includeSettings, setIncludeSettings] = useState(true)
   const [includeProfile, setIncludeProfile] = useState(false)
   const [includeHistory, setIncludeHistory] = useState(false)
+  const [includeCanvases, setIncludeCanvases] = useState(true)
   const [includeVault, setIncludeVault] = useState(false)
   const [exportPass, setExportPass] = useState('')
   const [importPass, setImportPass] = useState('')
@@ -75,6 +76,7 @@ export function BackupSection({ settings }: BackupSectionProps) {
         settings: includeSettings,
         profile: includeProfile,
         history: includeProfile && includeHistory,
+        canvases: includeProfile && includeCanvases,
         vault: includeVault,
       })
       if (saved) {
@@ -125,6 +127,9 @@ export function BackupSection({ settings }: BackupSectionProps) {
         const bits = [`${summary.workspaces_added} workspace${summary.workspaces_added === 1 ? '' : 's'}`]
         if (summary.bookmarks_added > 0) bits.push(`${summary.bookmarks_added} bookmarks`)
         if (summary.history_added > 0) bits.push(`${summary.history_added} history entries`)
+        if (summary.canvases_added > 0) {
+          bits.push(`${summary.canvases_added} canvas${summary.canvases_added === 1 ? '' : 'es'}`)
+        }
         applied.push(bits.join(' + '))
       }
       if (summary.passwords_added > 0) {
@@ -184,6 +189,18 @@ export function BackupSection({ settings }: BackupSectionProps) {
           checked={includeHistory}
           onChange={setIncludeHistory}
           label="Include browsing history"
+        />
+      </div>
+
+      <div className="row">
+        <div className="l">
+          <span>Canvases</span>
+          <span>The canvases of the workspaces above, with their elements.</span>
+        </div>
+        <Switch
+          checked={includeCanvases}
+          onChange={setIncludeCanvases}
+          label="Include canvases"
         />
       </div>
 

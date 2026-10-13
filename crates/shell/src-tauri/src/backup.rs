@@ -13,9 +13,10 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 use wis_core::backup::{
-    merge_profile, BackupPayload, BookmarkBackup, HistoryBackup, ProfileBackup, WorkspaceBookmarks,
-    WorkspaceHistory, BACKUP_VERSION,
+    merge_profile, BackupPayload, BookmarkBackup, CanvasBackup, HistoryBackup, ProfileBackup,
+    WorkspaceBookmarks, WorkspaceCanvases, WorkspaceHistory, BACKUP_VERSION,
 };
+use wis_core::canvas::{canvas_name, CanvasRecord};
 use wis_core::{Tab, UserSettings, WisError, WisResult, Workspace, WorkspaceId};
 
 use crate::commands::mutate_immediate;
@@ -44,6 +45,9 @@ pub struct BackupOptions {
     /// Saved passwords (Touch ID required to decrypt them for the bundle).
     #[serde(default)]
     pub vault: bool,
+    /// Canvases (only meaningful alongside `profile`).
+    #[serde(default)]
+    pub canvases: bool,
 }
 
 /// What an import applied, for the frontend to surface + finish (it applies the
@@ -54,6 +58,7 @@ pub struct ImportSummary {
     pub workspaces_added: usize,
     pub bookmarks_added: usize,
     pub history_added: usize,
+    pub canvases_added: usize,
     pub passwords_added: usize,
 }
 
@@ -90,7 +95,7 @@ pub async fn export_backup(
             None
         },
         profile: if options.profile {
-            Some(build_profile(&state, options.history).await?)
+            Some(build_profile(&state, options.history, options.canvases).await?)
         } else {
             None
         },
@@ -209,6 +214,7 @@ pub async fn import_backup(
         workspaces_added: 0,
         bookmarks_added: 0,
         history_added: 0,
+        canvases_added: 0,
         passwords_added: 0,
     };
 
@@ -218,9 +224,10 @@ pub async fn import_backup(
     }
 
     if let Some(profile) = payload.profile {
-        let (bm, hist) = apply_profile(&app, &state, profile, &mut summary).await?;
+        let (bm, hist, canvases) = apply_profile(&app, &state, profile, &mut summary).await?;
         summary.bookmarks_added = bm;
         summary.history_added = hist;
+        summary.canvases_added = canvases;
     }
 
     Ok(Some(summary))
@@ -234,7 +241,7 @@ async fn apply_profile(
     state: &State<'_, AppState>,
     profile: ProfileBackup,
     summary: &mut ImportSummary,
-) -> WisResult<(usize, usize)> {
+) -> WisResult<(usize, usize, usize)> {
     let graph = profile.clone();
     let added: Vec<WorkspaceId> = mutate_immediate(app, state, move |s| {
         let (next, added) = merge_profile(s.clone(), &graph);
@@ -243,7 +250,7 @@ async fn apply_profile(
     .await?;
     summary.workspaces_added = added.len();
     if added.is_empty() {
-        return Ok((0, 0));
+        return Ok((0, 0, 0));
     }
 
     let added: std::collections::HashSet<WorkspaceId> = added.into_iter().collect();
@@ -256,6 +263,11 @@ async fn apply_profile(
         .history
         .into_iter()
         .filter(|wh| added.contains(&wh.workspace))
+        .collect();
+    let canvases: Vec<WorkspaceCanvases> = profile
+        .canvases
+        .into_iter()
+        .filter(|wc| added.contains(&wc.workspace))
         .collect();
 
     let storage = state.storage.clone();
@@ -281,7 +293,23 @@ async fn apply_profile(
                 hist_count += 1;
             }
         }
-        Ok((bm_count, hist_count))
+        let mut canvas_count = 0usize;
+        for set in &canvases {
+            for canvas in &set.canvases {
+                storage.insert_canvas(&CanvasRecord {
+                    id: canvas.id,
+                    workspace_id: set.workspace,
+                    name: canvas_name(&canvas.name).map_err(|err| {
+                        wis_storage::StorageError::DataCorruption(err.to_string())
+                    })?,
+                    doc: canvas.doc.clone(),
+                    created_at: canvas.created_at,
+                    updated_at: canvas.updated_at,
+                })?;
+                canvas_count += 1;
+            }
+        }
+        Ok((bm_count, hist_count, canvas_count))
     })
     .await
 }
@@ -292,6 +320,7 @@ async fn apply_profile(
 async fn build_profile(
     state: &State<'_, AppState>,
     include_history: bool,
+    include_canvases: bool,
 ) -> WisResult<ProfileBackup> {
     let (workspaces, tabs, ws_ids): (Vec<Workspace>, Vec<Tab>, Vec<WorkspaceId>) = {
         let browser = state.browser.lock().await;
@@ -312,6 +341,7 @@ async fn build_profile(
         (workspaces, tabs, ws_ids)
     };
 
+    let ws_ids_for_canvases = ws_ids.clone();
     let storage = state.storage.clone();
     let (bookmarks, history) = run_blocking(move || {
         let mut bookmarks = Vec::new();
@@ -364,12 +394,61 @@ async fn build_profile(
     })
     .await?;
 
+    let canvases = if include_canvases {
+        collect_canvases(state, ws_ids_for_canvases).await?
+    } else {
+        Vec::new()
+    };
+
     Ok(ProfileBackup {
         workspaces,
         tabs,
         bookmarks,
         history,
+        canvases,
     })
+}
+
+/// Each workspace's canvases, with their newest documents written first.
+async fn collect_canvases(
+    state: &State<'_, AppState>,
+    ws_ids: Vec<WorkspaceId>,
+) -> WisResult<Vec<WorkspaceCanvases>> {
+    // Pending documents first, so the backup holds the latest of each.
+    let flushing = state.storage.clone();
+    tokio::task::spawn_blocking(move || crate::canvas::flush_now(flushing.as_ref()))
+        .await
+        .map_err(|err| WisError::PersistenceFailed {
+            reason: format!("writing canvases panicked: {err}"),
+        })??;
+
+    let storage = state.storage.clone();
+    run_blocking(move || {
+        let mut sets = Vec::new();
+        for ws_id in ws_ids {
+            let mut canvases = Vec::new();
+            for summary in storage.list_canvases(ws_id)? {
+                if let Some(canvas) = storage.load_canvas(ws_id, summary.id)? {
+                    canvases.push(CanvasBackup {
+                        id: canvas.id,
+                        name: canvas.name,
+                        doc: canvas.doc,
+                        created_at: canvas.created_at,
+                        updated_at: canvas.updated_at,
+                    });
+                }
+            }
+            if !canvases.is_empty() {
+                sets.push(WorkspaceCanvases {
+                    workspace: ws_id,
+                    canvases,
+                });
+            }
+        }
+
+        Ok(sets)
+    })
+    .await
 }
 
 /// Run a synchronous storage operation off the async runtime.

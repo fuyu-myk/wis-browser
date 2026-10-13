@@ -129,6 +129,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
         usage_tracking: Some(false),
         usage_idle_timeout_secs: Some(300),
         week_start: Some(wis_core::usage::WeekStart::Sunday),
+        canvas_theme: Some(wis_core::canvas::CanvasTheme::Light),
         persist_sessions: Some(false),
         fraud_warning_enabled: Some(false),
         global_privacy_control: Some(false),

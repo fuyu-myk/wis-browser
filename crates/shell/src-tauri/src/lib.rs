@@ -818,7 +818,7 @@ pub fn run() {
                 let state = app_handle.state::<state::AppState>();
                 state.save_coalescer.flush(&state.storage);
                 usage::flush_now(&state);
-                canvas::flush_now(state.storage.as_ref());
+                canvas::flush_logged(state.storage.as_ref());
             }
 
             if let tauri::RunEvent::WindowEvent {

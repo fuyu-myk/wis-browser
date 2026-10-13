@@ -18,7 +18,7 @@ use wis_storage::Storage;
 use crate::canvas_store::{CanvasMemory, CanvasTab};
 use crate::state::AppState;
 
-pub const SCHEME: &str = "wis-canvas";
+pub use wis_core::canvas::SCHEME;
 const FLUSH_EVERY: Duration = Duration::from_secs(120);
 /// A whole document plus its envelope.
 const MAX_MESSAGE_BYTES: usize = wis_core::canvas::MAX_DOC_BYTES + 64 * 1024;
@@ -33,6 +33,32 @@ static MEMORY: LazyLock<Mutex<CanvasMemory>> = LazyLock::new(Default::default);
 static WORKER: OnceLock<tokio::sync::mpsc::Sender<(String, String)>> = OnceLock::new();
 /// Messages waiting for the worker; a flooding page loses the excess.
 const QUEUE: usize = 32;
+
+/// The theme a canvas page starts with, set before its scripts run.
+pub fn theme_script(theme: wis_core::canvas::CanvasTheme) -> String {
+    format!(
+        "window.__wisCanvasTheme={};",
+        serde_json::to_string(theme.as_str()).unwrap_or_default()
+    )
+}
+
+/// Restyle every open canvas tab.
+pub fn push_theme(app: &AppHandle, theme: wis_core::canvas::CanvasTheme) {
+    let script = theme_script(theme);
+    let labels: Vec<String> = TABS
+        .lock()
+        .expect("canvas tabs poisoned")
+        .keys()
+        .cloned()
+        .collect();
+    for label in labels {
+        if let Some(webview) = app.get_webview(&label) {
+            if let Err(err) = webview.eval(&script) {
+                log::warn!("restyling a canvas tab: {err}");
+            }
+        }
+    }
+}
 
 pub fn is_canvas_url(url: &Url) -> bool {
     url.scheme() == SCHEME
@@ -87,19 +113,23 @@ pub async fn release_workspace(app: &AppHandle, workspace: wis_core::WorkspaceId
 }
 
 /// Write pending documents now. Safe from the exit hook.
-pub fn flush_now(storage: &dyn Storage) {
-    let result = MEMORY
+pub fn flush_now(storage: &dyn Storage) -> WisResult<()> {
+    MEMORY
         .lock()
         .expect("canvas memory poisoned")
-        .flush(storage);
-    if let Err(err) = result {
+        .flush(storage)
+}
+
+/// [`flush_now`] for callers with nobody to tell.
+pub fn flush_logged(storage: &dyn Storage) {
+    if let Err(err) = flush_now(storage) {
         log::warn!("writing canvases: {err}");
     }
 }
 
 fn flush_soon(app: &AppHandle) {
     let storage = app.state::<AppState>().storage.clone();
-    tauri::async_runtime::spawn_blocking(move || flush_now(storage.as_ref()));
+    tauri::async_runtime::spawn_blocking(move || flush_logged(storage.as_ref()));
 }
 
 /// Start the message worker and the periodic write.
@@ -130,7 +160,8 @@ pub fn start(app: AppHandle) {
         loop {
             tokio::time::sleep(FLUSH_EVERY).await;
             let storage = app.state::<AppState>().storage.clone();
-            if let Err(err) = tokio::task::spawn_blocking(move || flush_now(storage.as_ref())).await
+            if let Err(err) =
+                tokio::task::spawn_blocking(move || flush_logged(storage.as_ref())).await
             {
                 log::warn!("writing canvases panicked: {err}");
             }
@@ -555,6 +586,19 @@ mod tests {
         ] {
             assert_eq!(asset_path(refused), None, "{refused} must be refused");
         }
+    }
+
+    #[test]
+    fn the_theme_script_sets_one_quoted_word() {
+        use wis_core::canvas::CanvasTheme;
+        assert_eq!(
+            theme_script(CanvasTheme::Light),
+            r#"window.__wisCanvasTheme="light";"#
+        );
+        assert_eq!(
+            theme_script(CanvasTheme::Dark),
+            r#"window.__wisCanvasTheme="dark";"#
+        );
     }
 
     #[test]

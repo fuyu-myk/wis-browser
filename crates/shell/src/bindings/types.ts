@@ -403,6 +403,8 @@ export interface BackupOptions {
   history: boolean
   /** Saved passwords (Touch ID required to decrypt them). */
   vault: boolean
+  /** Canvases (only meaningful alongside `profile`). */
+  canvases: boolean
 }
 
 /**
@@ -415,6 +417,7 @@ export interface ImportSummary {
   workspaces_added: number
   bookmarks_added: number
   history_added: number
+  canvases_added: number
   passwords_added: number
 }
 
@@ -552,6 +555,7 @@ export interface UserSettings {
   usage_idle_timeout_secs: number
   /** First day of the week in usage summaries. */
   week_start: WeekStart
+  canvas_theme: CanvasTheme
   /** Persist (encrypted) login sessions across restarts; auto-expire after a cap. */
   persist_sessions: boolean
   /** WebKit fraudulent-website warning (Apple-proxied Safe Browsing). */
@@ -649,6 +653,7 @@ export interface UserSettingsPatch {
   usage_tracking?: boolean
   usage_idle_timeout_secs?: number
   week_start?: WeekStart
+  canvas_theme?: CanvasTheme
   persist_sessions?: boolean
   fraud_warning_enabled?: boolean
   global_privacy_control?: boolean
@@ -944,6 +949,9 @@ export interface HistoryImportStats {
 
 /** Mirror of `wis_core::usage::WeekStart`; `auto` follows the region. */
 export type WeekStart = 'auto' | 'monday' | 'sunday'
+
+/** How canvases look, independent of the browser's theme. */
+export type CanvasTheme = 'dark' | 'light'
 
 /** Active time over a range of local days (mirror of `wis_core::usage::UsageSummary`). */
 export interface UsageSummary {

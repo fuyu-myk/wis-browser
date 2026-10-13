@@ -3,6 +3,8 @@
  * Rust, which only bounds it, so reading one back trusts nothing.
  */
 
+import { fuzzyMatch } from '@/lib/palette'
+
 export interface CanvasView {
   x: number
   y: number
@@ -115,6 +117,28 @@ export function removeCard(doc: CanvasDoc, id: string): CanvasDoc {
 
 export function withView(doc: CanvasDoc, view: CanvasView): CanvasDoc {
   return { ...doc, view }
+}
+
+const MAX_NAME_CHARS = 120
+
+/** A name as Rust stores it (`canvas_name`): whitespace collapsed, at most 120 characters. */
+export function tidyName(raw: string): string {
+  const name = raw.split(/\s+/).filter(Boolean).join(' ')
+  return Array.from(name).slice(0, MAX_NAME_CHARS).join('')
+}
+
+/** Canvases matching `query`, best first; all of them, newest first, without one. */
+export function matchCanvases(
+  canvases: readonly CanvasSummary[],
+  query: string,
+): CanvasSummary[] {
+  const q = query.trim()
+  if (q === '') return [...canvases].sort((a, b) => b.updatedAt - a.updatedAt)
+  return canvases
+    .map((canvas) => ({ canvas, score: fuzzyMatch(canvas.name, q).score }))
+    .filter((m) => m.score > 0)
+    .sort((a, b) => b.score - a.score || b.canvas.updatedAt - a.canvas.updatedAt)
+    .map((m) => m.canvas)
 }
 
 /** A blank card centred on a canvas point. */

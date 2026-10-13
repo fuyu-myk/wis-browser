@@ -80,6 +80,7 @@ pub async fn update_settings(
     let autoplay_touched =
         patch.autoplay_policy.is_some() || patch.autoplay_site_overrides.is_some();
     let media_extensions_changed = patch.media_extensions_enabled;
+    let canvas_theme_touched = patch.canvas_theme.is_some();
     let (settings, doh_changed) = mutate_immediate(&app, &state, |s| {
         let before = crate::state::doh_provider_of(s.settings.doh_resolver.as_deref());
         let next = s.with_settings(patch);
@@ -107,6 +108,10 @@ pub async fn update_settings(
         }) {
             log::warn!("dispatching menu rebuild to the main thread failed: {err}");
         }
+    }
+
+    if canvas_theme_touched {
+        crate::canvas::push_theme(&app, settings.canvas_theme);
     }
 
     if userscripts_touched {

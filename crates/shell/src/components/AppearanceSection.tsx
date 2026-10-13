@@ -1,5 +1,6 @@
-import type { ThemeMode, UserSettings, UserSettingsPatch, Workspace } from '@/bindings/types'
+import type { CanvasTheme, ThemeMode, UserSettings, UserSettingsPatch, Workspace } from '@/bindings/types'
 import { Segmented, Switch } from '@/components/controls'
+import { isFeatureUnavailableHere } from '@/lib/platformSupport'
 import { BackgroundEditor } from '@/components/BackgroundEditor'
 import { ZoomRows } from '@/components/ZoomRows'
 import { MonitorIcon, MoonIcon, SunIcon } from '@/lib/icons'
@@ -9,6 +10,11 @@ const THEME_OPTIONS = [
   { value: 'dark' as const, label: 'Dark', icon: <MoonIcon /> },
   { value: 'system' as const, label: 'Auto', icon: <MonitorIcon /> },
 ] satisfies ReadonlyArray<{ value: ThemeMode; label: string; icon: React.ReactNode }>
+
+const CANVAS_THEME_OPTIONS = [
+  { value: 'light' as const, label: 'Light', icon: <SunIcon /> },
+  { value: 'dark' as const, label: 'Dark', icon: <MoonIcon /> },
+] satisfies ReadonlyArray<{ value: CanvasTheme; label: string; icon: React.ReactNode }>
 
 interface AppearanceSectionProps {
   settings: UserSettings
@@ -32,6 +38,20 @@ export function AppearanceSection({ settings, activeWorkspace, onUpdate }: Appea
             ariaLabel="Theme"
           />
         </div>
+        {!isFeatureUnavailableHere('canvases') && (
+          <div className="row">
+            <div className="l">
+              <span>Canvas theme</span>
+              <span>Set the appearance of canvases</span>
+            </div>
+            <Segmented
+              value={settings.canvas_theme}
+              onChange={(canvas_theme) => onUpdate({ canvas_theme })}
+              options={CANVAS_THEME_OPTIONS}
+              ariaLabel="Canvas theme"
+            />
+          </div>
+        )}
         <div className="row">
           <div className="l">
             <span>Motion</span>

@@ -9,7 +9,8 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{TabFolderId, TabId, ThemeId, WorkspaceId};
+use crate::canvas::{canvas_in_url, canvas_name, canvas_url, check_doc};
+use crate::ids::{CanvasId, TabFolderId, TabId, ThemeId, WorkspaceId};
 use crate::pane::PaneNode;
 use crate::settings::UserSettings;
 use crate::state::BrowserState;
@@ -60,6 +61,24 @@ pub struct WorkspaceHistory {
     pub entries: Vec<HistoryBackup>,
 }
 
+/// One canvas. Its id is re-minted on import, and canvas tabs follow it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanvasBackup {
+    pub id: CanvasId,
+    pub name: String,
+    pub doc: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// A workspace's canvases.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceCanvases {
+    pub workspace: WorkspaceId,
+    #[serde(default)]
+    pub canvases: Vec<CanvasBackup>,
+}
+
 /// The workspace graph (workspaces + their tabs) plus per-workspace bookmarks
 /// and history. `bookmarks`/`history` reference workspaces by id, remapped
 /// alongside the graph on re-mint.
@@ -73,6 +92,8 @@ pub struct ProfileBackup {
     pub bookmarks: Vec<WorkspaceBookmarks>,
     #[serde(default)]
     pub history: Vec<WorkspaceHistory>,
+    #[serde(default)]
+    pub canvases: Vec<WorkspaceCanvases>,
 }
 
 /// One saved login captured for backup. The `password` is **plaintext**: it is
@@ -126,6 +147,12 @@ impl BackupPayload {
         if let Some(settings) = &self.settings {
             for theme in &settings.custom_themes {
                 theme.validate()?;
+            }
+        }
+        if let Some(profile) = &self.profile {
+            for canvas in profile.canvases.iter().flat_map(|set| &set.canvases) {
+                canvas_name(&canvas.name)?;
+                check_doc(&canvas.doc)?;
             }
         }
 
@@ -214,6 +241,21 @@ fn remint_profile(profile: &mut ProfileBackup) {
     }
     for wh in profile.history.iter_mut() {
         wh.workspace = ws_map.get(&wh.workspace).copied().unwrap_or(wh.workspace);
+    }
+
+    let mut canvas_map: HashMap<CanvasId, CanvasId> = HashMap::new();
+    for set in profile.canvases.iter_mut() {
+        set.workspace = ws_map.get(&set.workspace).copied().unwrap_or(set.workspace);
+        for canvas in set.canvases.iter_mut() {
+            let fresh = CanvasId::new();
+            canvas_map.insert(canvas.id, fresh);
+            canvas.id = fresh;
+        }
+    }
+    for tab in profile.tabs.iter_mut() {
+        if let Some(fresh) = canvas_in_url(&tab.url).and_then(|old| canvas_map.get(&old)) {
+            tab.url = canvas_url(*fresh);
+        }
     }
 }
 
@@ -358,6 +400,80 @@ mod tests {
         if let Some(active) = ws.active_tab_id {
             assert!(new_tab_ids.contains(&active));
         }
+    }
+
+    #[test]
+    fn remint_gives_canvases_fresh_ids_and_points_their_tabs_at_them() {
+        let state = BrowserState::new_with_defaults();
+        let ws_id = state.active_workspace_id;
+        let old_canvas = CanvasId::new();
+        let (state, _) = state
+            .with_new_tab(
+                ws_id,
+                &format!("wis-canvas://localhost/?canvas={}", old_canvas.as_uuid()),
+            )
+            .unwrap();
+
+        let profile = BackupPayload {
+            profile: Some(ProfileBackup {
+                workspaces: vec![state.workspaces[0].clone()],
+                tabs: state.tabs.clone(),
+                canvases: vec![WorkspaceCanvases {
+                    workspace: ws_id,
+                    canvases: vec![CanvasBackup {
+                        id: old_canvas,
+                        name: "Plans".into(),
+                        doc: "{}".into(),
+                        created_at: 1,
+                        updated_at: 2,
+                    }],
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+        .reminted()
+        .profile
+        .unwrap();
+
+        let ws = &profile.workspaces[0];
+        let set = &profile.canvases[0];
+        let canvas = &set.canvases[0];
+        assert_eq!(set.workspace, ws.id);
+        assert_ne!(canvas.id, old_canvas);
+        let tab = profile
+            .tabs
+            .iter()
+            .find(|t| t.url.scheme() == "wis-canvas")
+            .unwrap();
+        assert_eq!(
+            tab.url.as_str(),
+            format!("wis-canvas://localhost/?canvas={}", canvas.id.as_uuid())
+        );
+    }
+
+    #[test]
+    fn backups_with_unreadable_canvases_are_refused() {
+        let canvas = |name: &str, doc: &str| CanvasBackup {
+            id: CanvasId::new(),
+            name: name.into(),
+            doc: doc.into(),
+            created_at: 1,
+            updated_at: 1,
+        };
+        let payload = |c: CanvasBackup| BackupPayload {
+            profile: Some(ProfileBackup {
+                canvases: vec![WorkspaceCanvases {
+                    workspace: WorkspaceId::new(),
+                    canvases: vec![c],
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(payload(canvas("Plans", "{}")).validate().is_ok());
+        assert!(payload(canvas("Plans", "[]")).validate().is_err());
+        assert!(payload(canvas("  ", "{}")).validate().is_err());
     }
 
     #[test]

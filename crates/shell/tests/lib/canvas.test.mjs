@@ -5,7 +5,7 @@ import { describe, test } from 'node:test'
 
 import * as canvas from '../../src/lib/canvas.ts'
 import { createCanvasChannel } from '../../src/lib/canvasChannel.ts'
-import { followThemeAccent } from '../../src/lib/canvasAccent.ts'
+import { followPushed } from '../../src/lib/canvasPushed.ts'
 
 const card = (id, x = 0, y = 0, text = 'note') => ({ id, x, y, w: canvas.CARD_WIDTH, text })
 
@@ -117,25 +117,53 @@ describe('the channel', () => {
   })
 })
 
-describe('the theme accent', () => {
+describe('values Rust pushes in', () => {
   const isColor = (v) => /^#[0-9a-f]{6}$/i.test(v)
 
-  test('the accent already set is applied, and later ones as they arrive', () => {
+  test('a value already set is applied, and later ones as they arrive', () => {
     const host = { __wisSwipeAccent: '#112233' }
     const applied = []
-    followThemeAccent(host, (c) => applied.push(c), isColor)
+    followPushed(host, '__wisSwipeAccent', (c) => applied.push(c), isColor)
     host.__wisSwipeAccent = '#445566'
     assert.deepEqual(applied, ['#112233', '#445566'])
-    assert.equal(host.__wisSwipeAccent, '#445566', 'the swipe indicator still reads it')
+    assert.equal(host.__wisSwipeAccent, '#445566', 'other readers still see it')
   })
 
-  test('values that are not colours are ignored', () => {
+  test('values that fail the check are ignored', () => {
     const host = {}
     const applied = []
-    followThemeAccent(host, (c) => applied.push(c), isColor)
-    host.__wisSwipeAccent = 'red; background: url(x)'
-    host.__wisSwipeAccent = 42
-    assert.deepEqual(applied, [])
-    assert.equal(host.__wisSwipeAccent, undefined)
+    followPushed(host, '__wisCanvasTheme', (t) => applied.push(t), (v) => v === 'dark' || v === 'light')
+    host.__wisCanvasTheme = 'sepia'
+    host.__wisCanvasTheme = 42
+    host.__wisCanvasTheme = 'light'
+    assert.deepEqual(applied, ['light'])
+    assert.equal(host.__wisCanvasTheme, 'light')
+  })
+})
+
+describe('finding canvases', () => {
+  const list = [
+    { id: 'a', name: 'Trip plans', updatedAt: 1 },
+    { id: 'b', name: 'Rust notes', updatedAt: 3 },
+    { id: 'c', name: 'Reading list', updatedAt: 2 },
+  ]
+
+  test('with no query, the most recently changed come first', () => {
+    assert.deepEqual(canvas.matchCanvases(list, '  ').map((c) => c.id), ['b', 'c', 'a'])
+  })
+
+  test('a query keeps fuzzy matches, best first', () => {
+    assert.deepEqual(canvas.matchCanvases(list, 'notes').map((c) => c.id), ['b'])
+    assert.deepEqual(canvas.matchCanvases(list, 'r').map((c) => c.id), ['b', 'c', 'a'])
+    assert.deepEqual(canvas.matchCanvases(list, 'trip').map((c) => c.id), ['a'])
+    assert.deepEqual(canvas.matchCanvases(list, 'zzz'), [])
+  })
+})
+
+describe('canvas names', () => {
+  test('names are tidied as Rust stores them', () => {
+    assert.equal(canvas.tidyName('  Trip \n plans  '), 'Trip plans')
+    assert.equal(canvas.tidyName('\t '), '')
+    assert.equal(Array.from(canvas.tidyName('😀'.repeat(200))).length, 120, 'capped by character')
   })
 })
