@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AiAskRequest } from '@/lib/aiAsk'
 
 import { commands } from '@/bindings/commands'
@@ -15,7 +15,16 @@ import {
   selectionContent,
 } from '@/lib/ai'
 import { cx } from '@/lib/cx'
-import { ChevronDownIcon, FileIcon, PlusIcon, SendIcon, StopIcon, XIcon } from '@/lib/icons'
+import {
+  ChevronDownIcon,
+  FileIcon,
+  PlusIcon,
+  SearchIcon,
+  SendIcon,
+  StopIcon,
+  XIcon,
+} from '@/lib/icons'
+import { RESEARCH_PAGES } from '@/lib/research'
 import { showToast } from '@/lib/toast'
 import { useAiChat, type AiPageSource } from '@/hooks/useAiChat'
 import { useDockWidth } from '@/hooks/useDockWidth'
@@ -86,6 +95,7 @@ export function AiPanel({
   const chat = useAiChat(workspaceId, webAccess, localData, tabActions)
   const [draft, setDraft] = useState('')
   const [attachPage, setAttachPage] = useState(false)
+  const [research, setResearch] = useState(false)
   const { width, startResize } = useDockWidth(
     WIDTH_STORAGE_KEY,
     AI_PANEL_WIDTH_DEFAULT,
@@ -108,6 +118,10 @@ export function AiPanel({
   useEffect(() => {
     setAttachPage(false)
   }, [page?.id, page?.url])
+
+  useEffect(() => {
+    if (!webAccess) setResearch(false)
+  }, [webAccess])
 
   useEffect(() => {
     if (open) composerRef.current?.focus()
@@ -144,12 +158,13 @@ export function AiPanel({
   }, [])
 
   const submit = useCallback(
-    (question: string, withPage: boolean): Promise<boolean> => {
+    (question: string, withPage: boolean, withResearch = false): Promise<boolean> => {
       if (busy || !modelReady || workspaceId === null) return Promise.resolve(false)
       setAttachPage(false)
-      return chat.send(question, withPage ? page : null)
+      setResearch(false)
+      return chat.send(question, withPage ? page : null, { research: withResearch && webAccess })
     },
-    [busy, modelReady, workspaceId, chat, page],
+    [busy, modelReady, workspaceId, chat, page, webAccess],
   )
 
   // A question from elsewhere. Keyed on the request's sequence.
@@ -195,10 +210,10 @@ export function AiPanel({
   const sendDraft = useCallback(() => {
     if (!canSend) return
     const question = draft
-    void submit(question, attachPage).then((started) => {
+    void submit(question, attachPage, research).then((started) => {
       if (started) setDraft((current) => (current === question ? '' : current))
     })
-  }, [canSend, submit, draft, attachPage])
+  }, [canSend, submit, draft, attachPage, research])
 
   // A model link opens as a new tab, never a navigation: the panel is chrome,
   // and its window navigating away would replace the browser shell itself.
@@ -342,21 +357,47 @@ export function AiPanel({
           </div>
         )}
         {chat.notice !== null && <div className="kb-ai-notice">{chat.notice}</div>}
-        {page !== null && (
-          <button
-            type="button"
-            className={cx('kb-ai-attach', { on: attachPage })}
-            onClick={() => setAttachPage((v) => !v)}
-            aria-pressed={attachPage}
-            disabled={!modelReady}
-          >
-            <FileIcon />
-            <span>
-              {attachPage
-                ? "This page's text goes to your provider"
-                : "Include this page's text"}
-            </span>
-          </button>
+        {(page !== null || webAccess) && (
+          <div className="kb-ai-toggles">
+          {page !== null && (
+            <button
+              type="button"
+              className={cx('kb-ai-attach', { on: attachPage })}
+              onClick={() => {
+                setAttachPage((v) => !v)
+                setResearch(false)
+              }}
+              aria-pressed={attachPage}
+              disabled={!modelReady}
+            >
+              <FileIcon />
+              <span>
+                {attachPage
+                  ? "This page's text goes to your provider"
+                  : "Include this page's text"}
+              </span>
+            </button>
+          )}
+          {webAccess && (
+            <button
+              type="button"
+              className={cx('kb-ai-attach', { on: research })}
+              onClick={() => {
+                setResearch((v) => !v)
+                setAttachPage(false)
+              }}
+              aria-pressed={research}
+              disabled={!modelReady}
+            >
+              <SearchIcon />
+              <span>
+                {research
+                  ? `Research: searches and reads up to ${RESEARCH_PAGES} sources`
+                  : 'Research this question'}
+              </span>
+            </button>
+          )}
+          </div>
         )}
         <div className="kb-ai-input-row">
           <textarea
@@ -446,7 +487,15 @@ function TurnRow({
       break
     }
   }
-  const answerable = turn.streaming && activeIndex !== -1
+  const answerable = turn.streaming && activeIndex !== -1 && !turn.researching
+  const sources = turn.sources
+  const citations = useMemo(
+    () =>
+      sources && sources.length > 0
+        ? { count: sources.length, onCite: (n: number) => revealSource(turn.id, n) }
+        : undefined,
+    [sources, turn.id],
+  )
   const waiting = turn.streaming && activeIndex === -1 && turn.content === ''
 
   return (
@@ -485,16 +534,51 @@ function TurnRow({
       )}
       {turn.content !== '' &&
         (turn.role === 'assistant' ? (
-          <AiMarkdown text={turn.content} onOpenLink={onOpenLink} />
+          <AiMarkdown text={turn.content} onOpenLink={onOpenLink} citations={citations} />
         ) : (
           <p className="kb-ai-text">{turn.content}</p>
         ))}
+      {sources && sources.length > 0 && (
+        <ol className="kb-ai-sources" role="list" aria-label="Sources">
+          {sources.map((source) => (
+            <li key={source.n} id={sourceId(turn.id, source.n)}>
+              <span className="kb-ai-source-n">{source.n}</span>
+              <button
+                type="button"
+                className="kb-ai-source-link"
+                title={source.url}
+                onClick={() => onOpenLink(source.url, source.title)}
+              >
+                {source.title || hostOf(source.url)}
+              </button>
+              <span className="kb-ai-source-host">{hostOf(source.url)}</span>
+            </li>
+          ))}
+        </ol>
+      )}
       {turn.error !== null && <p className="kb-ai-error">{turn.error}</p>}
       {turn.truncated && (
         <p className="kb-ai-truncated">Cut short at the provider's output limit.</p>
       )}
     </li>
   )
+}
+
+const sourceId = (turn: number, n: number) => `kb-ai-src-${turn}-${n}`
+
+/** How long a cited source stays highlighted; matches `kb-ai-cited`. */
+const CITED_MS = 1400
+
+/** Bring a cited source into view and flash it. */
+function revealSource(turn: number, n: number) {
+  const row = document.getElementById(sourceId(turn, n))
+  if (!row) return
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  row.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'nearest' })
+  row.classList.remove('is-cited')
+  void row.offsetWidth
+  row.classList.add('is-cited')
+  window.setTimeout(() => row.classList.remove('is-cited'), CITED_MS)
 }
 
 function AnswerNowButton({ onAnswerNow }: { onAnswerNow: () => void }) {
@@ -553,6 +637,7 @@ function ThinkRow({
 }
 
 const TOOL_LABELS: Record<ToolSegment['tool'], string> = {
+  plan: 'planning research',
   search: 'web search',
   fetch: 'web fetch',
   tabs: 'list tabs',

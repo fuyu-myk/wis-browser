@@ -7,6 +7,7 @@
  * found in them are not to be followed.
  */
 
+import type { ResearchSource } from '@/lib/research'
 import type {
   AiBookmarkHit,
   AiFetchResponse,
@@ -41,6 +42,7 @@ export interface ThinkSegment {
 }
 
 export type ToolKind =
+  | 'plan'
   | 'search'
   | 'fetch'
   | 'tabs'
@@ -94,6 +96,10 @@ export interface AiTurn {
   error: string | null
   /** True while this assistant turn is still receiving deltas. */
   streaming: boolean
+  /** A research answer's numbered sources. */
+  sources?: ResearchSource[]
+  /** Set while research gathers sources, before the write-up streams. */
+  researching?: boolean
 }
 
 /** A page's extracted text, as delivered by the page-text channel. */
@@ -382,6 +388,32 @@ export function closeThink(turns: readonly AiTurn[], id: number, ms: number | nu
   })
 }
 
+/** A segment whose calls have all just started. */
+export function runningSegment(tool: ToolKind, details: readonly string[]): ToolSegment {
+  return {
+    kind: 'tool',
+    tool,
+    calls: details.map((detail) => ({ detail, response: '', ok: null })),
+    status: 'running',
+    note: null,
+  }
+}
+
+/** Add a running call to the turn's newest segment. */
+export function appendToolCall(turns: readonly AiTurn[], id: number, detail: string): AiTurn[] {
+  return mapTurn(turns, id, (t) => {
+    const last = t.segments[t.segments.length - 1]
+    if (last === undefined || last.kind !== 'tool') return t
+    const grown: ToolSegment = {
+      ...last,
+      status: 'running',
+      note: null,
+      calls: [...last.calls, { detail, response: '', ok: null }],
+    }
+    return { ...t, segments: [...t.segments.slice(0, -1), grown] }
+  })
+}
+
 /** Append a tool round's segments to the streaming assistant turn. */
 export function appendToolSegments(
   turns: readonly AiTurn[],
@@ -392,6 +424,7 @@ export function appendToolSegments(
 }
 
 const FAILED_NOTES: Record<ToolKind, string> = {
+  plan: 'planning failed',
   search: 'search failed',
   fetch: 'fetch failed',
   tabs: 'listing tabs failed',
@@ -406,6 +439,7 @@ const FAILED_NOTES: Record<ToolKind, string> = {
 
 /** Header words for a counted result: lead, then the singular and plural noun. */
 const COUNT_NOTES: Record<ToolKind, [string, string, string]> = {
+  plan: ['planned', 'search', 'searches'],
   search: ['search returned', 'result', 'results'],
   fetch: ['fetched', 'source', 'sources'],
   tabs: ['found', 'open tab', 'open tabs'],
@@ -492,7 +526,12 @@ function interruptSegment(seg: AiSegment): AiSegment {
 export function finalizeInterrupted(turns: readonly AiTurn[]): AiTurn[] {
   return turns.map((t) =>
     t.streaming
-      ? { ...t, streaming: false, segments: t.segments.map(interruptSegment) }
+      ? {
+          ...t,
+          streaming: false,
+          segments: t.segments.map(interruptSegment),
+          ...(t.researching ? { researching: false } : {}),
+        }
       : t,
   )
 }

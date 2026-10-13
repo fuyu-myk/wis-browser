@@ -167,6 +167,8 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
           <span>
             Lets the model search the web and read public pages through isolated,
             invisible page loads. What it reads goes to your model.
+            {keyOptional && (ai.base_url ?? '') !== '' &&
+              ' Research sends about 7,000 tokens, so a server running models itself needs a context length of 16k or more; Ollama can default to 4k and cuts longer prompts without saying so.'}
           </span>
         </div>
         <Switch

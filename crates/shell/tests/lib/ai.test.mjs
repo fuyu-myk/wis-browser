@@ -778,3 +778,51 @@ describe('tab actions', () => {
     assert.ok(!plain.content.includes('open_tabs'))
   })
 })
+
+describe('research rows', () => {
+  test('a running segment lists its calls unsettled', () => {
+    assert.deepEqual(ai.runningSegment('search', ['rust', 'tokio']), {
+      kind: 'tool',
+      tool: 'search',
+      calls: [
+        { detail: 'rust', response: '', ok: null },
+        { detail: 'tokio', response: '', ok: null },
+      ],
+      status: 'running',
+      note: null,
+    })
+  })
+
+  test('a read joins the running group as it starts', () => {
+    let turns = ai.appendToolSegments([turn(2, 'assistant', '', { streaming: true })], 2, [
+      ai.runningSegment('fetch', ['https://a.example/']),
+    ])
+    turns = ai.appendToolCall(turns, 2, 'https://b.example/')
+    assert.deepEqual(
+      turns[0].segments[0].calls.map((c) => [c.detail, c.ok]),
+      [['https://a.example/', null], ['https://b.example/', null]],
+    )
+    assert.equal(turns[0].segments[0].status, 'running')
+  })
+
+  test('a settled plan counts its searches', () => {
+    let turns = ai.appendToolSegments([turn(2, 'assistant', '', { streaming: true })], 2, [
+      ai.runningSegment('plan', ['what is rust']),
+    ])
+    turns = ai.settleToolCall(turns, 2, 0, 0, true, 'a\nb', 2)
+    assert.equal(turns[0].segments[0].note, 'planned 2 searches')
+  })
+})
+
+describe('stopping research', () => {
+  test('a stop clears the researching flag and leaves other turns alone', () => {
+    const turns = [
+      turn(1, 'user', 'q'),
+      { ...turn(2, 'assistant', '', { streaming: true }), researching: true },
+    ]
+    const stopped = ai.finalizeInterrupted(turns)
+    assert.equal(stopped[1].researching, false)
+    assert.equal(stopped[1].streaming, false)
+    assert.equal('researching' in stopped[0], false)
+  })
+})

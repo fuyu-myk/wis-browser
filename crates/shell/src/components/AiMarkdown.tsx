@@ -1,14 +1,48 @@
-import { Fragment, memo, type ReactNode } from 'react'
+import { createContext, Fragment, memo, useContext, type ReactNode } from 'react'
 
 import { parseMarkdown, type Block, type ListItem, type Span } from '@/lib/markdown'
 import { hostOf } from '@/lib/ai'
+import { splitCitations } from '@/lib/research'
 import { isWebUrl } from '@/lib/url'
+
+/** A research answer's citations: `[n]` up to `count` becomes a button. */
+interface Citations {
+  count: number
+  onCite: (n: number) => void
+}
+
+const CitationsContext = createContext<Citations | undefined>(undefined)
 
 interface AiMarkdownProps {
   text: string
   /** Receives only http(s) hrefs; refused schemes render as plain text. The
    *  visible text rides along for the deceptive-text check. */
   onOpenLink: (href: string, text: string) => void
+  citations?: Citations
+}
+
+function PlainText({ text }: { text: string }) {
+  const citations = useContext(CitationsContext)
+  if (citations === undefined) return <>{text}</>
+  return (
+    <>
+      {splitCitations(text, citations.count).map((part, i) =>
+        typeof part === 'number' ? (
+          <button
+            key={i}
+            type="button"
+            className="kb-ai-cite"
+            aria-label={`Source ${part}`}
+            onClick={() => citations.onCite(part)}
+          >
+            {part}
+          </button>
+        ) : (
+          <Fragment key={i}>{part}</Fragment>
+        ),
+      )}
+    </>
+  )
 }
 
 function SpanView({
@@ -41,7 +75,7 @@ function SpanView({
       )
     }
     default:
-      return <>{span.text}</>
+      return <PlainText text={span.text} />
   }
 }
 
@@ -151,12 +185,18 @@ function BlockView({
  * from the typed tree in `lib/markdown`. Memoised because the transcript
  * re-renders per streamed frame and only the last turn's text actually changes.
  */
-export const AiMarkdown = memo(function AiMarkdown({ text, onOpenLink }: AiMarkdownProps) {
+export const AiMarkdown = memo(function AiMarkdown({
+  text,
+  onOpenLink,
+  citations,
+}: AiMarkdownProps) {
   return (
-    <div className="kb-ai-text kb-ai-md">
-      {parseMarkdown(text).map((block, i) => (
-        <BlockView key={i} block={block} onOpenLink={onOpenLink} />
-      ))}
-    </div>
+    <CitationsContext.Provider value={citations}>
+      <div className="kb-ai-text kb-ai-md">
+        {parseMarkdown(text).map((block, i) => (
+          <BlockView key={i} block={block} onOpenLink={onOpenLink} />
+        ))}
+      </div>
+    </CitationsContext.Provider>
   )
 })
