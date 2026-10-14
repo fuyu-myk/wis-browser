@@ -511,6 +511,18 @@ export function newHtmlCard(x: number, y: number, id: string = crypto.randomUUID
   return { id, x: x - w / 2, y: y - h / 2, w, h, kind: 'html', text: STARTER_HTML }
 }
 
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" }
+const MAX_TITLE = 80
+
+export function htmlTitle(html: string): string {
+  const raw = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? ''
+  const title = raw
+    .replace(/&(amp|lt|gt|quot|#39);/g, (_, name: string) => ENTITIES[name] ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return title === '' ? 'HTML card' : title.slice(0, MAX_TITLE)
+}
+
 export function resizeCard(doc: CanvasDoc, id: string, w: number, h: number): CanvasDoc {
   const card = doc.cards.find((c) => c.id === id)
   if (card?.kind !== 'html') return doc

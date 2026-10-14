@@ -20,6 +20,8 @@ export interface CanvasChannel {
   rename: (canvas: string, name: string) => Promise<CanvasSummary>
   save: (canvas: string, doc: string) => Promise<null>
   remove: (canvas: string) => Promise<null>
+  /** Reports running HTML cards; resolves true when they should start paused. */
+  pulse: (canvas: string, state: 'start' | 'beat' | 'stop') => Promise<boolean>
 }
 
 interface Waiting {
@@ -62,5 +64,9 @@ export function createCanvasChannel(post: ((text: string) => void) | null): Canv
     rename: (canvas, name) => request({ op: 'rename', canvas, name }),
     save: (canvas, doc) => request({ op: 'save', canvas, doc }),
     remove: (canvas) => request({ op: 'delete', canvas }),
+    pulse: (canvas, state) =>
+      request<unknown>({ op: 'pulse', canvas, state }).then(
+        (value) => typeof value === 'object' && value !== null && (value as { safe?: unknown }).safe === true,
+      ),
   }
 }

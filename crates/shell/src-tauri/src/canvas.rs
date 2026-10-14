@@ -13,6 +13,7 @@ use url::Url;
 use wis_core::{CanvasId, WisError, WisResult};
 use wis_storage::Storage;
 
+use crate::canvas_health::{CardHealth, Pulse};
 use crate::canvas_store::{CanvasMemory, CanvasTab};
 use crate::state::AppState;
 
@@ -34,6 +35,7 @@ const FRAME_CSP: &str = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-
 
 static TABS: LazyLock<Mutex<HashMap<String, CanvasTab>>> = LazyLock::new(Default::default);
 static MEMORY: LazyLock<Mutex<CanvasMemory>> = LazyLock::new(Default::default);
+static HEALTH: LazyLock<Mutex<CardHealth>> = LazyLock::new(Default::default);
 static WORKER: OnceLock<tokio::sync::mpsc::Sender<(String, String)>> = OnceLock::new();
 const QUEUE: usize = 32;
 
@@ -88,7 +90,80 @@ pub fn forget(app: &AppHandle, label: &str) {
         .remove(label)
         .is_some();
     if known {
+        let mut health = HEALTH.lock().expect("canvas health poisoned");
+        health.closed(label, chrono::Utc::now().timestamp_millis());
+        if health.take_changed() {
+            save_health(app, health.stuck_canvases());
+        }
+        drop(health);
         flush_soon(app);
+    }
+}
+
+const HEALTH_FILE: &str = "canvas-stuck.json";
+
+fn health_path(app: &AppHandle) -> Option<std::path::PathBuf> {
+    app.path().app_data_dir().ok().map(|dir| dir.join(HEALTH_FILE))
+}
+
+/// Canvases whose cards froze, kept so the next launch opens them paused.
+fn save_health(app: &AppHandle, stuck: Vec<CanvasId>) {
+    let Some(path) = health_path(app) else {
+        return;
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = if stuck.is_empty() {
+            match std::fs::remove_file(&path) {
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                other => other,
+            }
+        } else {
+            serde_json::to_vec(&stuck)
+                .map_err(std::io::Error::other)
+                .and_then(|bytes| std::fs::write(&path, bytes))
+        };
+        if let Err(err) = result {
+            log::warn!("saving stuck canvases: {err}");
+        }
+    });
+}
+
+fn load_health(app: &AppHandle) {
+    let Some(path) = health_path(app) else {
+        return;
+    };
+    let stuck = match std::fs::read(&path) {
+        Ok(bytes) => serde_json::from_slice::<Vec<CanvasId>>(&bytes).unwrap_or_default(),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return,
+        Err(err) => {
+            log::warn!("reading stuck canvases: {err}");
+            return;
+        }
+    };
+    HEALTH
+        .lock()
+        .expect("canvas health poisoned")
+        .restore(stuck);
+}
+
+/// From the exit hook: canvases still frozen open paused next launch.
+pub fn quit(app: &AppHandle) {
+    let mut health = HEALTH.lock().expect("canvas health poisoned");
+    health.quit(chrono::Utc::now().timestamp_millis());
+    if !health.take_changed() {
+        return;
+    }
+
+    let Some(path) = health_path(app) else {
+        return;
+    };
+    match serde_json::to_vec(&health.stuck_canvases()) {
+        Ok(bytes) => {
+            if let Err(err) = std::fs::write(path, bytes) {
+                log::warn!("saving stuck canvases: {err}");
+            }
+        }
+        Err(err) => log::warn!("saving stuck canvases: {err}"),
     }
 }
 
@@ -136,6 +211,7 @@ pub fn start(app: AppHandle) {
     if WORKER.set(tx).is_err() {
         return;
     }
+    load_health(&app);
 
     let worker_app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -150,6 +226,10 @@ pub fn start(app: AppHandle) {
             {
                 Ok(reply) => deliver(&worker_app, &label, &reply),
                 Err(err) => log::warn!("canvas message panicked: {err}"),
+            }
+            let mut health = HEALTH.lock().expect("canvas health poisoned");
+            if health.take_changed() {
+                save_health(&worker_app, health.stuck_canvases());
             }
         }
     });
@@ -206,6 +286,7 @@ enum Request {
     Rename { canvas: CanvasId, name: String },
     Save { canvas: CanvasId, doc: String },
     Delete { canvas: CanvasId },
+    Pulse { canvas: CanvasId, state: Pulse },
 }
 
 fn handle(storage: &dyn Storage, label: &str, text: &str, now: i64) -> String {
@@ -232,6 +313,13 @@ fn run(storage: &dyn Storage, label: &str, request: Request, now: i64) -> WisRes
     let tab = tab_for(label).ok_or_else(|| WisError::InvalidInput {
         message: "this tab is not a canvas".into(),
     })?;
+    if let Request::Pulse { canvas, state } = request {
+        let safe = HEALTH
+            .lock()
+            .expect("canvas health poisoned")
+            .pulse(canvas, label, state, now);
+        return Ok(json!({ "safe": safe }));
+    }
     let mut memory = MEMORY.lock().expect("canvas memory poisoned");
     Ok(match request {
         Request::List => json!(memory.list(storage, tab)?),
@@ -249,6 +337,7 @@ fn run(storage: &dyn Storage, label: &str, request: Request, now: i64) -> WisRes
             memory.delete(storage, tab, canvas)?;
             Value::Null
         }
+        Request::Pulse { .. } => Value::Null,
     })
 }
 
@@ -682,6 +771,12 @@ mod tests {
         let load = json!({ "id": 4, "op": "load", "canvas": canvas }).to_string();
         let loaded: Value = serde_json::from_str(&handle(&storage, &label, &load, 7)).unwrap();
         assert_eq!(loaded["value"]["doc"], "{\"cards\":[]}");
+
+        let start = json!({ "id": 5, "op": "pulse", "canvas": canvas, "state": "start" }).to_string();
+        let first: Value = serde_json::from_str(&handle(&storage, &label, &start, 9)).unwrap();
+        assert_eq!(first["value"]["safe"], false);
+        let again: Value = serde_json::from_str(&handle(&storage, &label, &start, 10)).unwrap();
+        assert_eq!(again["value"]["safe"], true, "restarted without a stop");
 
         let garbled: Value = serde_json::from_str(&handle(&storage, &label, "{nope", 8)).unwrap();
         assert_eq!(

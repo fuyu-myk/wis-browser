@@ -18,6 +18,17 @@ interface HtmlFrameProps {
   live: boolean
 }
 
+export function HtmlPaused({ title }: { title: string }) {
+  return (
+    <div className="canvas-html-paused">
+      <span className="canvas-html-glyph" aria-hidden>
+        {'</>'}
+      </span>
+      <span className="canvas-html-title">{title}</span>
+    </div>
+  )
+}
+
 export function HtmlFrame({ html, live }: HtmlFrameProps) {
   const ref = useRef<HTMLIFrameElement>(null)
   useEffect(() => {

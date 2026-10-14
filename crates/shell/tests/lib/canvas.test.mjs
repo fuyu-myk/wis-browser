@@ -111,6 +111,18 @@ describe('the channel', () => {
     assert.equal((await creating).name, 'Trip')
   })
 
+  test('card health reports say whether to start safe, and anything odd reads as not', async () => {
+    const { posted, channel } = setup()
+    const first = channel.pulse('b1', 'start')
+    const second = channel.pulse('b1', 'start')
+    const third = channel.pulse('b1', 'beat')
+    assert.deepEqual(posted[0], { id: 1, op: 'pulse', canvas: 'b1', state: 'start' })
+    channel.reply({ id: 1, ok: true, value: { safe: true } })
+    channel.reply({ id: 2, ok: true, value: null })
+    channel.reply({ id: 3, ok: true, value: { safe: 'yes' } })
+    assert.deepEqual([await first, await second, await third], [true, false, false])
+  })
+
   test('without the native channel every request fails at once', async () => {
     const channel = createCanvasChannel(null)
     await assert.rejects(channel.list(), /not available/)
@@ -512,5 +524,15 @@ describe('HTML cards', () => {
     assert.equal(canvas.resizeCard(doc, 'n', 500, 500), doc)
     const same = doc.cards[0]
     assert.equal(canvas.resizeCard(doc, 'h', same.w, same.h), doc)
+  })
+})
+
+describe('paused HTML cards', () => {
+  test('show their page title, tidied, or a plain name', () => {
+    assert.equal(canvas.htmlTitle('<title>  Sales &amp; costs\n 2026 </title><p>x'), 'Sales & costs 2026')
+    assert.equal(canvas.htmlTitle('<TITLE id=t>&lt;Q3&gt;</TITLE>'), '<Q3>')
+    assert.equal(canvas.htmlTitle('<p>no title</p>'), 'HTML card')
+    assert.equal(canvas.htmlTitle('<title> </title>'), 'HTML card')
+    assert.equal(canvas.htmlTitle(`<title>${'x'.repeat(200)}</title>`).length, 80)
   })
 })

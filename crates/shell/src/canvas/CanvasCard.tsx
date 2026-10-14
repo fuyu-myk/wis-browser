@@ -1,11 +1,11 @@
-import { memo, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import { memo, useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 
 import { AiMarkdown } from '@/components/AiMarkdown'
-import type { CanvasCard } from '@/lib/canvas'
+import { htmlTitle, type CanvasCard } from '@/lib/canvas'
 import { cx } from '@/lib/cx'
 import { isWebUrl } from '@/lib/url'
 
-import { HtmlFrame } from './CanvasHtml'
+import { HtmlFrame, HtmlPaused } from './CanvasHtml'
 import { transformOf } from './dom'
 
 export type Side = 'top' | 'right' | 'bottom' | 'left'
@@ -27,6 +27,7 @@ interface CardProps {
   selected: boolean
   editing: boolean
   live: boolean
+  paused: boolean
   handlers: CardHandlers
 }
 
@@ -34,9 +35,11 @@ function openLink(href: string) {
   if (isWebUrl(href)) window.open(href, '_blank', 'noopener,noreferrer')
 }
 
-export const Card = memo(function Card({ card, selected, editing, live, handlers }: CardProps) {
+export const Card = memo(function Card({ card, selected, editing, live, paused, handlers }: CardProps) {
   const html = card.kind === 'html'
   const still = !editing && !live
+  const { id } = card
+  const ref = useCallback((el: HTMLElement | null) => handlers.register(id, el), [handlers, id])
   return (
     <div
       className={cx('canvas-card', {
@@ -46,7 +49,7 @@ export const Card = memo(function Card({ card, selected, editing, live, handlers
         'is-live': live,
       })}
       data-card={card.id}
-      ref={(el) => handlers.register(card.id, el)}
+      ref={ref}
       style={{ width: card.w, height: card.h, transform: transformOf(card.x, card.y) }}
       onPointerDown={still ? (e) => handlers.down(card, e) : undefined}
       onDoubleClick={(e) => {
@@ -58,6 +61,8 @@ export const Card = memo(function Card({ card, selected, editing, live, handlers
     >
       {editing ? (
         <CardEditor text={card.text} code={html} onDone={(text) => handlers.commit(card.id, text)} />
+      ) : html && paused ? (
+        <HtmlPaused title={htmlTitle(card.text)} />
       ) : html ? (
         <HtmlFrame html={card.text} live={live} />
       ) : (

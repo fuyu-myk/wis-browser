@@ -17,7 +17,6 @@ import {
   canUngroup,
   cardsInFrame,
   cardsTouching,
-  edgeGeometry,
   expandToGroups,
   frameAround,
   framesInside,
@@ -50,8 +49,6 @@ import {
   type Box,
   type CanvasCard,
   type CanvasDoc,
-  type CanvasEdge,
-  type CanvasFrame,
   type CanvasView,
 } from '@/lib/canvas'
 import { cx } from '@/lib/cx'
@@ -59,10 +56,13 @@ import { cx } from '@/lib/cx'
 import { Card, CardEditor, type CardHandlers, type Side } from './CanvasCard'
 import { CanvasEdges, type Linking } from './CanvasEdges'
 import { Frame, type FrameHandlers } from './CanvasFrame'
-import { CanvasGroups, GROUP_PAD, type GroupOutline } from './CanvasGroups'
-import { isEscapeFrom } from './CanvasHtml'
+import { CanvasGroups, type GroupOutline } from './CanvasGroups'
 import { canvasMenuItems, CanvasMenu, type CanvasCommands } from './CanvasMenu'
 import { follow, transformOf } from './dom'
+import { paintDrag, type Dragged } from './paintDrag'
+import { useAwakeCards } from './useAwakeCards'
+import { useCardHealth, type CardPulse } from './useCardHealth'
+import { useLiveCard } from './useLiveCard'
 import { useViewGestures } from './useViewGestures'
 
 const VIEW_SETTLE_MS = 400
@@ -77,6 +77,7 @@ interface CanvasSurfaceProps {
   onView: (view: CanvasView) => void
   onUndo: () => void
   onRedo: () => void
+  pulse: CardPulse
 }
 
 type Selection = ReadonlySet<string>
@@ -91,13 +92,6 @@ interface Limits {
 }
 const FRAME_LIMITS: Limits = { minW: MIN_FRAME_W, maxW: MAX_FRAME_SIZE, minH: MIN_FRAME_H, maxH: MAX_FRAME_SIZE }
 const CARD_LIMITS: Limits = { minW: MIN_CARD_WIDTH, maxW: MAX_CARD_WIDTH, minH: MIN_CARD_HEIGHT, maxH: MAX_CARD_HEIGHT }
-interface Dragged {
-  bases: Map<string, CanvasCard>
-  frames: Map<string, CanvasFrame>
-  edges: CanvasEdge[]
-  dx: number
-  dy: number
-}
 
 const NONE: Selection = new Set()
 const viewTransform = ({ x, y, k }: CanvasView) => `translate3d(${x}px,${y}px,0) scale(${k})`
@@ -106,7 +100,7 @@ const sameSet = (a: Selection, b: Selection) => a.size === b.size && [...a].ever
 const typing = (target: EventTarget | null) =>
   target instanceof Element && target.closest('input, textarea') !== null
 
-export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasSurfaceProps) {
+export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo, pulse }: CanvasSurfaceProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const layerRef = useRef<HTMLDivElement>(null)
   const zoomRef = useRef<HTMLButtonElement>(null)
@@ -142,13 +136,19 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
   const pickedRef = useRef(picked)
   pickedRef.current = picked
   const [editing, setEditing] = useState<string | null>(null)
-  const [live, setLive] = useState<string | null>(null)
+  const [live, setLive] = useLiveCard(viewportRef, cardEls)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [draft, setDraft] = useState<CanvasCard | null>(null)
   const [marquee, setMarquee] = useState<Box | null>(null)
   const [linking, setLinking] = useState<Linking | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; at: Point; html?: string } | null>(null)
   const [panning, setPanning] = useState(false)
+  const [far, setFar] = useState(doc.view.k < FAR_ZOOM)
+  const awakeCards = useAwakeCards(viewportRef)
+  const wanted = !far && doc.cards.some((c) => c.kind === 'html' && awakeCards.awake.has(c.id))
+  const health = useCardHealth(pulse, wanted)
+  const paused = (card: CanvasCard) =>
+    card.kind === 'html' && !(health.running && !far && awakeCards.awake.has(card.id))
   const boxOf = (card: CanvasCard, dx = 0, dy = 0): Box => ({
     x: card.x + dx,
     y: card.y + dy,
@@ -190,44 +190,22 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
     }
     const d = dragged.current
     if (!d) return
-    for (const [id, base] of d.bases) {
-      const el = cardEls.current.get(id)
-      if (el) el.style.transform = transformOf(base.x + d.dx, base.y + d.dy)
-    }
-    for (const [id, base] of d.frames) {
-      const el = frameEls.current.get(id)
-      if (el) el.style.transform = transformOf(base.x + d.dx, base.y + d.dy)
-    }
-    const cards = new Map(docRef.current.cards.map((c) => [c.id, c]))
-    const placed = (id: string) => {
-      const card = cards.get(id)
-      if (!card) return null
-      return d.bases.has(id) ? boxOf(card, d.dx, d.dy) : boxOf(card)
-    }
-    for (const g of groupEls.current.values()) {
-      if (!g.members.some((id) => d.bases.has(id))) continue
-      const box = frameAround(
-        g.members.flatMap((id) => placed(id) ?? []),
-        GROUP_PAD,
-      )
-      g.el.style.transform = transformOf(box.x, box.y)
-      g.el.style.width = `${box.w}px`
-      g.el.style.height = `${box.h}px`
-    }
-    for (const edge of d.edges) {
-      const a = placed(edge.from)
-      const b = placed(edge.to)
-      if (!a || !b) continue
-      const path = edgeGeometry(a, b).d
-      for (const el of edgeEls.current.get(edge.id) ?? []) el.setAttribute('d', path)
-    }
+    paintDrag(
+      d,
+      docRef.current.cards,
+      { cards: cardEls.current, frames: frameEls.current, groups: groupEls.current, edges: edgeEls.current },
+      boxOf,
+    )
   }
   const schedule = () => {
     if (frame.current === 0) frame.current = requestAnimationFrame(paint)
   }
   const settleView = () => {
     window.clearTimeout(viewTimer.current)
-    viewTimer.current = window.setTimeout(() => props.current.onView(view.current), VIEW_SETTLE_MS)
+    viewTimer.current = window.setTimeout(() => {
+      props.current.onView(view.current)
+      setFar(view.current.k < FAR_ZOOM)
+    }, VIEW_SETTLE_MS)
   }
   const localPoint = (clientX: number, clientY: number) => {
     const rect = viewportRef.current?.getBoundingClientRect()
@@ -404,31 +382,13 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  },[commands])
+  }, [commands, setLive])
 
-  const liveGone = live !== null && !cardsById.has(live)
+  const liveCard = live === null ? undefined : cardsById.get(live)
+  const liveGone = live !== null && (!liveCard || paused(liveCard))
   useEffect(() => {
     if (liveGone) setLive(null)
-  }, [liveGone])
-  useEffect(() => {
-    if (live === null) {
-      if (document.activeElement instanceof HTMLIFrameElement) viewportRef.current?.focus({ preventScroll: true })
-      return
-    }
-    const card = () => cardEls.current.get(live)
-    const onDown = (e: PointerEvent) => {
-      if (!card()?.contains(e.target as Node)) setLive(null)
-    }
-    const onMessage = (e: MessageEvent) => {
-      if (isEscapeFrom(e, card()?.querySelector('iframe'))) setLive(null)
-    }
-    window.addEventListener('pointerdown', onDown, true)
-    window.addEventListener('message', onMessage)
-    return () => {
-      window.removeEventListener('pointerdown', onDown, true)
-      window.removeEventListener('message', onMessage)
-    }
-  }, [live])
+  }, [liveGone, setLive])
 
   const pan = (e: ReactPointerEvent<HTMLDivElement>) => {
     const start = { px: e.clientX, py: e.clientY, x: view.current.x, y: view.current.y }
@@ -530,7 +490,9 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
       if (el) {
         cardEls.current.set(id, el)
         resizes.current?.observe(el)
+        if (el.classList.contains('is-html')) awakeCards.watch(el)
       } else {
+        if (old) awakeCards.unwatch(old)
         cardEls.current.delete(id)
         heights.current.delete(id)
       }
@@ -702,6 +664,7 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
               selected={selected.has(card.id)}
               editing={editing === card.id}
               live={live === card.id}
+              paused={paused(card)}
               handlers={handlers}
             />
           ))}
@@ -732,6 +695,14 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
           onClick={() => zoomBy(1 / view.current.k)}
         />
       </div>
+      {health.safe && (
+        <p className="canvas-notice canvas-safe" role="status">
+          HTML cards are paused: this canvas stopped responding last time.
+          <button type="button" onClick={health.runAnyway}>
+            Run cards
+          </button>
+        </p>
+      )}
       {menu && (
         <CanvasMenu
           x={menu.x}

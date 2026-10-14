@@ -166,6 +166,12 @@ export function CanvasApp({ channel }: { channel: CanvasChannel }) {
     },
     [apply],
   )
+  const openCanvas = state.kind === 'ready' ? state.id : null
+  const pulse = useCallback(
+    (state: 'start' | 'beat' | 'stop') =>
+      openCanvas === null ? Promise.resolve(false) : channel.pulse(openCanvas, state),
+    [channel, openCanvas],
+  )
   const onUndo = useCallback(() => step(undo), [step])
   const onRedo = useCallback(() => step(redo), [step])
 
@@ -260,6 +266,7 @@ export function CanvasApp({ channel }: { channel: CanvasChannel }) {
         onView={onView}
         onUndo={onUndo}
         onRedo={onRedo}
+        pulse={pulse}
       />
       <CanvasSwitcher
         name={state.name}

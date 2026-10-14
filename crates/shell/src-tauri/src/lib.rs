@@ -13,6 +13,7 @@ mod biometrics;
 mod bookmarks;
 mod browser_import;
 mod canvas;
+mod canvas_health;
 mod canvas_store;
 mod canvas_webview;
 mod capture;
@@ -820,6 +821,7 @@ pub fn run() {
                 state.save_coalescer.flush(&state.storage);
                 usage::flush_now(&state);
                 canvas::flush_logged(state.storage.as_ref());
+                canvas::quit(app_handle);
             }
 
             if let tauri::RunEvent::WindowEvent {
