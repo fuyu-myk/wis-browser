@@ -1,8 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 
 import { AiMarkdown } from '@/components/AiMarkdown'
+import { thinkDurationLabel } from '@/lib/ai'
 import { plainLine } from '@/lib/canvasAgent'
 import { cx } from '@/lib/cx'
+import { ChevronDownIcon } from '@/lib/icons'
 import { isWebUrl } from '@/lib/url'
 
 import { useCanvasAgent, type AgentOptions, type CanvasAgent, type LogEntry } from './useCanvasAgent'
@@ -67,7 +69,7 @@ function AgentPill({ agent }: { agent: CanvasAgent }) {
         onClick={() => setOpen((v) => !v)}
       >
         <span className="canvas-agent-dot" aria-hidden />
-        <span className="canvas-agent-label">{pillLabel(agent)}</span>
+        <span className={cx('canvas-agent-label', { 'is-live': busy })}>{pillLabel(agent)}</span>
         {busy && (
           <span
             role="button"
@@ -106,6 +108,8 @@ function AgentLog({ agent }: { agent: CanvasAgent }) {
   )
 }
 
+const capitalised = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+
 function LogRow({ entry }: { entry: LogEntry }) {
   if (entry.kind === 'reply')
     return (
@@ -113,7 +117,51 @@ function LogRow({ entry }: { entry: LogEntry }) {
         <AiMarkdown text={entry.text} onOpenLink={openLink} />
       </div>
     )
+  if (entry.kind === 'think') {
+    const label = entry.live
+      ? 'Thinking…'
+      : entry.ms !== null
+        ? capitalised(thinkDurationLabel(entry.ms))
+        : 'Thoughts'
+    return (
+      <Disclosure label={label} live={entry.live}>
+        {entry.text !== '' && <p className="canvas-agent-reasoning">{entry.text}</p>}
+      </Disclosure>
+    )
+  }
+  if (entry.kind === 'step')
+    return (
+      <Disclosure label={entry.text} live={false}>
+        {entry.details.length > 0 && (
+          <ul className="canvas-agent-details">
+            {entry.details.map((detail, i) => (
+              <li key={i}>{detail}</li>
+            ))}
+          </ul>
+        )}
+      </Disclosure>
+    )
   return <p className={`canvas-agent-${entry.kind}`}>{entry.text}</p>
+}
+
+/** A log line that opens with a caret when it has more to show. */
+function Disclosure({ label, live, children }: { label: string; live: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const more = children !== false && children !== null && children !== undefined
+  const text = <span className={cx('canvas-agent-line', { 'is-live': live })}>{label}</span>
+  return (
+    <div className="canvas-agent-disclosure">
+      {more ? (
+        <button type="button" className="canvas-agent-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          {text}
+          <ChevronDownIcon className={cx('canvas-agent-chevron', { 'is-open': open })} />
+        </button>
+      ) : (
+        <span className="canvas-agent-toggle is-static">{text}</span>
+      )}
+      {open && more && children}
+    </div>
+  )
 }
 
 function AgentPrompt({ agent }: { agent: CanvasAgent }) {

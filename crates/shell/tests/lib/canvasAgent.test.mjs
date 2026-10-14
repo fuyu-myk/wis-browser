@@ -75,7 +75,21 @@ describe('changing the canvas', () => {
       for (let j = i + 1; j < boxes.length; j++) assert.ok(!overlaps(boxes[i], boxes[j]), `${i} overlaps ${j}`)
     for (const c of made) assert.ok(c.x > -1200 && c.x < 2400 && c.y > -800 && c.y < 1600, 'near the view')
     assert.deepEqual(JSON.parse(out.result).created.map((c) => c.id), made.map((c) => c.id))
-    assert.equal(out.summary, 'Added 3 cards')
+    assert.equal(out.summary, 'Added 2 notes and a visual')
+  })
+
+  test('each step names the cards it touched', () => {
+    const d = doc([note('a', 0, 0, '# Plan\nbody'), note('b', 400, 0, 'Budget')])
+    const made = agent.runCanvasTool(d, call('create_cards', { cards: [{ text: '## Day 1\narrive' }, { kind: 'html', text: '<title>Timeline</title>' }] }), ctx())
+    assert.deepEqual(made.details, ['Day 1', 'Timeline (visual)'])
+    assert.equal(made.summary, 'Added a note and a visual')
+    const linked = agent.runCanvasTool(d, call('connect_cards', { links: [{ from: 'a', to: 'b' }] }), ctx())
+    assert.deepEqual(linked.details, ['Plan to Budget'])
+    const gone = agent.runCanvasTool(d, call('delete_cards', { ids: ['b'] }), ctx())
+    assert.deepEqual(gone.details, ['Budget'])
+    const edited = agent.runCanvasTool(d, call('update_cards', { cards: [{ id: 'a', text: 'Renamed' }] }), ctx())
+    assert.deepEqual(edited.details, ['Renamed'])
+    assert.deepEqual(agent.runCanvasTool(d, call('read_canvas', {}), ctx()).details, [])
   })
 
   test('cards given a place keep it, and `near` puts one beside its anchor', () => {
@@ -108,7 +122,30 @@ describe('changing the canvas', () => {
     out = agent.runCanvasTool(out.doc, call('delete_cards', { ids: ['b', 'zz'] }), ctx())
     assert.deepEqual(out.doc.cards.map((c) => c.id), ['a', 'h'])
     assert.equal(out.doc.edges.length, 0)
-    assert.equal(out.summary, 'Deleted 1 card')
+    assert.equal(out.summary, 'Deleted a note')
+  })
+
+  test('steps name what they made by kind', () => {
+    const d = doc([note('a', 0, 0, 'Plan'), { ...canvas.newHtmlCard(0, 600, 'h'), text: '<title>Chart</title>' }])
+    const html = (n) => Array.from({ length: n }, () => ({ kind: 'html', text: '<p>x</p>' }))
+    assert.equal(agent.runCanvasTool(d, call('create_cards', { cards: html(1) }), ctx()).summary, 'Created a visual')
+    assert.equal(agent.runCanvasTool(d, call('create_cards', { cards: html(3) }), ctx()).summary, 'Created 3 visuals')
+    assert.equal(agent.runCanvasTool(d, call('create_cards', { cards: [{ text: 'x' }] }), ctx()).summary, 'Added a note')
+    assert.equal(agent.runCanvasTool(d, call('update_cards', { cards: [{ id: 'a', x: 5 }, { id: 'h', x: 5 }] }), ctx()).summary, 'Edited a note and a visual')
+    assert.equal(agent.runCanvasTool(d, call('read_cards', { ids: ['h'] }), ctx()).summary, 'Read a visual')
+    assert.equal(agent.runCanvasTool(d, call('connect_cards', { links: [{ from: 'a', to: 'h' }] }), ctx()).summary, 'Drew an arrow')
+  })
+
+  test('a step that did nothing says so, and why when it can', () => {
+    const d = doc([note('a', 0, 0)])
+    const full = doc(Array.from({ length: canvas.MAX_CARDS }, (_, i) => note(`k${i}`, (i % 70) * 400, Math.floor(i / 70) * 200)))
+    assert.equal(agent.runCanvasTool(full, call('create_cards', { cards: [{ text: 'x', x: 0, y: -9000 }] }), ctx()).summary, 'No cards added: the canvas is full')
+    const some = agent.runCanvasTool(d, call('create_cards', { cards: [{ kind: 'html', text: 'x'.repeat(400_000) }, { kind: 'html', text: 'x'.repeat(400_000) }, { kind: 'html', text: 'x'.repeat(400_000) }] }), ctx())
+    assert.equal(some.summary, 'Created 2 visuals (1 skipped)')
+    assert.equal(agent.runCanvasTool(d, call('connect_cards', { links: [{ from: 'a', to: 'a' }] }), ctx()).summary, 'No arrows drawn')
+    assert.equal(agent.runCanvasTool(d, call('update_cards', { cards: [{ id: 'zz' }] }), ctx()).summary, 'No cards found to edit')
+    assert.equal(agent.runCanvasTool(d, call('delete_cards', { ids: ['zz'] }), ctx()).summary, 'No cards found to delete')
+    assert.equal(agent.runCanvasTool(d, call('read_cards', { ids: ['zz'] }), ctx()).summary, 'No cards found to read')
   })
 
   test('a note will not take a web page, so its Markdown is never swapped for HTML', () => {
@@ -227,7 +264,30 @@ describe('a turn', () => {
     assert.match(sent[0].messages.at(-1).content, /add a card/)
     const [assistant, tool] = sent[1].messages.slice(-2)
     assert.deepEqual([assistant.role, assistant.tool_calls[0].id, tool.role, tool.tool_call_id], ['assistant', 't1', 'tool', 't1'])
-    assert.ok(run.log.some((e) => e.type === 'step' && e.text === 'Added 1 card'))
+    assert.ok(run.log.some((e) => e.type === 'step' && e.text === 'Added a note'))
+  })
+
+  test('each round opens with its thinking, streamed as it comes', async () => {
+    const { chat } = scripted([
+      [{ type: 'reasoning', text: 'Plan the ' }, { type: 'reasoning', text: 'cards.' }, { type: 'delta', text: 'Done.' }, { type: 'done' }],
+    ])
+    const run = deps(chat)
+    await agent.runTurn([], 'go', run.deps)
+    const kinds = run.log.map((e) => e.type)
+    assert.equal(kinds[0], 'round')
+    assert.deepEqual(run.log.filter((e) => e.type === 'think').map((e) => e.text), ['Plan the ', 'Plan the cards.'])
+    assert.ok(kinds.indexOf('think') < kinds.indexOf('reply'))
+  })
+
+  test('steps carry their card titles to the log', async () => {
+    const { chat } = scripted([
+      [{ type: 'tool_calls', calls: [{ id: 't1', name: 'create_cards', arguments: '{"cards":[{"text":"Idea"}]}' }] }, { type: 'done' }],
+      [{ type: 'delta', text: 'ok' }, { type: 'done' }],
+    ])
+    const run = deps(chat)
+    await agent.runTurn([], 'go', run.deps)
+    assert.deepEqual(run.log.find((e) => e.type === 'step').details, ['Idea'])
+    assert.equal(run.log.filter((e) => e.type === 'round').length, 2)
   })
 
   test('a provider error ends the turn with it, and nothing changes', async () => {

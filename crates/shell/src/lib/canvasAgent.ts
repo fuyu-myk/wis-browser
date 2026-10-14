@@ -61,6 +61,8 @@ export interface ToolOutcome {
   result: string
   /** One line for the user. */
   summary: string
+  /** The cards it touched, by title. */
+  details: string[]
 }
 
 const MAX_LISTED = 400
@@ -115,6 +117,17 @@ export function titleOf(card: CanvasCard): string {
   if (card.kind === 'html') return htmlTitle(card.text)
   const line = card.text.split('\n').find((l) => l.trim() !== '') ?? ''
   return line.replace(/^\s*(#+|[-*>]|\d+\.)\s*/, '').trim().slice(0, TITLE_CHARS)
+}
+
+const named = (card: CanvasCard) => titleOf(card) || 'Untitled'
+const labelled = (card: CanvasCard) => (card.kind === 'html' ? `${named(card)} (visual)` : named(card))
+const some = (n: number, word: string) => (n === 1 ? `a ${word}` : `${n} ${word}s`)
+
+function kinds(cards: readonly CanvasCard[]): string {
+  const visuals = cards.filter((c) => c.kind === 'html').length
+  const notes = cards.length - visuals
+  if (notes > 0 && visuals > 0) return `${some(notes, 'note')} and ${some(visuals, 'visual')}`
+  return visuals > 0 ? some(visuals, 'visual') : some(notes, 'note')
 }
 
 export function estimateHeight(card: CanvasCard): number {
@@ -206,6 +219,7 @@ function createCards(doc: CanvasDoc, args: Record<string, unknown>, ctx: AgentCo
   let next = doc
   let textLeft = MAX_CALL_TEXT
   let skipped = 0
+  let full = false
   const budget = { probes: MAX_PROBES }
   const created: { id: string; x: number; y: number }[] = []
   for (const spec of wanted) {
@@ -213,6 +227,7 @@ function createCards(doc: CanvasDoc, args: Record<string, unknown>, ctx: AgentCo
     const html = spec.kind === 'html'
     const text = (spec.text as string).slice(0, html ? MAX_HTML_TEXT : MAX_CARD_TEXT)
     if (next.cards.length >= MAX_CARDS || text.length > textLeft) {
+      full ||= next.cards.length >= MAX_CARDS
       skipped += 1
       continue
     }
@@ -240,10 +255,18 @@ function createCards(doc: CanvasDoc, args: Record<string, unknown>, ctx: AgentCo
     next = addCard(next, { ...draft, ...spot })
     created.push({ id, x: Math.round(spot.x), y: Math.round(spot.y) })
   }
+  const added = new Set(created.map((c) => c.id))
+  const made = next.cards.filter((c) => added.has(c.id))
+  const verb = made.every((c) => c.kind === 'html') ? 'Created' : 'Added'
+  const summary =
+    made.length === 0
+      ? `No cards added${full ? ': the canvas is full' : ''}`
+      : `${verb} ${kinds(made)}${skipped > 0 ? ` (${skipped} skipped)` : ''}`
   return {
     doc: next,
     result: JSON.stringify({ created, ...(skipped > 0 ? { skipped } : {}) }),
-    summary: `Added ${plural(created.length, 'card')}`,
+    summary,
+    details: made.map(labelled),
   }
 }
 
@@ -276,16 +299,24 @@ function updateCards(doc: CanvasDoc, args: Record<string, unknown>): ToolOutcome
     next = updateCard(next, card.id, patch)
     updated.push(card.id)
   }
-  return { doc: next, result: JSON.stringify({ updated, missing }), summary: `Updated ${plural(updated.length, 'card')}` }
+  const edited = next.cards.filter((c) => updated.includes(c.id))
+  return {
+    doc: next,
+    result: JSON.stringify({ updated, missing }),
+    summary: edited.length === 0 ? 'No cards found to edit' : `Edited ${kinds(edited)}`,
+    details: edited.map(labelled),
+  }
 }
 
 function deleteCards(doc: CanvasDoc, args: Record<string, unknown>): ToolOutcome {
   const ids = strings(args.ids) ?? fail('ids must be a list of card ids')
   const gone = ids.filter((id) => doc.cards.some((c) => c.id === id))
+  const removed = doc.cards.filter((c) => gone.includes(c.id))
   return {
     doc: removeCards(doc, new Set(gone)),
     result: JSON.stringify({ deleted: gone, missing: ids.filter((id) => !gone.includes(id)) }),
-    summary: `Deleted ${plural(gone.length, 'card')}`,
+    summary: removed.length === 0 ? 'No cards found to delete' : `Deleted ${kinds(removed)}`,
+    details: removed.map(labelled),
   }
 }
 
@@ -294,33 +325,45 @@ function connectCards(doc: CanvasDoc, args: Record<string, unknown>, ctx: AgentC
   let next = doc
   let connected = 0
   const skipped: unknown[] = []
+  const details: string[] = []
+  const nameOf = (id: string) => {
+    const card = doc.cards.find((c) => c.id === id)
+    return card ? named(card) : id
+  }
   for (const link of links) {
     const before = next
     if (typeof link.from === 'string' && typeof link.to === 'string' && next.edges.length < MAX_EDGES)
       next = addEdge(next, link.from, link.to, ctx.newId?.())
-    if (next === before) skipped.push(link)
-    else connected += 1
+    if (next === before) {
+      skipped.push(link)
+    } else {
+      connected += 1
+      details.push(`${nameOf(String(link.from))} to ${nameOf(String(link.to))}`)
+    }
   }
   return {
     doc: next,
     result: JSON.stringify({ connected, skipped }),
-    summary: `Drew ${plural(connected, 'arrow')}`,
+    summary: connected === 0 ? 'No arrows drawn' : `Drew ${connected === 1 ? 'an arrow' : `${connected} arrows`}`,
+    details,
   }
 }
 
 function frameCards(doc: CanvasDoc, args: Record<string, unknown>, ctx: AgentContext): ToolOutcome {
   const ids = strings(args.ids) ?? fail('ids must be a list of card ids')
-  const title = typeof args.title === 'string' ? args.title : 'Frame'
-  const boxes = doc.cards.filter((c) => ids.includes(c.id)).map((c) => boxOf(c, ctx))
+  let title = typeof args.title === 'string' ? args.title : 'Frame'
+  const framed = doc.cards.filter((c) => ids.includes(c.id))
+  const boxes = framed.map((c) => boxOf(c, ctx))
   if (boxes.length === 0) fail('none of those cards exist')
   if (doc.frames.length >= MAX_FRAMES) fail('the canvas has as many frames as it can hold')
   const frame = newFrame(frameAround(boxes), ctx.newId?.())
   const next = renameFrame(addFrame(doc, frame), frame.id, title)
-  const named = next.frames.find((f) => f.id === frame.id)?.title ?? title
+  title = next.frames.find((f) => f.id === frame.id)?.title ?? title
   return {
     doc: next,
     result: JSON.stringify({ frame: frame.id }),
-    summary: `Framed ${plural(boxes.length, 'card')} as “${named}”`,
+    summary: `Framed ${plural(boxes.length, 'card')} as “${title}”`,
+    details: framed.map(labelled),
   }
 }
 
@@ -336,10 +379,12 @@ export function runCanvasTool(doc: CanvasDoc, call: AiToolCall, ctx: AgentContex
     const input = args as Record<string, unknown>
     switch (call.name) {
       case 'read_canvas':
-        return { doc, result: JSON.stringify(readCanvas(doc, ctx)), summary: 'Read the canvas' }
+        return { doc, result: JSON.stringify(readCanvas(doc, ctx)), summary: 'Read the canvas', details: [] }
       case 'read_cards': {
         const read = readCards(doc, input)
-        return { doc, result: JSON.stringify(read), summary: `Read ${plural(read.cards.length, 'card')}` }
+        const found = doc.cards.filter((c) => read.cards.some((r) => r.id === c.id))
+        const summary = found.length === 0 ? 'No cards found to read' : `Read ${kinds(found)}`
+        return { doc, result: JSON.stringify(read), summary, details: found.map(labelled) }
       }
       case 'create_cards':
         return createCards(doc, input, ctx)
@@ -357,7 +402,7 @@ export function runCanvasTool(doc: CanvasDoc, call: AiToolCall, ctx: AgentContex
   } catch (error) {
     if (!(error instanceof ToolError)) throw error
     const summary = error.summary ?? `Couldn’t ${ACTIONS[call.name] ?? 'run a step'}`
-    return { doc, result: `Error: ${error.message}`, summary }
+    return { doc, result: `Error: ${error.message}`, summary, details: [] }
   }
 }
 
@@ -393,8 +438,10 @@ export interface AgentChat {
 }
 
 export type AgentReport =
+  | { type: 'round' }
+  | { type: 'think'; text: string }
   | { type: 'reply'; text: string }
-  | { type: 'step'; text: string }
+  | { type: 'step'; text: string; details: string[] }
   | { type: 'working' }
 
 export interface TurnDeps {
@@ -430,6 +477,8 @@ export async function runTurn(history: readonly WireMessage[], prompt: string, d
     const closed = round === MAX_ROUNDS - 1
     const requestId = deps.newRequestId()
     deps.onRequest?.(requestId)
+    deps.report({ type: 'round' })
+    let thinking = ''
     let text = ''
     let calls: AiToolCall[] = []
     let blocks: unknown[] | undefined
@@ -439,6 +488,9 @@ export async function runTurn(history: readonly WireMessage[], prompt: string, d
         if (event.type === 'delta') {
           text += event.text
           deps.report({ type: 'reply', text })
+        } else if (event.type === 'reasoning') {
+          thinking += event.text
+          deps.report({ type: 'think', text: thinking })
         } else if (event.type === 'tool_calls') {
           calls = event.calls
           blocks = event.blocks
@@ -469,7 +521,7 @@ export async function runTurn(history: readonly WireMessage[], prompt: string, d
         created.push(...made.map((c) => c.id))
       }
       if (deps.cancelled()) return { reply: '', created, stopped: true }
-      deps.report({ type: 'step', text: outcome.summary })
+      deps.report({ type: 'step', text: outcome.summary, details: outcome.details })
       messages.push({ role: 'tool', content: outcome.result, tool_call_id: call.id })
     }
   }

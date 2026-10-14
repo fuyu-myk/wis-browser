@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 
 
 import type { WireMessage } from '@/lib/ai'
 import type { CanvasDoc } from '@/lib/canvas'
-import { estimateHeight, runTurn, type AgentContext, type TurnResult } from '@/lib/canvasAgent'
+import { estimateHeight, runTurn, type AgentContext, type AgentReport, type TurnResult } from '@/lib/canvasAgent'
 import type { CanvasAiStatus, CanvasChannel } from '@/lib/canvasChannel'
 
 import type { SurfaceHandle } from './CanvasSurface'
@@ -12,8 +12,54 @@ const MAX_HISTORY = 20
 export type LogEntry =
   | { id: number; kind: 'user'; text: string }
   | { id: number; kind: 'reply'; text: string }
-  | { id: number; kind: 'step'; text: string }
+  | { id: number; kind: 'step'; text: string; details: readonly string[] }
   | { id: number; kind: 'error'; text: string }
+  | { id: number; kind: 'think'; text: string; ms: number | null; live: boolean }
+
+type NewEntry = LogEntry extends infer E ? (E extends LogEntry ? Omit<E, 'id'> : never) : never
+
+interface LogEdits {
+  add: (entry: NewEntry) => number
+  patch: (id: number, changes: Partial<{ text: string; ms: number | null; live: boolean }>) => void
+  remove: (id: number) => void
+  working: () => void
+}
+
+/** Turns a turn's reports into log rows: a live thinking row per round, the
+ *  streamed reply, and each step with the cards it touched. */
+function logWriter(edits: LogEdits) {
+  let reply: number | null = null
+  let think: { id: number; started: number; text: string } | null = null
+  const settle = () => {
+    if (!think) return
+    if (think.text === '') edits.remove(think.id)
+    else edits.patch(think.id, { ms: performance.now() - think.started, live: false })
+    think = null
+  }
+  const report = (entry: AgentReport) => {
+    if (entry.type === 'round') {
+      settle()
+      think = { id: edits.add({ kind: 'think', text: '', ms: null, live: true }), started: performance.now(), text: '' }
+    } else if (entry.type === 'think') {
+      if (think) {
+        think.text = entry.text
+        edits.patch(think.id, { text: entry.text })
+      }
+    } else if (entry.type === 'working') {
+      settle()
+      if (reply !== null) edits.remove(reply)
+      reply = null
+      edits.working()
+    } else if (entry.type === 'step') {
+      edits.add({ kind: 'step', text: entry.text, details: entry.details })
+    } else {
+      settle()
+      if (reply === null) reply = edits.add({ kind: 'reply', text: entry.text })
+      else edits.patch(reply, { text: entry.text })
+    }
+  }
+  return { report, settle }
+}
 
 export type AgentActivity = 'idle' | 'thinking' | 'working'
 
@@ -62,10 +108,16 @@ export function useCanvasAgent({ channel, docRef, surface, apply }: AgentOptions
     }
   }, [channel, refresh])
 
-  const add = (entry: Omit<LogEntry, 'id'>) => {
+  const add = (entry: NewEntry) => {
     const id = nextId.current++
     setLog((current) => [...current, { ...entry, id } as LogEntry])
     return id
+  }
+  const edits: LogEdits = {
+    add,
+    patch: (id, changes) => setLog((current) => current.map((e) => (e.id === id ? ({ ...e, ...changes } as LogEntry) : e))),
+    remove: (id) => setLog((current) => current.filter((e) => e.id !== id)),
+    working: () => setActivity('working'),
   }
 
   const send = (prompt: string) => {
@@ -75,7 +127,7 @@ export function useCanvasAgent({ channel, docRef, surface, apply }: AgentOptions
     stopped.current = false
     setActivity('thinking')
     add({ kind: 'user', text })
-    let reply: number | null = null
+    const writer = logWriter(edits)
     let changed = false
     const context = (): AgentContext => {
       const s = surface.current
@@ -103,19 +155,8 @@ export function useCanvasAgent({ channel, docRef, surface, apply }: AgentOptions
       cancelled: () => stopped.current || !alive.current,
       report: (entry) => {
         if (!alive.current) return
-        if (entry.type === 'working') {
-          const drop = reply
-          reply = null
-          setActivity('working')
-          if (drop !== null) setLog((current) => current.filter((e) => e.id !== drop))
-        } else if (entry.type === 'step') {
-          add({ kind: 'step', text: entry.text })
-        } else if (reply === null) {
-          reply = add({ kind: 'reply', text: entry.text })
-        } else {
-          const id = reply
-          setLog((current) => current.map((e) => (e.id === id ? { ...e, text: entry.text } : e)))
-        }
+        if (entry.type === 'round') setActivity('thinking')
+        writer.report(entry)
       },
     })
       .catch((error: unknown): TurnResult => ({
@@ -127,10 +168,11 @@ export function useCanvasAgent({ channel, docRef, surface, apply }: AgentOptions
       request.current = null
       halt.current = () => undefined
       if (!alive.current) return
+      writer.settle()
       setActivity('idle')
       if (result.error) add({ kind: 'error', text: result.error })
-      else if (result.stopped) add({ kind: 'step', text: 'Stopped' })
-      else if (result.reply.trim() === '') add({ kind: 'step', text: 'Finished' })
+      else if (result.stopped) add({ kind: 'step', text: 'Stopped', details: [] })
+      else if (result.reply.trim() === '') add({ kind: 'step', text: 'Finished', details: [] })
       if (!result.error && !result.stopped) {
         history.current = [
           ...history.current,

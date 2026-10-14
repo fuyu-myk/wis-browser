@@ -903,9 +903,89 @@ body,
   color: var(--text-muted);
   font-size: 12px;
 }
-.canvas-agent-step::before {
-  content: '·';
-  margin-right: 6px;
+.canvas-agent-disclosure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 3px 0;
+}
+.canvas-agent-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 12px/1.5 var(--font-sans);
+  cursor: pointer;
+}
+.canvas-agent-toggle.is-static {
+  cursor: default;
+}
+.canvas-agent-line {
+  color: var(--text-muted);
+  transition: color var(--edge-fade);
+}
+.canvas-agent-toggle:not(.is-static):hover .canvas-agent-line {
+  color: var(--text-secondary);
+}
+.canvas-agent-line.is-live,
+.canvas-agent-label.is-live {
+  background: linear-gradient(100deg, var(--text-muted) 30%, var(--text-primary) 50%, var(--text-muted) 70%);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: canvas-shimmer 1.8s linear infinite;
+}
+@keyframes canvas-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .canvas-agent-line.is-live,
+  .canvas-agent-label.is-live {
+    background: none;
+    color: var(--text-secondary);
+    -webkit-text-fill-color: currentColor;
+    animation: none;
+  }
+}
+.canvas-agent-chevron {
+  width: 13px;
+  height: 13px;
+  color: var(--text-muted);
+  transition: transform 160ms ease-out;
+}
+.canvas-agent-chevron.is-open {
+  transform: rotate(180deg);
+}
+.canvas-agent-reasoning,
+.canvas-agent-details {
+  margin: 0;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.canvas-agent-reasoning {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.canvas-agent-details {
+  list-style: none;
+}
+.canvas-agent-details li {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .canvas-agent-reply {
   margin: 4px 0 8px;
