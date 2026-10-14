@@ -59,29 +59,37 @@ impl Drop for Listing {
     }
 }
 
-/// Counts a tab's open streams; dropping it closes one.
-struct Stream(String);
+type Counts = LazyLock<Mutex<HashMap<String, usize>>>;
+
+static WEB_READS: Counts = LazyLock::new(Default::default);
+
+/// Counts a tab's open streams or web reads; dropping it closes one.
+struct Stream(&'static Counts, String);
 
 impl Stream {
     fn open(label: &str) -> Option<Self> {
-        let mut streams = STREAMS.lock().ok()?;
-        let open = streams.entry(label.to_string()).or_default();
+        Self::open_in(&STREAMS, label)
+    }
+
+    fn open_in(counts: &'static Counts, label: &str) -> Option<Self> {
+        let mut open_now = counts.lock().ok()?;
+        let open = open_now.entry(label.to_string()).or_default();
         if *open >= MAX_STREAMS_PER_TAB {
             return None;
         }
 
         *open += 1;
-        Some(Self(label.to_string()))
+        Some(Self(counts, label.to_string()))
     }
 }
 
 impl Drop for Stream {
     fn drop(&mut self) {
-        if let Ok(mut streams) = STREAMS.lock() {
-            if let Some(open) = streams.get_mut(&self.0) {
+        if let Ok(mut open_now) = self.0.lock() {
+            if let Some(open) = open_now.get_mut(&self.1) {
                 *open = open.saturating_sub(1);
                 if *open == 0 {
-                    streams.remove(&self.0);
+                    open_now.remove(&self.1);
                 }
             }
         }
@@ -147,6 +155,10 @@ enum Request {
     Models,
     #[serde(rename = "aiSetModel")]
     SetModel { model: Option<String> },
+    #[serde(rename = "aiWebSearch")]
+    WebSearch { query: String },
+    #[serde(rename = "aiWebFetch")]
+    WebFetch { url: String },
 }
 
 const MAX_MODEL_ID: usize = 200;
@@ -213,6 +225,18 @@ async fn run(app: &AppHandle, label: &str, tab: CanvasTab, request: Request) -> 
                 "assistant": settings.model,
             }))
         }
+        Request::WebSearch { query } => {
+            let _read = web_read(label)?;
+            let window = window_of(app, label)?;
+            let results = crate::ai_fetch::search_in(window, state, query, Some(tab.workspace)).await?;
+            Ok(json!(results))
+        }
+        Request::WebFetch { url } => {
+            let _read = web_read(label)?;
+            let window = window_of(app, label)?;
+            let page = crate::ai_fetch::fetch_in(window, state, url, None, Some(tab.workspace)).await?;
+            Ok(json!(page))
+        }
         Request::SetModel { model } => {
             let model = tidy_model(model)?;
             crate::commands::mutate_unit(app, &state, |s| {
@@ -259,8 +283,8 @@ async fn run(app: &AppHandle, label: &str, tab: CanvasTab, request: Request) -> 
                 no_tools,
                 model: Some(model),
             };
-            let tools = |_: &wis_core::AiSettings| ChatTools {
-                web: false,
+            let tools = |ai: &wis_core::AiSettings| ChatTools {
+                web: ai.web_access,
                 local: false,
                 action: false,
                 canvas: true,
@@ -310,6 +334,21 @@ fn reply(app: &AppHandle, label: &str, id: Value, result: WisResult<Value>) {
         }
     };
     crate::canvas::deliver(app, label, &reply.to_string());
+}
+
+fn web_read(label: &str) -> WisResult<Stream> {
+    Stream::open_in(&WEB_READS, label).ok_or_else(|| WisError::InvalidInput {
+        message: "the canvas agent is already reading the web".into(),
+    })
+}
+
+/// The window a canvas tab sits in, which hosts the hidden page a web read uses.
+fn window_of(app: &AppHandle, label: &str) -> WisResult<tauri::Window> {
+    app.get_webview(label)
+        .map(|webview| webview.window())
+        .ok_or_else(|| WisError::InvalidInput {
+            message: "this canvas tab is gone".into(),
+        })
 }
 
 fn bad_request() -> WisError {

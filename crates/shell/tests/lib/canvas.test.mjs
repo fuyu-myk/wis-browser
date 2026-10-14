@@ -151,6 +151,8 @@ describe('the channel', () => {
     void channel.aiModels()
     void channel.aiSetModel('qwen3:8b')
     void channel.aiSetModel(null)
+    void channel.aiWebSearch('kyoto weather')
+    void channel.aiWebFetch('https://example.com/')
     assert.deepEqual(posted, [
       { id: 1, op: 'aiStatus' },
       { id: 2, op: 'aiCancel', request_id: 'r1' },
@@ -158,6 +160,8 @@ describe('the channel', () => {
       { id: 4, op: 'aiModels' },
       { id: 5, op: 'aiSetModel', model: 'qwen3:8b' },
       { id: 6, op: 'aiSetModel', model: null },
+      { id: 7, op: 'aiWebSearch', query: 'kyoto weather' },
+      { id: 8, op: 'aiWebFetch', url: 'https://example.com/' },
     ])
     channel.reply({ id: 1, ok: true, value: { available: true, model: 'm' } })
     assert.deepEqual(await status, { available: true, model: 'm' })

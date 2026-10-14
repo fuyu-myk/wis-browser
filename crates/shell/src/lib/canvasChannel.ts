@@ -3,7 +3,7 @@
  * id, and Rust's reply, evaluated into the page, settles the matching request.
  */
 
-import type { StreamEvent } from '@/bindings/types'
+import type { AiFetchResponse, AiSearchResult, StreamEvent } from '@/bindings/types'
 import type { WireMessage } from '@/lib/ai'
 import type { CanvasSummary } from '@/lib/canvas'
 
@@ -53,6 +53,8 @@ export interface CanvasChannel {
   ground: () => Promise<unknown>
   aiModels: () => Promise<CanvasModels>
   aiSetModel: (model: string | null) => Promise<null>
+  aiWebSearch: (query: string) => Promise<AiSearchResult[]>
+  aiWebFetch: (url: string) => Promise<AiFetchResponse>
 }
 
 interface Waiting {
@@ -116,5 +118,7 @@ export function createCanvasChannel(post: ((text: string) => void) | null): Canv
     ground: () => request({ op: 'ground' }),
     aiModels: () => request({ op: 'aiModels' }),
     aiSetModel: (model) => request({ op: 'aiSetModel', model }),
+    aiWebSearch: (query) => request({ op: 'aiWebSearch', query }),
+    aiWebFetch: (url) => request({ op: 'aiWebFetch', url }),
   }
 }

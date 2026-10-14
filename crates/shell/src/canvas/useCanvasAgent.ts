@@ -10,6 +10,10 @@ import type { SurfaceHandle } from './CanvasSurface'
 
 const MAX_HISTORY = 20
 
+const stoppedRead = (): never => {
+  throw new Error('Stopped')
+}
+
 export type LogEntry =
   | { id: number; kind: 'user'; text: string; files: readonly string[] }
   | { id: number; kind: 'reply'; text: string }
@@ -145,6 +149,10 @@ export function useCanvasAgent({ channel, docRef, surface, apply }: AgentOptions
     })
     runTurn(history.current, text, {
       chat: (chat, onEvent) => Promise.race([channel.aiChat(chat, onEvent), halted]),
+      web: {
+        search: (query) => Promise.race([channel.aiWebSearch(query), halted.then(stoppedRead)]),
+        fetch: (url) => Promise.race([channel.aiWebFetch(url), halted.then(stoppedRead)]),
+      },
       newRequestId: () => crypto.randomUUID(),
       onRequest: (id) => {
         request.current = id

@@ -58,6 +58,16 @@ pub async fn ai_web_search(
     state: State<'_, AppState>,
     query: String,
 ) -> wis_core::WisResult<Vec<AiSearchResult>> {
+    search_in(window, state, query, None).await
+}
+
+/// [`ai_web_search`] for a caller that names its workspace.
+pub(crate) async fn search_in(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    query: String,
+    workspace: Option<wis_core::WorkspaceId>,
+) -> wis_core::WisResult<Vec<AiSearchResult>> {
     require_web_access(&state).await?;
     let query = query.trim().to_string();
     if query.is_empty() || query.chars().count() > 400 {
@@ -66,7 +76,7 @@ pub async fn ai_web_search(
         });
     }
 
-    imp::search(window, state, &query).await
+    imp::search(window, state, &query, workspace).await
 }
 
 const DEFAULT_READ_CHARS: u32 = 8000;
@@ -89,6 +99,17 @@ pub async fn ai_web_fetch(
     url: String,
     max_chars: Option<u32>,
 ) -> wis_core::WisResult<AiFetchResponse> {
+    fetch_in(window, state, url, max_chars, None).await
+}
+
+/// [`ai_web_fetch`] for a caller that names its workspace.
+pub(crate) async fn fetch_in(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    url: String,
+    max_chars: Option<u32>,
+    workspace: Option<wis_core::WorkspaceId>,
+) -> wis_core::WisResult<AiFetchResponse> {
     require_web_access(&state).await?;
     let parsed = url::Url::parse(url.trim()).map_err(|_| wis_core::WisError::InvalidInput {
         message: "not a valid URL".into(),
@@ -99,7 +120,7 @@ pub async fn ai_web_fetch(
         });
     }
 
-    imp::fetch_page(window, state, parsed, read_limit(max_chars)).await
+    imp::fetch_page(window, state, parsed, read_limit(max_chars), workspace).await
 }
 
 async fn require_web_access(state: &State<'_, AppState>) -> wis_core::WisResult<()> {
@@ -223,10 +244,11 @@ mod imp {
         window: tauri::Window,
         state: State<'_, AppState>,
         query: &str,
+        workspace: Option<wis_core::WorkspaceId>,
     ) -> wis_core::WisResult<Vec<AiSearchResult>> {
         let target = Url::parse_with_params("https://html.duckduckgo.com/html/", [("q", query)])
             .expect("static search URL with encoded query is valid");
-        let fetched = run_fetch(window, state, target, search_script()).await?;
+        let fetched = run_fetch(window, state, target, search_script(), workspace).await?;
 
         let raw: Vec<RawSearchResult> = serde_json::from_str(&fetched.text).unwrap_or_default();
         let results = raw
@@ -250,8 +272,9 @@ mod imp {
         state: State<'_, AppState>,
         target: Url,
         max_chars: u32,
+        workspace: Option<wis_core::WorkspaceId>,
     ) -> wis_core::WisResult<AiFetchResponse> {
-        let fetched = run_fetch(window, state, target, page_script(max_chars)).await?;
+        let fetched = run_fetch(window, state, target, page_script(max_chars), workspace).await?;
         if fetched.text.trim().is_empty() {
             return Err(wis_core::WisError::InvalidInput {
                 message: "the page had no readable text".into(),
@@ -272,14 +295,15 @@ mod imp {
         state: State<'_, AppState>,
         target: Url,
         script: String,
+        workspace: Option<wis_core::WorkspaceId>,
     ) -> wis_core::WisResult<Fetched> {
         let app = tauri::Manager::app_handle(&window).clone();
         let label = format!("wis-fetch-{}", uuid::Uuid::new_v4());
 
         let (active_ws, user_agent) = {
             let browser = state.browser.lock().await;
-            let active_ws = state
-                .window_workspace(window.label())
+            let active_ws = workspace
+                .or_else(|| state.window_workspace(window.label()))
                 .unwrap_or(browser.active_workspace_id);
             let user_agent = wis_core::ua_for_host(
                 target.host_str().unwrap_or_default(),

@@ -298,6 +298,69 @@ describe('a turn', () => {
     assert.ok(content.indexOf('<attachment') < content.indexOf('summarise this'))
   })
 
+  test('the web tools search, then read only pages it found or was given', async () => {
+    const calls = (list) => ({ type: 'tool_calls', calls: list.map(([name, args], i) => ({ id: `w${i}`, name, arguments: JSON.stringify(args) })) })
+    const { sent, chat } = scripted([
+      [calls([['web_search', { query: 'kyoto weather' }]]), { type: 'done' }],
+      [
+        calls([
+          ['web_fetch', { url: 'https://weather.example/kyoto' }],
+          ['web_fetch', { url: 'https://evil.example/' }],
+          ['web_search', { query: 'Kyoto weather' }],
+          ['web_fetch', { url: 'https://given.example/page' }],
+        ]),
+        { type: 'done' },
+      ],
+      [{ type: 'delta', text: 'ok' }, { type: 'done' }],
+    ])
+    const searched = []
+    const fetched = []
+    const run = deps(chat, {
+      web: {
+        search: async (query) => {
+          searched.push(query)
+          return [{ title: 'Kyoto forecast', url: 'https://weather.example/kyoto', snippet: 'Mild' }]
+        },
+        fetch: async (url) => {
+          fetched.push(url)
+          return { url, title: 'Forecast', text: 'Sunny all week' }
+        },
+      },
+    })
+    await agent.runTurn([], 'check https://given.example/page and the weather', run.deps)
+    assert.deepEqual(searched, ['kyoto weather'])
+    assert.deepEqual(fetched, ['https://weather.example/kyoto', 'https://given.example/page'])
+    const results = sent[2].messages.filter((m) => m.role === 'tool').map((m) => m.content)
+    assert.match(results[0], /Kyoto forecast/)
+    assert.match(results[1], /Sunny all week/)
+    assert.match(results[2], /^Error: .*web_search/)
+    assert.match(results[3], /^Error: .*already searched/)
+    const steps = run.log.filter((e) => e.type === 'step')
+    assert.equal(steps[0].text, 'Searched the web for “kyoto weather”')
+    assert.deepEqual(steps[0].details, ['Kyoto forecast'])
+    assert.equal(steps[1].text, 'Read a page')
+    assert.deepEqual(steps[1].details, ['Forecast (weather.example)'])
+  })
+
+  test('without web access the web tools refuse', async () => {
+    const { sent, chat } = scripted([
+      [{ type: 'tool_calls', calls: [{ id: 'w', name: 'web_search', arguments: '{"query":"x"}' }] }, { type: 'done' }],
+      [{ type: 'delta', text: 'ok' }, { type: 'done' }],
+    ])
+    await agent.runTurn([], 'go', deps(chat).deps)
+    assert.match(sent[1].messages.at(-1).content, /^Error: web access is off/)
+  })
+
+  test('a failed search says so', async () => {
+    const { chat } = scripted([
+      [{ type: 'tool_calls', calls: [{ id: 'w', name: 'web_search', arguments: '{"query":"x"}' }] }, { type: 'done' }],
+      [{ type: 'delta', text: 'ok' }, { type: 'done' }],
+    ])
+    const run = deps(chat, { web: { search: async () => { throw new Error('offline') }, fetch: async () => ({}) } })
+    await agent.runTurn([], 'go', run.deps)
+    assert.equal(run.log.find((e) => e.type === 'step').text, 'Couldn’t search the web')
+  })
+
   test('a provider error ends the turn with it, and nothing changes', async () => {
     const { chat } = scripted([[{ type: 'error', message: 'provider error 401' }]])
     const run = deps(chat)
