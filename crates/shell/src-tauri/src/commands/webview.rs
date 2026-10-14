@@ -695,11 +695,14 @@ pub async fn create_tab_webview(
     crate::video_popout::install(&child);
 
     // Per-site camera/microphone consent gate (prompts before getUserMedia).
-    crate::permissions::install(&child);
+    // Canvas tabs carry neither it nor cosmetic filtering.
+    if !canvas_tab {
+        crate::permissions::install(&child);
+    }
 
     // Cosmetic filtering (element hiding). Permissive workspaces opt out of
     // blocking entirely, so they skip the channel too.
-    if privacy_mode != wis_core::PrivacyMode::Permissive {
+    if privacy_mode != wis_core::PrivacyMode::Permissive && !canvas_tab {
         crate::cosmetic::install(&child);
         // Seed the document-start scriptlet for the first URL now, before the
         // initial page's scripts run.

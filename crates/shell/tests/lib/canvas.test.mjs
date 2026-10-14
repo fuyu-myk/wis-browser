@@ -474,3 +474,43 @@ describe('frames', () => {
     assert.deepEqual(canvas.parseDoc(stored).frames.map((f) => f.title), ['ok'])
   })
 })
+
+describe('HTML cards', () => {
+  test('a new HTML card is centred on the point with a starter page and a fixed size', () => {
+    const made = canvas.newHtmlCard(500, 400, 'h')
+    assert.equal(made.kind, 'html')
+    assert.deepEqual([made.x + made.w / 2, made.y + made.h / 2], [500, 400])
+    assert.match(made.text, /<script>/)
+  })
+
+  test('stored HTML cards keep their kind and a sane height, and may hold longer text', () => {
+    const long = 'x'.repeat(100_000)
+    const stored = JSON.stringify({
+      version: 1,
+      cards: [
+        { id: 'h', x: 0, y: 0, w: 400, h: 99_999, text: long, kind: 'html' },
+        { id: 'n', x: 0, y: 0, w: 280, h: 300, text: long, kind: 'chart' },
+        { id: 'z', x: 0, y: 0, w: 400, text: '<p>', kind: 'html' },
+      ],
+    })
+    const [html, note, bare] = canvas.parseDoc(stored).cards
+    assert.deepEqual([html.kind, html.h, html.text.length], ['html', canvas.MAX_CARD_HEIGHT, 100_000])
+    assert.deepEqual([note.kind, note.h, note.text.length], [undefined, undefined, 20_000], 'unknown kinds read as notes')
+    assert.equal(bare.h, canvas.HTML_CARD_HEIGHT)
+  })
+
+  test('resizing keeps an HTML card within limits and leaves notes alone', () => {
+    const doc = {
+      version: 1,
+      view: { x: 0, y: 0, k: 1 },
+      cards: [canvas.newHtmlCard(0, 0, 'h'), card('n')],
+      edges: [],
+      frames: [],
+    }
+    const small = canvas.resizeCard(doc, 'h', 1, 1).cards[0]
+    assert.deepEqual([small.w, small.h], [canvas.MIN_CARD_WIDTH, canvas.MIN_CARD_HEIGHT])
+    assert.equal(canvas.resizeCard(doc, 'n', 500, 500), doc)
+    const same = doc.cards[0]
+    assert.equal(canvas.resizeCard(doc, 'h', same.w, same.h), doc)
+  })
+})

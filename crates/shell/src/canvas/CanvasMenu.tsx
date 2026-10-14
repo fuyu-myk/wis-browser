@@ -23,7 +23,9 @@ interface CanvasMenuProps {
 
 export interface CanvasCommands {
   newCard: (at: Point) => void
+  newHtmlCard: (at: Point) => void
   newFrame: (at: Point) => void
+  editCard: (id: string) => void
   group: () => void
   ungroup: () => void
   frameSelection: () => void
@@ -46,9 +48,12 @@ export function canvasMenuItems(
   at: Point,
   can: { group: boolean; ungroup: boolean; frame: boolean; remove: boolean },
   commands: CanvasCommands,
+  html?: string,
 ): MenuItem[] {
   return [
-    { label: 'New card', run: () => commands.newCard(at) },
+    ...(html ? [{ label: 'Edit HTML', run: () => commands.editCard(html), divided: false }] : []),
+    { label: 'New card', run: () => commands.newCard(at), divided: html !== undefined },
+    { label: 'New HTML card', run: () => commands.newHtmlCard(at) },
     { label: 'New frame', run: () => commands.newFrame(at) },
     { label: 'Group', ...hint('Cmd+G'), disabled: !can.group, run: commands.group, divided: true },
     { label: 'Ungroup', ...hint('Cmd+Shift+G'), disabled: !can.ungroup, run: commands.ungroup },

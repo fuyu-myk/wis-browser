@@ -15,10 +15,18 @@ mod imp {
     use tauri::{AppHandle, Wry};
     use wis_core::{WisError, WisResult};
 
-    const FRAME_CAP_FEATURE: &str = "PreferPageRenderingUpdatesNear60FPSEnabled";
+    /// Internal WebKit features canvas tabs turn off: the 60 fps cap, and the
+    /// connections an HTML card could open past its CSP (WebRTC, preconnect,
+    /// DNS prefetch). `canvas_frame.html` refuses to run cards if any survive.
+    pub(super) const DISABLED_FEATURES: [&str; 4] = [
+        "PreferPageRenderingUpdatesNear60FPSEnabled",
+        "PeerConnectionEnabled",
+        "LinkPreconnect",
+        "LinkDNSPrefetchEnabled",
+    ];
 
     /// Its own throwaway store, so the workspace proxy never reaches a shared
-    /// one, and pages drawn at the display's full rate.
+    /// one, pages drawn at the display's full rate, and no side channels.
     pub async fn with_canvas_configuration(
         app: &AppHandle,
         builder: WebviewBuilder<Wry>,
@@ -31,8 +39,8 @@ mod imp {
             let config = unsafe {
                 let config = WKWebViewConfiguration::new(mtm);
                 config.setWebsiteDataStore(&WKWebsiteDataStore::nonPersistentDataStore(mtm));
-                if !lift_frame_cap(&config.preferences()) {
-                    log::warn!("{FRAME_CAP_FEATURE} is gone; canvases render at 60 fps");
+                for name in disable_features(&config.preferences()) {
+                    log::warn!("WebKit feature {name} is gone; canvas tabs keep its default");
                 }
                 config
             };
@@ -49,14 +57,15 @@ mod imp {
         })
     }
 
-    /// WebKit holds pages near 60 fps unless this internal feature is off.
-    unsafe fn lift_frame_cap(prefs: &WKPreferences) -> bool {
+    /// Turns off each of [`DISABLED_FEATURES`] and returns those WebKit lacks.
+    unsafe fn disable_features(prefs: &WKPreferences) -> Vec<&'static str> {
+        let mut missing = DISABLED_FEATURES.to_vec();
         let Some(class) = AnyClass::get(c"WKPreferences") else {
-            return false;
+            return missing;
         };
         let features: *mut AnyObject = msg_send![class, _features];
         if features.is_null() {
-            return false;
+            return missing;
         }
 
         let count: usize = msg_send![features, count];
@@ -68,13 +77,17 @@ mod imp {
             }
 
             let utf8: *const c_char = msg_send![key, UTF8String];
-            if !utf8.is_null() && CStr::from_ptr(utf8).to_bytes() == FRAME_CAP_FEATURE.as_bytes() {
+            if utf8.is_null() {
+                continue;
+            }
+            let key = CStr::from_ptr(utf8).to_bytes();
+            if let Some(at) = missing.iter().position(|name| name.as_bytes() == key) {
                 let _: () = msg_send![prefs, _setEnabled: false, forFeature: feature];
-                return true;
+                missing.remove(at);
             }
         }
 
-        false
+        missing
     }
 
     #[cfg(test)]
@@ -83,6 +96,13 @@ mod imp {
         use objc2::{class, sel};
 
         type Obj = *mut AnyObject;
+
+        #[test]
+        fn cards_lose_the_connections_their_csp_cannot_stop() {
+            for name in ["PeerConnectionEnabled", "LinkPreconnect", "LinkDNSPrefetchEnabled"] {
+                assert!(super::DISABLED_FEATURES.contains(&name), "{name}");
+            }
+        }
 
         /// A wrong message type aborts at runtime only.
         #[test]

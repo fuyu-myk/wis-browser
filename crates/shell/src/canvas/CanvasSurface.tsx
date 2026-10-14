@@ -23,17 +23,24 @@ import {
   framesInside,
   groupCards,
   groupsIn,
+  HTML_CARD_HEIGHT,
+  MAX_CARD_HEIGHT,
+  MAX_CARD_WIDTH,
   MAX_FRAME_SIZE,
+  MIN_CARD_HEIGHT,
+  MIN_CARD_WIDTH,
   MIN_FRAME_H,
   MIN_FRAME_W,
   moveFrames,
   newCard,
   newFrame,
+  newHtmlCard,
   removeCard,
   removeCards,
   removeEdge,
   removeFrame,
   renameFrame,
+  resizeCard,
   resizeFrame,
   tidyName,
   toCanvas,
@@ -53,6 +60,7 @@ import { Card, CardEditor, type CardHandlers, type Side } from './CanvasCard'
 import { CanvasEdges, type Linking } from './CanvasEdges'
 import { Frame, type FrameHandlers } from './CanvasFrame'
 import { CanvasGroups, GROUP_PAD, type GroupOutline } from './CanvasGroups'
+import { isEscapeFrom } from './CanvasHtml'
 import { canvasMenuItems, CanvasMenu, type CanvasCommands } from './CanvasMenu'
 import { follow, transformOf } from './dom'
 import { useViewGestures } from './useViewGestures'
@@ -74,6 +82,15 @@ interface CanvasSurfaceProps {
 type Selection = ReadonlySet<string>
 type Picked = { kind: 'edge' | 'frame'; id: string } | null
 type Point = { x: number; y: number }
+type Sizing = { kind: 'frame' | 'card'; id: string; w: number; h: number }
+interface Limits {
+  minW: number
+  maxW: number
+  minH: number
+  maxH: number
+}
+const FRAME_LIMITS: Limits = { minW: MIN_FRAME_W, maxW: MAX_FRAME_SIZE, minH: MIN_FRAME_H, maxH: MAX_FRAME_SIZE }
+const CARD_LIMITS: Limits = { minW: MIN_CARD_WIDTH, maxW: MAX_CARD_WIDTH, minH: MIN_CARD_HEIGHT, maxH: MAX_CARD_HEIGHT }
 interface Dragged {
   bases: Map<string, CanvasCard>
   frames: Map<string, CanvasFrame>
@@ -102,7 +119,7 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
   const frameEls = useRef(new Map<string, HTMLElement>())
   const groupEls = useRef(new Map<string, GroupOutline>())
   const dragged = useRef<Dragged | null>(null)
-  const sizing = useRef<{ id: string; w: number; h: number } | null>(null)
+  const sizing = useRef<Sizing | null>(null)
   const heights = useRef(new Map<string, number>())
   const edgeEls = useRef(new Map<string, SVGPathElement[]>())
   const [, setLayout] = useState(0)
@@ -125,11 +142,12 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
   const pickedRef = useRef(picked)
   pickedRef.current = picked
   const [editing, setEditing] = useState<string | null>(null)
+  const [live, setLive] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [draft, setDraft] = useState<CanvasCard | null>(null)
   const [marquee, setMarquee] = useState<Box | null>(null)
   const [linking, setLinking] = useState<Linking | null>(null)
-  const [menu, setMenu] = useState<{ x: number; y: number; at: Point } | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; at: Point; html?: string } | null>(null)
   const [panning, setPanning] = useState(false)
   const boxOf = (card: CanvasCard, dx = 0, dy = 0): Box => ({
     x: card.x + dx,
@@ -165,7 +183,7 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
     }
     if (zoomRef.current) zoomRef.current.textContent = `${Math.round(k * 100)}%`
     const s = sizing.current
-    const sized = s && frameEls.current.get(s.id)
+    const sized = s && (s.kind === 'card' ? cardEls : frameEls).current.get(s.id)
     if (s && sized) {
       sized.style.width = `${s.w}px`
       sized.style.height = `${s.h}px`
@@ -253,6 +271,33 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
     )
   }
 
+  const resizeFrom = (
+    e: ReactPointerEvent<HTMLElement>,
+    target: Omit<Sizing, 'kind'>,
+    kind: Sizing['kind'],
+    limits: Limits,
+    commit: (doc: CanvasDoc, w: number, h: number) => CanvasDoc,
+  ) => {
+    const start = { px: e.clientX, py: e.clientY }
+    follow(
+      (ev) => {
+        const k = view.current.k
+        sizing.current = {
+          kind,
+          id: target.id,
+          w: clamp(target.w + (ev.clientX - start.px) / k, limits.minW, limits.maxW),
+          h: clamp(target.h + (ev.clientY - start.py) / k, limits.minH, limits.maxH),
+        }
+        schedule()
+      },
+      () => {
+        const s = sizing.current
+        sizing.current = null
+        if (s) props.current.onChange(commit(docRef.current, s.w, s.h))
+      },
+    )
+  }
+
   const placeFrame = (box: Box) => {
     const made = newFrame(box)
     props.current.onChange(addFrame(docRef.current, made))
@@ -279,6 +324,17 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
     newCard(at) {
       select(NONE)
       setDraft(newCard(at.x, at.y))
+    },
+    newHtmlCard(at) {
+      const made = newHtmlCard(at.x, at.y)
+      props.current.onChange(addCard(docRef.current, made))
+      select(new Set([made.id]))
+      setEditing(made.id)
+    },
+    editCard(id) {
+      select(expandToGroups(docRef.current, new Set([id])))
+      setLive(null)
+      setEditing(id)
     },
     remove() {
       const current = docRef.current
@@ -318,6 +374,7 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
       } else if (e.key === 'Escape') {
         select(NONE)
         setPicked(null)
+        setLive(null)
       } else if (erase && (pickedRef.current !== null || selectedRef.current.size > 0)) {
         e.preventDefault()
         commands.remove()
@@ -348,6 +405,30 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
       window.removeEventListener('keyup', onKeyUp)
     }
   },[commands])
+
+  const liveGone = live !== null && !cardsById.has(live)
+  useEffect(() => {
+    if (liveGone) setLive(null)
+  }, [liveGone])
+  useEffect(() => {
+    if (live === null) {
+      if (document.activeElement instanceof HTMLIFrameElement) viewportRef.current?.focus({ preventScroll: true })
+      return
+    }
+    const card = () => cardEls.current.get(live)
+    const onDown = (e: PointerEvent) => {
+      if (!card()?.contains(e.target as Node)) setLive(null)
+    }
+    const onMessage = (e: MessageEvent) => {
+      if (isEscapeFrom(e, card()?.querySelector('iframe'))) setLive(null)
+    }
+    window.addEventListener('pointerdown', onDown, true)
+    window.addEventListener('message', onMessage)
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true)
+      window.removeEventListener('message', onMessage)
+    }
+  }, [live])
 
   const pan = (e: ReactPointerEvent<HTMLDivElement>) => {
     const start = { px: e.clientX, py: e.clientY, x: view.current.x, y: view.current.y }
@@ -428,7 +509,8 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
       select(e.metaKey ? new Set([card]) : expandToGroups(docRef.current, new Set([card])))
     else if (frameId) pick({ kind: 'frame', id: frameId })
     else if (edge) pick({ kind: 'edge', id: edge })
-    setMenu({ x: e.clientX, y: e.clientY, at: canvasPoint(e.clientX, e.clientY) })
+    const html = docRef.current.cards.find((c) => c.id === card)?.kind === 'html' ? card : undefined
+    setMenu({ x: e.clientX, y: e.clientY, at: canvasPoint(e.clientX, e.clientY), html })
   }
   const closeMenu = useCallback(() => setMenu(null), [])
 
@@ -507,8 +589,20 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
       })
     },
     edit(id) {
+      commands.editCard(id)
+    },
+    use(id) {
       select(expandToGroups(docRef.current, new Set([id])))
-      setEditing(id)
+      setEditing(null)
+      setLive(id)
+    },
+    resize(target, e) {
+      if (e.button !== 0) return
+      e.stopPropagation()
+      setLive(null)
+      select(new Set([target.id]))
+      const box = { id: target.id, w: target.w, h: target.h ?? HTML_CARD_HEIGHT }
+      resizeFrom(e, box, 'card', CARD_LIMITS, (doc, w, h) => resizeCard(doc, target.id, w, h))
     },
     commit(id, text) {
       setEditing(null)
@@ -551,23 +645,7 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
       if (e.button !== 0) return
       e.stopPropagation()
       pick({ kind: 'frame', id: target.id })
-      const start = { px: e.clientX, py: e.clientY }
-      follow(
-        (ev) => {
-          const k = view.current.k
-          sizing.current = {
-            id: target.id,
-            w: clamp(target.w + (ev.clientX - start.px) / k, MIN_FRAME_W, MAX_FRAME_SIZE),
-            h: clamp(target.h + (ev.clientY - start.py) / k, MIN_FRAME_H, MAX_FRAME_SIZE),
-          }
-          schedule()
-        },
-        () => {
-          const s = sizing.current
-          sizing.current = null
-          if (s) props.current.onChange(resizeFrame(docRef.current, s.id, s.w, s.h))
-        },
-      )
+      resizeFrom(e, target, 'frame', FRAME_LIMITS, (doc, w, h) => resizeFrame(doc, target.id, w, h))
     },
     rename(id) {
       pick({ kind: 'frame', id })
@@ -591,6 +669,7 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
       <div
         className={cx('canvas-viewport', { 'is-panning': panning })}
         ref={viewportRef}
+        tabIndex={-1}
         onPointerDown={onBackgroundDown}
         onDoubleClick={onBackgroundDoubleClick}
         onContextMenu={onContextMenu}
@@ -622,6 +701,7 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
               card={card}
               selected={selected.has(card.id)}
               editing={editing === card.id}
+              live={live === card.id}
               handlers={handlers}
             />
           ))}
@@ -665,6 +745,7 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo }: CanvasS
               remove: selected.size > 0 || picked !== null,
             },
             commands,
+            menu.html,
           )}
           onClose={closeMenu}
         />

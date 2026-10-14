@@ -21,8 +21,16 @@ const FLUSH_EVERY: Duration = Duration::from_secs(120);
 const MAX_MESSAGE_BYTES: usize = wis_core::canvas::MAX_DOC_BYTES + 64 * 1024;
 
 const PAGE_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
-     img-src 'self' data:; font-src 'self' data:; connect-src 'none'; frame-src 'none'; \
-     base-uri 'none'; form-action 'none'";
+     img-src 'self' data:; font-src 'self' data:; connect-src 'none'; \
+     frame-src wis-canvas://localhost/frame; base-uri 'none'; form-action 'none'";
+
+/// The document an HTML card runs in: it takes the card's HTML from the canvas
+/// page once, and may run scripts but never reach the network or the page.
+const FRAME_PATH: &str = "/frame";
+const FRAME_HTML: &str = include_str!("canvas_frame.html");
+const FRAME_CSP: &str = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; \
+     style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; \
+     connect-src 'none'; form-action 'none'; base-uri 'none'; sandbox allow-scripts";
 
 static TABS: LazyLock<Mutex<HashMap<String, CanvasTab>>> = LazyLock::new(Default::default);
 static MEMORY: LazyLock<Mutex<CanvasMemory>> = LazyLock::new(Default::default);
@@ -266,6 +274,11 @@ pub fn handle_request(
         return;
     }
 
+    if request.uri().path() == FRAME_PATH {
+        responder.respond(frame_page());
+        return;
+    }
+
     let app = ctx.app_handle().clone();
     let uri = request.uri().clone();
     tauri::async_runtime::spawn(async move {
@@ -309,6 +322,18 @@ fn bundled_asset(app: &AppHandle, path: &str) -> http::Response<Vec<u8>> {
     }
 }
 
+fn frame_page() -> http::Response<Vec<u8>> {
+    respond(FRAME_HTML.as_bytes().to_vec(), "text/html", FRAME_CSP)
+}
+
+fn dev_csp(origin: &str) -> String {
+    let ws_origin = origin.replacen("http", "ws", 1);
+    format!(
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: {origin} {ws_origin}; \
+         frame-src {SCHEME}://localhost{FRAME_PATH}; base-uri 'none'; form-action 'none'"
+    )
+}
+
 fn dev_path(path: &str) -> Option<&str> {
     if path == "/" {
         return Some("/canvas.html");
@@ -328,12 +353,7 @@ async fn dev_asset(app: &AppHandle, uri: &http::Uri) -> http::Response<Vec<u8>> 
     let Ok(target) = base.join(&format!("{path}{query}")) else {
         return status(400, "bad request");
     };
-    let origin = base.origin().ascii_serialization();
-    let ws_origin = origin.replacen("http", "ws", 1);
-    let csp = format!(
-        "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: {origin} {ws_origin}; \
-         frame-src 'none'; base-uri 'none'; form-action 'none'"
-    );
+    let csp = dev_csp(&base.origin().ascii_serialization());
     let fetched = async {
         let response = reqwest::get(target).await?;
         let mime = response
@@ -567,6 +587,36 @@ mod tests {
         ] {
             assert_eq!(asset_path(refused), None, "{refused} must be refused");
         }
+    }
+
+    fn directives(csp: &str) -> Vec<&str> {
+        csp.split(';').map(str::trim).collect()
+    }
+
+    #[test]
+    fn the_page_may_frame_only_the_card_host() {
+        let host = format!("frame-src {SCHEME}://localhost{FRAME_PATH}");
+        assert!(directives(PAGE_CSP).contains(&host.as_str()));
+        assert!(directives(&dev_csp("http://localhost:1420")).contains(&host.as_str()));
+    }
+
+    #[test]
+    fn cards_run_scripts_but_reach_nothing() {
+        let page = frame_page();
+        let csp = page.headers()["Content-Security-Policy"].to_str().unwrap();
+        for wanted in [
+            "default-src 'none'",
+            "connect-src 'none'",
+            "form-action 'none'",
+            "base-uri 'none'",
+            "sandbox allow-scripts",
+        ] {
+            assert!(directives(csp).contains(&wanted), "{wanted} missing");
+        }
+        assert!(!csp.contains("frame-src") && !csp.contains("http"));
+        let body = String::from_utf8(page.body().clone()).unwrap();
+        assert!(body.contains("e.source !== parent"));
+        assert!(body.contains("typeof RTCPeerConnection !== 'undefined'"));
     }
 
     #[test]

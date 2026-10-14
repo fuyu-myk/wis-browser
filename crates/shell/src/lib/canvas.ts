@@ -15,6 +15,8 @@ export interface CanvasCard {
   w: number
   text: string
   group?: string
+  kind?: 'html'
+  h?: number
 }
 
 export interface CanvasFrame {
@@ -51,7 +53,24 @@ export const MAX_ZOOM = 4
 export const CARD_WIDTH = 280
 export const MIN_CARD_WIDTH = 120
 export const MAX_CARD_WIDTH = 1200
+export const MIN_CARD_HEIGHT = 80
+export const MAX_CARD_HEIGHT = 4000
+export const HTML_CARD_WIDTH = 480
+export const HTML_CARD_HEIGHT = 320
 const MAX_CARD_TEXT = 20_000
+const MAX_HTML_TEXT = 500_000
+const STARTER_HTML = `<!doctype html>
+<style>
+  body { margin: 0; height: 100vh; display: grid; place-items: center; font: 15px system-ui }
+  button { font: inherit; padding: 8px 16px }
+</style>
+<button>Clicked 0 times</button>
+<script>
+  let clicks = 0
+  const button = document.querySelector('button')
+  button.onclick = () => (button.textContent = \`Clicked \${++clicks} times\`)
+</script>
+`
 const MAX_CARDS = 5000
 const MAX_EDGES = 10_000
 const MAX_FRAMES = 1000
@@ -82,17 +101,22 @@ function readView(raw: unknown): CanvasView {
 
 function readCard(raw: unknown): CanvasCard | null {
   if (!isRecord(raw)) return null
-  const { id, x, y, w, text, group } = raw
+  const { id, x, y, w, h, text, group, kind } = raw
   if (typeof id !== 'string' || id === '' || id.length > MAX_ID) return null
   if (!finite(x) || !finite(y) || typeof text !== 'string') return null
+  const html = kind === 'html'
   const card: CanvasCard = {
     id,
     x: clamp(x, -MAX_COORD, MAX_COORD),
     y: clamp(y, -MAX_COORD, MAX_COORD),
     w: clamp(finite(w) ? w : CARD_WIDTH, MIN_CARD_WIDTH, MAX_CARD_WIDTH),
-    text: text.slice(0, MAX_CARD_TEXT),
+    text: text.slice(0, html ? MAX_HTML_TEXT : MAX_CARD_TEXT),
   }
   if (typeof group === 'string' && group !== '' && group.length <= MAX_ID) card.group = group
+  if (html) {
+    card.kind = 'html'
+    card.h = clamp(finite(h) ? h : HTML_CARD_HEIGHT, MIN_CARD_HEIGHT, MAX_CARD_HEIGHT)
+  }
   return card
 }
 
@@ -479,6 +503,21 @@ export function matchCanvases(
 
 export function newCard(x: number, y: number, id: string = crypto.randomUUID()): CanvasCard {
   return { id, x: x - CARD_WIDTH / 2, y: y - 20, w: CARD_WIDTH, text: '' }
+}
+
+export function newHtmlCard(x: number, y: number, id: string = crypto.randomUUID()): CanvasCard {
+  const w = HTML_CARD_WIDTH
+  const h = HTML_CARD_HEIGHT
+  return { id, x: x - w / 2, y: y - h / 2, w, h, kind: 'html', text: STARTER_HTML }
+}
+
+export function resizeCard(doc: CanvasDoc, id: string, w: number, h: number): CanvasDoc {
+  const card = doc.cards.find((c) => c.id === id)
+  if (card?.kind !== 'html') return doc
+  const width = clamp(w, MIN_CARD_WIDTH, MAX_CARD_WIDTH)
+  const height = clamp(h, MIN_CARD_HEIGHT, MAX_CARD_HEIGHT)
+  if (card.w === width && card.h === height) return doc
+  return updateCard(doc, id, { w: width, h: height })
 }
 
 export function toCanvas(view: CanvasView, sx: number, sy: number): { x: number; y: number } {
