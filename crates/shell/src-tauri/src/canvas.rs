@@ -36,6 +36,66 @@ const FRAME_CSP: &str = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-
 static TABS: LazyLock<Mutex<HashMap<String, CanvasTab>>> = LazyLock::new(Default::default);
 static MEMORY: LazyLock<Mutex<CanvasMemory>> = LazyLock::new(Default::default);
 static HEALTH: LazyLock<Mutex<CardHealth>> = LazyLock::new(Default::default);
+static GROUND: LazyLock<Mutex<HashMap<String, Ground>>> = LazyLock::new(Default::default);
+const MAX_GROUND: f64 = 24.0;
+const MAX_RADIUS: f64 = 40.0;
+const MAX_GROUNDS: usize = 256;
+
+/// How far a canvas tab reaches below its pane, and the pane's corner radius.
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize)]
+pub struct Ground {
+    pub bottom: f64,
+    pub radius: f64,
+}
+
+impl Ground {
+    fn new(bottom: f64, radius: f64) -> Self {
+        let tidy = |n: f64, max: f64| if n.is_finite() { n.clamp(0.0, max).round() } else { 0.0 };
+        Self {
+            bottom: tidy(bottom, MAX_GROUND),
+            radius: tidy(radius, MAX_RADIUS),
+        }
+    }
+}
+
+/// Records a canvas tab's ground and hands it to the page, which also asks for
+/// it when it starts: this can land before the tab exists, and outlives a
+/// sleeping tab's webview.
+pub fn set_ground(app: &AppHandle, label: &str, bottom: f64, radius: f64) {
+    if !label.starts_with("tab-") || label.len() > 64 {
+        return;
+    }
+
+    let ground = Ground::new(bottom, radius);
+    let changed = {
+        let mut grounds = GROUND.lock().expect("canvas ground poisoned");
+        if grounds.len() >= MAX_GROUNDS && !grounds.contains_key(label) {
+            let open = TABS.lock().expect("canvas tabs poisoned");
+            grounds.retain(|known, _| open.contains_key(known));
+        }
+        grounds.insert(label.to_string(), ground) != Some(ground)
+    };
+    let Some(webview) = app.get_webview(label) else {
+        return;
+    };
+    if !changed || !webview.url().is_ok_and(|url| is_canvas_url(&url)) {
+        return;
+    }
+
+    let script = format!(r#"window.__wisCanvasGround="{},{}";"#, ground.bottom, ground.radius);
+    if let Err(err) = webview.eval(script) {
+        log::warn!("pushing a canvas ground: {err}");
+    }
+}
+
+fn ground_of(label: &str) -> Ground {
+    GROUND
+        .lock()
+        .expect("canvas ground poisoned")
+        .get(label)
+        .copied()
+        .unwrap_or_default()
+}
 static WORKER: OnceLock<tokio::sync::mpsc::Sender<(String, String)>> = OnceLock::new();
 const QUEUE: usize = 32;
 
@@ -315,6 +375,7 @@ enum Request {
     Save { canvas: CanvasId, doc: String },
     Delete { canvas: CanvasId },
     Pulse { canvas: CanvasId, state: Pulse },
+    Ground,
 }
 
 fn handle(storage: &dyn Storage, label: &str, text: &str, now: i64) -> String {
@@ -341,6 +402,9 @@ fn run(storage: &dyn Storage, label: &str, request: Request, now: i64) -> WisRes
     let tab = tab_for(label).ok_or_else(|| WisError::InvalidInput {
         message: "this tab is not a canvas".into(),
     })?;
+    if let Request::Ground = request {
+        return Ok(json!(ground_of(label)));
+    }
     if let Request::Pulse { canvas, state } = request {
         let safe = HEALTH
             .lock()
@@ -365,7 +429,7 @@ fn run(storage: &dyn Storage, label: &str, request: Request, now: i64) -> WisRes
             memory.delete(storage, tab, canvas)?;
             Value::Null
         }
-        Request::Pulse { .. } => Value::Null,
+        Request::Pulse { .. } | Request::Ground => Value::Null,
     })
 }
 
@@ -734,6 +798,13 @@ mod tests {
         let body = String::from_utf8(page.body().clone()).unwrap();
         assert!(body.contains("e.source !== parent"));
         assert!(body.contains("typeof RTCPeerConnection !== 'undefined'"));
+    }
+
+    #[test]
+    fn a_ground_stays_within_reason() {
+        assert_eq!(Ground::new(12.4, 12.0), Ground { bottom: 12.0, radius: 12.0 });
+        assert_eq!(Ground::new(500.0, -3.0), Ground { bottom: MAX_GROUND, radius: 0.0 });
+        assert_eq!(Ground::new(f64::NAN, f64::INFINITY), Ground::default());
     }
 
     #[test]

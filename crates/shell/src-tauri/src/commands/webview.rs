@@ -237,6 +237,7 @@ pub async fn create_tab_webview(
         #[cfg(target_os = "macos")]
         {
             builder = crate::canvas_webview::with_canvas_configuration(&app, builder).await?;
+            builder = builder.transparent(true);
         }
     } else if ephemeral {
         #[cfg(target_os = "macos")]
@@ -895,6 +896,14 @@ pub async fn webview_url(app: AppHandle, label: String) -> WisResult<Option<Stri
             message: format!("read webview url failed: {err}"),
         }),
     }
+}
+
+/// How far a canvas tab reaches past its pane, and its corner radius, so the
+/// page can paint its panel inside the pane. Ignored for other tabs.
+#[tauri::command]
+pub async fn set_canvas_ground(app: AppHandle, label: String, bottom: f64, radius: f64) -> WisResult<()> {
+    crate::canvas::set_ground(&app, &label, bottom, radius);
+    Ok(())
 }
 
 /// Apply a CSS-style corner radius to a tab's native webview surface

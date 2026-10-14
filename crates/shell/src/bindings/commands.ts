@@ -589,6 +589,11 @@ export const commands = {
     return invoke('set_webview_corner_radius', { label, radius })
   },
 
+  /** How far a canvas tab reaches below its pane, and the pane's corner radius. */
+  async setCanvasGround(label: string, bottom: number, radius: number): Promise<void> {
+    return invoke('set_canvas_ground', { label, bottom, radius })
+  },
+
   /**
    * Create a tab's child webview server-side so the per-workspace
    * `WKWebsiteDataStore` identifier is actually applied.

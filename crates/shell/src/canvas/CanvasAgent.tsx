@@ -118,6 +118,7 @@ function LogRow({ entry }: { entry: LogEntry }) {
 
 function AgentPrompt({ agent }: { agent: CanvasAgent }) {
   const [text, setText] = useState('')
+  const [multiline, setMultiline] = useState(false)
   const field = useRef<HTMLTextAreaElement>(null)
   const busy = agent.activity !== 'idle'
   const available = agent.status?.available ?? false
@@ -127,6 +128,9 @@ function AgentPrompt({ agent }: { agent: CanvasAgent }) {
     if (!el) return
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, MAX_PROMPT_PX)}px`
+    const style = getComputedStyle(el)
+    const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+    setMultiline(el.scrollHeight - padding > parseFloat(style.lineHeight) * 1.5)
   }, [text])
 
   const submit = (e?: FormEvent) => {
@@ -149,7 +153,7 @@ function AgentPrompt({ agent }: { agent: CanvasAgent }) {
   }
 
   return (
-    <form className={cx('canvas-prompt', { 'is-off': !available })} onSubmit={submit}>
+    <form className={cx('canvas-prompt', { 'is-off': !available, 'is-multiline': multiline })} onSubmit={submit}>
       <textarea
         ref={field}
         rows={1}

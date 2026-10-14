@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client'
 
+import { readGround, type Ground } from '@/lib/canvasGround'
 import { followPushed } from '@/lib/canvasPushed'
 import { createCanvasChannel } from '@/lib/canvasChannel'
 
@@ -12,7 +13,17 @@ declare global {
     __wisCanvas?: { reply: (raw: unknown) => void; ai: (requestId: unknown, event: unknown) => void }
     __wisSwipeAccent?: unknown
     __wisCanvasTheme?: unknown
+    __wisCanvasGround?: unknown
   }
+}
+
+/** Paint the canvas inside its pane when the tab reaches below it. */
+function standOn({ bottom, radius }: Ground) {
+  const root = document.documentElement
+  root.style.setProperty('--ground', `${bottom}px`)
+  root.style.setProperty('--ground-radius', `${radius}px`)
+  if (bottom > 0) root.dataset.ground = ''
+  else delete root.dataset.ground
 }
 
 followPushed(
@@ -28,6 +39,15 @@ followPushed(
     document.documentElement.dataset.theme = theme
   },
   (value) => value === 'dark' || value === 'light',
+)
+followPushed(
+  window,
+  '__wisCanvasGround',
+  (value) => {
+    const ground = readGround(value)
+    if (ground) standOn(ground)
+  },
+  (value) => readGround(value) !== null,
 )
 
 type Handler = { postMessage: (text: string) => void }
@@ -55,6 +75,14 @@ void channelHandler().then((handler) => {
     writable: false,
     configurable: false,
   })
+
+  void channel.ground().then(
+    (value) => {
+      const ground = readGround(value)
+      if (ground) standOn(ground)
+    },
+    () => undefined,
+  )
 
   const root = document.getElementById('root')
   if (root) createRoot(root).render(<CanvasApp channel={channel} />)

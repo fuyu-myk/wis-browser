@@ -3,7 +3,8 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { BrowserState, KeyAction, PaneBranch, PaneNode, SplitDir, Tab, TabId } from '@/bindings/types'
-import { isChromeUrl, SETTINGS_URL } from '@/lib/url'
+import { canvasGround } from '@/lib/canvasGround'
+import { isChromeUrl, isCanvasUrl, SETTINGS_URL } from '@/lib/url'
 import { currentPlatform } from '@/lib/platform'
 import { isWindowFocused } from '@/lib/windowFocus'
 import { useAppLaunchOverlay } from '@/hooks/useAppLaunchOverlay'
@@ -12,7 +13,7 @@ import { usePermissionOverlay } from '@/hooks/usePermissionOverlay'
 import { useSavedLogins } from '@/hooks/useSavedLogins'
 import { useSignupOffer } from '@/hooks/useSignupOffer'
 import { useTabAudio } from '@/hooks/useTabAudio'
-import { useTabWebviews, type Bounds, type WebviewLayout } from '@/hooks/useTabWebviews'
+import { currentWebviewRadius, useTabWebviews, type Bounds, type WebviewLayout } from '@/hooks/useTabWebviews'
 import { useVideoPopout } from '@/hooks/useVideoPopout'
 
 import { FOCUS_LAUNCHPAD_SEARCH_EVENT } from '@/components/NewTabPage'
@@ -74,6 +75,10 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     for (const t of workspaceTabs) map.set(t.id, t)
     return map
   }, [workspaceTabs])
+
+  const tabsRef = useRef(tabsById)
+  tabsRef.current = tabsById
+  const grounds = useRef(new Map<TabId, string>())
 
   const paneModeKey = useMemo(
     () =>
@@ -333,11 +338,22 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
         return
       }
       const layout: WebviewLayout = new Map<TabId, Bounds>()
+      const hostBottom = host.getBoundingClientRect().bottom
+      const mac = currentPlatform() === 'macos'
       host.querySelectorAll<HTMLElement>('[data-pane-webview]').forEach((el) => {
         const id = el.getAttribute('data-pane-leaf') as TabId | null
         if (!id) return
         const r = el.getBoundingClientRect()
-        layout.set(id, { x: r.x, y: r.y, width: r.width, height: r.height })
+        const rect = { x: r.x, y: r.y, width: r.width, height: r.height }
+        const canvas = mac && isCanvasUrl(tabsRef.current.get(id)?.url ?? '')
+        const ground = canvasGround({ rect, hostBottom, windowHeight: window.innerHeight, canvas })
+        layout.set(id, ground > 0 ? { ...rect, height: rect.height + ground } : rect)
+        if (!canvas) return
+        const radius = currentWebviewRadius()
+        const key = `${ground}:${radius}`
+        if (grounds.current.get(id) === key) return
+        grounds.current.set(id, key)
+        void commands.setCanvasGround(`tab-${id}`, ground, radius).catch(() => undefined)
       })
       syncLayout(layout, focusWebviewId)
 

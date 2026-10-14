@@ -42,6 +42,8 @@ export interface CanvasChannel {
   /** Streams events to `onEvent` until the request settles. */
   aiChat: (chat: CanvasAiChat, onEvent: (event: StreamEvent) => void) => Promise<null>
   aiCancel: (requestId: string) => Promise<null>
+  /** How far this tab reaches below its pane (see `lib/canvasGround.ts`). */
+  ground: () => Promise<unknown>
 }
 
 interface Waiting {
@@ -102,5 +104,6 @@ export function createCanvasChannel(post: ((text: string) => void) | null): Canv
       return request<null>({ op: 'aiChat', ...chat }).finally(() => streams.delete(chat.request_id))
     },
     aiCancel: (requestId) => request({ op: 'aiCancel', request_id: requestId }),
+    ground: () => request({ op: 'ground' }),
   }
 }

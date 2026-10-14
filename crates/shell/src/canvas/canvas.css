@@ -1,6 +1,8 @@
 :root {
   color-scheme: dark;
   --ease-resize: cubic-bezier(0.4, 0, 0.2, 1);
+  --ground: 0px;
+  --ground-radius: 0px;
   --edge-off: inset 0 0 0 1px transparent;
   --edge-on: inset 0 0 0 1px var(--accent);
   --edge-fade: 180ms ease-out;
@@ -48,18 +50,25 @@
 
 html,
 body,
-#root,
-.canvas-root {
+#root {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--canvas-bg);
+  background: transparent;
   color: var(--text-primary);
   font: 13px/1.5 var(--font-sans);
 }
 
-.canvas-viewport {
+.canvas-root {
   position: fixed;
+  inset: 0 0 var(--ground) 0;
+  overflow: hidden;
+  border-radius: 0 0 var(--ground-radius) var(--ground-radius);
+  background: var(--canvas-bg);
+}
+
+.canvas-viewport {
+  position: absolute;
   inset: 0;
   overflow: hidden;
   outline: none;
@@ -712,7 +721,7 @@ body,
   bottom: -14px;
   z-index: 10;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 10px;
   box-sizing: border-box;
   width: min(680px, calc(100vw - 32px));
@@ -726,12 +735,29 @@ body,
     border-color var(--edge-fade),
     box-shadow var(--edge-fade);
 }
+.canvas-prompt.is-multiline {
+  align-items: flex-end;
+}
+:root[data-ground] .canvas-prompt {
+  bottom: 0;
+  padding-bottom: 10px;
+  border-bottom: 0;
+  border-radius: 16px 16px 0 0;
+}
 .canvas-prompt:focus-within {
   border-color: var(--accent);
   box-shadow: var(--edge-on), var(--card-shadow);
 }
+:root[data-ground] .canvas-prompt:focus-within {
+  box-shadow:
+    inset 1px 0 0 var(--accent),
+    inset -1px 0 0 var(--accent),
+    inset 0 1px 0 var(--accent),
+    var(--card-shadow);
+}
 .canvas-prompt textarea {
   flex: 1;
+  box-sizing: border-box;
   min-width: 0;
   margin: 0;
   padding: 5px 0;
@@ -743,14 +769,14 @@ body,
   font: 14px/1.45 var(--font-sans);
 }
 .canvas-prompt textarea::placeholder {
+  padding-left: 3px;
   color: var(--text-muted);
 }
 .canvas-prompt-model {
   max-width: 180px;
   overflow: hidden;
-  padding-bottom: 7px;
   color: var(--text-muted);
-  font: 12px var(--font-sans);
+  font: 12px/32px var(--font-sans);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -761,7 +787,7 @@ body,
   width: 32px;
   height: 32px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 50%;
   background: var(--accent);
   color: #fff;
   cursor: pointer;

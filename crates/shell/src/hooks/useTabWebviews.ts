@@ -15,7 +15,7 @@ const PARK_HIDDEN_OFFSCREEN = currentPlatform() === 'windows'
  *  (Soft 0.55, Sharp 0, Linux pinned 0). */
 const WEBVIEW_CORNER_RADIUS = 12
 
-function currentWebviewRadius(): number {
+export function currentWebviewRadius(): number {
   const scale = Number.parseFloat(
     getComputedStyle(document.body).getPropertyValue('--radius-scale'),
   )

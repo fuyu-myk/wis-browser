@@ -676,6 +676,7 @@ pub fn run() {
             commands::set_active_tab,
             commands::navigate_tab,
             commands::set_webview_corner_radius,
+            commands::set_canvas_ground,
             commands::create_tab_webview,
             commands::close_tab_webview,
             commands::set_tab_webview_bounds,

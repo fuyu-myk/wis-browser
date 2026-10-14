@@ -143,13 +143,15 @@ describe('the channel', () => {
     assert.deepEqual(seen, [{ type: 'delta', text: 'He' }, { type: 'done' }])
   })
 
-  test('AI status and cancel are plain requests', async () => {
+  test('AI status, cancel and the ground are plain requests', async () => {
     const { posted, channel } = setup()
     const status = channel.aiStatus()
     void channel.aiCancel('r1')
+    void channel.ground()
     assert.deepEqual(posted, [
       { id: 1, op: 'aiStatus' },
       { id: 2, op: 'aiCancel', request_id: 'r1' },
+      { id: 3, op: 'ground' },
     ])
     channel.reply({ id: 1, ok: true, value: { available: true, model: 'm' } })
     assert.deepEqual(await status, { available: true, model: 'm' })
