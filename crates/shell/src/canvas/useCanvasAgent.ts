@@ -3,14 +3,15 @@ import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 
 import type { WireMessage } from '@/lib/ai'
 import type { CanvasDoc } from '@/lib/canvas'
 import { estimateHeight, runTurn, type AgentContext, type AgentReport, type TurnResult } from '@/lib/canvasAgent'
-import type { CanvasAiStatus, CanvasChannel } from '@/lib/canvasChannel'
+import type { Attachment } from '@/lib/canvasAttach'
+import type { CanvasAiStatus, CanvasChannel, CanvasModels } from '@/lib/canvasChannel'
 
 import type { SurfaceHandle } from './CanvasSurface'
 
 const MAX_HISTORY = 20
 
 export type LogEntry =
-  | { id: number; kind: 'user'; text: string }
+  | { id: number; kind: 'user'; text: string; files: readonly string[] }
   | { id: number; kind: 'reply'; text: string }
   | { id: number; kind: 'step'; text: string; details: readonly string[] }
   | { id: number; kind: 'error'; text: string }
@@ -67,8 +68,10 @@ export interface CanvasAgent {
   status: CanvasAiStatus | null
   activity: AgentActivity
   log: readonly LogEntry[]
-  send: (prompt: string) => void
+  send: (prompt: string, files?: readonly Attachment[]) => void
   stop: () => void
+  listModels: () => Promise<CanvasModels>
+  setModel: (model: string | null) => Promise<void>
   clear: () => void
   refresh: () => void
 }
@@ -120,13 +123,13 @@ export function useCanvasAgent({ channel, docRef, surface, apply }: AgentOptions
     working: () => setActivity('working'),
   }
 
-  const send = (prompt: string) => {
+  const send = (prompt: string, files: readonly Attachment[] = []) => {
     const text = prompt.trim()
     const doc = docRef.current
     if (text === '' || activity !== 'idle' || !doc) return
     stopped.current = false
     setActivity('thinking')
-    add({ kind: 'user', text })
+    add({ kind: 'user', text, files: files.map((f) => f.name) })
     const writer = logWriter(edits)
     let changed = false
     const context = (): AgentContext => {
@@ -158,7 +161,7 @@ export function useCanvasAgent({ channel, docRef, surface, apply }: AgentOptions
         if (entry.type === 'round') setActivity('thinking')
         writer.report(entry)
       },
-    })
+    }, files)
       .catch((error: unknown): TurnResult => ({
         reply: '',
         created: [],
@@ -176,12 +179,23 @@ export function useCanvasAgent({ channel, docRef, surface, apply }: AgentOptions
       if (!result.error && !result.stopped) {
         history.current = [
           ...history.current,
-          { role: 'user' as const, content: text },
+          {
+            role: 'user' as const,
+            content:
+              files.length > 0
+                ? `${text}\n(The user attached ${files.map((f) => f.name).join(', ')} to this message; their contents are not repeated here.)`
+                : text,
+          },
           { role: 'assistant' as const, content: result.reply || 'Done.' },
         ].slice(-MAX_HISTORY)
       }
       if (result.created.length > 0) surface.current?.select(result.created)
     })
+  }
+
+  const setModel = async (model: string | null) => {
+    await channel.aiSetModel(model)
+    refresh()
   }
 
   const stop = () => {
@@ -196,5 +210,5 @@ export function useCanvasAgent({ channel, docRef, surface, apply }: AgentOptions
     setLog([])
   }
 
-  return { status, activity, log, send, stop, clear, refresh }
+  return { status, activity, log, send, stop, clear, refresh, listModels: channel.aiModels, setModel }
 }

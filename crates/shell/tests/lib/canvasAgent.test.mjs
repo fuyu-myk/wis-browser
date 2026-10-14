@@ -290,6 +290,14 @@ describe('a turn', () => {
     assert.equal(run.log.filter((e) => e.type === 'round').length, 2)
   })
 
+  test('attached files travel with the request, fenced', async () => {
+    const { sent, chat } = scripted([[{ type: 'delta', text: 'ok' }, { type: 'done' }]])
+    await agent.runTurn([], 'summarise this', deps(chat).deps, [{ name: 'notes.md', text: 'alpha' }])
+    const content = sent[0].messages.at(-1).content
+    assert.match(content, /<attachment name="notes.md">\nalpha\n<\/attachment>/)
+    assert.ok(content.indexOf('<attachment') < content.indexOf('summarise this'))
+  })
+
   test('a provider error ends the turn with it, and nothing changes', async () => {
     const { chat } = scripted([[{ type: 'error', message: 'provider error 401' }]])
     const run = deps(chat)

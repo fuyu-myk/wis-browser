@@ -5,6 +5,7 @@
 //! from old ones.
 
 pub mod ai;
+pub mod ai_models;
 pub mod app_launch;
 pub mod autoplay;
 pub mod background;

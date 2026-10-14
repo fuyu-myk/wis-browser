@@ -19,6 +19,13 @@ export interface CanvasAiStatus {
   model: string
 }
 
+export interface CanvasModels {
+  models: { id: string; name: string }[]
+  /** The canvas's own choice; `null` follows the assistant's model. */
+  selected: string | null
+  assistant: string
+}
+
 export interface CanvasAiChat {
   request_id: string
   messages: WireMessage[]
@@ -44,6 +51,8 @@ export interface CanvasChannel {
   aiCancel: (requestId: string) => Promise<null>
   /** How far this tab reaches below its pane (see `lib/canvasGround.ts`). */
   ground: () => Promise<unknown>
+  aiModels: () => Promise<CanvasModels>
+  aiSetModel: (model: string | null) => Promise<null>
 }
 
 interface Waiting {
@@ -105,5 +114,7 @@ export function createCanvasChannel(post: ((text: string) => void) | null): Canv
     },
     aiCancel: (requestId) => request({ op: 'aiCancel', request_id: requestId }),
     ground: () => request({ op: 'ground' }),
+    aiModels: () => request({ op: 'aiModels' }),
+    aiSetModel: (model) => request({ op: 'aiSetModel', model }),
   }
 }

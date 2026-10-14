@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
 import { AiMarkdown } from '@/components/AiMarkdown'
 import { thinkDurationLabel } from '@/lib/ai'
@@ -7,9 +7,8 @@ import { cx } from '@/lib/cx'
 import { ChevronDownIcon } from '@/lib/icons'
 import { isWebUrl } from '@/lib/url'
 
+import { CanvasPrompt } from './CanvasPrompt'
 import { useCanvasAgent, type AgentOptions, type CanvasAgent, type LogEntry } from './useCanvasAgent'
-
-const MAX_PROMPT_PX = 160
 
 function openLink(href: string) {
   if (isWebUrl(href)) window.open(href, '_blank', 'noopener,noreferrer')
@@ -20,7 +19,7 @@ export function CanvasAgentHost(options: AgentOptions) {
   return (
     <>
       <AgentPill agent={agent} />
-      <AgentPrompt agent={agent} />
+      <CanvasPrompt agent={agent} />
     </>
   )
 }
@@ -129,6 +128,15 @@ function LogRow({ entry }: { entry: LogEntry }) {
       </Disclosure>
     )
   }
+  if (entry.kind === 'user')
+    return (
+      <div className="canvas-agent-user">
+        {entry.text}
+        {entry.files.length > 0 && (
+          <span className="canvas-agent-files">{entry.files.join(' · ')}</span>
+        )}
+      </div>
+    )
   if (entry.kind === 'step')
     return (
       <Disclosure label={entry.text} live={false}>
@@ -161,74 +169,5 @@ function Disclosure({ label, live, children }: { label: string; live: boolean; c
       )}
       {open && more && children}
     </div>
-  )
-}
-
-function AgentPrompt({ agent }: { agent: CanvasAgent }) {
-  const [text, setText] = useState('')
-  const [multiline, setMultiline] = useState(false)
-  const field = useRef<HTMLTextAreaElement>(null)
-  const busy = agent.activity !== 'idle'
-  const available = agent.status?.available ?? false
-
-  useLayoutEffect(() => {
-    const el = field.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, MAX_PROMPT_PX)}px`
-    const style = getComputedStyle(el)
-    const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
-    setMultiline(el.scrollHeight - padding > parseFloat(style.lineHeight) * 1.5)
-  }, [text])
-
-  const submit = (e?: FormEvent) => {
-    e?.preventDefault()
-    if (busy) {
-      if (e) agent.stop()
-      return
-    }
-    if (text.trim() === '' || !available) return
-    agent.send(text)
-    setText('')
-  }
-  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault()
-      submit()
-    } else if (e.key === 'Escape') {
-      e.currentTarget.blur()
-    }
-  }
-
-  return (
-    <form className={cx('canvas-prompt', { 'is-off': !available, 'is-multiline': multiline })} onSubmit={submit}>
-      <textarea
-        ref={field}
-        rows={1}
-        value={text}
-        disabled={!available}
-        aria-label="Ask the canvas agent"
-        placeholder={
-          agent.status === null || available
-            ? 'Ask the canvas agent'
-            : 'Set up AI in Settings › AI to use the canvas agent'
-        }
-        onChange={(e) => setText(e.currentTarget.value)}
-        onFocus={agent.refresh}
-        onKeyDown={onKeyDown}
-      />
-      {available && agent.status?.model && <span className="canvas-prompt-model">{agent.status.model}</span>}
-      <button
-        type="submit"
-        className={cx('canvas-prompt-send', { 'is-stop': busy })}
-        disabled={!busy && (!available || text.trim() === '')}
-        aria-label={busy ? 'Stop' : 'Send'}
-        title={busy ? 'Stop' : 'Send'}
-      >
-        <svg viewBox="0 0 24 24" aria-hidden>
-          {busy ? <rect x="7" y="7" width="10" height="10" rx="2" /> : <path d="M12 19V5M5 12l7-7 7 7" />}
-        </svg>
-      </button>
-    </form>
   )
 }

@@ -24,6 +24,40 @@ const MAX_TOKENS: u32 = 8192;
 const MAX_MESSAGES: usize = 200;
 const MAX_STREAMS_PER_TAB: usize = 2;
 
+static LISTINGS: LazyLock<Mutex<HashMap<String, (bool, std::time::Instant)>>> = LazyLock::new(Default::default);
+const LIST_GAP: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// One model list at a time per tab, and not more often than [`LIST_GAP`].
+struct Listing(String);
+
+impl Listing {
+    fn start(label: &str) -> Option<Self> {
+        let mut listings = LISTINGS.lock().ok()?;
+        let now = std::time::Instant::now();
+        if let Some((running, at)) = listings.get(label) {
+            if *running || now.duration_since(*at) < LIST_GAP {
+                return None;
+            }
+        }
+
+        listings.insert(label.to_string(), (true, now));
+        Some(Self(label.to_string()))
+    }
+}
+
+impl Drop for Listing {
+    fn drop(&mut self) {
+        if let Ok(mut listings) = LISTINGS.lock() {
+            if let Some(entry) = listings.get_mut(&self.0) {
+                entry.0 = false;
+            }
+            if listings.len() > 256 {
+                listings.retain(|_, (running, _)| *running);
+            }
+        }
+    }
+}
+
 /// Counts a tab's open streams; dropping it closes one.
 struct Stream(String);
 
@@ -108,6 +142,28 @@ enum Request {
     },
     #[serde(rename = "aiCancel")]
     Cancel { request_id: String },
+    #[serde(rename = "aiModels")]
+    Models,
+    #[serde(rename = "aiSetModel")]
+    SetModel { model: Option<String> },
+}
+
+const MAX_MODEL_ID: usize = 200;
+
+/// A model id fit to store: trimmed, bounded, printable; blank clears it.
+fn tidy_model(model: Option<String>) -> WisResult<Option<String>> {
+    let Some(model) = model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty()) else {
+        return Ok(None);
+    };
+    if model.len() > MAX_MODEL_ID || model.chars().any(char::is_control) {
+        return Err(bad_request());
+    }
+    Ok(Some(model))
+}
+
+/// The model a canvas agent uses: its own choice, else the assistant's.
+fn canvas_model(ai: &wis_core::AiSettings) -> String {
+    ai.canvas_model.clone().unwrap_or_else(|| ai.model.clone())
 }
 
 pub fn receive(label: String, tab: CanvasTab, text: String) {
@@ -137,8 +193,31 @@ async fn run(app: &AppHandle, label: &str, tab: CanvasTab, request: Request) -> 
             let settings = &browser.settings.ai;
             Ok(json!({
                 "available": ai::ready(settings),
-                "model": settings.model,
+                "model": canvas_model(settings),
             }))
+        }
+        Request::Models => {
+            let _listing = Listing::start(label).ok_or_else(|| WisError::InvalidInput {
+                message: "the model list was just asked for; try again in a moment".into(),
+            })?;
+            let models = crate::ai_models::list_models(&state, tab.workspace).await?;
+            let browser = state.browser.lock().await;
+            let settings = &browser.settings.ai;
+            Ok(json!({
+                "models": models,
+                "selected": settings.canvas_model,
+                "assistant": settings.model,
+            }))
+        }
+        Request::SetModel { model } => {
+            let model = tidy_model(model)?;
+            crate::commands::mutate_unit(app, &state, |s| {
+                let mut next = s.clone();
+                next.settings.ai.canvas_model = model;
+                Ok(next)
+            })
+            .await?;
+            Ok(Value::Null)
         }
         Request::Cancel { request_id } => {
             if !ai::cancel(&state, &request_id) {
@@ -163,6 +242,7 @@ async fn run(app: &AppHandle, label: &str, tab: CanvasTab, request: Request) -> 
                 return Ok(Value::Null);
             }
 
+            let model = canvas_model(&state.browser.lock().await.settings.ai);
             let job = ChatJob {
                 workspace: tab.workspace,
                 request_id: request_id.clone(),
@@ -170,6 +250,7 @@ async fn run(app: &AppHandle, label: &str, tab: CanvasTab, request: Request) -> 
                 max_tokens: MAX_TOKENS,
                 skip_reasoning,
                 no_tools,
+                model: Some(model),
             };
             let tools = |_: &wis_core::AiSettings| ChatTools {
                 web: false,
@@ -242,6 +323,36 @@ mod tests {
             cancel_early(format!("r{i}"));
         }
         assert!(EARLY_CANCELS.lock().unwrap().len() <= MAX_EARLY_CANCELS);
+    }
+
+    #[test]
+    fn model_lists_are_one_at_a_time_and_spaced() {
+        let label = "tab-listing-test";
+        let first = Listing::start(label).expect("first");
+        assert!(Listing::start(label).is_none(), "one at a time");
+        drop(first);
+        assert!(Listing::start(label).is_none(), "spaced out");
+        assert!(Listing::start("tab-other").is_some());
+    }
+
+    #[test]
+    fn a_chosen_model_is_tidied_or_refused() {
+        assert_eq!(tidy_model(Some("  qwen3:8b ".into())).unwrap().as_deref(), Some("qwen3:8b"));
+        assert_eq!(tidy_model(Some("   ".into())).unwrap(), None);
+        assert_eq!(tidy_model(None).unwrap(), None);
+        assert!(tidy_model(Some("bad\nid".into())).is_err());
+        assert!(tidy_model(Some("x".repeat(MAX_MODEL_ID + 1))).is_err());
+    }
+
+    #[test]
+    fn a_canvas_follows_the_assistant_until_it_picks() {
+        let mut ai = wis_core::AiSettings {
+            model: "claude-sonnet-5-5".into(),
+            ..Default::default()
+        };
+        assert_eq!(canvas_model(&ai), "claude-sonnet-5-5");
+        ai.canvas_model = Some("claude-haiku-5-5".into());
+        assert_eq!(canvas_model(&ai), "claude-haiku-5-5");
     }
 
     #[test]

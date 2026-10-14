@@ -442,6 +442,8 @@ export interface AiSettings {
   local_data: boolean
   /** Let the model open, switch, close and group tabs, each approved by the user. */
   tab_actions: boolean
+  /** The model canvas agents use; null follows `model`. */
+  canvas_model?: string | null
 }
 
 /** One tool call requested by the model (mirror of `wis_core::ai::ToolCall`). */

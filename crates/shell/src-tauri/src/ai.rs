@@ -32,6 +32,7 @@ const AI_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 /// How often a waiting request notices that it was cancelled.
 const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_MODELS_URL: &str = "https://api.anthropic.com/v1/models?limit=1000";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 const OPENAI_DEFAULT_BASE: &str = "https://api.openai.com/v1";
 
@@ -41,7 +42,7 @@ const AI_KEY_EVENT: &str = "wis-ai-key-changed";
 /// Platforms with an OS key store to seal the provider key in: macOS
 /// (Keychain) and Windows (DPAPI). Elsewhere the assistant stays off rather
 /// than holding the key somewhere weaker.
-fn ai_supported() -> bool {
+pub(crate) fn ai_supported() -> bool {
     cfg!(any(target_os = "macos", windows))
 }
 
@@ -241,6 +242,7 @@ pub async fn ai_chat(
         max_tokens: args.max_tokens,
         skip_reasoning: args.skip_reasoning,
         no_tools: args.no_tools,
+        model: None,
     };
     let tools = |ai: &AiSettings| ChatTools {
         web: ai.web_access,
@@ -267,6 +269,8 @@ pub(crate) struct ChatJob {
     pub max_tokens: u32,
     pub skip_reasoning: bool,
     pub no_tools: bool,
+    /// A model other than the settings' own.
+    pub model: Option<String>,
 }
 
 /// Streams one completion to `emit`, which returns false once its consumer is
@@ -299,13 +303,12 @@ pub(crate) async fn stream_chat(
     let (provider, model, base_url, show_reasoning, tools) = {
         let browser = state.browser.lock().await;
         let ai = &browser.settings.ai;
-        (
-            ai.provider,
-            ai.model.clone(),
-            ai.base_url.clone(),
-            ai.show_reasoning,
-            tools(ai),
-        )
+        let model = job
+            .model
+            .clone()
+            .filter(|m| !m.trim().is_empty())
+            .unwrap_or_else(|| ai.model.clone());
+        (ai.provider, model, ai.base_url.clone(), ai.show_reasoning, tools(ai))
     };
     if model.trim().is_empty() {
         return Err(WisError::InvalidInput {
@@ -315,14 +318,6 @@ pub(crate) async fn stream_chat(
 
     let local_server =
         provider == AiProvider::OpenAiCompatible && local_openai_base(base_url.as_deref());
-    // A local server is never sent the key.
-    let key = if local_server {
-        None
-    } else {
-        wis_secrets::ai_key_load().map_err(|e| WisError::InvalidInput {
-            message: format!("could not read key: {e}"),
-        })?
-    };
 
     let thinking = thinking_for(provider, show_reasoning, job.skip_reasoning);
     let max_tokens = if thinking == ThinkingMode::Summarized {
@@ -354,51 +349,12 @@ pub(crate) async fn stream_chat(
     };
     let body = chat_body(provider, &req);
 
-    let key = key.as_ref().map(|k| k.as_slice());
-    let (url, mut headers) = match provider {
-        AiProvider::Anthropic => {
-            let key = key.ok_or_else(|| WisError::InvalidInput {
-                message: "no AI key configured".into(),
-            })?;
-            anthropic_request(key)?
-        }
-        AiProvider::OpenAiCompatible => openai_request(base_url.as_deref(), key)?,
-    };
-
-    let parsed_url = url::Url::parse(&url).ok();
-    let local_endpoint = parsed_url
-        .as_ref()
-        .map(wis_network::is_loopback)
-        .unwrap_or(false);
-    if local_endpoint {
-        headers.remove(reqwest::header::AUTHORIZATION);
-    }
-    let endpoint_host = parsed_url
-        .as_ref()
-        .and_then(|u| u.host_str())
-        .unwrap_or("the provider")
-        .to_string();
-
-    let mut builder = reqwest::Client::builder().connect_timeout(AI_CONNECT_TIMEOUT);
-    if !local_endpoint {
-        let proxy_port = state
-            .ensure_proxy_for(job.workspace)
-            .await
-            .map_err(|e| WisError::InvalidInput {
-                message: format!("proxy unavailable: {e:?}"),
-            })?;
-        let proxy = reqwest::Proxy::all(format!("http://127.0.0.1:{proxy_port}")).map_err(|e| {
-            WisError::InvalidInput {
-                message: format!("proxy: {e}"),
-            }
-        })?;
-
-        builder = builder.proxy(proxy);
-    }
-
-    let client = builder.build().map_err(|e| WisError::InvalidInput {
-        message: format!("http client: {e}"),
-    })?;
+    let Endpoint {
+        url,
+        headers,
+        host: endpoint_host,
+        client,
+    } = endpoint(state, job.workspace, provider, base_url.as_deref(), Route::Chat).await?;
 
     let request = client
         .post(url)
@@ -491,6 +447,100 @@ pub(crate) async fn stream_chat(
     Ok(())
 }
 
+/// Which provider endpoint a request is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Route {
+    Chat,
+    Models,
+}
+
+/// Where a provider request goes, how it authenticates, and the client that
+/// sends it.
+pub(crate) struct Endpoint {
+    pub url: String,
+    pub headers: reqwest::header::HeaderMap,
+    pub host: String,
+    pub client: reqwest::Client,
+}
+
+/// A local server never sees the key and is dialled direct; everything else
+/// carries the key as a sensitive header through the workspace's proxy.
+pub(crate) async fn endpoint(
+    state: &AppState,
+    workspace: WorkspaceId,
+    provider: AiProvider,
+    base_url: Option<&str>,
+    route: Route,
+) -> WisResult<Endpoint> {
+    let local_server = provider == AiProvider::OpenAiCompatible && local_openai_base(base_url);
+    let key = if local_server {
+        None
+    } else {
+        wis_secrets::ai_key_load().map_err(|e| WisError::InvalidInput {
+            message: format!("could not read key: {e}"),
+        })?
+    };
+    let key = key.as_ref().map(|k| k.as_slice());
+    let (url, mut headers) = match provider {
+        AiProvider::Anthropic => {
+            let key = key.ok_or_else(|| WisError::InvalidInput {
+                message: "no AI key configured".into(),
+            })?;
+            anthropic_request(key)?
+        }
+        AiProvider::OpenAiCompatible => openai_request(base_url, key)?,
+    };
+    let url = match (route, provider) {
+        (Route::Chat, _) => url,
+        (Route::Models, AiProvider::Anthropic) => ANTHROPIC_MODELS_URL.to_string(),
+        (Route::Models, AiProvider::OpenAiCompatible) => {
+            format!("{}/models", url.trim_end_matches("/chat/completions"))
+        }
+    };
+
+    let parsed_url = url::Url::parse(&url).ok();
+    let local_endpoint = parsed_url
+        .as_ref()
+        .map(wis_network::is_loopback)
+        .unwrap_or(false);
+    if local_endpoint {
+        headers.remove(reqwest::header::AUTHORIZATION);
+    }
+    let host = parsed_url
+        .as_ref()
+        .and_then(|u| u.host_str())
+        .unwrap_or("the provider")
+        .to_string();
+
+    let mut builder = reqwest::Client::builder().connect_timeout(AI_CONNECT_TIMEOUT);
+    if !local_endpoint {
+        let proxy_port = state
+            .ensure_proxy_for(workspace)
+            .await
+            .map_err(|e| WisError::InvalidInput {
+                message: format!("proxy unavailable: {e:?}"),
+            })?;
+        let proxy = reqwest::Proxy::all(format!("http://127.0.0.1:{proxy_port}")).map_err(|e| {
+            WisError::InvalidInput {
+                message: format!("proxy: {e}"),
+            }
+        })?;
+
+        builder = builder.proxy(proxy);
+    }
+
+    let client = builder.build().map_err(|e| WisError::InvalidInput {
+        message: format!("http client: {e}"),
+    })?;
+
+    Ok(Endpoint {
+        url,
+        headers,
+        host,
+        client,
+    })
+}
+
 fn invalid_key() -> WisError {
     WisError::InvalidInput {
         message: "API key contains invalid characters".into(),
@@ -575,7 +625,7 @@ async fn wait_cancelled(flag: &AtomicBool) {
 
 /// A coarse transport-error category. Deliberately drops the full error chain
 /// to prevent incidental leaks into an event or log.
-fn transport_error(e: &reqwest::Error) -> &'static str {
+pub(crate) fn transport_error(e: &reqwest::Error) -> &'static str {
     if e.is_timeout() {
         "timed out"
     } else if e.is_connect() {
@@ -586,7 +636,7 @@ fn transport_error(e: &reqwest::Error) -> &'static str {
 }
 
 /// The first line of `s`, char-safely truncated to `max` chars.
-fn first_line(s: &str, max: usize) -> String {
+pub(crate) fn first_line(s: &str, max: usize) -> String {
     let line = s.lines().next().unwrap_or("").trim();
     if line.chars().count() > max {
         let truncated: String = line.chars().take(max).collect();

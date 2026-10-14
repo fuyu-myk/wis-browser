@@ -220,6 +220,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
             web_access: true,
             local_data: true,
             tab_actions: true,
+            canvas_model: Some("qwen3:8b".into()),
         }),
     };
     let after: UserSettingsPatch = roundtrip(&patch);

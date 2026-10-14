@@ -286,6 +286,21 @@ pub struct AiSettings {
     /// the user. Needs `local_data`. Off by default.
     #[serde(default)]
     pub tab_actions: bool,
+    /// The model canvas agents use; `None` follows `model`.
+    #[serde(default)]
+    pub canvas_model: Option<String>,
+}
+
+impl AiSettings {
+    /// A settings save never touches the canvas model; switching provider
+    /// or endpoint clears it.
+    pub fn patched(&self, next: AiSettings) -> AiSettings {
+        let same_endpoint = next.provider == self.provider && next.base_url == self.base_url;
+        AiSettings {
+            canvas_model: if same_endpoint { self.canvas_model.clone() } else { None },
+            ..next
+        }
+    }
 }
 
 impl Default for AiSettings {
@@ -298,6 +313,7 @@ impl Default for AiSettings {
             web_access: false,
             local_data: false,
             tab_actions: false,
+            canvas_model: None,
         }
     }
 }
@@ -746,7 +762,7 @@ impl UserSettings {
             active_theme: self.active_theme,
             motion: patch.motion.unwrap_or(self.motion),
             design: patch.design.unwrap_or(self.design),
-            ai: patch.ai.unwrap_or_else(|| self.ai.clone()),
+            ai: patch.ai.map_or_else(|| self.ai.clone(), |ai| self.ai.patched(ai)),
             keybindings: match patch.keybindings {
                 None => self.keybindings.clone(),
                 Some(overrides) => {
@@ -770,6 +786,30 @@ impl UserSettings {
 mod tests {
     use super::*;
 
+
+    #[test]
+    fn the_canvas_model_survives_settings_saves_until_the_endpoint_changes() {
+        let current = AiSettings {
+            model: "claude-sonnet-5-5".into(),
+            canvas_model: Some("claude-haiku-5-5".into()),
+            ..Default::default()
+        };
+        let stale = AiSettings {
+            show_reasoning: true,
+            canvas_model: None,
+            ..current.clone()
+        };
+        let saved = current.patched(stale);
+        assert!(saved.show_reasoning);
+        assert_eq!(saved.canvas_model.as_deref(), Some("claude-haiku-5-5"));
+
+        let switched = current.patched(AiSettings {
+            provider: crate::ai::AiProvider::OpenAiCompatible,
+            base_url: Some("http://localhost:11434/v1".into()),
+            ..current.clone()
+        });
+        assert_eq!(switched.canvas_model, None);
+    }
     #[test]
     fn unknown_keybinding_ids_are_dropped_not_fatal() {
         // A persisted settings blob carrying a removed/renamed action id (here
