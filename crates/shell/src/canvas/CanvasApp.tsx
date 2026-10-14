@@ -282,7 +282,7 @@ export function CanvasApp({ channel }: { channel: CanvasChannel }) {
         pulse={pulse}
         handle={surface}
       />
-      <CanvasAgentHost key={state.id} channel={channel} docRef={docRef} surface={surface} apply={agentApply} />
+      <CanvasAgentHost key={`agent-${state.id}`} channel={channel} docRef={docRef} surface={surface} apply={agentApply} />
       <CanvasSwitcher
         name={state.name}
         currentId={state.id}
