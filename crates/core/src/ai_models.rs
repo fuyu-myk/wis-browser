@@ -64,8 +64,14 @@ mod tests {
         ], "has_more": false });
         let models = parse_models(AiProvider::Anthropic, &body);
         assert_eq!(
-            models.iter().map(|m| (m.id.as_str(), m.name.as_str())).collect::<Vec<_>>(),
-            [("claude-opus-5-5", "Claude Opus 5.5"), ("claude-haiku-5-5", "Claude Haiku 5.5")]
+            models
+                .iter()
+                .map(|m| (m.id.as_str(), m.name.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("claude-opus-5-5", "Claude Opus 5.5"),
+                ("claude-haiku-5-5", "Claude Haiku 5.5")
+            ]
         );
     }
 
@@ -78,7 +84,10 @@ mod tests {
         ] });
         let models = parse_models(AiProvider::OpenAiCompatible, &body);
         assert_eq!(
-            models.iter().map(|m| (m.id.as_str(), m.name.as_str())).collect::<Vec<_>>(),
+            models
+                .iter()
+                .map(|m| (m.id.as_str(), m.name.as_str()))
+                .collect::<Vec<_>>(),
             [("llama3.2", "llama3.2"), ("qwen3:8b", "qwen3:8b")]
         );
     }

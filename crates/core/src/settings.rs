@@ -297,7 +297,11 @@ impl AiSettings {
     pub fn patched(&self, next: AiSettings) -> AiSettings {
         let same_endpoint = next.provider == self.provider && next.base_url == self.base_url;
         AiSettings {
-            canvas_model: if same_endpoint { self.canvas_model.clone() } else { None },
+            canvas_model: if same_endpoint {
+                self.canvas_model.clone()
+            } else {
+                None
+            },
             ..next
         }
     }
@@ -762,7 +766,9 @@ impl UserSettings {
             active_theme: self.active_theme,
             motion: patch.motion.unwrap_or(self.motion),
             design: patch.design.unwrap_or(self.design),
-            ai: patch.ai.map_or_else(|| self.ai.clone(), |ai| self.ai.patched(ai)),
+            ai: patch
+                .ai
+                .map_or_else(|| self.ai.clone(), |ai| self.ai.patched(ai)),
             keybindings: match patch.keybindings {
                 None => self.keybindings.clone(),
                 Some(overrides) => {
@@ -785,7 +791,6 @@ impl UserSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[test]
     fn the_canvas_model_survives_settings_saves_until_the_endpoint_changes() {

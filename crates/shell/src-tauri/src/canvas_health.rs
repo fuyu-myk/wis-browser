@@ -184,7 +184,10 @@ mod tests {
         health.pulse(canvas, A, Pulse::Start, 0);
         health.closed(A, 30_000);
         assert!(health.pulse(canvas, B, Pulse::Start, 40_000));
-        assert!(!health.pulse(canvas, B, Pulse::Start, 41_000), "running them anyway is allowed");
+        assert!(
+            !health.pulse(canvas, B, Pulse::Start, 41_000),
+            "running them anyway is allowed"
+        );
     }
 
     #[test]
@@ -200,7 +203,10 @@ mod tests {
         let mut health = CardHealth::default();
         let canvas = CanvasId::new();
         health.pulse(canvas, A, Pulse::Start, 0);
-        assert!(!health.pulse(canvas, B, Pulse::Start, 1_000), "the same canvas in another tab");
+        assert!(
+            !health.pulse(canvas, B, Pulse::Start, 1_000),
+            "the same canvas in another tab"
+        );
         health.pulse(canvas, A, Pulse::Stop, 2_000);
         assert!(!health.pulse(canvas, A, Pulse::Start, 3_000));
     }

@@ -901,7 +901,12 @@ pub async fn webview_url(app: AppHandle, label: String) -> WisResult<Option<Stri
 /// How far a canvas tab reaches past its pane, and its corner radius, so the
 /// page can paint its panel inside the pane. Ignored for other tabs.
 #[tauri::command]
-pub async fn set_canvas_ground(app: AppHandle, label: String, bottom: f64, radius: f64) -> WisResult<()> {
+pub async fn set_canvas_ground(
+    app: AppHandle,
+    label: String,
+    bottom: f64,
+    radius: f64,
+) -> WisResult<()> {
     crate::canvas::set_ground(&app, &label, bottom, radius);
     Ok(())
 }

@@ -24,7 +24,8 @@ const MAX_TOKENS: u32 = 8192;
 const MAX_MESSAGES: usize = 200;
 const MAX_STREAMS_PER_TAB: usize = 2;
 
-static LISTINGS: LazyLock<Mutex<HashMap<String, (bool, std::time::Instant)>>> = LazyLock::new(Default::default);
+static LISTINGS: LazyLock<Mutex<HashMap<String, (bool, std::time::Instant)>>> =
+    LazyLock::new(Default::default);
 const LIST_GAP: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// One model list at a time per tab, and not more often than [`LIST_GAP`].
@@ -152,7 +153,10 @@ const MAX_MODEL_ID: usize = 200;
 
 /// A model id fit to store: trimmed, bounded, printable; blank clears it.
 fn tidy_model(model: Option<String>) -> WisResult<Option<String>> {
-    let Some(model) = model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty()) else {
+    let Some(model) = model
+        .map(|m| m.trim().to_string())
+        .filter(|m| !m.is_empty())
+    else {
         return Ok(None);
     };
     if model.len() > MAX_MODEL_ID || model.chars().any(char::is_control) {
@@ -231,7 +235,10 @@ async fn run(app: &AppHandle, label: &str, tab: CanvasTab, request: Request) -> 
             skip_reasoning,
             no_tools,
         } => {
-            if request_id.is_empty() || request_id.len() > MAX_REQUEST_ID || messages.len() > MAX_MESSAGES {
+            if request_id.is_empty()
+                || request_id.len() > MAX_REQUEST_ID
+                || messages.len() > MAX_MESSAGES
+            {
                 return Err(bad_request());
             }
 
@@ -272,21 +279,31 @@ fn push(app: &AppHandle, label: &str, request_id: &str, event: &StreamEvent) -> 
     let Some(webview) = app.get_webview(label) else {
         return false;
     };
-    if !webview.url().is_ok_and(|url| crate::canvas::is_canvas_url(&url)) {
+    if !webview
+        .url()
+        .is_ok_and(|url| crate::canvas::is_canvas_url(&url))
+    {
         return false;
     }
-    let (Ok(id), Ok(event)) = (serde_json::to_string(request_id), serde_json::to_string(event)) else {
+    let (Ok(id), Ok(event)) = (
+        serde_json::to_string(request_id),
+        serde_json::to_string(event),
+    ) else {
         return false;
     };
     webview
-        .eval(format!("window.__wisCanvas&&window.__wisCanvas.ai({id},{event})"))
+        .eval(format!(
+            "window.__wisCanvas&&window.__wisCanvas.ai({id},{event})"
+        ))
         .is_ok()
 }
 
 fn reply(app: &AppHandle, label: &str, id: Value, result: WisResult<Value>) {
     let reply = match result {
         Ok(value) => json!({ "id": id, "ok": true, "value": value }),
-        Err(WisError::InvalidInput { message }) => json!({ "id": id, "ok": false, "error": message }),
+        Err(WisError::InvalidInput { message }) => {
+            json!({ "id": id, "ok": false, "error": message })
+        }
         Err(err) => {
             log::warn!("canvas AI request: {err}");
             json!({ "id": id, "ok": false, "error": "The AI request failed." })
@@ -309,7 +326,9 @@ mod tests {
     fn ai_requests_are_told_apart_by_their_opening() {
         assert!(is_ai_request(r#"{"id":12,"op":"aiChat","request_id":"r"}"#));
         assert!(is_ai_request(r#"{"id":9007199254740991,"op":"aiStatus"}"#));
-        assert!(!is_ai_request(r#"{"id":3,"op":"save","canvas":"x","doc":"{\"op\":\"ai\"}"}"#));
+        assert!(!is_ai_request(
+            r#"{"id":3,"op":"save","canvas":"x","doc":"{\"op\":\"ai\"}"}"#
+        ));
         assert!(!is_ai_request(r#"{"id":3,"op":"list"}"#));
         assert!(!is_ai_request("é"));
     }
@@ -337,7 +356,10 @@ mod tests {
 
     #[test]
     fn a_chosen_model_is_tidied_or_refused() {
-        assert_eq!(tidy_model(Some("  qwen3:8b ".into())).unwrap().as_deref(), Some("qwen3:8b"));
+        assert_eq!(
+            tidy_model(Some("  qwen3:8b ".into())).unwrap().as_deref(),
+            Some("qwen3:8b")
+        );
         assert_eq!(tidy_model(Some("   ".into())).unwrap(), None);
         assert_eq!(tidy_model(None).unwrap(), None);
         assert!(tidy_model(Some("bad\nid".into())).is_err());
@@ -361,7 +383,9 @@ mod tests {
             r#"{"id":4,"op":"aiChat","request_id":"r1","messages":[{"role":"user","content":"hi"}]}"#,
         )
         .unwrap();
-        assert!(matches!(chat.request, Request::Chat { ref request_id, ref messages, .. } if request_id == "r1" && messages.len() == 1));
+        assert!(
+            matches!(chat.request, Request::Chat { ref request_id, ref messages, .. } if request_id == "r1" && messages.len() == 1)
+        );
         let cancel: Envelope =
             serde_json::from_str(r#"{"id":5,"op":"aiCancel","request_id":"r1"}"#).unwrap();
         assert!(matches!(cancel.request, Request::Cancel { .. }));

@@ -50,7 +50,13 @@ pub struct Ground {
 
 impl Ground {
     fn new(bottom: f64, radius: f64) -> Self {
-        let tidy = |n: f64, max: f64| if n.is_finite() { n.clamp(0.0, max).round() } else { 0.0 };
+        let tidy = |n: f64, max: f64| {
+            if n.is_finite() {
+                n.clamp(0.0, max).round()
+            } else {
+                0.0
+            }
+        };
         Self {
             bottom: tidy(bottom, MAX_GROUND),
             radius: tidy(radius, MAX_RADIUS),
@@ -82,7 +88,10 @@ pub fn set_ground(app: &AppHandle, label: &str, bottom: f64, radius: f64) {
         return;
     }
 
-    let script = format!(r#"window.__wisCanvasGround="{},{}";"#, ground.bottom, ground.radius);
+    let script = format!(
+        r#"window.__wisCanvasGround="{},{}";"#,
+        ground.bottom, ground.radius
+    );
     if let Err(err) = webview.eval(script) {
         log::warn!("pushing a canvas ground: {err}");
     }
@@ -163,7 +172,10 @@ pub fn forget(app: &AppHandle, label: &str) {
 const HEALTH_FILE: &str = "canvas-stuck.json";
 
 fn health_path(app: &AppHandle) -> Option<std::path::PathBuf> {
-    app.path().app_data_dir().ok().map(|dir| dir.join(HEALTH_FILE))
+    app.path()
+        .app_data_dir()
+        .ok()
+        .map(|dir| dir.join(HEALTH_FILE))
 }
 
 /// Canvases whose cards froze, kept so the next launch opens them paused.
@@ -312,7 +324,9 @@ pub fn start(app: AppHandle) {
 /// read can still be answered.
 pub(crate) fn head_id(text: &str) -> Option<u64> {
     let rest = text.strip_prefix(r#"{"id":"#)?;
-    let digits = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+    let digits = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
     rest[..digits].parse().ok()
 }
 
@@ -327,7 +341,11 @@ fn refuse(label: &str, text: &str, message: &str) {
 fn receive(label: String, text: String) {
     if text.len() > MAX_MESSAGE_BYTES {
         log::warn!("dropped an oversized canvas message from {label}");
-        refuse(&label, text.get(..32).unwrap_or(""), "That is too much for one canvas message.");
+        refuse(
+            &label,
+            text.get(..32).unwrap_or(""),
+            "That is too much for one canvas message.",
+        );
         return;
     }
     if crate::canvas_ai::is_ai_request(&text) {
@@ -802,8 +820,20 @@ mod tests {
 
     #[test]
     fn a_ground_stays_within_reason() {
-        assert_eq!(Ground::new(12.4, 12.0), Ground { bottom: 12.0, radius: 12.0 });
-        assert_eq!(Ground::new(500.0, -3.0), Ground { bottom: MAX_GROUND, radius: 0.0 });
+        assert_eq!(
+            Ground::new(12.4, 12.0),
+            Ground {
+                bottom: 12.0,
+                radius: 12.0
+            }
+        );
+        assert_eq!(
+            Ground::new(500.0, -3.0),
+            Ground {
+                bottom: MAX_GROUND,
+                radius: 0.0
+            }
+        );
         assert_eq!(Ground::new(f64::NAN, f64::INFINITY), Ground::default());
     }
 
@@ -879,7 +909,8 @@ mod tests {
         let loaded: Value = serde_json::from_str(&handle(&storage, &label, &load, 7)).unwrap();
         assert_eq!(loaded["value"]["doc"], "{\"cards\":[]}");
 
-        let start = json!({ "id": 5, "op": "pulse", "canvas": canvas, "state": "start" }).to_string();
+        let start =
+            json!({ "id": 5, "op": "pulse", "canvas": canvas, "state": "start" }).to_string();
         let first: Value = serde_json::from_str(&handle(&storage, &label, &start, 9)).unwrap();
         assert_eq!(first["value"]["safe"], false);
         let again: Value = serde_json::from_str(&handle(&storage, &label, &start, 10)).unwrap();

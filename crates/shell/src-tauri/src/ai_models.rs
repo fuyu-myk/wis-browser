@@ -16,34 +16,54 @@ fn failed(message: String) -> WisError {
     WisError::InvalidInput { message }
 }
 
-pub(crate) async fn list_models(state: &AppState, workspace: WorkspaceId) -> WisResult<Vec<ModelInfo>> {
+pub(crate) async fn list_models(
+    state: &AppState,
+    workspace: WorkspaceId,
+) -> WisResult<Vec<ModelInfo>> {
     if !ai::ai_supported() {
-        return Err(failed("the assistant is not available on this platform".into()));
+        return Err(failed(
+            "the assistant is not available on this platform".into(),
+        ));
     }
 
     let (provider, base_url) = {
         let browser = state.browser.lock().await;
-        (browser.settings.ai.provider, browser.settings.ai.base_url.clone())
+        (
+            browser.settings.ai.provider,
+            browser.settings.ai.base_url.clone(),
+        )
     };
     let Endpoint {
         url,
         headers,
         host,
         client,
-    } = ai::endpoint(state, workspace, provider, base_url.as_deref(), Route::Models).await?;
+    } = ai::endpoint(
+        state,
+        workspace,
+        provider,
+        base_url.as_deref(),
+        Route::Models,
+    )
+    .await?;
 
     let read = async {
-        let response = client
-            .get(url)
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| failed(format!("request failed: {} ({host})", ai::transport_error(&e))))?;
+        let response = client.get(url).headers(headers).send().await.map_err(|e| {
+            failed(format!(
+                "request failed: {} ({host})",
+                ai::transport_error(&e)
+            ))
+        })?;
         let status = response.status();
         let mut body = Vec::new();
         let mut chunks = response.bytes_stream();
         while let Some(chunk) = chunks.next().await {
-            let chunk = chunk.map_err(|e| failed(format!("request failed: {} ({host})", ai::transport_error(&e))))?;
+            let chunk = chunk.map_err(|e| {
+                failed(format!(
+                    "request failed: {} ({host})",
+                    ai::transport_error(&e)
+                ))
+            })?;
             if body.len() + chunk.len() > MAX_LIST_BYTES {
                 return Err(failed(format!("the model list from {host} is too large")));
             }

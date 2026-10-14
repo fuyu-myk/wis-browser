@@ -2,10 +2,10 @@
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
 mod ai;
-mod ai_models;
 mod ai_actions;
 mod ai_fetch;
 mod ai_local;
+mod ai_models;
 mod app_launch;
 mod audio;
 mod autoplay;

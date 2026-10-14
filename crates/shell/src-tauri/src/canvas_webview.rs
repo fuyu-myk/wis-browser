@@ -99,7 +99,11 @@ mod imp {
 
         #[test]
         fn cards_lose_the_connections_their_csp_cannot_stop() {
-            for name in ["PeerConnectionEnabled", "LinkPreconnect", "LinkDNSPrefetchEnabled"] {
+            for name in [
+                "PeerConnectionEnabled",
+                "LinkPreconnect",
+                "LinkDNSPrefetchEnabled",
+            ] {
                 assert!(super::DISABLED_FEATURES.contains(&name), "{name}");
             }
         }

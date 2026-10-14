@@ -19,8 +19,7 @@ use tauri::{AppHandle, Emitter, State};
 use wis_core::ai::chat_body;
 use wis_core::{
     AiProvider, AiSettings, ChatMessage, ChatRequest, Role, SseParser, StreamEvent, ThinkingMode,
-    WisError,
-    WisResult, WorkspaceId,
+    WisError, WisResult, WorkspaceId,
 };
 use zeroize::Zeroizing;
 
@@ -220,7 +219,10 @@ pub(crate) fn ready(ai: &AiSettings) -> bool {
     }
 
     let endpoint = ai.provider == AiProvider::OpenAiCompatible
-        && ai.base_url.as_deref().is_some_and(|base| !base.trim().is_empty());
+        && ai
+            .base_url
+            .as_deref()
+            .is_some_and(|base| !base.trim().is_empty());
     endpoint || wis_secrets::ai_key_load().is_ok_and(|key| key.is_some())
 }
 
@@ -308,7 +310,13 @@ pub(crate) async fn stream_chat(
             .clone()
             .filter(|m| !m.trim().is_empty())
             .unwrap_or_else(|| ai.model.clone());
-        (ai.provider, model, ai.base_url.clone(), ai.show_reasoning, tools(ai))
+        (
+            ai.provider,
+            model,
+            ai.base_url.clone(),
+            ai.show_reasoning,
+            tools(ai),
+        )
     };
     if model.trim().is_empty() {
         return Err(WisError::InvalidInput {
@@ -354,7 +362,14 @@ pub(crate) async fn stream_chat(
         headers,
         host: endpoint_host,
         client,
-    } = endpoint(state, job.workspace, provider, base_url.as_deref(), Route::Chat).await?;
+    } = endpoint(
+        state,
+        job.workspace,
+        provider,
+        base_url.as_deref(),
+        Route::Chat,
+    )
+    .await?;
 
     let request = client
         .post(url)
@@ -514,12 +529,13 @@ pub(crate) async fn endpoint(
 
     let mut builder = reqwest::Client::builder().connect_timeout(AI_CONNECT_TIMEOUT);
     if !local_endpoint {
-        let proxy_port = state
-            .ensure_proxy_for(workspace)
-            .await
-            .map_err(|e| WisError::InvalidInput {
-                message: format!("proxy unavailable: {e:?}"),
-            })?;
+        let proxy_port =
+            state
+                .ensure_proxy_for(workspace)
+                .await
+                .map_err(|e| WisError::InvalidInput {
+                    message: format!("proxy unavailable: {e:?}"),
+                })?;
         let proxy = reqwest::Proxy::all(format!("http://127.0.0.1:{proxy_port}")).map_err(|e| {
             WisError::InvalidInput {
                 message: format!("proxy: {e}"),
