@@ -684,7 +684,7 @@ body,
   border: 1px solid var(--border);
 }
 .canvas-notice {
-  bottom: 18px;
+  bottom: 84px;
 }
 .canvas-safe {
   display: flex;
@@ -704,6 +704,205 @@ body,
 }
 .canvas-error {
   top: 45%;
+}
+
+.canvas-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: -14px;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  box-sizing: border-box;
+  width: min(680px, calc(100vw - 32px));
+  padding: 10px 10px 24px 16px;
+  transform: translateX(-50%);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card-bg);
+  box-shadow: var(--edge-off), var(--card-shadow);
+  transition:
+    border-color var(--edge-fade),
+    box-shadow var(--edge-fade);
+}
+.canvas-prompt:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--edge-on), var(--card-shadow);
+}
+.canvas-prompt textarea {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 5px 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: none;
+  color: var(--text-primary);
+  font: 14px/1.45 var(--font-sans);
+}
+.canvas-prompt textarea::placeholder {
+  color: var(--text-muted);
+}
+.canvas-prompt-model {
+  max-width: 180px;
+  overflow: hidden;
+  padding-bottom: 7px;
+  color: var(--text-muted);
+  font: 12px var(--font-sans);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.canvas-prompt-send {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+.canvas-prompt-send:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.canvas-prompt-send svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.canvas-prompt-send.is-stop svg {
+  fill: currentColor;
+  stroke: none;
+}
+
+.canvas-agent {
+  position: fixed;
+  left: 50%;
+  top: 14px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+}
+.canvas-agent-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(440px, calc(100vw - 280px));
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+  color: var(--text-secondary);
+  font: 600 12px var(--font-sans);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.canvas-agent-pill:hover,
+.canvas-agent-pill[aria-expanded='true'] {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.canvas-agent-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.canvas-agent-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.canvas-agent-pill.is-busy .canvas-agent-dot {
+  animation: canvas-agent-pulse 1.1s ease-in-out infinite;
+}
+@keyframes canvas-agent-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .canvas-agent-pill.is-busy .canvas-agent-dot {
+    animation: none;
+  }
+}
+.canvas-agent-stop {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--overlay);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.canvas-agent-log {
+  box-sizing: border-box;
+  width: min(480px, calc(100vw - 32px));
+  max-height: 60vh;
+  margin-top: 8px;
+  padding: 10px 14px 8px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+  font: 13px/1.5 var(--font-sans);
+}
+.canvas-agent-user {
+  margin: 8px 0 6px auto;
+  width: fit-content;
+  max-width: 85%;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+.canvas-agent-step {
+  margin: 2px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.canvas-agent-step::before {
+  content: '·';
+  margin-right: 6px;
+}
+.canvas-agent-reply {
+  margin: 4px 0 8px;
+}
+.canvas-agent-error {
+  margin: 4px 0 8px;
+  color: var(--danger);
+}
+.canvas-agent-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+.canvas-agent-foot button {
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: 12px var(--font-sans);
+  cursor: pointer;
+}
+.canvas-agent-foot button:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 /* Markdown, as the assistant panel renders it. */

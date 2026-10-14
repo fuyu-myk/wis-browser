@@ -9,7 +9,7 @@ import './canvas.css'
 declare global {
   interface Window {
     webkit?: { messageHandlers?: { wisCanvas?: Handler } }
-    __wisCanvas?: { reply: (raw: unknown) => void }
+    __wisCanvas?: { reply: (raw: unknown) => void; ai: (requestId: unknown, event: unknown) => void }
     __wisSwipeAccent?: unknown
     __wisCanvasTheme?: unknown
   }
@@ -48,9 +48,10 @@ async function channelHandler(): Promise<Handler | null> {
 void channelHandler().then((handler) => {
   const channel = createCanvasChannel(handler ? (text) => handler.postMessage(text) : null)
 
-  // Rust replies by evaluating `window.__wisCanvas.reply(...)`.
+  // Rust replies by evaluating `window.__wisCanvas.reply(...)`, and streams
+  // AI events through `window.__wisCanvas.ai(...)`.
   Object.defineProperty(window, '__wisCanvas', {
-    value: Object.freeze({ reply: channel.reply }),
+    value: Object.freeze({ reply: channel.reply, ai: channel.ai }),
     writable: false,
     configurable: false,
   })

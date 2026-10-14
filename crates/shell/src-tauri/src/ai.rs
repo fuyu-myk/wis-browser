@@ -18,7 +18,8 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
 use wis_core::ai::chat_body;
 use wis_core::{
-    AiProvider, ChatMessage, ChatRequest, Role, SseParser, StreamEvent, ThinkingMode, WisError,
+    AiProvider, AiSettings, ChatMessage, ChatRequest, Role, SseParser, StreamEvent, ThinkingMode,
+    WisError,
     WisResult, WorkspaceId,
 };
 use zeroize::Zeroizing;
@@ -194,13 +195,32 @@ pub async fn ai_assess_link(
 /// only muting the reply. A no-op for an id that already finished.
 #[tauri::command]
 pub async fn ai_cancel(state: State<'_, AppState>, request_id: String) -> WisResult<()> {
-    if let Ok(map) = state.ai_cancels.lock() {
-        if let Some(flag) = map.get(&request_id) {
-            flag.store(true, Ordering::Relaxed);
-        }
+    cancel(&state, &request_id);
+    Ok(())
+}
+
+/// Whether a request by that id was running to stop.
+pub(crate) fn cancel(state: &AppState, request_id: &str) -> bool {
+    let Ok(map) = state.ai_cancels.lock() else {
+        return false;
+    };
+    let Some(flag) = map.get(request_id) else {
+        return false;
+    };
+    flag.store(true, Ordering::Relaxed);
+    true
+}
+
+/// Whether a request could run: a supported platform, a model, and a stored key
+/// or an OpenAI-compatible endpoint (local servers need no key).
+pub(crate) fn ready(ai: &AiSettings) -> bool {
+    if !ai_supported() || ai.model.trim().is_empty() {
+        return false;
     }
 
-    Ok(())
+    let endpoint = ai.provider == AiProvider::OpenAiCompatible
+        && ai.base_url.as_deref().is_some_and(|base| !base.trim().is_empty());
+    endpoint || wis_secrets::ai_key_load().is_ok_and(|key| key.is_some())
 }
 
 /// Stream a chat completion to `on_event` as [`StreamEvent`]s (`delta` / `done`
@@ -214,18 +234,69 @@ pub async fn ai_chat(
     args: AiChatArgs,
     on_event: Channel<StreamEvent>,
 ) -> WisResult<()> {
+    let job = ChatJob {
+        workspace: args.workspace_id,
+        request_id: args.request_id,
+        messages: args.messages,
+        max_tokens: args.max_tokens,
+        skip_reasoning: args.skip_reasoning,
+        no_tools: args.no_tools,
+    };
+    let tools = |ai: &AiSettings| ChatTools {
+        web: ai.web_access,
+        local: ai.local_data,
+        action: ai.local_data && ai.tab_actions,
+        canvas: false,
+    };
+    stream_chat(&state, job, tools, &mut |ev| on_event.send(ev).is_ok()).await
+}
+
+/// Which tools a request may offer, decided by its caller from the settings.
+pub(crate) struct ChatTools {
+    pub web: bool,
+    pub local: bool,
+    pub action: bool,
+    pub canvas: bool,
+}
+
+/// One completion: the conversation and the per-request switches.
+pub(crate) struct ChatJob {
+    pub workspace: WorkspaceId,
+    pub request_id: String,
+    pub messages: Vec<AiMessage>,
+    pub max_tokens: u32,
+    pub skip_reasoning: bool,
+    pub no_tools: bool,
+}
+
+/// Streams one completion to `emit`, which returns false once its consumer is
+/// gone. Shared by the assistant panel and canvas agents.
+pub(crate) async fn stream_chat(
+    state: &AppState,
+    job: ChatJob,
+    tools: impl FnOnce(&AiSettings) -> ChatTools,
+    emit: &mut (dyn FnMut(StreamEvent) -> bool + Send),
+) -> WisResult<()> {
     if !ai_supported() {
         return Err(unsupported());
     }
 
-    let app_state: &AppState = &state;
-    let cancelled = CancelGuard::register(app_state, &args.request_id);
+    let running = state
+        .ai_cancels
+        .lock()
+        .is_ok_and(|map| map.contains_key(&job.request_id));
+    if running {
+        return Err(WisError::InvalidInput {
+            message: "that AI request is already running".into(),
+        });
+    }
+    let cancelled = CancelGuard::register(state, &job.request_id);
     let _cancel_guard = CancelGuard {
-        state: app_state,
-        request_id: args.request_id.clone(),
+        state,
+        request_id: job.request_id.clone(),
     };
 
-    let (provider, model, base_url, show_reasoning, web_access, local_data, tab_actions) = {
+    let (provider, model, base_url, show_reasoning, tools) = {
         let browser = state.browser.lock().await;
         let ai = &browser.settings.ai;
         (
@@ -233,9 +304,7 @@ pub async fn ai_chat(
             ai.model.clone(),
             ai.base_url.clone(),
             ai.show_reasoning,
-            ai.web_access,
-            ai.local_data,
-            ai.tab_actions,
+            tools(ai),
         )
     };
     if model.trim().is_empty() {
@@ -255,22 +324,23 @@ pub async fn ai_chat(
         })?
     };
 
-    let thinking = thinking_for(provider, show_reasoning, args.skip_reasoning);
+    let thinking = thinking_for(provider, show_reasoning, job.skip_reasoning);
     let max_tokens = if thinking == ThinkingMode::Summarized {
-        args.max_tokens.max(16000)
+        job.max_tokens.max(16000)
     } else {
-        args.max_tokens
+        job.max_tokens
     };
     let req = ChatRequest {
         model,
         max_tokens,
-        web_tools: web_access,
-        local_tools: local_data,
-        action_tools: local_data && tab_actions,
-        tools_closed: args.no_tools || args.skip_reasoning,
+        web_tools: tools.web,
+        local_tools: tools.local,
+        action_tools: tools.action,
+        canvas_tools: tools.canvas,
+        tools_closed: job.no_tools || job.skip_reasoning,
         local_server,
         thinking,
-        messages: args
+        messages: job
             .messages
             .into_iter()
             .map(|m| ChatMessage {
@@ -312,7 +382,7 @@ pub async fn ai_chat(
     let mut builder = reqwest::Client::builder().connect_timeout(AI_CONNECT_TIMEOUT);
     if !local_endpoint {
         let proxy_port = state
-            .ensure_proxy_for(args.workspace_id)
+            .ensure_proxy_for(job.workspace)
             .await
             .map_err(|e| WisError::InvalidInput {
                 message: format!("proxy unavailable: {e:?}"),
@@ -357,7 +427,7 @@ pub async fn ai_chat(
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
         let detail = resp.text().await.unwrap_or_default();
-        let _ = on_event.send(StreamEvent::Error {
+        let _ = emit(StreamEvent::Error {
             message: format!(
                 "provider error {status} from {endpoint_host}: {}",
                 first_line(&detail, 300)
@@ -384,7 +454,7 @@ pub async fn ai_chat(
             Ok(c) => c,
             Err(e) => {
                 // A truncated or reset body arrives here.
-                let _ = on_event.send(StreamEvent::Error {
+                let _ = emit(StreamEvent::Error {
                     message: format!("stream error: {} ({endpoint_host})", transport_error(&e)),
                 });
                 emitted_terminal = true;
@@ -394,8 +464,8 @@ pub async fn ai_chat(
 
         for ev in parser.feed(&chunk) {
             let terminal = matches!(ev, StreamEvent::Done | StreamEvent::Error { .. });
-            if on_event.send(ev).is_err() {
-                // The consumer (webview channel) is gone; stop draining.
+            if !emit(ev) {
+                // The consumer is gone; stop draining.
                 return Ok(());
             }
 
@@ -410,12 +480,12 @@ pub async fn ai_chat(
     // handed over without a finish marker, then close.
     if !emitted_terminal {
         for ev in parser.finish() {
-            if on_event.send(ev).is_err() {
+            if !emit(ev) {
                 return Ok(());
             }
         }
 
-        let _ = on_event.send(StreamEvent::Done);
+        let _ = emit(StreamEvent::Done);
     }
 
     Ok(())

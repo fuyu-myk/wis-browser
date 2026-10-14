@@ -13,6 +13,7 @@ mod biometrics;
 mod bookmarks;
 mod browser_import;
 mod canvas;
+mod canvas_ai;
 mod canvas_health;
 mod canvas_store;
 mod canvas_webview;

@@ -123,6 +123,38 @@ describe('the channel', () => {
     assert.deepEqual([await first, await second, await third], [true, false, false])
   })
 
+  test('an AI chat streams pushed events to its own listener until the reply', async () => {
+    const { posted, channel } = setup()
+    const seen = []
+    const chatting = channel.aiChat({ request_id: 'r1', messages: [{ role: 'user', content: 'hi' }] }, (e) => seen.push(e))
+    assert.deepEqual(posted[0], {
+      id: 1,
+      op: 'aiChat',
+      request_id: 'r1',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+    channel.ai('r1', { type: 'delta', text: 'He' })
+    channel.ai('other', { type: 'delta', text: 'no' })
+    for (const junk of [null, 'text', { text: 'x' }, { type: 5 }]) channel.ai('r1', junk)
+    channel.ai('r1', { type: 'done' })
+    channel.reply({ id: 1, ok: true, value: null })
+    await chatting
+    channel.ai('r1', { type: 'delta', text: 'late' })
+    assert.deepEqual(seen, [{ type: 'delta', text: 'He' }, { type: 'done' }])
+  })
+
+  test('AI status and cancel are plain requests', async () => {
+    const { posted, channel } = setup()
+    const status = channel.aiStatus()
+    void channel.aiCancel('r1')
+    assert.deepEqual(posted, [
+      { id: 1, op: 'aiStatus' },
+      { id: 2, op: 'aiCancel', request_id: 'r1' },
+    ])
+    channel.reply({ id: 1, ok: true, value: { available: true, model: 'm' } })
+    assert.deepEqual(await status, { available: true, model: 'm' })
+  })
+
   test('without the native channel every request fails at once', async () => {
     const channel = createCanvasChannel(null)
     await assert.rejects(channel.list(), /not available/)

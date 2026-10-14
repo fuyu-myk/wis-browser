@@ -93,6 +93,8 @@ pub struct ChatRequest {
     pub local_tools: bool,
     /// Offer the tab actions, each approved by the user before it runs.
     pub action_tools: bool,
+    /// Offer the tools a canvas agent edits its canvas with.
+    pub canvas_tools: bool,
     /// Allow no further tool calls this request (round cap, answer now).
     pub tools_closed: bool,
     /// An OpenAI-compatible server on this machine (Ollama, LM Studio).
@@ -283,6 +285,9 @@ fn declared_tools(req: &ChatRequest) -> Vec<serde_json::Value> {
     }
     if req.action_tools {
         tools.extend(action_tool_definitions());
+    }
+    if req.canvas_tools {
+        tools.extend(crate::canvas_tools::definitions());
     }
     tools
 }
@@ -911,6 +916,7 @@ mod tests {
             web_tools: false,
             local_tools: true,
             action_tools: false,
+            canvas_tools: false,
             tools_closed: false,
             local_server: false,
             thinking: ThinkingMode::ProviderDefault,
@@ -1376,6 +1382,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: true,
             local_tools: false,
             action_tools: false,
+            canvas_tools: false,
             tools_closed: false,
             local_server: false,
             thinking: ThinkingMode::ProviderDefault,
@@ -1406,6 +1413,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: true,
             action_tools: false,
+            canvas_tools: false,
             tools_closed: false,
             local_server: false,
             thinking: ThinkingMode::ProviderDefault,
@@ -1450,6 +1458,44 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
     }
 
     #[test]
+    fn a_canvas_agent_gets_its_own_tools_on_either_provider() {
+        let req = ChatRequest {
+            model: "claude-sonnet-5-5".into(),
+            max_tokens: 4096,
+            web_tools: false,
+            local_tools: false,
+            action_tools: false,
+            canvas_tools: true,
+            tools_closed: false,
+            local_server: false,
+            thinking: ThinkingMode::ProviderDefault,
+            messages: vec![ChatMessage::user("sketch a plan")],
+        };
+        let openai = chat_body(AiProvider::OpenAiCompatible, &req);
+        let names: Vec<&str> = openai["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["function"]["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "read_canvas",
+                "read_cards",
+                "create_cards",
+                "update_cards",
+                "delete_cards",
+                "connect_cards",
+                "frame_cards"
+            ]
+        );
+        let anthropic = chat_body(AiProvider::Anthropic, &req);
+        assert_eq!(anthropic["tools"][2]["name"], "create_cards");
+        assert!(anthropic["tools"][2]["input_schema"]["properties"]["cards"].is_object());
+    }
+
+    #[test]
     fn tab_actions_are_declared_after_the_local_tools() {
         let mut req = ChatRequest {
             model: "qwen3.5:9b".into(),
@@ -1457,6 +1503,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: true,
             action_tools: true,
+            canvas_tools: false,
             tools_closed: false,
             local_server: false,
             thinking: ThinkingMode::ProviderDefault,
@@ -1512,6 +1559,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: true,
             local_tools: false,
             action_tools: false,
+            canvas_tools: false,
             tools_closed: false,
             local_server: false,
             thinking: ThinkingMode::ProviderDefault,
@@ -1670,6 +1718,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            canvas_tools: false,
             tools_closed: false,
             local_server: false,
             thinking: ThinkingMode::ProviderDefault,
@@ -1701,6 +1750,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            canvas_tools: false,
             tools_closed: false,
             local_server: false,
             thinking: ThinkingMode::ProviderDefault,
@@ -1722,6 +1772,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            canvas_tools: false,
             tools_closed: false,
             local_server: false,
             thinking: ThinkingMode::ProviderDefault,
@@ -1739,6 +1790,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            canvas_tools: false,
             tools_closed: false,
             local_server: false,
             thinking: ThinkingMode::Summarized,
@@ -1761,6 +1813,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            canvas_tools: false,
             tools_closed: false,
             local_server: false,
             thinking: ThinkingMode::Disabled,
@@ -1779,6 +1832,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            canvas_tools: false,
             tools_closed: false,
             local_server: false,
             thinking: ThinkingMode::Disabled,
@@ -1809,6 +1863,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            canvas_tools: false,
             tools_closed: false,
             local_server: true,
             thinking: ThinkingMode::Disabled,
@@ -1838,6 +1893,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            canvas_tools: false,
             tools_closed: false,
             local_server: false,
             thinking: ThinkingMode::Summarized,
@@ -1858,6 +1914,7 @@ data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"tex
             web_tools: false,
             local_tools: false,
             action_tools: false,
+            canvas_tools: false,
             tools_closed: false,
             local_server: false,
             thinking: ThinkingMode::ProviderDefault,

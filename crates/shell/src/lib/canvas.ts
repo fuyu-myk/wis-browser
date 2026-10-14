@@ -57,8 +57,8 @@ export const MIN_CARD_HEIGHT = 80
 export const MAX_CARD_HEIGHT = 4000
 export const HTML_CARD_WIDTH = 480
 export const HTML_CARD_HEIGHT = 320
-const MAX_CARD_TEXT = 20_000
-const MAX_HTML_TEXT = 500_000
+export const MAX_CARD_TEXT = 20_000
+export const MAX_HTML_TEXT = 500_000
 const STARTER_HTML = `<!doctype html>
 <style>
   body { margin: 0; height: 100vh; display: grid; place-items: center; font: 15px system-ui }
@@ -71,14 +71,14 @@ const STARTER_HTML = `<!doctype html>
   button.onclick = () => (button.textContent = \`Clicked \${++clicks} times\`)
 </script>
 `
-const MAX_CARDS = 5000
-const MAX_EDGES = 10_000
-const MAX_FRAMES = 1000
+export const MAX_CARDS = 5000
+export const MAX_EDGES = 10_000
+export const MAX_FRAMES = 1000
 export const MAX_FRAME_SIZE = 20_000
 export const MIN_FRAME_W = 160
 export const MIN_FRAME_H = 120
 export const FRAME_PAD = 32
-const MAX_COORD = 10_000_000
+export const MAX_COORD = 10_000_000
 const MAX_ID = 64
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))

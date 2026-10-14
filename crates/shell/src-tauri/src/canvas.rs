@@ -212,6 +212,7 @@ pub fn start(app: AppHandle) {
         return;
     }
     load_health(&app);
+    crate::canvas_ai::start(app.clone());
 
     let worker_app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -247,9 +248,33 @@ pub fn start(app: AppHandle) {
     });
 }
 
+/// The page writes `{"id":...` first, so a message too big or too broken to
+/// read can still be answered.
+pub(crate) fn head_id(text: &str) -> Option<u64> {
+    let rest = text.strip_prefix(r#"{"id":"#)?;
+    let digits = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+    rest[..digits].parse().ok()
+}
+
+fn refuse(label: &str, text: &str, message: &str) {
+    let (Some(app), Some(id)) = (crate::canvas_ai::app(), head_id(text)) else {
+        return;
+    };
+    let reply = json!({ "id": id, "ok": false, "error": message });
+    deliver(app, label, &reply.to_string());
+}
+
 fn receive(label: String, text: String) {
     if text.len() > MAX_MESSAGE_BYTES {
         log::warn!("dropped an oversized canvas message from {label}");
+        refuse(&label, text.get(..32).unwrap_or(""), "That is too much for one canvas message.");
+        return;
+    }
+    if crate::canvas_ai::is_ai_request(&text) {
+        match tab_for(&label) {
+            Some(tab) => crate::canvas_ai::receive(label, tab, text),
+            None => refuse(&label, &text, "this tab is not a canvas"),
+        }
         return;
     }
     if let Some(worker) = WORKER.get() {
@@ -259,10 +284,13 @@ fn receive(label: String, text: String) {
     }
 }
 
-fn deliver(app: &AppHandle, label: &str, reply: &str) {
+pub(crate) fn deliver(app: &AppHandle, label: &str, reply: &str) {
     let Some(webview) = app.get_webview(label) else {
         return;
     };
+    if !webview.url().is_ok_and(|url| is_canvas_url(&url)) {
+        return;
+    }
     if let Err(err) = webview.eval(format!(
         "window.__wisCanvas&&window.__wisCanvas.reply({reply})"
     )) {
@@ -706,6 +734,14 @@ mod tests {
         let body = String::from_utf8(page.body().clone()).unwrap();
         assert!(body.contains("e.source !== parent"));
         assert!(body.contains("typeof RTCPeerConnection !== 'undefined'"));
+    }
+
+    #[test]
+    fn a_message_is_answerable_from_its_opening() {
+        assert_eq!(head_id(r#"{"id":42,"op":"save""#), Some(42));
+        assert_eq!(head_id(r#"{"id":7"#), Some(7));
+        assert_eq!(head_id(r#"{"op":"x","id":1}"#), None);
+        assert_eq!(head_id("garbage"), None);
     }
 
     #[test]

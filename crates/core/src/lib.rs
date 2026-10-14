@@ -11,6 +11,7 @@ pub mod background;
 pub mod backup;
 pub mod bookmark_tree;
 pub mod canvas;
+pub mod canvas_tools;
 pub mod clear;
 pub mod design;
 pub mod download;

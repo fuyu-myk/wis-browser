@@ -16,7 +16,8 @@ import {
 } from '@/lib/canvas'
 import type { CanvasChannel, LoadedCanvas } from '@/lib/canvasChannel'
 
-import { CanvasSurface } from './CanvasSurface'
+import { CanvasAgentHost } from './CanvasAgent'
+import { CanvasSurface, type SurfaceHandle } from './CanvasSurface'
 import { CanvasSwitcher } from './CanvasSwitcher'
 
 const SAVE_DELAY_MS = 500
@@ -100,6 +101,8 @@ export function CanvasApp({ channel }: { channel: CanvasChannel }) {
   const history = useRef<History>(emptyHistory())
   const docRef = useRef<CanvasDoc | null>(null)
   docRef.current = state.kind === 'ready' ? state.doc : null
+  const surface = useRef<SurfaceHandle | null>(null)
+  const agentStepOpen = useRef(false)
 
   const show = useCallback(
     async (loaded: LoadedCanvas, mine: number) => {
@@ -145,6 +148,7 @@ export function CanvasApp({ channel }: { channel: CanvasChannel }) {
   const onChange = useCallback(
     (doc: CanvasDoc) => {
       if (doc === docRef.current) return
+      agentStepOpen.current = false
       if (docRef.current) history.current = record(history.current, docRef.current)
       apply(doc)
     },
@@ -161,6 +165,7 @@ export function CanvasApp({ channel }: { channel: CanvasChannel }) {
       const current = docRef.current
       const next = current && direction(history.current, current)
       if (!next) return
+      agentStepOpen.current = false
       history.current = next.history
       apply(next.doc)
     },
@@ -171,6 +176,14 @@ export function CanvasApp({ channel }: { channel: CanvasChannel }) {
     (state: 'start' | 'beat' | 'stop') =>
       openCanvas === null ? Promise.resolve(false) : channel.pulse(openCanvas, state),
     [channel, openCanvas],
+  )
+  const agentApply = useCallback(
+    (doc: CanvasDoc, first: boolean) => {
+      if ((first || !agentStepOpen.current) && docRef.current) history.current = record(history.current, docRef.current)
+      agentStepOpen.current = true
+      apply(doc)
+    },
+    [apply],
   )
   const onUndo = useCallback(() => step(undo), [step])
   const onRedo = useCallback(() => step(redo), [step])
@@ -267,7 +280,9 @@ export function CanvasApp({ channel }: { channel: CanvasChannel }) {
         onUndo={onUndo}
         onRedo={onRedo}
         pulse={pulse}
+        handle={surface}
       />
+      <CanvasAgentHost key={state.id} channel={channel} docRef={docRef} surface={surface} apply={agentApply} />
       <CanvasSwitcher
         name={state.name}
         currentId={state.id}

@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
@@ -51,6 +52,7 @@ import {
   type CanvasDoc,
   type CanvasView,
 } from '@/lib/canvas'
+import { estimateHeight } from '@/lib/canvasAgent'
 import { cx } from '@/lib/cx'
 
 import { Card, CardEditor, type CardHandlers, type Side } from './CanvasCard'
@@ -78,6 +80,15 @@ interface CanvasSurfaceProps {
   onUndo: () => void
   onRedo: () => void
   pulse: CardPulse
+  handle?: MutableRefObject<SurfaceHandle | null>
+}
+
+/** What the canvas agent reads from, and does to, the surface. */
+export interface SurfaceHandle {
+  selection: () => string[]
+  view: () => Box
+  heightOf: (card: CanvasCard) => number
+  select: (ids: readonly string[]) => void
 }
 
 type Selection = ReadonlySet<string>
@@ -100,7 +111,7 @@ const sameSet = (a: Selection, b: Selection) => a.size === b.size && [...a].ever
 const typing = (target: EventTarget | null) =>
   target instanceof Element && target.closest('input, textarea') !== null
 
-export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo, pulse }: CanvasSurfaceProps) {
+export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo, pulse, handle }: CanvasSurfaceProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const layerRef = useRef<HTMLDivElement>(null)
   const zoomRef = useRef<HTMLButtonElement>(null)
@@ -324,6 +335,23 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo, pulse }: 
       setPicked(null)
     },
   }).current
+
+  useEffect(() => {
+    if (!handle) return
+    handle.current = {
+      selection: () => [...selectedRef.current],
+      view: () => {
+        const a = toCanvas(view.current, 0, 0)
+        const b = toCanvas(view.current, window.innerWidth, window.innerHeight)
+        return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y }
+      },
+      heightOf: (card) => heights.current.get(card.id) ?? estimateHeight(card),
+      select: (ids) => select(new Set(ids)),
+    }
+    return () => {
+      handle.current = null
+    }
+  }, [handle])
 
   useViewGestures(viewportRef, view, () => {
     schedule()
