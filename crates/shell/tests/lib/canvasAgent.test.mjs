@@ -111,6 +111,27 @@ describe('changing the canvas', () => {
     assert.equal(out.summary, 'Deleted 1 card')
   })
 
+  test('a note will not take a web page, so its Markdown is never swapped for HTML', () => {
+    const d = doc([note('a', 0, 0, '- step one'), { ...canvas.newHtmlCard(0, 600, 'h') }])
+    for (const page of ['<!doctype html><p>chart</p>', '  <html><body>x</body></html>', '<div id=c></div>\n<script>draw()</script>', '<style>p{}</style><p>x</p>']) {
+      const out = agent.runCanvasTool(d, call('update_cards', { cards: [{ id: 'a', text: page }] }), ctx())
+      assert.equal(out.doc, d, page)
+      assert.match(out.result, /^Error: .*create_cards/, page)
+    }
+    const refused = agent.runCanvasTool(d, call('update_cards', { cards: [{ id: 'a', text: '<!doctype html>' }] }), ctx())
+    assert.equal(refused.summary, 'Kept the notes as they were', 'the user sees a plain line')
+    assert.equal(agent.runCanvasTool(d, call('read_cards', { ids: 'a' }), ctx()).summary, 'Couldn’t read cards')
+    const fine = agent.runCanvasTool(d, call('update_cards', { cards: [{ id: 'a', text: 'Use <kbd>Esc</kbd> to leave' }] }), ctx())
+    assert.equal(fine.doc.cards[0].text, 'Use <kbd>Esc</kbd> to leave', 'inline tags in Markdown are fine')
+    const html = agent.runCanvasTool(d, call('update_cards', { cards: [{ id: 'h', text: '<!doctype html><p>new</p>' }] }), ctx())
+    assert.equal(html.doc.cards[1].text, '<!doctype html><p>new</p>', 'an HTML card takes a page')
+  })
+
+  test('the agent is told to build visuals beside the originals', () => {
+    assert.match(agent.CANVAS_AGENT_PROMPT, /new HTML card/)
+    assert.match(agent.CANVAS_AGENT_PROMPT, /keep the originals/)
+  })
+
   test('limits hold: at most 30 new cards, sizes clamped, text capped', () => {
     const many = Array.from({ length: 40 }, (_, i) => ({ text: `c${i}`, w: 5 }))
     const out = agent.runCanvasTool(doc(), call('create_cards', { cards: many }), ctx())

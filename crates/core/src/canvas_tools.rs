@@ -64,7 +64,9 @@ pub fn definitions() -> Vec<Value> {
         ),
         tool(
             "update_cards",
-            "Change cards: replace their text, move them, or resize them. Omitted fields stay.",
+            "Change cards: replace their text, move them, or resize them. Omitted fields stay. \
+             A note stays Markdown and an HTML card stays HTML; to show notes as a chart or \
+             other page, create an HTML card beside them instead.",
             json!({
                 "type": "object",
                 "properties": {
