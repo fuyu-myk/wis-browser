@@ -339,7 +339,12 @@ fn refuse(label: &str, text: &str, message: &str) {
 }
 
 fn receive(label: String, text: String) {
-    if text.len() > MAX_MESSAGE_BYTES {
+    let limit = if crate::canvas_ai::is_document_request(&text) {
+        crate::canvas_ai::MAX_DOCUMENT_MESSAGE
+    } else {
+        MAX_MESSAGE_BYTES
+    };
+    if text.len() > limit {
         log::warn!("dropped an oversized canvas message from {label}");
         refuse(
             &label,

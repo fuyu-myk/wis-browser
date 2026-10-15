@@ -153,6 +153,7 @@ describe('the channel', () => {
     void channel.aiSetModel(null)
     void channel.aiWebSearch('kyoto weather')
     void channel.aiWebFetch('https://example.com/')
+    void channel.aiReadDocument('pdf', 'JVBERi0=', 1200)
     assert.deepEqual(posted, [
       { id: 1, op: 'aiStatus' },
       { id: 2, op: 'aiCancel', request_id: 'r1' },
@@ -162,6 +163,7 @@ describe('the channel', () => {
       { id: 6, op: 'aiSetModel', model: null },
       { id: 7, op: 'aiWebSearch', query: 'kyoto weather' },
       { id: 8, op: 'aiWebFetch', url: 'https://example.com/' },
+      { id: 9, op: 'aiReadDocument', kind: 'pdf', max_chars: 1200, data: 'JVBERi0=' },
     ])
     channel.reply({ id: 1, ok: true, value: { available: true, model: 'm' } })
     assert.deepEqual(await status, { available: true, model: 'm' })

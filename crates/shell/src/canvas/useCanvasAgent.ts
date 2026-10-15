@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 
 import type { WireMessage } from '@/lib/ai'
 import type { CanvasDoc } from '@/lib/canvas'
 import { estimateHeight, runTurn, type AgentContext, type AgentReport, type TurnResult } from '@/lib/canvasAgent'
-import type { Attachment } from '@/lib/canvasAttach'
+import type { AttachDeps, Attachment } from '@/lib/canvasAttach'
 import type { CanvasAiStatus, CanvasChannel, CanvasModels } from '@/lib/canvasChannel'
 
 import type { SurfaceHandle } from './CanvasSurface'
@@ -76,6 +76,7 @@ export interface CanvasAgent {
   stop: () => void
   listModels: () => Promise<CanvasModels>
   setModel: (model: string | null) => Promise<void>
+  readDocument: AttachDeps['readDocument']
   clear: () => void
   refresh: () => void
 }
@@ -218,5 +219,16 @@ export function useCanvasAgent({ channel, docRef, surface, apply }: AgentOptions
     setLog([])
   }
 
-  return { status, activity, log, send, stop, clear, refresh, listModels: channel.aiModels, setModel }
+  return {
+    status,
+    activity,
+    log,
+    send,
+    stop,
+    clear,
+    refresh,
+    listModels: channel.aiModels,
+    setModel,
+    readDocument: channel.aiReadDocument,
+  }
 }

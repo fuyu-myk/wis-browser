@@ -6,6 +6,7 @@
 import type { AiFetchResponse, AiSearchResult, StreamEvent } from '@/bindings/types'
 import type { WireMessage } from '@/lib/ai'
 import type { CanvasSummary } from '@/lib/canvas'
+import type { DocumentKind, DocumentOutcome } from '@/lib/canvasAttach'
 
 export interface LoadedCanvas {
   id: string
@@ -55,6 +56,8 @@ export interface CanvasChannel {
   aiSetModel: (model: string | null) => Promise<null>
   aiWebSearch: (query: string) => Promise<AiSearchResult[]>
   aiWebFetch: (url: string) => Promise<AiFetchResponse>
+  /** Text from a PDF or word processor file, given as base64. */
+  aiReadDocument: (kind: DocumentKind, data: string, maxChars: number) => Promise<DocumentOutcome>
 }
 
 interface Waiting {
@@ -120,5 +123,6 @@ export function createCanvasChannel(post: ((text: string) => void) | null): Canv
     aiSetModel: (model) => request({ op: 'aiSetModel', model }),
     aiWebSearch: (query) => request({ op: 'aiWebSearch', query }),
     aiWebFetch: (url) => request({ op: 'aiWebFetch', url }),
+    aiReadDocument: (kind, data, maxChars) => request({ op: 'aiReadDocument', kind, max_chars: maxChars, data }),
   }
 }

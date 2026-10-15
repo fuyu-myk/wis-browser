@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex, OnceLock};
 
+use base64::Engine;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
@@ -62,6 +63,7 @@ impl Drop for Listing {
 type Counts = LazyLock<Mutex<HashMap<String, usize>>>;
 
 static WEB_READS: Counts = LazyLock::new(Default::default);
+static DOCUMENT_READS: Counts = LazyLock::new(Default::default);
 
 /// Counts a tab's open streams or web reads; dropping it closes one.
 struct Stream(&'static Counts, String);
@@ -123,9 +125,18 @@ fn cancelled_early(request_id: &str) -> bool {
 /// The page writes `{"id":...,"op":...}` first, so an AI request is told apart
 /// without parsing what may be a multi-megabyte save.
 pub fn is_ai_request(text: &str) -> bool {
+    op_of(text).is_some_and(|op| op.starts_with("ai"))
+}
+
+fn op_of(text: &str) -> Option<&str> {
     let head = text.get(..text.len().min(48)).unwrap_or("");
-    head.split_once(r#","op":""#)
-        .is_some_and(|(_, rest)| rest.starts_with("ai"))
+    head.split_once(r#","op":""#).map(|(_, rest)| rest)
+}
+
+pub const MAX_DOCUMENT_MESSAGE: usize = crate::document_text::MAX_BYTES.div_ceil(3) * 4 + 4096;
+
+pub fn is_document_request(text: &str) -> bool {
+    op_of(text).is_some_and(|op| op.starts_with(r#"aiReadDocument""#))
 }
 
 #[derive(Deserialize)]
@@ -159,6 +170,12 @@ enum Request {
     WebSearch { query: String },
     #[serde(rename = "aiWebFetch")]
     WebFetch { url: String },
+    #[serde(rename = "aiReadDocument")]
+    ReadDocument {
+        kind: crate::document_text::DocKind,
+        max_chars: usize,
+        data: String,
+    },
 }
 
 const MAX_MODEL_ID: usize = 200;
@@ -186,16 +203,17 @@ pub fn receive(label: String, tab: CanvasTab, text: String) {
     let Some(app) = APP.get().cloned() else {
         return;
     };
-    let envelope = match serde_json::from_str::<Envelope>(&text) {
-        Ok(envelope) => envelope,
-        Err(_) => {
-            let id = crate::canvas::head_id(&text).map_or(Value::Null, Value::from);
-            reply(&app, &label, id, Err(bad_request()));
-            return;
-        }
-    };
-    let id = Value::from(envelope.id);
     tauri::async_runtime::spawn(async move {
+        let envelope = match serde_json::from_str::<Envelope>(&text) {
+            Ok(envelope) => envelope,
+            Err(_) => {
+                let id = crate::canvas::head_id(&text).map_or(Value::Null, Value::from);
+                reply(&app, &label, id, Err(bad_request()));
+                return;
+            }
+        };
+        drop(text);
+        let id = Value::from(envelope.id);
         let result = run(&app, &label, tab, envelope.request).await;
         reply(&app, &label, id, result);
     });
@@ -228,14 +246,31 @@ async fn run(app: &AppHandle, label: &str, tab: CanvasTab, request: Request) -> 
         Request::WebSearch { query } => {
             let _read = web_read(label)?;
             let window = window_of(app, label)?;
-            let results = crate::ai_fetch::search_in(window, state, query, Some(tab.workspace)).await?;
+            let results =
+                crate::ai_fetch::search_in(window, state, query, Some(tab.workspace)).await?;
             Ok(json!(results))
         }
         Request::WebFetch { url } => {
             let _read = web_read(label)?;
             let window = window_of(app, label)?;
-            let page = crate::ai_fetch::fetch_in(window, state, url, None, Some(tab.workspace)).await?;
+            let page =
+                crate::ai_fetch::fetch_in(window, state, url, None, Some(tab.workspace)).await?;
             Ok(json!(page))
+        }
+        Request::ReadDocument {
+            kind,
+            max_chars,
+            data,
+        } => {
+            let _read =
+                Stream::open_in(&DOCUMENT_READS, label).ok_or_else(|| WisError::InvalidInput {
+                    message: "the canvas is already reading files".into(),
+                })?;
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(data)
+                .map_err(|_| bad_request())?;
+            let outcome = crate::document_text::read(kind, bytes, max_chars).await?;
+            Ok(json!(outcome))
         }
         Request::SetModel { model } => {
             let model = tidy_model(model)?;
@@ -370,6 +405,26 @@ mod tests {
         ));
         assert!(!is_ai_request(r#"{"id":3,"op":"list"}"#));
         assert!(!is_ai_request("é"));
+    }
+
+    #[test]
+    fn document_reads_are_told_apart_and_parse() {
+        let text =
+            r#"{"id":7,"op":"aiReadDocument","kind":"pdf","max_chars":1200,"data":"JVBERi0="}"#;
+        assert!(is_ai_request(text) && is_document_request(text));
+        assert!(!is_document_request(r#"{"id":7,"op":"aiReadDocumentX"}"#));
+        assert!(!is_document_request(
+            r#"{"id":7,"op":"save","doc":"aiReadDocument"}"#
+        ));
+        let envelope: Envelope = serde_json::from_str(text).unwrap();
+        assert!(matches!(
+            envelope.request,
+            Request::ReadDocument { kind: crate::document_text::DocKind::Pdf, max_chars: 1200, ref data } if data == "JVBERi0="
+        ));
+        assert!(serde_json::from_str::<Envelope>(
+            r#"{"id":7,"op":"aiReadDocument","kind":"exe","max_chars":1,"data":""}"#
+        )
+        .is_err());
     }
 
     #[test]

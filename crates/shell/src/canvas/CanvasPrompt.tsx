@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from 'react'
 
 
-import { acceptFile, MAX_FILE_CHARS, type Attachment } from '@/lib/canvasAttach'
+import { attachFiles, partialNote, partialTag, type Attachment } from '@/lib/canvasAttach'
 import { cx } from '@/lib/cx'
 
 import { CanvasModelPicker } from './CanvasModelPicker'
@@ -9,19 +9,14 @@ import type { CanvasAgent } from './useCanvasAgent'
 
 const MAX_PROMPT_PX = 160
 const NOTE_MS = 4000
-/** UTF-8 spends at most four bytes a character. */
-const MAX_FILE_BYTES = MAX_FILE_CHARS * 4
 
-async function attach(files: readonly File[], taken: readonly Attachment[]) {
-  const kept = [...taken]
-  const refused: string[] = []
-  for (const file of files) {
-    const text = file.size > MAX_FILE_BYTES ? 'x'.repeat(MAX_FILE_CHARS + 1) : await file.text().catch(() => '\u0000')
-    const result = acceptFile(file.name, text, kept)
-    if (result.ok) kept.push(result.file)
-    else refused.push(result.reason)
-  }
-  return { kept, refused }
+function encode(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''))
+    reader.onerror = () => reject(reader.error ?? new Error('The file could not be read.'))
+    reader.readAsDataURL(file)
+  })
 }
 
 export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
@@ -30,16 +25,18 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
   const [note, setNote] = useState<string | null>(null)
   const [dropping, setDropping] = useState(false)
   const [multiline, setMultiline] = useState(false)
+  const [pending, setPending] = useState<string[]>([])
   const field = useRef<HTMLTextAreaElement>(null)
   const picker = useRef<HTMLInputElement>(null)
   const attached = useRef<Attachment[]>([])
-  const reading = useRef<Promise<void>>(Promise.resolve())
+  const queue = useRef<Promise<void>>(Promise.resolve())
   const keep = (next: Attachment[]) => {
     attached.current = next
     setFiles(next)
   }
   const busy = agent.activity !== 'idle'
   const available = agent.status?.available ?? false
+  const reading = pending.length > 0
 
   useLayoutEffect(() => {
     const el = field.current
@@ -59,10 +56,17 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
 
   const take = (list: readonly File[]) => {
     if (list.length === 0 || !available) return
-    reading.current = reading.current.then(async () => {
-      const { kept, refused } = await attach(list, attached.current)
-      keep(kept)
-      setNote(refused.length > 0 ? refused.join(' · ') : null)
+    setPending((current) => [...current, ...list.map((f) => f.name)])
+    queue.current = queue.current.then(async () => {
+      try {
+        const { added, notes } = await attachFiles(list, attached.current, { readDocument: agent.readDocument, encode })
+        keep([...attached.current, ...added])
+        setNote(notes.length > 0 ? notes.join(' · ') : null)
+      } catch {
+        setNote('The files could not be read.')
+      } finally {
+        setPending((current) => current.slice(list.length))
+      }
       field.current?.focus()
     })
   }
@@ -73,7 +77,7 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
       if (e) agent.stop()
       return
     }
-    if (text.trim() === '' || !available) return
+    if (text.trim() === '' || !available || reading) return
     agent.send(text, files)
     setText('')
     keep([])
@@ -92,7 +96,7 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
     <form
       className={cx('canvas-prompt', {
         'is-off': !available,
-        'is-multiline': multiline || files.length > 0,
+        'is-multiline': multiline || files.length > 0 || reading,
         'is-dropping': dropping,
       })}
       onSubmit={submit}
@@ -116,8 +120,8 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
         type="button"
         className="canvas-prompt-attach"
         disabled={!available}
-        aria-label="Attach text files"
-        title="Attach text files"
+        aria-label="Attach files"
+        title="Attach text, PDF, Word, RTF or ODT files"
         onClick={() => picker.current?.click()}
       >
         <svg viewBox="0 0 24 24" aria-hidden>
@@ -135,11 +139,16 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
         }}
       />
       <div className="canvas-prompt-body">
-        {files.length > 0 && (
+        {(files.length > 0 || reading) && (
           <ul className="canvas-prompt-files" aria-label="Attached files">
             {files.map((file) => (
               <li key={file.name}>
                 <span>{file.name}</span>
+                {file.partial && (
+                  <em className="canvas-prompt-partial" title={`Only ${partialNote(file.partial)} fit`}>
+                    {partialTag(file.partial)}
+                  </em>
+                )}
                 <button
                   type="button"
                   aria-label={`Remove ${file.name}`}
@@ -147,6 +156,11 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
                 >
                   ×
                 </button>
+              </li>
+            ))}
+            {pending.map((name, i) => (
+              <li key={`reading-${i}`} className="is-reading" aria-label={`Reading ${name}`}>
+                <span>{name}</span>
               </li>
             ))}
           </ul>
@@ -178,7 +192,7 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
       <button
         type="submit"
         className={cx('canvas-prompt-send', { 'is-stop': busy })}
-        disabled={!busy && (!available || text.trim() === '')}
+        disabled={!busy && (!available || reading || text.trim() === '')}
         aria-label={busy ? 'Stop' : 'Send'}
         title={busy ? 'Stop' : 'Send'}
       >

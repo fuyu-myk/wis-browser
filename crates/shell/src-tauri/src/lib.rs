@@ -27,6 +27,7 @@ mod cookies;
 mod cosmetic;
 mod default_browser;
 mod devtools;
+mod document_text;
 mod downloads;
 mod edit_keys;
 mod error_compat;
@@ -108,6 +109,7 @@ use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    document_text::serve_child();
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,wis_network=debug"));
     let subscriber = tracing_subscriber::fmt()
