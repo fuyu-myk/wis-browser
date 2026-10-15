@@ -7,6 +7,7 @@
 import type { AiFetchResponse, AiSearchResult, AiToolCall, StreamEvent } from '@/bindings/types'
 import { extractUrls, fetchToolContent, searchToolContent, type WireMessage } from '@/lib/ai'
 import { attachmentBlock, type Attachment } from '@/lib/canvasAttach'
+import { arrange, clearShift, fitFrames, freeSpot, GAP, makeRoom, type Budget } from '@/lib/canvasLayout'
 import {
   addCard,
   addEdge,
@@ -39,7 +40,9 @@ export const CANVAS_AGENT_PROMPT = `You are the agent of a Wis canvas: an endles
 
 Notes hold Markdown. HTML cards hold a complete page that runs sandboxed: inline every style and script, with no network, storage, popups or dialogs; the page should fill the card's width and height, and unless it sets its own colours it follows the canvas's light or dark theme. Use HTML cards for charts, diagrams, visual layouts and small interactive tools; use notes for text.
 
-Work through the tools. Read the canvas or particular cards when you need them, then create, update, connect or frame cards. Keep related cards together and close to what the user is looking at; leave positions out to have cards placed in free space.
+Work through the tools. Read the canvas or particular cards when you need them, then create, update, connect or frame cards. Keep related cards together and close to what the user is looking at.
+
+Sizes are canvas pixels. A note is 280 wide unless you set w, and as tall as its text: about 45 for one line and 21 more for each further line, more for headings, lists and code. An HTML card is the w and h you give it (480 by 320 unless set); size it so its content fits without scrolling, such as 480 by 320 for a chart, 900 by 280 for a wide timeline, 320 by 200 for a small widget. Results give every card's real x, y, w and h; use them when placing more. Leave positions out to have cards placed in free space near the view, give near to put a card beside another, or give x and y to lay out a group: the group keeps its rows and columns, spreads to the cards' real sizes and moves clear of other cards as a whole. Cards never overlap: a card moved onto others slides clear, and a note that grows pushes the cards below it down.
 
 A note stays a note and an HTML card stays HTML. When asked to turn cards into something else, such as a chart, timeline or table, make a new HTML card (or note) beside them and keep the originals, unless the user asks to replace them.
 
@@ -76,9 +79,6 @@ const MAX_NEW = 30
 const MAX_SELECTED = 10
 const SELECTED_CHARS = 4000
 const MAX_CALL_TEXT = 1_000_000
-const GAP = 40
-const STEP = 40
-const MAX_RINGS = 30
 const MAX_PROBES = 400_000
 const TITLE_CHARS = 80
 
@@ -142,44 +142,19 @@ export function estimateHeight(card: CanvasCard): number {
   return 24 + lines * 20
 }
 
-const boxOf = (card: CanvasCard, ctx: AgentContext): Box => ({
+/** A card's height as shown: an HTML card's own, a note's as measured. */
+const heightOf = (card: CanvasCard, ctx: AgentContext) =>
+  card.kind === 'html' ? (card.h ?? HTML_CARD_HEIGHT) : ctx.heightOf(card)
+
+const boxOf = (card: CanvasCard, ctx: AgentContext): Box & { id: string } => ({
+  id: card.id,
   x: card.x,
   y: card.y,
   w: card.w,
-  h: ctx.heightOf(card),
+  h: heightOf(card, ctx),
 })
 
-const clear = (box: Box, taken: readonly Box[]) =>
-  taken.every(
-    (t) => box.x >= t.x + t.w + GAP || t.x >= box.x + box.w + GAP || box.y >= t.y + t.h + GAP || t.y >= box.y + box.h + GAP,
-  )
-
-/** The free spot nearest `x, y`, searched in widening rings within a budget. */
-function freeSpot(
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  taken: readonly Box[],
-  budget: { probes: number },
-): { x: number; y: number } {
-  const reach = MAX_RINGS * STEP + GAP
-  const near = taken.filter(
-    (t) => t.x < x + w + reach && t.x + t.w > x - reach && t.y < y + h + reach && t.y + t.h > y - reach,
-  )
-  for (let ring = 0; ring <= MAX_RINGS; ring++) {
-    for (let dy = -ring; dy <= ring; dy++) {
-      for (let dx = -ring; dx <= ring; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue
-        budget.probes -= near.length + 1
-        if (budget.probes < 0) return { x, y }
-        const spot = { x: x + dx * STEP, y: y + dy * STEP }
-        if (clear({ ...spot, w, h }, near)) return spot
-      }
-    }
-  }
-  return { x, y }
-}
+const covers = (a: Box, b: Box) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
 
 function readCanvas(doc: CanvasDoc, ctx: AgentContext) {
   const cx = ctx.view.x + ctx.view.w / 2
@@ -197,7 +172,7 @@ function readCanvas(doc: CanvasDoc, ctx: AgentContext) {
       x: Math.round(c.x),
       y: Math.round(c.y),
       w: Math.round(c.w),
-      h: Math.round(ctx.heightOf(c)),
+      h: Math.round(heightOf(c, ctx)),
       ...(c.group ? { group: c.group } : {}),
     })),
     ...(doc.cards.length > listed.length ? { more: doc.cards.length - listed.length } : {}),
@@ -215,24 +190,25 @@ function readCards(doc: CanvasDoc, args: Record<string, unknown>) {
   }
 }
 
-function createCards(doc: CanvasDoc, args: Record<string, unknown>, ctx: AgentContext): ToolOutcome {
-  const wanted = (records(args.cards) ?? fail('cards must be a list of objects')).slice(0, MAX_NEW)
-  const taken = doc.cards.map((c) => boxOf(c, ctx))
-  const start = { x: ctx.view.x + ctx.view.w * 0.25, y: ctx.view.y + ctx.view.h * 0.2 }
-  let flow = { ...start }
-  let rowBottom = start.y
-  let next = doc
+interface Draft {
+  card: CanvasCard
+  h: number
+  spec: Record<string, unknown>
+  asked: boolean
+}
+
+/** The cards a call may add, sized as they will show, within the limits. */
+function draftsOf(doc: CanvasDoc, wanted: readonly Record<string, unknown>[], ctx: AgentContext) {
+  const drafts: Draft[] = []
   let textLeft = MAX_CALL_TEXT
   let skipped = 0
   let full = false
-  const budget = { probes: MAX_PROBES }
-  const created: { id: string; x: number; y: number }[] = []
   for (const spec of wanted) {
     if (typeof spec.text !== 'string') fail('every card needs text')
     const html = spec.kind === 'html'
     const text = (spec.text as string).slice(0, html ? MAX_HTML_TEXT : MAX_CARD_TEXT)
-    if (next.cards.length >= MAX_CARDS || text.length > textLeft) {
-      full ||= next.cards.length >= MAX_CARDS
+    if (doc.cards.length + drafts.length >= MAX_CARDS || text.length > textLeft) {
+      full ||= doc.cards.length + drafts.length >= MAX_CARDS
       skipped += 1
       continue
     }
@@ -240,28 +216,59 @@ function createCards(doc: CanvasDoc, args: Record<string, unknown>, ctx: AgentCo
     const w = clamp(finite(spec.w) ? spec.w : html ? HTML_CARD_WIDTH : CARD_WIDTH, MIN_CARD_WIDTH, MAX_CARD_WIDTH)
     const h = html ? clamp(finite(spec.h) ? spec.h : HTML_CARD_HEIGHT, MIN_CARD_HEIGHT, MAX_CARD_HEIGHT) : undefined
     const id = ctx.newId?.() ?? crypto.randomUUID()
-    const draft: CanvasCard = { id, x: 0, y: 0, w, text, ...(html ? { kind: 'html' as const, h } : {}) }
-    const height = h ?? estimateHeight(draft)
-    let spot: { x: number; y: number }
-    if (finite(spec.x) && finite(spec.y)) {
-      spot = { x: coord(spec.x), y: coord(spec.y) }
-    } else {
+    const card: CanvasCard = { id, x: 0, y: 0, w, text, ...(html ? { kind: 'html' as const, h } : {}) }
+    drafts.push({ card, h: heightOf(card, ctx), spec, asked: finite(spec.x) && finite(spec.y) })
+  }
+  return { drafts, skipped, full }
+}
+
+function createCards(doc: CanvasDoc, args: Record<string, unknown>, ctx: AgentContext): ToolOutcome {
+  const wanted = (records(args.cards) ?? fail('cards must be a list of objects')).slice(0, MAX_NEW)
+  const { drafts, skipped, full } = draftsOf(doc, wanted, ctx)
+  const taken: Box[] = doc.cards.map((c) => boxOf(c, ctx))
+  const budget: Budget = { probes: MAX_PROBES }
+
+  const asked = drafts.filter((d) => d.asked)
+  const requested = asked.map((d) => ({ x: coord(d.spec.x as number), y: coord(d.spec.y as number), w: d.card.w, h: d.h }))
+  const spread = arrange(requested)
+  const shift = clearShift(spread, taken, budget)
+  const spots = new Map(asked.map((d, i) => [d, { x: spread[i].x + shift.dx, y: spread[i].y + shift.dy }]))
+  const movedFrom = new Map(asked.map((d, i) => [d, requested[i]]))
+  taken.push(...asked.map((d) => ({ ...spots.get(d)!, w: d.card.w, h: d.h })))
+
+  const start = { x: ctx.view.x + ctx.view.w * 0.25, y: ctx.view.y + ctx.view.h * 0.2 }
+  let flow = { ...start }
+  let rowBottom = start.y
+  let next = doc
+  const created: { id: string; x: number; y: number; w: number; h: number; moved?: true }[] = []
+  for (const draft of drafts) {
+    const { card, h, spec } = draft
+    let spot = spots.get(draft)
+    if (!spot) {
       const anchor = typeof spec.near === 'string' ? next.cards.find((c) => c.id === spec.near) : undefined
       if (anchor) {
-        spot = freeSpot(anchor.x + anchor.w + GAP, anchor.y, w, height, taken, budget)
+        spot = freeSpot({ x: anchor.x + anchor.w + GAP, y: anchor.y, w: card.w, h }, taken, budget)
       } else {
-        if (flow.x > start.x && flow.x + w > ctx.view.x + ctx.view.w) flow = { x: start.x, y: rowBottom + GAP }
-        spot = freeSpot(flow.x, flow.y, w, height, taken, budget)
-        flow = { x: spot.x + w + GAP, y: spot.y }
-        rowBottom = Math.max(rowBottom, spot.y + height)
+        if (flow.x > start.x && flow.x + card.w > ctx.view.x + ctx.view.w) flow = { x: start.x, y: rowBottom + GAP }
+        spot = freeSpot({ ...flow, w: card.w, h }, taken, budget)
+        flow = { x: spot.x + card.w + GAP, y: spot.y }
+        rowBottom = Math.max(rowBottom, spot.y + h)
       }
+      taken.push({ ...spot, w: card.w, h })
     }
-    taken.push({ ...spot, w, h: height })
-    next = addCard(next, { ...draft, ...spot })
-    created.push({ id, x: Math.round(spot.x), y: Math.round(spot.y) })
+    next = addCard(next, { ...card, ...spot })
+    const from = movedFrom.get(draft)
+    const moved = from !== undefined && (from.x !== spot.x || from.y !== spot.y)
+    created.push({
+      id: card.id,
+      x: Math.round(spot.x),
+      y: Math.round(spot.y),
+      w: Math.round(card.w),
+      h: Math.round(h),
+      ...(moved ? { moved: true as const } : {}),
+    })
   }
-  const added = new Set(created.map((c) => c.id))
-  const made = next.cards.filter((c) => added.has(c.id))
+  const made = next.cards.slice(doc.cards.length)
   const verb = made.every((c) => c.kind === 'html') ? 'Created' : 'Added'
   const summary =
     made.length === 0
@@ -275,7 +282,62 @@ function createCards(doc: CanvasDoc, args: Record<string, unknown>, ctx: AgentCo
   }
 }
 
-function updateCards(doc: CanvasDoc, args: Record<string, unknown>): ToolOutcome {
+function patchOf(card: CanvasCard, change: Record<string, unknown>): Partial<CanvasCard> {
+  const html = card.kind === 'html'
+  const patch: Partial<CanvasCard> = {}
+  if (typeof change.text === 'string') patch.text = change.text.slice(0, html ? MAX_HTML_TEXT : MAX_CARD_TEXT)
+  if (finite(change.x)) patch.x = coord(change.x)
+  if (finite(change.y)) patch.y = coord(change.y)
+  if (finite(change.w)) patch.w = clamp(change.w, MIN_CARD_WIDTH, MAX_CARD_WIDTH)
+  if (html && finite(change.h)) patch.h = clamp(change.h, MIN_CARD_HEIGHT, MAX_CARD_HEIGHT)
+  return patch
+}
+
+/** Applies one change and keeps the card clear: moved onto others, it slides
+ *  to the nearest clear spot; grown, it pushes what it covers below it down,
+ *  and its frames grow to keep holding their cards. */
+function applyChange(
+  doc: CanvasDoc,
+  card: CanvasCard,
+  change: Record<string, unknown>,
+  ctx: AgentContext,
+  budget: Budget,
+): { doc: CanvasDoc; moved: Map<string, { x: number; y: number }> } {
+  const before = doc.cards.map((c) => boxOf(c, ctx))
+  const others = before.filter((b) => b.id !== card.id)
+  const old = before.find((b) => b.id === card.id) ?? boxOf(card, ctx)
+  let next = updateCard(doc, card.id, patchOf(card, change))
+  const box = boxOf(next.cards.find((c) => c.id === card.id) ?? card, ctx)
+  const moved = new Map<string, { x: number; y: number }>()
+  const slide = (around: readonly Box[]) => {
+    const spot = freeSpot(box, around, budget)
+    next = updateCard(next, card.id, spot)
+    moved.set(card.id, spot)
+  }
+  if (finite(change.x) || finite(change.y)) {
+    if (others.some((o) => covers(box, o))) slide(others)
+    return { doc: next, moved }
+  }
+  if (box.h <= old.h + 1 && box.w <= old.w + 1) return { doc: next, moved }
+  const pushed = makeRoom(box, others)
+  if (others.some((o) => covers(box, { ...o, ...pushed.get(o.id) }))) {
+    slide(others)
+    return { doc: next, moved }
+  }
+  next = {
+    ...next,
+    cards: next.cards.map((c) => {
+      const to = pushed.get(c.id)
+      return to ? { ...c, x: to.x, y: to.y } : c
+    }),
+  }
+  for (const [id, to] of pushed) moved.set(id, { x: to.x, y: to.y })
+  pushed.set(card.id, box)
+  const frames = fitFrames(next.frames, before, pushed)
+  return { doc: frames === next.frames ? next : { ...next, frames: [...frames] }, moved }
+}
+
+function updateCards(doc: CanvasDoc, args: Record<string, unknown>, ctx: AgentContext): ToolOutcome {
   const changes = records(args.cards) ?? fail('cards must be a list of objects')
   for (const change of changes) {
     const card = doc.cards.find((c) => c.id === change.id)
@@ -288,27 +350,27 @@ function updateCards(doc: CanvasDoc, args: Record<string, unknown>): ToolOutcome
   let next = doc
   const updated: string[] = []
   const missing: string[] = []
+  const moved = new Map<string, { x: number; y: number }>()
+  const budget: Budget = { probes: MAX_PROBES }
   for (const change of changes) {
     const card = typeof change.id === 'string' ? next.cards.find((c) => c.id === change.id) : undefined
     if (!card) {
       missing.push(String(change.id))
       continue
     }
-    const html = card.kind === 'html'
-    const patch: Partial<CanvasCard> = {}
-    if (typeof change.text === 'string') patch.text = change.text.slice(0, html ? MAX_HTML_TEXT : MAX_CARD_TEXT)
-    if (finite(change.x)) patch.x = coord(change.x)
-    if (finite(change.y)) patch.y = coord(change.y)
-    if (finite(change.w)) patch.w = clamp(change.w, MIN_CARD_WIDTH, MAX_CARD_WIDTH)
-    if (html && finite(change.h)) patch.h = clamp(change.h, MIN_CARD_HEIGHT, MAX_CARD_HEIGHT)
-    next = updateCard(next, card.id, patch)
+    const applied = applyChange(next, card, change, ctx, budget)
+    next = applied.doc
+    for (const [id, to] of applied.moved) moved.set(id, to)
     updated.push(card.id)
   }
   const edited = next.cards.filter((c) => updated.includes(c.id))
+  const pushed = [...moved.keys()].filter((id) => !updated.includes(id)).length
+  const room = pushed > 0 ? ` and moved ${pushed === 1 ? 'a card' : `${pushed} cards`} to make room` : ''
+  const report = [...moved].map(([id, to]) => ({ id, x: Math.round(to.x), y: Math.round(to.y) }))
   return {
     doc: next,
-    result: JSON.stringify({ updated, missing }),
-    summary: edited.length === 0 ? 'No cards found to edit' : `Edited ${kinds(edited)}`,
+    result: JSON.stringify({ updated, missing, ...(report.length > 0 ? { moved: report } : {}) }),
+    summary: edited.length === 0 ? 'No cards found to edit' : `Edited ${kinds(edited)}${room}`,
     details: edited.map(labelled),
   }
 }
@@ -394,7 +456,7 @@ export function runCanvasTool(doc: CanvasDoc, call: AiToolCall, ctx: AgentContex
       case 'create_cards':
         return createCards(doc, input, ctx)
       case 'update_cards':
-        return updateCards(doc, input)
+        return updateCards(doc, input, ctx)
       case 'delete_cards':
         return deleteCards(doc, input)
       case 'connect_cards':

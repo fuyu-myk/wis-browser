@@ -18,9 +18,9 @@ pub fn definitions() -> Vec<Value> {
     vec![
         tool(
             "read_canvas",
-            "List the canvas: every card's id, kind, title (first line), position and size, \
-             the frames, the arrows, the selected cards and the visible area. Coordinates \
-             are canvas pixels; x grows right, y grows down.",
+            "List the canvas: every card's id, kind, title (first line), position and size as \
+             shown, the frames, the arrows, the selected cards and the visible area. \
+             Coordinates are canvas pixels; x grows right, y grows down.",
             json!({ "type": "object", "properties": {} }),
         ),
         tool(
@@ -34,10 +34,13 @@ pub fn definitions() -> Vec<Value> {
         ),
         tool(
             "create_cards",
-            "Add cards. A note holds Markdown. An HTML card holds a complete HTML page that \
-             runs in a sandbox: inline all CSS and JavaScript, no network, no storage, no \
-             popups; it should fill its width and height. Without x and y a card is placed \
-             in free space near the visible area, or beside the card named in `near`.",
+            "Add cards. A note holds Markdown and is as tall as its text. An HTML card holds a \
+             complete HTML page that runs in a sandbox: inline all CSS and JavaScript, no \
+             network, no storage, no popups; it should fill its width and height. Without x \
+             and y a card is placed in free space near the visible area, or beside the card \
+             named in `near`. Cards given x and y keep their rows and columns but spread to \
+             their real sizes and move clear of other cards as a group. The result gives each \
+             card's final x, y, w and h, and marks the ones moved from where they were asked.",
             json!({
                 "type": "object",
                 "properties": {
@@ -52,7 +55,7 @@ pub fn definitions() -> Vec<Value> {
                                 "x": { "type": "number" },
                                 "y": { "type": "number" },
                                 "w": { "type": "number", "description": "Width; notes default to 280, HTML to 480." },
-                                "h": { "type": "number", "description": "HTML cards only; defaults to 320." },
+                                "h": { "type": "number", "description": "HTML cards only; defaults to 320. A note's height follows its text." },
                                 "near": { "type": "string", "description": "Place beside this card id." }
                             },
                             "required": ["text"]
@@ -65,8 +68,10 @@ pub fn definitions() -> Vec<Value> {
         tool(
             "update_cards",
             "Change cards: replace their text, move them, or resize them. Omitted fields stay. \
-             A note stays Markdown and an HTML card stays HTML; to show notes as a chart or \
-             other page, create an HTML card beside them instead.",
+             A card moved onto others slides to the nearest clear spot, and a card that grows \
+             pushes the cards below it down; the result lists every card that moved. A note \
+             stays Markdown and an HTML card stays HTML; to show notes as a chart or other \
+             page, create an HTML card beside them instead.",
             json!({
                 "type": "object",
                 "properties": {

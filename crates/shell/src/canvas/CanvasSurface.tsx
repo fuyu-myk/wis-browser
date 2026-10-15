@@ -61,6 +61,7 @@ import { Frame, type FrameHandlers } from './CanvasFrame'
 import { CanvasGroups, type GroupOutline } from './CanvasGroups'
 import { canvasMenuItems, CanvasMenu, type CanvasCommands } from './CanvasMenu'
 import { follow, transformOf } from './dom'
+import { noteMeasurer } from './noteMeasure'
 import { paintDrag, type Dragged } from './paintDrag'
 import { useAwakeCards } from './useAwakeCards'
 import { useCardHealth, type CardPulse } from './useCardHealth'
@@ -126,14 +127,21 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo, pulse, ha
   const dragged = useRef<Dragged | null>(null)
   const sizing = useRef<Sizing | null>(null)
   const heights = useRef(new Map<string, number>())
+  /** The card each height was measured for; a changed text or width measures again. */
+  const measuredFor = useRef(new Map<string, CanvasCard>())
+  const measure = useRef<ReturnType<typeof noteMeasurer> | null>(null)
   const edgeEls = useRef(new Map<string, SVGPathElement[]>())
   const [, setLayout] = useState(0)
   const resizes = useRef<ResizeObserver | null>(null)
   if (resizes.current === null && typeof ResizeObserver !== 'undefined') {
     resizes.current = new ResizeObserver((entries) => {
+      const shown = new Map(docRef.current.cards.map((c) => [c.id, c]))
       for (const entry of entries) {
         const id = (entry.target as HTMLElement).dataset.card
-        if (id) heights.current.set(id, (entry.target as HTMLElement).offsetHeight)
+        if (!id) continue
+        heights.current.set(id, (entry.target as HTMLElement).offsetHeight)
+        const card = shown.get(id)
+        if (card) measuredFor.current.set(id, card)
       }
       setLayout((n) => n + 1)
     })
@@ -345,7 +353,15 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo, pulse, ha
         const b = toCanvas(view.current, window.innerWidth, window.innerHeight)
         return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y }
       },
-      heightOf: (card) => heights.current.get(card.id) ?? estimateHeight(card),
+      heightOf: (card) => {
+        if (card.kind === 'html') return card.h ?? HTML_CARD_HEIGHT
+        const height = heights.current.get(card.id)
+        const shown = measuredFor.current.get(card.id)
+        if (height !== undefined && shown?.text === card.text && shown.w === card.w) return height
+        if (!layerRef.current) return estimateHeight(card)
+        measure.current ??= noteMeasurer()
+        return measure.current(layerRef.current, card.text, card.w)
+      },
       select: (ids) => select(new Set(ids)),
     }
     return () => {
@@ -523,6 +539,7 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo, pulse, ha
         if (old) awakeCards.unwatch(old)
         cardEls.current.delete(id)
         heights.current.delete(id)
+        measuredFor.current.delete(id)
       }
     },
     link(card: CanvasCard, side: Side, e) {

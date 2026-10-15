@@ -177,6 +177,100 @@ describe('changing the canvas', () => {
   })
 })
 
+describe('sizes and space', () => {
+  /** Notes as tall as their lines, the way the page measures them. */
+  const lines = ctx({ heightOf: (c) => 24 + 20 * c.text.split('\n').length })
+  const boxesOf = (d) => d.cards.map((c) => ({ id: c.id, x: c.x, y: c.y, w: c.w, h: c.kind === 'html' ? c.h : lines.heightOf(c) }))
+  const clearOfEachOther = (d) => {
+    const boxes = boxesOf(d)
+    for (let i = 0; i < boxes.length; i++)
+      for (let j = i + 1; j < boxes.length; j++)
+        assert.ok(!overlaps(boxes[i], boxes[j]), `${boxes[i].id} overlaps ${boxes[j].id}`)
+  }
+  const tenLines = Array.from({ length: 10 }, (_, i) => `line ${i}`).join('\n')
+
+  test('without a page to measure in, a note’s height is estimated from its lines', () => {
+    const one = agent.estimateHeight(note('a', 0, 0, 'one'))
+    assert.ok(agent.estimateHeight(note('a', 0, 0, 'one\ntwo\nthree')) > one)
+    assert.equal(agent.estimateHeight({ ...canvas.newHtmlCard(0, 0, 'h'), h: 250 }), 250)
+  })
+
+  test('new cards report their real size and place', () => {
+    const out = agent.runCanvasTool(
+      doc(),
+      call('create_cards', { cards: [{ text: tenLines }, { kind: 'html', text: '<p>x</p>', w: 600, h: 240 }] }),
+      lines,
+    )
+    const created = JSON.parse(out.result).created
+    assert.deepEqual(created.map((c) => [c.w, c.h]), [[280, 224], [600, 240]])
+    assert.deepEqual(created.map((c) => [c.x, c.y]), out.doc.cards.map((c) => [c.x, c.y]))
+    clearOfEachOther(out.doc)
+  })
+
+  test('a group laid out with coordinates keeps its rows and columns at real sizes', () => {
+    const grid = [
+      { text: tenLines, x: 0, y: 0 },
+      { text: 'b', x: 320, y: 0 },
+      { text: 'c', x: 0, y: 100 },
+      { text: 'd', x: 320, y: 100 },
+    ]
+    const out = agent.runCanvasTool(doc(), call('create_cards', { cards: grid }), lines)
+    const [a, b, c, d] = out.doc.cards
+    clearOfEachOther(out.doc)
+    assert.deepEqual([a.y, b.y], [0, 0])
+    assert.equal(c.y, d.y, 'the second row stays a row')
+    assert.equal(c.y, 224 + 40, 'just below the tall note')
+    assert.deepEqual([a.x, c.x, b.x, d.x], [0, 0, 320, 320])
+    assert.deepEqual(JSON.parse(out.result).created.map((r) => r.moved ?? false), [false, false, true, true])
+  })
+
+  test('a group that would cover cards moves clear as a whole', () => {
+    const d = doc([note('mine', 100, 100, 'keep me')])
+    const out = agent.runCanvasTool(d, call('create_cards', { cards: [{ text: 'a', x: 0, y: 80 }, { text: 'b', x: 320, y: 80 }] }), lines)
+    const [mine, a, b] = out.doc.cards
+    assert.deepEqual([mine.x, mine.y], [100, 100], 'the user’s card stays')
+    assert.equal(b.x - a.x, 320, 'the group keeps its shape')
+    assert.equal(a.y, b.y)
+    clearOfEachOther(out.doc)
+  })
+
+  test('a note that grows pushes the cards below it down, and its frame grows', () => {
+    const d = doc([note('top', 0, 0, 'short'), note('below', 0, 100, 'next'), note('beside', 400, 100, 'side')], {
+      frames: [{ id: 'f', x: -32, y: -32, w: 344, h: 240, title: 'Column' }],
+    })
+    const out = agent.runCanvasTool(d, call('update_cards', { cards: [{ id: 'top', text: tenLines }] }), lines)
+    const [top, below, beside] = out.doc.cards
+    assert.equal(top.y, 0)
+    assert.equal(below.y, 224 + 40)
+    assert.deepEqual([beside.x, beside.y], [400, 100], 'cards beside it stay')
+    assert.equal('h' in below, false, 'a pushed note keeps following its text')
+    assert.ok(out.doc.frames[0].y + out.doc.frames[0].h >= below.y + 44 + 32, 'the frame still holds the pushed card')
+    assert.deepEqual(JSON.parse(out.result).moved, [{ id: 'below', x: 0, y: 264 }])
+    assert.equal(out.summary, 'Edited a note and moved a card to make room')
+    clearOfEachOther(out.doc)
+  })
+
+  test('a card that grows over one beside it slides clear instead, and pushes nothing', () => {
+    const d = doc([note('a', 0, 100, 'a'), note('side', 400, 60, 'side'), note('below', 0, 200, 'below')])
+    const out = agent.runCanvasTool(d, call('update_cards', { cards: [{ id: 'a', w: 600, text: tenLines }] }), lines)
+    const [a, side, below] = out.doc.cards
+    assert.deepEqual([side.x, side.y, below.x, below.y], [400, 60, 0, 200], 'the others stay where they were')
+    assert.deepEqual(JSON.parse(out.result).moved, [{ id: 'a', x: a.x, y: a.y }])
+    assert.equal(out.summary, 'Edited a note')
+    clearOfEachOther(out.doc)
+  })
+
+  test('a card moved onto another slides to the nearest clear spot', () => {
+    const d = doc([note('a', 0, 0, 'a'), note('b', 600, 0, 'b')])
+    const out = agent.runCanvasTool(d, call('update_cards', { cards: [{ id: 'b', x: 20, y: 10 }] }), lines)
+    const [a, b] = out.doc.cards
+    assert.deepEqual([a.x, a.y], [0, 0])
+    assert.ok(Math.hypot(b.x - 20, b.y - 10) < 400, `${b.x},${b.y} is near where it was asked`)
+    assert.deepEqual(JSON.parse(out.result).moved, [{ id: 'b', x: b.x, y: b.y }])
+    clearOfEachOther(out.doc)
+  })
+})
+
 describe('the agent cannot overrun the document', () => {
   test('it stops adding cards at the canvas limit', () => {
     const full = doc(Array.from({ length: canvas.MAX_CARDS - 1 }, (_, i) => note(`k${i}`, (i % 70) * 400, Math.floor(i / 70) * 200)))
