@@ -60,6 +60,7 @@ import { CanvasEdges, type Linking } from './CanvasEdges'
 import { Frame, type FrameHandlers } from './CanvasFrame'
 import { CanvasGroups, type GroupOutline } from './CanvasGroups'
 import { canvasMenuItems, CanvasMenu, type CanvasCommands } from './CanvasMenu'
+import { CanvasProps } from './CanvasProps'
 import { follow, transformOf } from './dom'
 import { noteMeasurer } from './noteMeasure'
 import { paintDrag, type Dragged } from './paintDrag'
@@ -130,6 +131,16 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo, pulse, ha
   /** The card each height was measured for; a changed text or width measures again. */
   const measuredFor = useRef(new Map<string, CanvasCard>())
   const measure = useRef<ReturnType<typeof noteMeasurer> | null>(null)
+  /** A card's height as drawn. */
+  const heightOf = useRef((card: CanvasCard): number => {
+    if (card.kind === 'html') return card.h ?? HTML_CARD_HEIGHT
+    const height = heights.current.get(card.id)
+    const shown = measuredFor.current.get(card.id)
+    if (height !== undefined && shown?.text === card.text && shown.w === card.w) return height
+    if (!layerRef.current) return estimateHeight(card)
+    measure.current ??= noteMeasurer()
+    return measure.current(layerRef.current, card.text, card.w)
+  }).current
   const edgeEls = useRef(new Map<string, SVGPathElement[]>())
   const [, setLayout] = useState(0)
   const resizes = useRef<ResizeObserver | null>(null)
@@ -353,21 +364,13 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo, pulse, ha
         const b = toCanvas(view.current, window.innerWidth, window.innerHeight)
         return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y }
       },
-      heightOf: (card) => {
-        if (card.kind === 'html') return card.h ?? HTML_CARD_HEIGHT
-        const height = heights.current.get(card.id)
-        const shown = measuredFor.current.get(card.id)
-        if (height !== undefined && shown?.text === card.text && shown.w === card.w) return height
-        if (!layerRef.current) return estimateHeight(card)
-        measure.current ??= noteMeasurer()
-        return measure.current(layerRef.current, card.text, card.w)
-      },
+      heightOf,
       select: (ids) => select(new Set(ids)),
     }
     return () => {
       handle.current = null
     }
-  }, [handle])
+  }, [handle, heightOf])
 
   useViewGestures(viewportRef, view, () => {
     schedule()
@@ -740,6 +743,13 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo, pulse, ha
           onClick={() => zoomBy(1 / view.current.k)}
         />
       </div>
+      <CanvasProps
+        doc={doc}
+        selected={selected}
+        picked={picked}
+        heightOf={heightOf}
+        onChange={(next) => props.current.onChange(next)}
+      />
       {health.safe && (
         <p className="canvas-notice canvas-safe" role="status">
           HTML cards are paused: this canvas stopped responding last time.

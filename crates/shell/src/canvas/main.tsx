@@ -42,6 +42,14 @@ followPushed(
 )
 followPushed(
   window,
+  '__wisCanvasSide',
+  (side) => {
+    document.documentElement.dataset.side = side
+  },
+  (value) => value === 'left' || value === 'right',
+)
+followPushed(
+  window,
   '__wisCanvasGround',
   (value) => {
     const ground = readGround(value)

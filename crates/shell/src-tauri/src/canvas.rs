@@ -108,15 +108,33 @@ fn ground_of(label: &str) -> Ground {
 static WORKER: OnceLock<tokio::sync::mpsc::Sender<(String, String)>> = OnceLock::new();
 const QUEUE: usize = 32;
 
-pub fn theme_script(theme: wis_core::canvas::CanvasTheme) -> String {
+/// The side a canvas's props panel takes: away from the sidebar, or from the
+/// rail in the top-tabs layout.
+fn panel_side(settings: &wis_core::UserSettings) -> &'static str {
+    let sidebar = match settings.layout {
+        wis_core::LayoutMode::SidebarLeft => wis_core::RailSide::Left,
+        wis_core::LayoutMode::SidebarRight => wis_core::RailSide::Right,
+        wis_core::LayoutMode::TopTabs => settings.top_tabs_rail_side,
+    };
+    match sidebar {
+        wis_core::RailSide::Left => "right",
+        wis_core::RailSide::Right => "left",
+    }
+}
+
+/// What a canvas page reads from the settings: its theme and the side for
+/// its props panel.
+pub fn page_script(settings: &wis_core::UserSettings) -> String {
+    let quoted = |word: &str| serde_json::to_string(word).unwrap_or_default();
     format!(
-        "window.__wisCanvasTheme={};",
-        serde_json::to_string(theme.as_str()).unwrap_or_default()
+        "window.__wisCanvasTheme={};window.__wisCanvasSide={};",
+        quoted(settings.canvas_theme.as_str()),
+        quoted(panel_side(settings))
     )
 }
 
-pub fn push_theme(app: &AppHandle, theme: wis_core::canvas::CanvasTheme) {
-    let script = theme_script(theme);
+pub fn push_page(app: &AppHandle, settings: &wis_core::UserSettings) {
+    let script = page_script(settings);
     let labels: Vec<String> = TABS
         .lock()
         .expect("canvas tabs poisoned")
@@ -851,16 +869,29 @@ mod tests {
     }
 
     #[test]
-    fn the_theme_script_sets_one_quoted_word() {
+    fn the_page_script_sets_the_theme_and_the_side_away_from_the_sidebar() {
         use wis_core::canvas::CanvasTheme;
+        use wis_core::{LayoutMode, RailSide, UserSettings};
+        let mut settings = UserSettings {
+            canvas_theme: CanvasTheme::Light,
+            layout: LayoutMode::SidebarLeft,
+            ..Default::default()
+        };
         assert_eq!(
-            theme_script(CanvasTheme::Light),
-            r#"window.__wisCanvasTheme="light";"#
+            page_script(&settings),
+            r#"window.__wisCanvasTheme="light";window.__wisCanvasSide="right";"#
         );
+        settings.canvas_theme = CanvasTheme::Dark;
+        settings.layout = LayoutMode::SidebarRight;
         assert_eq!(
-            theme_script(CanvasTheme::Dark),
-            r#"window.__wisCanvasTheme="dark";"#
+            page_script(&settings),
+            r#"window.__wisCanvasTheme="dark";window.__wisCanvasSide="left";"#
         );
+        settings.layout = LayoutMode::TopTabs;
+        settings.top_tabs_rail_side = RailSide::Left;
+        assert_eq!(panel_side(&settings), "right");
+        settings.top_tabs_rail_side = RailSide::Right;
+        assert_eq!(panel_side(&settings), "left");
     }
 
     #[test]

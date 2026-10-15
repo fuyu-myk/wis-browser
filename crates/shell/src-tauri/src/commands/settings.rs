@@ -80,7 +80,9 @@ pub async fn update_settings(
     let autoplay_touched =
         patch.autoplay_policy.is_some() || patch.autoplay_site_overrides.is_some();
     let media_extensions_changed = patch.media_extensions_enabled;
-    let canvas_theme_touched = patch.canvas_theme.is_some();
+    let canvas_page_touched = patch.canvas_theme.is_some()
+        || patch.layout.is_some()
+        || patch.top_tabs_rail_side.is_some();
     let (settings, doh_changed) = mutate_immediate(&app, &state, |s| {
         let before = crate::state::doh_provider_of(s.settings.doh_resolver.as_deref());
         let next = s.with_settings(patch);
@@ -110,8 +112,8 @@ pub async fn update_settings(
         }
     }
 
-    if canvas_theme_touched {
-        crate::canvas::push_theme(&app, settings.canvas_theme);
+    if canvas_page_touched {
+        crate::canvas::push_page(&app, &settings);
     }
 
     if userscripts_touched {

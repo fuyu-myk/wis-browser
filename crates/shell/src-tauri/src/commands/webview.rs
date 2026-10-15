@@ -556,8 +556,8 @@ pub async fn create_tab_webview(
                 ephemeral,
             },
         );
-        let theme = state.browser.lock().await.settings.canvas_theme;
-        builder = builder.initialization_script(crate::canvas::theme_script(theme));
+        let script = crate::canvas::page_script(&state.browser.lock().await.settings);
+        builder = builder.initialization_script(script);
     }
     let child = window
         .add_child(
