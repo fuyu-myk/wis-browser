@@ -133,8 +133,21 @@ pub fn page_script(settings: &wis_core::UserSettings) -> String {
     )
 }
 
+/// The native appearance a canvas tab takes.
+pub fn appearance(theme: wis_core::canvas::CanvasTheme) -> wis_core::ThemeMode {
+    match theme {
+        wis_core::canvas::CanvasTheme::Dark => wis_core::ThemeMode::Dark,
+        wis_core::canvas::CanvasTheme::Light => wis_core::ThemeMode::Light,
+    }
+}
+
+pub fn is_canvas_tab(label: &str) -> bool {
+    tab_for(label).is_some()
+}
+
 pub fn push_page(app: &AppHandle, settings: &wis_core::UserSettings) {
     let script = page_script(settings);
+    let look = appearance(settings.canvas_theme);
     let labels: Vec<String> = TABS
         .lock()
         .expect("canvas tabs poisoned")
@@ -146,6 +159,7 @@ pub fn push_page(app: &AppHandle, settings: &wis_core::UserSettings) {
             if let Err(err) = webview.eval(&script) {
                 log::warn!("restyling a canvas tab: {err}");
             }
+            crate::commands::apply_tab_appearance(&webview, look);
         }
     }
 }
@@ -866,6 +880,24 @@ mod tests {
         assert_eq!(head_id(r#"{"id":7"#), Some(7));
         assert_eq!(head_id(r#"{"op":"x","id":1}"#), None);
         assert_eq!(head_id("garbage"), None);
+    }
+
+    #[test]
+    fn a_canvas_tab_looks_like_its_canvas_theme_not_the_browser() {
+        use wis_core::canvas::CanvasTheme;
+        assert_eq!(appearance(CanvasTheme::Dark), wis_core::ThemeMode::Dark);
+        assert_eq!(appearance(CanvasTheme::Light), wis_core::ThemeMode::Light);
+        let label = "tab-appearance-test";
+        assert!(!is_canvas_tab(label));
+        register(
+            label,
+            CanvasTab {
+                workspace: wis_core::WorkspaceId::new(),
+                ephemeral: false,
+            },
+        );
+        assert!(is_canvas_tab(label));
+        TABS.lock().unwrap().remove(label);
     }
 
     #[test]

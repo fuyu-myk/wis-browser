@@ -10,6 +10,19 @@ fn tool(name: &str, description: &str, parameters: Value) -> Value {
     })
 }
 
+/// The canvas palette; the page's `CARD_COLORS` in `lib/canvas.ts`.
+const COLORS: [&str; 7] = [
+    "accent", "red", "orange", "yellow", "green", "blue", "purple",
+];
+
+fn color(description: &str, with_none: bool) -> Value {
+    let mut names: Vec<&str> = COLORS.to_vec();
+    if with_none {
+        names.push("none");
+    }
+    json!({ "type": "string", "enum": names, "description": description })
+}
+
 fn ids(description: &str) -> Value {
     json!({ "type": "array", "items": { "type": "string" }, "description": description })
 }
@@ -19,8 +32,8 @@ pub fn definitions() -> Vec<Value> {
         tool(
             "read_canvas",
             "List the canvas: every card's id, kind, title (first line), position and size as \
-             shown, the frames, the arrows, the selected cards and the visible area. \
-             Coordinates are canvas pixels; x grows right, y grows down.",
+             shown and colour, the frames, the arrows, the selected cards and the visible \
+             area. Coordinates are canvas pixels; x grows right, y grows down.",
             json!({ "type": "object", "properties": {} }),
         ),
         tool(
@@ -56,7 +69,8 @@ pub fn definitions() -> Vec<Value> {
                                 "y": { "type": "number" },
                                 "w": { "type": "number", "description": "Width; notes default to 280, HTML to 480." },
                                 "h": { "type": "number", "description": "HTML cards only; defaults to 320. A note's height follows its text." },
-                                "near": { "type": "string", "description": "Place beside this card id." }
+                                "near": { "type": "string", "description": "Place beside this card id." },
+                                "color": color("A tint for the card; leave it out for a plain card.", false)
                             },
                             "required": ["text"]
                         }
@@ -85,7 +99,8 @@ pub fn definitions() -> Vec<Value> {
                                 "x": { "type": "number" },
                                 "y": { "type": "number" },
                                 "w": { "type": "number" },
-                                "h": { "type": "number" }
+                                "h": { "type": "number" },
+                                "color": color("A tint, or none to take it off.", true)
                             },
                             "required": ["id"]
                         }
@@ -131,10 +146,38 @@ pub fn definitions() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "ids": ids("The cards to frame."),
-                    "title": { "type": "string" }
+                    "title": { "type": "string" },
+                    "color": color("A tint for the frame; leave it out for a plain one.", false)
                 },
                 "required": ["ids", "title"]
             }),
         ),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tool<'a>(tools: &'a [Value], name: &str) -> &'a Value {
+        tools
+            .iter()
+            .find(|t| t["function"]["name"] == name)
+            .expect("tool")
+    }
+
+    #[test]
+    fn cards_and_frames_offer_the_palette_and_updates_can_clear_it() {
+        let tools = definitions();
+        let card = &tool(&tools, "create_cards")["function"]["parameters"]["properties"]["cards"]
+            ["items"]["properties"]["color"]["enum"];
+        let update = &tool(&tools, "update_cards")["function"]["parameters"]["properties"]["cards"]
+            ["items"]["properties"]["color"]["enum"];
+        let frame =
+            &tool(&tools, "frame_cards")["function"]["parameters"]["properties"]["color"]["enum"];
+        assert_eq!(card, &json!(COLORS));
+        assert_eq!(frame, &json!(COLORS));
+        assert_eq!(update.as_array().unwrap().last().unwrap(), "none");
+        assert_eq!(update.as_array().unwrap().len(), COLORS.len() + 1);
+    }
 }

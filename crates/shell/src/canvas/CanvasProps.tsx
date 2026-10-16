@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
-import type { CanvasCard, CanvasDoc } from '@/lib/canvas'
+import { CARD_COLORS, type CanvasCard, type CanvasDoc } from '@/lib/canvas'
 import {
   propsView,
   readNumber,
   setCards,
+  setCardsColor,
   setFrame,
+  setFrameColor,
   setFrameTitle,
   type Field,
   type Picked,
   type PropsView,
+  type Tint,
 } from '@/lib/canvasProps'
 import { cx } from '@/lib/cx'
 
@@ -57,6 +60,7 @@ export function CanvasProps({ doc, selected, picked, heightOf, onChange }: Panel
               onCommit={(n) => set('h', n)}
             />
           </div>
+          <Colors value={shown.color} onPick={(tint) => onChange(setCardsColor(doc, shown.ids, tint))} />
         </>
       )}
       {shown?.kind === 'frame' && (
@@ -73,6 +77,7 @@ export function CanvasProps({ doc, selected, picked, heightOf, onChange }: Panel
             <NumberField label="W" value={shown.box.w} onCommit={(n) => set('w', n)} />
             <NumberField label="H" value={shown.box.h} onCommit={(n) => set('h', n)} />
           </div>
+          <Colors value={shown.color} onPick={(tint) => onChange(setFrameColor(doc, shown.id, tint))} />
         </>
       )}
       {shown?.kind === 'edge' && (
@@ -87,6 +92,41 @@ export function CanvasProps({ doc, selected, picked, heightOf, onChange }: Panel
         </>
       )}
     </aside>
+  )
+}
+
+const TINTS: readonly Tint[] = ['none', ...CARD_COLORS]
+const TINT_NAMES: Record<Tint, string> = {
+  none: 'No colour',
+  accent: 'Accent',
+  red: 'Red',
+  orange: 'Orange',
+  yellow: 'Yellow',
+  green: 'Green',
+  blue: 'Blue',
+  purple: 'Purple',
+}
+
+/** The palette; with mixed colours selected, no swatch is on. */
+function Colors({ value, onPick }: { value: Tint | null; onPick: (tint: Tint) => void }) {
+  return (
+    <>
+      <p className="canvas-props-label">Colour</p>
+      <div className="canvas-props-colors" role="group" aria-label="Colour">
+        {TINTS.map((tint) => (
+          <button
+            key={tint}
+            type="button"
+            className={cx('canvas-swatch', { 'is-on': value === tint })}
+            data-color={tint}
+            aria-label={TINT_NAMES[tint]}
+            aria-pressed={value === tint}
+            title={TINT_NAMES[tint]}
+            onClick={() => onPick(tint)}
+          />
+        ))}
+      </div>
+    </>
   )
 }
 

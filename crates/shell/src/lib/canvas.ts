@@ -8,6 +8,24 @@ export interface CanvasView {
   k: number
 }
 
+/** Tints for cards and frames, painted per theme; `accent` follows the browser's. */
+export const CARD_COLORS = ['accent', 'red', 'orange', 'yellow', 'green', 'blue', 'purple'] as const
+export type CardColor = (typeof CARD_COLORS)[number]
+
+export const isCardColor = (value: unknown): value is CardColor =>
+  typeof value === 'string' && (CARD_COLORS as readonly string[]).includes(value)
+
+export type CardTint = CardColor | 'none'
+
+export const isCardTint = (value: unknown): value is CardTint => value === 'none' || isCardColor(value)
+
+export function withColor<T extends { color?: CardColor }>(item: T, tint: CardTint): T {
+  if (tint !== 'none') return { ...item, color: tint }
+  const plain = { ...item }
+  delete plain.color
+  return plain
+}
+
 export interface CanvasCard {
   id: string
   x: number
@@ -17,6 +35,7 @@ export interface CanvasCard {
   group?: string
   kind?: 'html'
   h?: number
+  color?: CardColor
 }
 
 export interface CanvasFrame {
@@ -26,6 +45,7 @@ export interface CanvasFrame {
   w: number
   h: number
   title: string
+  color?: CardColor
 }
 
 export interface CanvasEdge {
@@ -101,7 +121,7 @@ function readView(raw: unknown): CanvasView {
 
 function readCard(raw: unknown): CanvasCard | null {
   if (!isRecord(raw)) return null
-  const { id, x, y, w, h, text, group, kind } = raw
+  const { id, x, y, w, h, text, group, kind, color } = raw
   if (typeof id !== 'string' || id === '' || id.length > MAX_ID) return null
   if (!finite(x) || !finite(y) || typeof text !== 'string') return null
   const html = kind === 'html'
@@ -113,6 +133,7 @@ function readCard(raw: unknown): CanvasCard | null {
     text: text.slice(0, html ? MAX_HTML_TEXT : MAX_CARD_TEXT),
   }
   if (typeof group === 'string' && group !== '' && group.length <= MAX_ID) card.group = group
+  if (isCardColor(color)) card.color = color
   if (html) {
     card.kind = 'html'
     card.h = clamp(finite(h) ? h : HTML_CARD_HEIGHT, MIN_CARD_HEIGHT, MAX_CARD_HEIGHT)
@@ -151,7 +172,7 @@ function readFrames(raw: unknown): CanvasFrame[] {
   const ids = new Set<string>()
   for (const entry of Array.isArray(raw) ? raw : []) {
     if (!isRecord(entry)) continue
-    const { id, x, y, w, h, title } = entry
+    const { id, x, y, w, h, title, color } = entry
     if (typeof id !== 'string' || id === '' || id.length > MAX_ID || ids.has(id)) continue
     if (!finite(x) || !finite(y) || !finite(w) || !finite(h) || typeof title !== 'string') continue
     ids.add(id)
@@ -162,6 +183,7 @@ function readFrames(raw: unknown): CanvasFrame[] {
       w: clamp(w, MIN_FRAME_W, MAX_FRAME_SIZE),
       h: clamp(h, MIN_FRAME_H, MAX_FRAME_SIZE),
       title: tidyName(title),
+      ...(isCardColor(color) ? { color } : {}),
     })
     if (frames.length === MAX_FRAMES) break
   }

@@ -13,12 +13,20 @@
     document.open()
     document.write(data.html)
     document.close()
-    if (data.theme === 'light' || data.theme === 'dark') {
-      var scheme = document.createElement('meta')
-      scheme.name = 'color-scheme'
-      scheme.content = data.theme
-      document.head.prepend(scheme)
+    var scheme = null
+    function follow(theme) {
+      if (theme !== 'light' && theme !== 'dark') return
+      if (!scheme) {
+        scheme = document.createElement('meta')
+        scheme.name = 'color-scheme'
+        document.head.prepend(scheme)
+      }
+      scheme.content = theme
     }
+    follow(data.theme)
+    addEventListener('message', function (m) {
+      if (m.source === parent && m.data) follow(m.data.wisTheme)
+    })
     addEventListener('keydown', function (k) {
       if (k.key === 'Escape') parent.postMessage({ wisCard: 'escape' }, '*')
     }, true)

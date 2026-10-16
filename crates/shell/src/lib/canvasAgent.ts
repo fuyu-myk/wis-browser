@@ -17,6 +17,8 @@ import {
   HTML_CARD_HEIGHT,
   HTML_CARD_WIDTH,
   htmlTitle,
+  isCardColor,
+  isCardTint,
   MAX_CARD_HEIGHT,
   MAX_CARD_TEXT,
   MAX_CARD_WIDTH,
@@ -34,6 +36,7 @@ import {
   type Box,
   type CanvasCard,
   type CanvasDoc,
+  withColor,
 } from '@/lib/canvas'
 
 export const CANVAS_AGENT_PROMPT = `You are the agent of a Wis canvas: an endless board of cards the user arranges, joined by arrows and grouped in titled frames.
@@ -49,6 +52,8 @@ A note stays a note and an HTML card stays HTML. When asked to turn cards into s
 Do the work on the canvas instead of describing it. Then reply in one or two short sentences: what you changed, or the answer to the question. Never repeat card contents in the reply. The user can undo all of your changes in one step.
 
 When you can search the web, use it for facts you are unsure of or that may have changed, read the most useful results, and put their links in the notes you make from them.
+
+Colour cards and frames only to group or mark something, such as one colour per theme, owner or status, and keep most cards plain: the palette is accent, red, orange, yellow, green, blue and purple, and none takes a colour off.
 
 An attached file marked partial holds only the start of the file; say so when that matters to your answer.
 
@@ -174,9 +179,18 @@ function readCanvas(doc: CanvasDoc, ctx: AgentContext) {
       w: Math.round(c.w),
       h: Math.round(heightOf(c, ctx)),
       ...(c.group ? { group: c.group } : {}),
+      ...(c.color ? { color: c.color } : {}),
     })),
     ...(doc.cards.length > listed.length ? { more: doc.cards.length - listed.length } : {}),
-    frames: doc.frames.map((f) => ({ id: f.id, title: f.title, x: f.x, y: f.y, w: f.w, h: f.h })),
+    frames: doc.frames.map((f) => ({
+      id: f.id,
+      title: f.title,
+      x: f.x,
+      y: f.y,
+      w: f.w,
+      h: f.h,
+      ...(f.color ? { color: f.color } : {}),
+    })),
     arrows: doc.edges.map((e) => ({ from: e.from, to: e.to })),
   }
 }
@@ -216,7 +230,15 @@ function draftsOf(doc: CanvasDoc, wanted: readonly Record<string, unknown>[], ct
     const w = clamp(finite(spec.w) ? spec.w : html ? HTML_CARD_WIDTH : CARD_WIDTH, MIN_CARD_WIDTH, MAX_CARD_WIDTH)
     const h = html ? clamp(finite(spec.h) ? spec.h : HTML_CARD_HEIGHT, MIN_CARD_HEIGHT, MAX_CARD_HEIGHT) : undefined
     const id = ctx.newId?.() ?? crypto.randomUUID()
-    const card: CanvasCard = { id, x: 0, y: 0, w, text, ...(html ? { kind: 'html' as const, h } : {}) }
+    const card: CanvasCard = {
+      id,
+      x: 0,
+      y: 0,
+      w,
+      text,
+      ...(html ? { kind: 'html' as const, h } : {}),
+      ...(isCardColor(spec.color) ? { color: spec.color } : {}),
+    }
     drafts.push({ card, h: heightOf(card, ctx), spec, asked: finite(spec.x) && finite(spec.y) })
   }
   return { drafts, skipped, full }
@@ -307,6 +329,8 @@ function applyChange(
   const others = before.filter((b) => b.id !== card.id)
   const old = before.find((b) => b.id === card.id) ?? boxOf(card, ctx)
   let next = updateCard(doc, card.id, patchOf(card, change))
+  const tint = change.color
+  if (isCardTint(tint)) next = { ...next, cards: next.cards.map((c) => (c.id === card.id ? withColor(c, tint) : c)) }
   const box = boxOf(next.cards.find((c) => c.id === card.id) ?? card, ctx)
   const moved = new Map<string, { x: number; y: number }>()
   const slide = (around: readonly Box[]) => {
@@ -423,7 +447,8 @@ function frameCards(doc: CanvasDoc, args: Record<string, unknown>, ctx: AgentCon
   const boxes = framed.map((c) => boxOf(c, ctx))
   if (boxes.length === 0) fail('none of those cards exist')
   if (doc.frames.length >= MAX_FRAMES) fail('the canvas has as many frames as it can hold')
-  const frame = newFrame(frameAround(boxes), ctx.newId?.())
+  const made = newFrame(frameAround(boxes), ctx.newId?.())
+  const frame = isCardColor(args.color) ? { ...made, color: args.color } : made
   const next = renameFrame(addFrame(doc, frame), frame.id, title)
   title = next.frames.find((f) => f.id === frame.id)?.title ?? title
   return {

@@ -35,6 +35,7 @@ export const Frame = memo(function Frame({ frame, selected, renaming, handlers }
     <div
       className={cx('canvas-frame', { 'is-selected': selected })}
       data-frame={frame.id}
+      data-color={frame.color}
       ref={(el) => handlers.register(frame.id, el)}
       style={{ width: frame.w, height: frame.h, transform: transformOf(frame.x, frame.y) }}
     >

@@ -29,11 +29,18 @@ export function HtmlPaused({ title }: { title: string }) {
   )
 }
 
+const themeNow = () => document.documentElement.dataset.theme ?? 'dark'
+
 export function HtmlFrame({ html, live }: HtmlFrameProps) {
   const ref = useRef<HTMLIFrameElement>(null)
   useEffect(() => {
     if (live) ref.current?.focus()
   }, [live, html])
+  useEffect(() => {
+    const retheme = new MutationObserver(() => ref.current?.contentWindow?.postMessage({ wisTheme: themeNow() }, '*'))
+    retheme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => retheme.disconnect()
+  }, [])
   return (
     <>
       <iframe
@@ -45,10 +52,7 @@ export function HtmlFrame({ html, live }: HtmlFrameProps) {
         src={CARD_FRAME_PATH}
         tabIndex={live ? 0 : -1}
         onLoad={(e) =>
-          e.currentTarget.contentWindow?.postMessage(
-            { html, theme: document.documentElement.dataset.theme ?? 'dark' },
-            '*',
-          )
+          e.currentTarget.contentWindow?.postMessage({ html, theme: themeNow() }, '*')
         }
       />
       {!live && <div className="canvas-html-shield" />}

@@ -484,7 +484,7 @@ pub(crate) fn apply_tab_appearance<R: tauri::Runtime>(
 /// Re-apply the theme appearance to every live tab webview (on a theme change).
 pub(crate) fn apply_appearance_to_all_tabs(app: &AppHandle, theme: ThemeMode) {
     for (label, webview) in app.webviews() {
-        if label.starts_with("tab-") {
+        if label.starts_with("tab-") && !crate::canvas::is_canvas_tab(&label) {
             apply_tab_appearance(&webview, theme);
         }
     }

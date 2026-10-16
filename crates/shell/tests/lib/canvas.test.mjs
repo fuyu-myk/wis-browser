@@ -39,6 +39,27 @@ describe('documents', () => {
     assert.equal(doc.cards[0].w, canvas.MIN_CARD_WIDTH)
   })
 
+  test('cards and frames keep a palette colour and lose anything else', () => {
+    const doc = canvas.parseDoc(
+      JSON.stringify({
+        version: 1,
+        cards: [
+          { ...card('a'), color: 'green' },
+          { ...card('b'), color: 'red; background: url(x)' },
+          { ...card('c'), color: 'constructor' },
+        ],
+        frames: [
+          { id: 'f', x: 0, y: 0, w: 400, h: 200, title: 'F', color: 'accent' },
+          { id: 'g', x: 0, y: 0, w: 400, h: 200, title: 'G', color: 7 },
+        ],
+      }),
+    )
+    assert.deepEqual(doc.cards.map((c) => c.color), ['green', undefined, undefined])
+    assert.equal('color' in doc.cards[1], false)
+    assert.deepEqual(doc.frames.map((f) => f.color), ['accent', undefined])
+    assert.ok(canvas.CARD_COLORS.includes('accent') && canvas.CARD_COLORS.length === 7)
+  })
+
   test('cards are added, changed and removed without touching the original', () => {
     const start = canvas.emptyDoc()
     const one = canvas.addCard(start, card('a'))

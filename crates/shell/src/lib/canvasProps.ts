@@ -7,6 +7,7 @@ import {
   cardsInFrame,
   frameAround,
   framesInside,
+  isCardTint,
   MAX_CARD_HEIGHT,
   MAX_CARD_WIDTH,
   MAX_COORD,
@@ -19,11 +20,14 @@ import {
   type Box,
   type CanvasCard,
   type CanvasDoc,
+  type CardTint,
+  withColor,
 } from '@/lib/canvas'
 import { titleOf } from '@/lib/canvasAgent'
 
 export type Picked = { kind: 'edge' | 'frame'; id: string } | null
 export type Field = 'x' | 'y' | 'w' | 'h'
+export type Tint = CardTint
 type HeightOf = (card: CanvasCard) => number
 
 export type PropsView =
@@ -38,8 +42,10 @@ export type PropsView =
       h: number | null
       /** Whether every card takes a height of its own (visuals do; notes follow their text). */
       sized: boolean
+      /** Shared by every card, or null when they differ. */
+      color: Tint | null
     }
-  | { kind: 'frame'; id: string; title: string; box: Box }
+  | { kind: 'frame'; id: string; title: string; box: Box; color: Tint }
   | { kind: 'edge'; id: string; from: string; to: string }
   | null
 
@@ -57,7 +63,9 @@ export function propsView(
 ): PropsView {
   if (picked?.kind === 'frame') {
     const frame = doc.frames.find((f) => f.id === picked.id)
-    return frame ? { kind: 'frame', id: frame.id, title: frame.title, box: { x: frame.x, y: frame.y, w: frame.w, h: frame.h } } : null
+    if (!frame) return null
+    const box = { x: frame.x, y: frame.y, w: frame.w, h: frame.h }
+    return { kind: 'frame', id: frame.id, title: frame.title, box, color: frame.color ?? 'none' }
   }
   if (picked?.kind === 'edge') {
     const edge = doc.edges.find((e) => e.id === picked.id)
@@ -78,7 +86,25 @@ export function propsView(
     w: shared(boxes.map((b) => b.w)),
     h: shared(boxes.map((b) => b.h)),
     sized: cards.every((c) => c.kind === 'html'),
+    color: sharedTint(cards.map((c) => c.color ?? 'none')),
   }
+}
+
+const sharedTint = (tints: readonly Tint[]) => (tints.every((t) => t === tints[0]) ? tints[0] : null)
+
+
+export function setCardsColor(doc: CanvasDoc, ids: readonly string[], tint: string): CanvasDoc {
+  if (!isCardTint(tint)) return doc
+  const picked = new Set(ids)
+  const takes = (c: CanvasCard) => picked.has(c.id) && (c.color ?? 'none') !== tint
+  if (!doc.cards.some(takes)) return doc
+  return { ...doc, cards: doc.cards.map((c) => (takes(c) ? withColor(c, tint) : c)) }
+}
+
+export function setFrameColor(doc: CanvasDoc, id: string, tint: string): CanvasDoc {
+  const frame = doc.frames.find((f) => f.id === id)
+  if (!frame || !isCardTint(tint) || (frame.color ?? 'none') === tint) return doc
+  return { ...doc, frames: doc.frames.map((f) => (f.id === id ? withColor(f, tint) : f)) }
 }
 
 /** Sets a field across cards: X and Y move them together so their bounds

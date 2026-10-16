@@ -49,6 +49,7 @@ export const Card = memo(function Card({ card, selected, editing, live, paused, 
         'is-live': live,
       })}
       data-card={card.id}
+      data-color={card.color}
       ref={ref}
       style={{ width: card.w, height: card.h, transform: transformOf(card.x, card.y) }}
       onPointerDown={still ? (e) => handlers.down(card, e) : undefined}

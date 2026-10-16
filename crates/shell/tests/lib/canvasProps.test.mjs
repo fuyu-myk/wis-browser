@@ -28,10 +28,18 @@ describe('what the panel shows', () => {
       w: 280,
       h: 100,
       sized: false,
+      color: 'none',
     })
     const visual = props.propsView(doc([html('v', 0, 0)]), ids('v'), null, heightOf)
     assert.equal(visual.label, 'Visual')
     assert.equal(visual.sized, true)
+  })
+
+  test('the colour shown is the one every card shares, none, or mixed', () => {
+    const d = doc([{ ...note('a', 0, 0), color: 'blue' }, { ...note('b', 400, 0), color: 'blue' }, note('c', 0, 300)])
+    assert.equal(props.propsView(d, ids('a', 'b'), null, heightOf).color, 'blue')
+    assert.equal(props.propsView(d, ids('c'), null, heightOf).color, 'none')
+    assert.equal(props.propsView(d, ids('a', 'c'), null, heightOf).color, null)
   })
 
   test('several cards with their bounds and shared or mixed sizes', () => {
@@ -54,6 +62,7 @@ describe('what the panel shows', () => {
       id: 'f',
       title: 'Ideas',
       box: { x: -20, y: -20, w: 800, h: 200 },
+      color: 'none',
     })
     assert.deepEqual(props.propsView(d, ids(), { kind: 'edge', id: 'e' }, heightOf), {
       kind: 'edge',
@@ -97,6 +106,22 @@ describe('what the panel changes', () => {
     const sized = props.setFrame(d, 'f', 'w', 1, heightOf)
     assert.equal(sized.frames[0].w, canvas.MIN_FRAME_W)
     assert.equal(props.setFrame(d, 'nope', 'x', 5, heightOf), d)
+  })
+
+  test('colours tint the selected cards, or a frame, and none takes the tint off', () => {
+    const d = doc([note('a', 0, 0), html('v', 0, 300), note('b', 900, 0)], {
+      frames: [{ id: 'f', x: 0, y: 0, w: 400, h: 200, title: 'F' }],
+    })
+    const tinted = props.setCardsColor(d, ['a', 'v'], 'purple')
+    assert.deepEqual(tinted.cards.map((c) => c.color), ['purple', 'purple', undefined])
+    const cleared = props.setCardsColor(tinted, ['a', 'v'], 'none')
+    assert.deepEqual(cleared.cards.map((c) => 'color' in c), [false, false, false])
+    assert.equal(props.setCardsColor(cleared, ['a'], 'none'), cleared, 'no change, same document')
+    assert.equal(props.setCardsColor(d, ['a'], 'plaid'), d, 'only palette colours')
+    const frame = props.setFrameColor(d, 'f', 'yellow')
+    assert.equal(frame.frames[0].color, 'yellow')
+    assert.equal('color' in props.setFrameColor(frame, 'f', 'none').frames[0], false)
+    assert.equal(props.propsView(frame, ids(), { kind: 'frame', id: 'f' }, heightOf).color, 'yellow')
   })
 
   test('a frame takes a tidy new name, never a blank one', () => {

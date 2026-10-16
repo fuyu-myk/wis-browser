@@ -748,7 +748,11 @@ pub async fn create_tab_webview(
     // force the page's `prefers-color-scheme` to match the browser theme.
     let theme = {
         let browser = state.browser.lock().await;
-        browser.settings.theme
+        if canvas_tab {
+            crate::canvas::appearance(browser.settings.canvas_theme)
+        } else {
+            browser.settings.theme
+        }
     };
     let zoom = wis_core::zoom_factor(state.zoom_percent_for_url(parsed.as_str()));
     if (zoom - 1.0).abs() > f64::EPSILON {

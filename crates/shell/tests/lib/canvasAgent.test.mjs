@@ -177,6 +177,34 @@ describe('changing the canvas', () => {
   })
 })
 
+describe('colours', () => {
+  test('the agent can tint cards and frames from the palette, and nothing else', () => {
+    let out = agent.runCanvasTool(
+      doc(),
+      call('create_cards', { cards: [{ text: 'a', color: 'green' }, { text: 'b', color: 'plaid' }, { kind: 'html', text: '<p>v</p>', color: 'blue' }] }),
+      ctx(),
+    )
+    const [a, b, v] = out.doc.cards
+    assert.deepEqual([a.color, 'color' in b, v.color], ['green', false, 'blue'])
+
+    out = agent.runCanvasTool(out.doc, call('update_cards', { cards: [{ id: a.id, color: 'red' }, { id: v.id, color: 'none' }] }), ctx())
+    assert.equal(out.doc.cards[0].color, 'red')
+    assert.equal('color' in out.doc.cards[2], false, 'none takes the tint off')
+
+    out = agent.runCanvasTool(out.doc, call('frame_cards', { ids: [a.id], title: 'Hot', color: 'orange' }), ctx())
+    assert.equal(out.doc.frames[0].color, 'orange')
+
+    const read = JSON.parse(agent.runCanvasTool(out.doc, call('read_canvas', {}), ctx()).result)
+    assert.equal(read.cards.find((c) => c.id === a.id).color, 'red')
+    assert.equal('color' in read.cards.find((c) => c.id === b.id), false)
+    assert.equal(read.frames[0].color, 'orange')
+  })
+
+  test('the agent is told to use colour sparingly and to mean something by it', () => {
+    assert.match(agent.CANVAS_AGENT_PROMPT, /Colour cards and frames only to group or mark/)
+  })
+})
+
 describe('sizes and space', () => {
   /** Notes as tall as their lines, the way the page measures them. */
   const lines = ctx({ heightOf: (c) => 24 + 20 * c.text.split('\n').length })
