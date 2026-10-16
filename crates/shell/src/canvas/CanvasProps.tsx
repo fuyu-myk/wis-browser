@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
 import { CARD_COLORS, type CanvasCard, type CanvasDoc } from '@/lib/canvas'
+import { alignCards, distributeCards, tidyCards, type Axis, type Edge } from '@/lib/canvasArrange'
 import {
   propsView,
   readNumber,
@@ -61,6 +62,14 @@ export function CanvasProps({ doc, selected, picked, heightOf, onChange }: Panel
             />
           </div>
           <Colors value={shown.color} onPick={(tint) => onChange(setCardsColor(doc, shown.ids, tint))} />
+          {shown.ids.length > 1 && (
+            <Arrange
+              count={shown.ids.length}
+              align={(edge) => onChange(alignCards(doc, shown.ids, edge, heightOf))}
+              distribute={(axis) => onChange(distributeCards(doc, shown.ids, axis, heightOf))}
+              tidy={() => onChange(tidyCards(doc, shown.ids, heightOf))}
+            />
+          )}
         </>
       )}
       {shown?.kind === 'frame' && (
@@ -125,6 +134,64 @@ function Colors({ value, onPick }: { value: Tint | null; onPick: (tint: Tint) =>
             onClick={() => onPick(tint)}
           />
         ))}
+      </div>
+    </>
+  )
+}
+
+const ALIGNS: readonly { edge: Edge; label: string; icon: string }[] = [
+  { edge: 'left', label: 'Align left edges', icon: 'M2.75 2v12M5 4h8v3H5zM5 9h5v3H5z' },
+  { edge: 'centre', label: 'Align centres', icon: 'M8 2v12M3.5 4h9v3h-9zM5 9h6v3H5z' },
+  { edge: 'right', label: 'Align right edges', icon: 'M13.25 2v12M3 4h8v3H3zM6 9h5v3H6z' },
+  { edge: 'top', label: 'Align top edges', icon: 'M2 2.75h12M4 5h3v8H4zM9 5h3v5H9z' },
+  { edge: 'middle', label: 'Align middles', icon: 'M2 8h12M4 3.5h3v9H4zM9 5h3v6H9z' },
+  { edge: 'bottom', label: 'Align bottom edges', icon: 'M2 13.25h12M4 3h3v8H4zM9 6h3v5H9z' },
+]
+const SPREADS: readonly { axis: Axis; label: string; icon: string }[] = [
+  { axis: 'across', label: 'Even the gaps across', icon: 'M2.75 2v12M13.25 2v12M6 4h4v8H6z' },
+  { axis: 'down', label: 'Even the gaps down', icon: 'M2 2.75h12M2 13.25h12M4 6h8v4H4z' },
+]
+const TIDY_ICON = 'M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z'
+
+function ArrangeButton({ label, icon, disabled = false, onClick }: { label: string; icon: string; disabled?: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className="canvas-arrange" aria-label={label} title={label} disabled={disabled} onClick={onClick}>
+      <svg viewBox="0 0 16 16" aria-hidden>
+        <path d={icon} />
+      </svg>
+    </button>
+  )
+}
+
+/** Align, even out and tidy a selection of two or more cards. */
+function Arrange({
+  count,
+  align,
+  distribute,
+  tidy,
+}: {
+  count: number
+  align: (edge: Edge) => void
+  distribute: (axis: Axis) => void
+  tidy: () => void
+}) {
+  return (
+    <>
+      <p className="canvas-props-label">Arrange</p>
+      <div className="canvas-props-arrange" role="group" aria-label="Arrange">
+        {ALIGNS.map((a) => (
+          <ArrangeButton key={a.edge} label={a.label} icon={a.icon} onClick={() => align(a.edge)} />
+        ))}
+        {SPREADS.map((s) => (
+          <ArrangeButton
+            key={s.axis}
+            label={count < 3 ? `${s.label} (needs three cards)` : s.label}
+            icon={s.icon}
+            disabled={count < 3}
+            onClick={() => distribute(s.axis)}
+          />
+        ))}
+        <ArrangeButton label="Tidy into a grid" icon={TIDY_ICON} onClick={tidy} />
       </div>
     </>
   )

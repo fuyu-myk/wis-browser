@@ -676,6 +676,40 @@ body,
     inset 0 0 0 2px var(--accent),
     inset 0 0 0 4px var(--card-bg);
 }
+.canvas-props-arrange {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+}
+.canvas-arrange {
+  display: grid;
+  place-items: center;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.canvas-arrange:hover:not(:disabled) {
+  background: var(--overlay);
+  color: var(--text-primary);
+}
+.canvas-arrange:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.canvas-arrange svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  fill-rule: evenodd;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .canvas-props-ends {
   display: grid;
   grid-template-columns: auto 1fr;
