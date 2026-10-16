@@ -10,7 +10,11 @@ import './canvas.css'
 declare global {
   interface Window {
     webkit?: { messageHandlers?: { wisCanvas?: Handler } }
-    __wisCanvas?: { reply: (raw: unknown) => void; ai: (requestId: unknown, event: unknown) => void }
+    __wisCanvas?: {
+      reply: (raw: unknown) => void
+      ai: (requestId: unknown, event: unknown) => void
+      mic: (event: unknown) => void
+    }
     __wisSwipeAccent?: unknown
     __wisCanvasTheme?: unknown
     __wisCanvasGround?: unknown
@@ -76,10 +80,10 @@ async function channelHandler(): Promise<Handler | null> {
 void channelHandler().then((handler) => {
   const channel = createCanvasChannel(handler ? (text) => handler.postMessage(text) : null)
 
-  // Rust replies by evaluating `window.__wisCanvas.reply(...)`, and streams
-  // AI events through `window.__wisCanvas.ai(...)`.
+  // Rust replies by evaluating `window.__wisCanvas.reply(...)`, streams AI
+  // events through `window.__wisCanvas.ai(...)` and dictation through `.mic(...)`.
   Object.defineProperty(window, '__wisCanvas', {
-    value: Object.freeze({ reply: channel.reply, ai: channel.ai }),
+    value: Object.freeze({ reply: channel.reply, ai: channel.ai, mic: channel.mic }),
     writable: false,
     configurable: false,
   })

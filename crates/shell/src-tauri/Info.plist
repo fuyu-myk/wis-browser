@@ -14,7 +14,10 @@
   <key>NSCameraUsageDescription</key>
   <string>Allow sites you approve to use your camera, for example for video calls.</string>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Allow sites you approve to use your microphone, for example for voice and video calls.</string>
+  <string>Allow sites you approve to use your microphone, for example for voice and video calls, and let you speak prompts to the canvas agent.</string>
+  <!-- Spoken canvas prompts run Apple's speech recognition on device only. -->
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Turn what you say into canvas agent prompts, on this Mac only.</string>
 
   <!-- Registers Wis as an http(s) handler with Launch Services: required to
        appear in System Settings' default-browser picker and to receive links

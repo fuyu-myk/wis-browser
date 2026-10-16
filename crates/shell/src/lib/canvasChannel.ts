@@ -7,6 +7,7 @@ import type { AiFetchResponse, AiSearchResult, StreamEvent } from '@/bindings/ty
 import type { WireMessage } from '@/lib/ai'
 import type { CanvasSummary } from '@/lib/canvas'
 import type { DocumentKind, DocumentOutcome } from '@/lib/canvasAttach'
+import { readMicEvent, type MicEvent } from '@/lib/canvasDictation'
 
 export interface LoadedCanvas {
   id: string
@@ -58,6 +59,12 @@ export interface CanvasChannel {
   aiWebFetch: (url: string) => Promise<AiFetchResponse>
   /** Text from a PDF or word processor file, given as base64. */
   aiReadDocument: (kind: DocumentKind, data: string, maxChars: number) => Promise<DocumentOutcome>
+  /** Starts on-device dictation; what it hears arrives through `onMic`. */
+  aiMicStart: () => Promise<null>
+  aiMicStop: () => Promise<null>
+  /** Rust pushes what dictation hears. */
+  mic: (event: unknown) => void
+  onMic: (listener: (event: MicEvent) => void) => () => void
 }
 
 interface Waiting {
@@ -71,6 +78,7 @@ export function createCanvasChannel(post: ((text: string) => void) | null): Canv
   let next = 1
   const waiting = new Map<number, Waiting>()
   const streams = new Map<string, (event: StreamEvent) => void>()
+  const hearing = new Set<(event: MicEvent) => void>()
 
   function request<T>(message: Record<string, unknown>): Promise<T> {
     if (post === null) return Promise.reject(new Error(UNAVAILABLE))
@@ -124,5 +132,15 @@ export function createCanvasChannel(post: ((text: string) => void) | null): Canv
     aiWebSearch: (query) => request({ op: 'aiWebSearch', query }),
     aiWebFetch: (url) => request({ op: 'aiWebFetch', url }),
     aiReadDocument: (kind, data, maxChars) => request({ op: 'aiReadDocument', kind, max_chars: maxChars, data }),
+    aiMicStart: () => request({ op: 'aiMicStart' }),
+    aiMicStop: () => request({ op: 'aiMicStop' }),
+    mic: (raw) => {
+      const event = readMicEvent(raw)
+      if (event) for (const listener of hearing) listener(event)
+    },
+    onMic: (listener) => {
+      hearing.add(listener)
+      return () => hearing.delete(listener)
+    },
   }
 }

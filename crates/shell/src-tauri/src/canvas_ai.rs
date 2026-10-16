@@ -170,6 +170,10 @@ enum Request {
     WebSearch { query: String },
     #[serde(rename = "aiWebFetch")]
     WebFetch { url: String },
+    #[serde(rename = "aiMicStart")]
+    MicStart,
+    #[serde(rename = "aiMicStop")]
+    MicStop,
     #[serde(rename = "aiReadDocument")]
     ReadDocument {
         kind: crate::document_text::DocKind,
@@ -256,6 +260,14 @@ async fn run(app: &AppHandle, label: &str, tab: CanvasTab, request: Request) -> 
             let page =
                 crate::ai_fetch::fetch_in(window, state, url, None, Some(tab.workspace)).await?;
             Ok(json!(page))
+        }
+        Request::MicStart => {
+            crate::dictation::start(app, label).await?;
+            Ok(Value::Null)
+        }
+        Request::MicStop => {
+            crate::dictation::stop(app, label);
+            Ok(Value::Null)
         }
         Request::ReadDocument {
             kind,

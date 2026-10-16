@@ -27,6 +27,7 @@ mod cookies;
 mod cosmetic;
 mod default_browser;
 mod devtools;
+mod dictation;
 mod document_text;
 mod downloads;
 mod edit_keys;

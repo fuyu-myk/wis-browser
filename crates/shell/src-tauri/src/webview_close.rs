@@ -48,6 +48,9 @@ pub fn terminate_window_pages(app: &tauri::AppHandle, window_label: &str) {
             continue;
         }
 
+        if label.starts_with("tab-") {
+            crate::dictation::forget(app, &label);
+        }
         if label.starts_with("tab-")
             || label.starts_with("widget-panel-")
             || label.starts_with("peek-page-")

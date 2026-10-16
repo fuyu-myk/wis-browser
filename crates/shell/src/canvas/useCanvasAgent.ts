@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 
 import type { WireMessage } from '@/lib/ai'
 import type { CanvasDoc } from '@/lib/canvas'
 import { estimateHeight, runTurn, type AgentContext, type AgentReport, type TurnResult } from '@/lib/canvasAgent'
 import type { AttachDeps, Attachment } from '@/lib/canvasAttach'
 import type { CanvasAiStatus, CanvasChannel, CanvasModels } from '@/lib/canvasChannel'
+import type { MicEvent } from '@/lib/canvasDictation'
 
 import type { SurfaceHandle } from './CanvasSurface'
 
@@ -77,8 +78,16 @@ export interface CanvasAgent {
   listModels: () => Promise<CanvasModels>
   setModel: (model: string | null) => Promise<void>
   readDocument: AttachDeps['readDocument']
+  mic: Dictation
   clear: () => void
   refresh: () => void
+}
+
+/** Speaking a prompt: start and stop, and what is heard as it comes. */
+export interface Dictation {
+  start: () => Promise<null>
+  stop: () => Promise<null>
+  listen: (listener: (event: MicEvent) => void) => () => void
 }
 
 export interface AgentOptions {
@@ -99,6 +108,10 @@ export function useCanvasAgent({ channel, docRef, surface, apply }: AgentOptions
   const stopped = useRef(false)
   const halt = useRef<() => void>(() => undefined)
   const alive = useRef(true)
+  const mic = useMemo<Dictation>(
+    () => ({ start: channel.aiMicStart, stop: channel.aiMicStop, listen: channel.onMic }),
+    [channel],
+  )
 
   const refresh = useCallback(() => {
     channel.aiStatus().then(
@@ -230,5 +243,6 @@ export function useCanvasAgent({ channel, docRef, surface, apply }: AgentOptions
     listModels: channel.aiModels,
     setModel,
     readDocument: channel.aiReadDocument,
+    mic,
   }
 }

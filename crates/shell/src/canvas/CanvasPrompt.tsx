@@ -2,10 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type Form
 
 
 import { attachFiles, partialNote, partialTag, type Attachment } from '@/lib/canvasAttach'
+import { dictated } from '@/lib/canvasDictation'
 import { cx } from '@/lib/cx'
 
 import { CanvasModelPicker } from './CanvasModelPicker'
 import type { CanvasAgent } from './useCanvasAgent'
+
+type Listening = 'off' | 'starting' | 'on'
 
 const MAX_PROMPT_PX = 160
 const NOTE_MS = 4000
@@ -26,6 +29,13 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
   const [dropping, setDropping] = useState(false)
   const [multiline, setMultiline] = useState(false)
   const [pending, setPending] = useState<string[]>([])
+  const [listening, setListening] = useState<Listening>('off')
+  /** What was typed when dictation began; heard words follow it. */
+  const typedBefore = useRef('')
+  /** Whether heard words still drive the text; typing takes it back. */
+  const following = useRef(false)
+  const listeningRef = useRef<Listening>('off')
+  listeningRef.current = listening
   const field = useRef<HTMLTextAreaElement>(null)
   const picker = useRef<HTMLInputElement>(null)
   const attached = useRef<Attachment[]>([])
@@ -47,6 +57,48 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
     const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
     setMultiline(el.scrollHeight - padding > parseFloat(style.lineHeight) * 1.5)
   }, [text])
+
+  const { mic } = agent
+  useEffect(() => {
+    // A dictation still running for this tab was left by a page that reloaded.
+    void mic.stop().catch(() => null)
+    const leave = mic.listen((event) => {
+      if (event.type === 'heard') {
+        if (following.current) setText(dictated(typedBefore.current, event.text))
+      } else if (event.type === 'failed') {
+        setNote(event.message)
+      } else {
+        following.current = false
+        setListening('off')
+      }
+    })
+    return () => {
+      leave()
+      if (listeningRef.current !== 'off') void mic.stop().catch(() => null)
+    }
+  }, [mic])
+
+  const stopMic = (keep: boolean) => {
+    following.current = keep
+    void mic.stop().catch(() => null)
+  }
+  const toggleMic = async () => {
+    if (listening !== 'off') {
+      stopMic(true)
+      return
+    }
+    typedBefore.current = text
+    following.current = true
+    setListening('starting')
+    try {
+      await mic.start()
+      setListening((now) => (now === 'starting' ? 'on' : now))
+    } catch (error) {
+      following.current = false
+      setListening('off')
+      setNote(error instanceof Error ? error.message : 'Dictation could not start.')
+    }
+  }
 
   useEffect(() => {
     if (note === null) return
@@ -78,6 +130,7 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
       return
     }
     if (text.trim() === '' || !available || reading) return
+    if (listening !== 'off') stopMic(false)
     agent.send(text, files)
     setText('')
     keep([])
@@ -87,7 +140,8 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
       e.preventDefault()
       submit()
     } else if (e.key === 'Escape') {
-      e.currentTarget.blur()
+      if (listening !== 'off') stopMic(true)
+      else e.currentTarget.blur()
     }
   }
   const carriesFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files')
@@ -176,7 +230,10 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
               ? 'Ask the canvas agent'
               : 'Set up AI in Settings › AI to use the canvas agent'
           }
-          onChange={(e) => setText(e.currentTarget.value)}
+          onChange={(e) => {
+            if (listening !== 'off') stopMic(false)
+            setText(e.currentTarget.value)
+          }}
           onFocus={agent.refresh}
           onKeyDown={onKeyDown}
         />
@@ -188,6 +245,21 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
           choose={agent.setModel}
           onError={setNote}
         />
+      )}
+      {available && (
+        <button
+          type="button"
+          className={cx('canvas-prompt-mic', { 'is-on': listening === 'on', 'is-starting': listening === 'starting' })}
+          aria-label={listening === 'off' ? 'Tell the canvas agent something' : 'Stop listening'}
+          aria-pressed={listening !== 'off'}
+          title={listening === 'off' ? 'Tell the canvas agent something (on this Mac only)' : 'Stop listening'}
+          onClick={() => void toggleMic()}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden>
+            <rect x="9" y="3" width="6" height="11" rx="3" />
+            <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+          </svg>
+        </button>
       )}
       <button
         type="submit"

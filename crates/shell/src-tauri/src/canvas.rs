@@ -191,6 +191,7 @@ pub fn forget(app: &AppHandle, label: &str) {
         .remove(label)
         .is_some();
     if known {
+        crate::dictation::forget(app, label);
         let mut health = HEALTH.lock().expect("canvas health poisoned");
         health.closed(label, chrono::Utc::now().timestamp_millis());
         if health.take_changed() {

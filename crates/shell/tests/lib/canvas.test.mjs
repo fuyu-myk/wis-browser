@@ -175,6 +175,8 @@ describe('the channel', () => {
     void channel.aiWebSearch('kyoto weather')
     void channel.aiWebFetch('https://example.com/')
     void channel.aiReadDocument('pdf', 'JVBERi0=', 1200)
+    void channel.aiMicStart()
+    void channel.aiMicStop()
     assert.deepEqual(posted, [
       { id: 1, op: 'aiStatus' },
       { id: 2, op: 'aiCancel', request_id: 'r1' },
@@ -185,6 +187,8 @@ describe('the channel', () => {
       { id: 7, op: 'aiWebSearch', query: 'kyoto weather' },
       { id: 8, op: 'aiWebFetch', url: 'https://example.com/' },
       { id: 9, op: 'aiReadDocument', kind: 'pdf', max_chars: 1200, data: 'JVBERi0=' },
+      { id: 10, op: 'aiMicStart' },
+      { id: 11, op: 'aiMicStop' },
     ])
     channel.reply({ id: 1, ok: true, value: { available: true, model: 'm' } })
     assert.deepEqual(await status, { available: true, model: 'm' })
@@ -193,6 +197,20 @@ describe('the channel', () => {
   test('without the native channel every request fails at once', async () => {
     const channel = createCanvasChannel(null)
     await assert.rejects(channel.list(), /not available/)
+  })
+})
+
+describe('dictation events', () => {
+  test('reach every listener until it leaves, and malformed ones are dropped', () => {
+    const channel = createCanvasChannel(() => undefined)
+    const heard = []
+    const leave = channel.onMic((event) => heard.push(event))
+    channel.mic({ type: 'heard', text: 'hello', done: false })
+    channel.mic({ type: 'bogus' })
+    channel.mic({ type: 'ended' })
+    leave()
+    channel.mic({ type: 'heard', text: 'after', done: true })
+    assert.deepEqual(heard, [{ type: 'heard', text: 'hello', done: false }, { type: 'ended' }])
   })
 })
 
