@@ -32,6 +32,7 @@ import {
   newFrame,
   removeCards,
   renameFrame,
+  styleEdge,
   updateCard,
   type Box,
   type CanvasCard,
@@ -52,6 +53,8 @@ A note stays a note and an HTML card stays HTML. When asked to turn cards into s
 Do the work on the canvas instead of describing it. Then reply in one or two short sentences: what you changed, or the answer to the question. Never repeat card contents in the reply. The user can undo all of your changes in one step.
 
 When you can search the web, use it for facts you are unsure of or that may have changed, read the most useful results, and put their links in the notes you make from them.
+
+Label an arrow with a few words when the link is not obvious, such as causes, depends on or then; give it heads both ways for a two-way link, or none for a plain connection. Joining cards that are already joined restyles their arrow.
 
 Colour cards and frames only to group or mark something, such as one colour per theme, owner or status, and keep most cards plain: the palette is accent, red, orange, yellow, green, blue and purple, and none takes a colour off.
 
@@ -191,7 +194,13 @@ function readCanvas(doc: CanvasDoc, ctx: AgentContext) {
       h: f.h,
       ...(f.color ? { color: f.color } : {}),
     })),
-    arrows: doc.edges.map((e) => ({ from: e.from, to: e.to })),
+    arrows: doc.edges.map((e) => ({
+      from: e.from,
+      to: e.to,
+      ...(e.label ? { label: e.label } : {}),
+      ...(e.heads ? { heads: e.heads } : {}),
+      ...(e.shape ? { shape: e.shape } : {}),
+    })),
   }
 }
 
@@ -411,31 +420,68 @@ function deleteCards(doc: CanvasDoc, args: Record<string, unknown>): ToolOutcome
   }
 }
 
+/** The look a link asks for; `styleEdge` keeps only what it knows. */
+function lookOf(link: Record<string, unknown>): { label?: string; heads?: string; shape?: string } {
+  return {
+    ...(typeof link.label === 'string' ? { label: link.label } : {}),
+    ...(typeof link.heads === 'string' ? { heads: link.heads } : {}),
+    ...(typeof link.shape === 'string' ? { shape: link.shape } : {}),
+  }
+}
+
 function connectCards(doc: CanvasDoc, args: Record<string, unknown>, ctx: AgentContext): ToolOutcome {
   const links = records(args.links) ?? fail('links must be a list of {from, to}')
   let next = doc
   let connected = 0
+  let restyled = 0
   const skipped: unknown[] = []
   const details: string[] = []
   const nameOf = (id: string) => {
     const card = doc.cards.find((c) => c.id === id)
     return card ? named(card) : id
   }
-  for (const link of links) {
-    const before = next
-    if (typeof link.from === 'string' && typeof link.to === 'string' && next.edges.length < MAX_EDGES)
-      next = addEdge(next, link.from, link.to, ctx.newId?.())
-    if (next === before) {
-      skipped.push(link)
-    } else {
-      connected += 1
-      details.push(`${nameOf(String(link.from))} to ${nameOf(String(link.to))}`)
-    }
+  const describe = (id: string) => {
+    const edge = next.edges.find((e) => e.id === id)
+    if (!edge) return ''
+    return `${nameOf(edge.from)} to ${nameOf(edge.to)}${edge.label ? `, “${edge.label}”` : ''}`
   }
+  for (const link of links) {
+    const { from, to } = link
+    if (typeof from !== 'string' || typeof to !== 'string') {
+      skipped.push(link)
+      continue
+    }
+    const existing = next.edges.find((e) => e.from === from && e.to === to)
+    if (existing) {
+      const styled = styleEdge(next, existing.id, lookOf(link))
+      if (styled === next) skipped.push(link)
+      else {
+        next = styled
+        restyled += 1
+        details.push(describe(existing.id))
+      }
+      continue
+    }
+    const id = ctx.newId?.() ?? crypto.randomUUID()
+    const added = next.edges.length < MAX_EDGES ? addEdge(next, from, to, id) : next
+    if (added === next) {
+      skipped.push(link)
+      continue
+    }
+    next = styleEdge(added, id, lookOf(link))
+    connected += 1
+    details.push(describe(id))
+  }
+  const drew = connected === 0 ? '' : `Drew ${connected === 1 ? 'an arrow' : `${connected} arrows`}`
+  const styledNote = restyled === 0 ? '' : `${restyled === 1 ? 'an arrow' : `${restyled} arrows`}`
+  const summary =
+    drew && styledNote
+      ? `${drew} and restyled ${styledNote}`
+      : drew || (styledNote ? `Restyled ${styledNote}` : 'No arrows drawn')
   return {
     doc: next,
-    result: JSON.stringify({ connected, skipped }),
-    summary: connected === 0 ? 'No arrows drawn' : `Drew ${connected === 1 ? 'an arrow' : `${connected} arrows`}`,
+    result: JSON.stringify({ connected, ...(restyled > 0 ? { restyled } : {}), skipped }),
+    summary,
     details,
   }
 }

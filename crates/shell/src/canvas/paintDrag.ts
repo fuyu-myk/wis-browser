@@ -22,7 +22,7 @@ export interface DragTargets {
   cards: ReadonlyMap<string, HTMLElement>
   frames: ReadonlyMap<string, HTMLElement>
   groups: ReadonlyMap<string, GroupOutline>
-  edges: ReadonlyMap<string, SVGPathElement[]>
+  edges: ReadonlyMap<string, SVGGraphicsElement[]>
 }
 
 /** Moves what a drag carries, and the outlines and arrows that follow it. */
@@ -60,7 +60,14 @@ export function paintDrag(
     const a = placed(edge.from)
     const b = placed(edge.to)
     if (!a || !b) continue
-    const path = edgeGeometry(a, b).d
-    for (const el of els.edges.get(edge.id) ?? []) el.setAttribute('d', path)
+    const { d: path, mid } = edgeGeometry(a, b, edge)
+    for (const el of els.edges.get(edge.id) ?? []) {
+      if (el instanceof SVGTextElement) {
+        el.setAttribute('x', String(mid.x))
+        el.setAttribute('y', String(mid.y))
+      } else {
+        el.setAttribute('d', path)
+      }
+    }
   }
 }

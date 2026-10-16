@@ -20,6 +20,8 @@ import {
   type Box,
   type CanvasCard,
   type CanvasDoc,
+  type EdgeHeads,
+  type EdgeShape,
   type CardTint,
   withColor,
 } from '@/lib/canvas'
@@ -28,6 +30,8 @@ import { titleOf } from '@/lib/canvasAgent'
 export type Picked = { kind: 'edge' | 'frame'; id: string } | null
 export type Field = 'x' | 'y' | 'w' | 'h'
 export type Tint = CardTint
+export type { EdgeHeads, EdgeShape } from '@/lib/canvas'
+export { styleEdge as setEdge } from '@/lib/canvas'
 type HeightOf = (card: CanvasCard) => number
 
 export type PropsView =
@@ -46,7 +50,7 @@ export type PropsView =
       color: Tint | null
     }
   | { kind: 'frame'; id: string; title: string; box: Box; color: Tint }
-  | { kind: 'edge'; id: string; from: string; to: string }
+  | { kind: 'edge'; id: string; from: string; to: string; shape: EdgeShape; heads: EdgeHeads; label: string }
   | null
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
@@ -71,7 +75,15 @@ export function propsView(
     const edge = doc.edges.find((e) => e.id === picked.id)
     if (!edge) return null
     const card = (id: string) => doc.cards.find((c) => c.id === id)
-    return { kind: 'edge', id: edge.id, from: named(card(edge.from)), to: named(card(edge.to)) }
+    return {
+      kind: 'edge',
+      id: edge.id,
+      from: named(card(edge.from)),
+      to: named(card(edge.to)),
+      shape: edge.shape ?? 'curved',
+      heads: edge.heads ?? 'end',
+      label: edge.label ?? '',
+    }
   }
   const cards = doc.cards.filter((c) => selected.has(c.id))
   if (cards.length === 0) return null

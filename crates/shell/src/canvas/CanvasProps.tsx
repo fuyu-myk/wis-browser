@@ -7,9 +7,12 @@ import {
   readNumber,
   setCards,
   setCardsColor,
+  setEdge,
   setFrame,
   setFrameColor,
   setFrameTitle,
+  type EdgeHeads,
+  type EdgeShape,
   type Field,
   type Picked,
   type PropsView,
@@ -98,6 +101,25 @@ export function CanvasProps({ doc, selected, picked, heightOf, onChange }: Panel
             <dt>To</dt>
             <dd>{shown.to}</dd>
           </dl>
+          <div className="canvas-props-grid canvas-props-gap">
+            <TextField
+              label="Label"
+              value={shown.label}
+              onCommit={(label) => onChange(setEdge(doc, shown.id, { label }))}
+            />
+          </div>
+          <Choice
+            label="Line"
+            options={SHAPES}
+            value={shown.shape}
+            onPick={(shape) => onChange(setEdge(doc, shown.id, { shape }))}
+          />
+          <Choice
+            label="Heads"
+            options={HEADS}
+            value={shown.heads}
+            onPick={(heads) => onChange(setEdge(doc, shown.id, { heads }))}
+          />
         </>
       )}
     </aside>
@@ -151,6 +173,57 @@ const SPREADS: readonly { axis: Axis; label: string; icon: string }[] = [
   { axis: 'across', label: 'Even the gaps across', icon: 'M2.75 2v12M13.25 2v12M6 4h4v8H6z' },
   { axis: 'down', label: 'Even the gaps down', icon: 'M2 2.75h12M2 13.25h12M4 6h8v4H4z' },
 ]
+interface Option<T> {
+  value: T
+  label: string
+  icon: string
+}
+
+const SHAPES: readonly Option<EdgeShape>[] = [
+  { value: 'curved', label: 'Curved', icon: 'M2.5 12.5C7 12.5 9 3.5 13.5 3.5' },
+  { value: 'straight', label: 'Straight', icon: 'M2.5 12.5L13.5 3.5' },
+]
+const HEADS: readonly Option<EdgeHeads>[] = [
+  { value: 'none', label: 'No heads', icon: 'M2 8h12' },
+  { value: 'end', label: 'One way', icon: 'M2 8h11.5M10 4.5L13.5 8 10 11.5' },
+  { value: 'both', label: 'Both ways', icon: 'M2.5 8h11M6 4.5L2.5 8 6 11.5M10 4.5L13.5 8 10 11.5' },
+]
+
+function Choice<T extends string>({
+  label,
+  options,
+  value,
+  onPick,
+}: {
+  label: string
+  options: readonly Option<T>[]
+  value: T
+  onPick: (value: T) => void
+}) {
+  return (
+    <>
+      <p className="canvas-props-label">{label}</p>
+      <div className="canvas-props-choice" role="group" aria-label={label}>
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            className={cx('canvas-arrange', { 'is-on': o.value === value })}
+            aria-label={o.label}
+            aria-pressed={o.value === value}
+            title={o.label}
+            onClick={() => onPick(o.value)}
+          >
+            <svg viewBox="0 0 16 16" className="is-line" aria-hidden>
+              <path d={o.icon} />
+            </svg>
+          </button>
+        ))}
+      </div>
+    </>
+  )
+}
+
 const TIDY_ICON = 'M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z'
 
 function ArrangeButton({ label, icon, disabled = false, onClick }: { label: string; icon: string; disabled?: boolean; onClick: () => void }) {

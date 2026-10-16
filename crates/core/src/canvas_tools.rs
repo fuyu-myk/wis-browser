@@ -120,7 +120,8 @@ pub fn definitions() -> Vec<Value> {
         ),
         tool(
             "connect_cards",
-            "Draw arrows between cards, from the first card to the second.",
+            "Draw arrows between cards, from the first card to the second, with an optional \
+             label, heads and line. Joining cards already joined restyles their arrow.",
             json!({
                 "type": "object",
                 "properties": {
@@ -130,7 +131,17 @@ pub fn definitions() -> Vec<Value> {
                             "type": "object",
                             "properties": {
                                 "from": { "type": "string" },
-                                "to": { "type": "string" }
+                                "to": { "type": "string" },
+                                "label": {
+                                    "type": "string",
+                                    "description": "A few words on the arrow, such as causes or depends on."
+                                },
+                                "heads": {
+                                    "type": "string",
+                                    "enum": ["end", "both", "none"],
+                                    "description": "end (the default) points at `to`; both points both ways; none is a plain line."
+                                },
+                                "shape": { "type": "string", "enum": ["curved", "straight"], "description": "curved by default." }
                             },
                             "required": ["from", "to"]
                         }
@@ -179,5 +190,15 @@ mod tests {
         assert_eq!(frame, &json!(COLORS));
         assert_eq!(update.as_array().unwrap().last().unwrap(), "none");
         assert_eq!(update.as_array().unwrap().len(), COLORS.len() + 1);
+    }
+
+    #[test]
+    fn arrows_offer_a_label_heads_and_a_line() {
+        let tools = definitions();
+        let link = &tool(&tools, "connect_cards")["function"]["parameters"]["properties"]["links"]
+            ["items"]["properties"];
+        assert_eq!(link["label"]["type"], "string");
+        assert_eq!(link["heads"]["enum"], json!(["end", "both", "none"]));
+        assert_eq!(link["shape"]["enum"], json!(["curved", "straight"]));
     }
 }

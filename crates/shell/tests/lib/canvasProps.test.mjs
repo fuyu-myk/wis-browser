@@ -69,6 +69,9 @@ describe('what the panel shows', () => {
       id: 'e',
       from: 'Alpha',
       to: 'Beta',
+      shape: 'curved',
+      heads: 'end',
+      label: '',
     })
     assert.equal(props.propsView(d, ids(), { kind: 'frame', id: 'gone' }, heightOf), null)
   })
@@ -122,6 +125,19 @@ describe('what the panel changes', () => {
     assert.equal(frame.frames[0].color, 'yellow')
     assert.equal('color' in props.setFrameColor(frame, 'f', 'none').frames[0], false)
     assert.equal(props.propsView(frame, ids(), { kind: 'frame', id: 'f' }, heightOf).color, 'yellow')
+  })
+
+  test('an arrow’s line, heads and label change, and defaults leave nothing stored', () => {
+    const d = doc([note('a', 0, 0), note('b', 400, 0)], { edges: [{ id: 'e', from: 'a', to: 'b' }] })
+    const styled = props.setEdge(d, 'e', { shape: 'straight', heads: 'both', label: '  causes ' })
+    assert.deepEqual(styled.edges[0], { id: 'e', from: 'a', to: 'b', shape: 'straight', heads: 'both', label: 'causes' })
+    const view = props.propsView(styled, ids(), { kind: 'edge', id: 'e' }, heightOf)
+    assert.deepEqual([view.shape, view.heads, view.label], ['straight', 'both', 'causes'])
+    const plain = props.setEdge(styled, 'e', { shape: 'curved', heads: 'end', label: '   ' })
+    assert.deepEqual(plain.edges[0], { id: 'e', from: 'a', to: 'b' })
+    assert.equal(props.setEdge(plain, 'e', { heads: 'end' }), plain, 'no change, same document')
+    assert.equal(props.setEdge(plain, 'e', { heads: 'sideways' }), plain)
+    assert.equal(props.setEdge(plain, 'gone', { heads: 'none' }), plain)
   })
 
   test('a frame takes a tidy new name, never a blank one', () => {

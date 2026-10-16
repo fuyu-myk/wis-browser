@@ -48,10 +48,26 @@ export interface CanvasFrame {
   color?: CardColor
 }
 
-export interface CanvasEdge {
+/** How an arrow looks; left out, it is a curve with one head at its end. */
+export interface EdgeLook {
+  shape?: 'straight'
+  heads?: 'none' | 'both'
+}
+
+export interface CanvasEdge extends EdgeLook {
   id: string
   from: string
   to: string
+  label?: string
+}
+
+export type EdgeShape = 'curved' | 'straight'
+export type EdgeHeads = 'none' | 'end' | 'both'
+
+export const MAX_LABEL_CHARS = 60
+
+export function tidyLabel(raw: string): string {
+  return Array.from(raw.split(/\s+/).filter(Boolean).join(' ')).slice(0, MAX_LABEL_CHARS).join('')
 }
 
 export interface CanvasDoc {
@@ -195,12 +211,20 @@ function readEdges(raw: unknown, cardIds: ReadonlySet<string>): CanvasEdge[] {
   const pairs = new Set<string>()
   for (const entry of Array.isArray(raw) ? raw : []) {
     if (!isRecord(entry)) continue
-    const { id, from, to } = entry
+    const { id, from, to, shape, heads, label } = entry
     if (typeof id !== 'string' || id === '' || id.length > MAX_ID) continue
     if (typeof from !== 'string' || typeof to !== 'string' || from === to) continue
     if (!cardIds.has(from) || !cardIds.has(to) || pairs.has(`${from}>${to}`)) continue
     pairs.add(`${from}>${to}`)
-    edges.push({ id, from, to })
+    const tidy = typeof label === 'string' ? tidyLabel(label) : ''
+    edges.push({
+      id,
+      from,
+      to,
+      ...(shape === 'straight' ? { shape } : {}),
+      ...(heads === 'none' || heads === 'both' ? { heads } : {}),
+      ...(tidy !== '' ? { label: tidy } : {}),
+    })
     if (edges.length === MAX_EDGES) break
   }
   return edges
@@ -389,6 +413,31 @@ export function addEdge(
   return { ...doc, edges: [...doc.edges, { id, from, to }] }
 }
 
+/** An arrow with a new line, heads or label; the defaults (curved, one head,
+ *  no label) are stored as nothing. */
+export function styleEdge(
+  doc: CanvasDoc,
+  id: string,
+  change: { shape?: string; heads?: string; label?: string },
+): CanvasDoc {
+  const edge = doc.edges.find((e) => e.id === id)
+  if (!edge) return doc
+  const shape = change.shape === 'curved' || change.shape === 'straight' ? change.shape : (edge.shape ?? 'curved')
+  const heads =
+    change.heads === 'none' || change.heads === 'end' || change.heads === 'both' ? change.heads : (edge.heads ?? 'end')
+  const label = change.label === undefined ? (edge.label ?? '') : tidyLabel(change.label)
+  const next: CanvasEdge = {
+    id: edge.id,
+    from: edge.from,
+    to: edge.to,
+    ...(shape === 'straight' ? { shape } : {}),
+    ...(heads !== 'end' ? { heads } : {}),
+    ...(label !== '' ? { label } : {}),
+  }
+  const same = next.shape === edge.shape && next.heads === edge.heads && next.label === edge.label
+  return same ? doc : { ...doc, edges: doc.edges.map((e) => (e.id === id ? next : e)) }
+}
+
 export function removeEdge(doc: CanvasDoc, id: string): CanvasDoc {
   if (!doc.edges.some((e) => e.id === id)) return doc
   return { ...doc, edges: doc.edges.filter((e) => e.id !== id) }
@@ -401,12 +450,27 @@ interface Point {
   y: number
 }
 
+interface Ends {
+  start: boolean
+  end: boolean
+}
+
+interface Drawn {
+  d: string
+  mid: Point
+}
+
 /**
  * A curve leaving `start` along `out` and arriving at `tip` from roughly
- * `into`, leaning toward `start` so the head turns with it. It stops one
- * head-length short, aimed so the head's tip lands on `tip`.
+ * `into`, leaning toward `start` so the head turns with it. Each end with a
+ * head stops one head-length short, aimed so the head's tip lands on the
+ * point.
  */
-export function curvedArrow(start: Point, out: Point, tip: Point, into: Point, reach: number): string {
+function curve(start: Point, out: Point, tip: Point, into: Point, reach: number, heads: Ends): Drawn {
+  const apart = Math.hypot(tip.x - start.x, tip.y - start.y)
+  const room = heads.start ? apart / 2 : apart
+  const lead = heads.start ? Math.min(ARROW_LENGTH, room) : 0
+  const from = { x: start.x + out.x * lead, y: start.y + out.y * lead }
   const c1 = { x: start.x + out.x * reach, y: start.y + out.y * reach }
   const c2 = {
     x: tip.x + into.x * reach * 0.6 + (start.x - tip.x) * 0.2,
@@ -419,12 +483,35 @@ export function curvedArrow(start: Point, out: Point, tip: Point, into: Point, r
     uy = tip.y - start.y
   }
   const length = Math.hypot(ux, uy) || 1
-  const back = Math.min(ARROW_LENGTH, Math.hypot(tip.x - start.x, tip.y - start.y)) / length
-  return `M${start.x},${start.y} C${c1.x},${c1.y} ${c2.x - ux * back},${c2.y - uy * back} ${tip.x - ux * back},${tip.y - uy * back}`
+  const back = heads.end ? Math.min(ARROW_LENGTH, room) / length : 0
+  const p2 = { x: c2.x - ux * back, y: c2.y - uy * back }
+  const p3 = { x: tip.x - ux * back, y: tip.y - uy * back }
+  return {
+    d: `M${from.x},${from.y} C${c1.x},${c1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`,
+    mid: { x: (from.x + 3 * c1.x + 3 * p2.x + p3.x) / 8, y: (from.y + 3 * c1.y + 3 * p2.y + p3.y) / 8 },
+  }
 }
 
-/** Between the middles of the sides of `a` and `b` that face each other. */
-export function edgeGeometry(a: Box, b: Box): { x1: number; y1: number; x2: number; y2: number; d: string } {
+function line(start: Point, tip: Point, heads: Ends): Drawn {
+  const apart = Math.hypot(tip.x - start.x, tip.y - start.y)
+  const ux = apart === 0 ? 0 : (tip.x - start.x) / apart
+  const uy = apart === 0 ? 0 : (tip.y - start.y) / apart
+  const room = heads.start ? apart / 2 : apart
+  const lead = heads.start ? Math.min(ARROW_LENGTH, room) : 0
+  const back = heads.end ? Math.min(ARROW_LENGTH, room) : 0
+  return {
+    d: `M${start.x + ux * lead},${start.y + uy * lead} L${tip.x - ux * back},${tip.y - uy * back}`,
+    mid: { x: (start.x + tip.x) / 2, y: (start.y + tip.y) / 2 },
+  }
+}
+
+/** Between the middles of the sides of `a` and `b` that face each other,
+ *  with the point a label sits on. */
+export function edgeGeometry(
+  a: Box,
+  b: Box,
+  look: EdgeLook = {},
+): { x1: number; y1: number; x2: number; y2: number; d: string; mid: Point } {
   const dx = b.x + b.w / 2 - (a.x + a.w / 2)
   const dy = b.y + b.h / 2 - (a.y + a.h / 2)
   const across = Math.abs(dx) >= Math.abs(dy)
@@ -438,14 +525,16 @@ export function edgeGeometry(a: Box, b: Box): { x1: number; y1: number; x2: numb
   const out = across ? { x: s, y: 0 } : { x: 0, y: s }
   const into = { x: -out.x, y: -out.y }
   const reach = Math.max(40, Math.abs(across ? tip.x - start.x : tip.y - start.y) / 2)
-  return { x1: start.x, y1: start.y, x2: tip.x, y2: tip.y, d: curvedArrow(start, out, tip, into, reach) }
+  const heads = { start: look.heads === 'both', end: look.heads !== 'none' }
+  const drawn = look.shape === 'straight' ? line(start, tip, heads) : curve(start, out, tip, into, reach, heads)
+  return { x1: start.x, y1: start.y, x2: tip.x, y2: tip.y, ...drawn }
 }
 
 /** The link being drawn from a side's middle to the pointer. */
 export function pointerArrow(start: Point, out: Point, tip: Point): string {
   const dist = Math.hypot(tip.x - start.x, tip.y - start.y)
   const into = dist === 0 ? { x: 0, y: 0 } : { x: (start.x - tip.x) / dist, y: (start.y - tip.y) / dist }
-  return curvedArrow(start, out, tip, into, Math.max(40, dist / 2))
+  return curve(start, out, tip, into, Math.max(40, dist / 2), { start: false, end: true }).d
 }
 
 export interface Box {

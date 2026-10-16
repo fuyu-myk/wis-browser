@@ -289,6 +289,24 @@ body,
   pointer-events: stroke;
   cursor: pointer;
 }
+.canvas-edge-label {
+  fill: var(--text-secondary);
+  font: 500 12px var(--font-sans);
+  text-anchor: middle;
+  dominant-baseline: central;
+  paint-order: stroke;
+  stroke: var(--canvas-bg);
+  stroke-width: 6px;
+  stroke-linejoin: round;
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: fill var(--edge-fade);
+}
+.canvas-edge-label.is-selected {
+  fill: var(--accent);
+}
 .canvas-arrowhead {
   fill: var(--edge-line);
 }
@@ -495,7 +513,11 @@ body,
   display: none;
 }
 .canvas-layer.is-far .canvas-edge {
+  marker-start: none;
   marker-end: none;
+}
+.canvas-layer.is-far .canvas-edge-label {
+  display: none;
 }
 
 .canvas-marquee {
@@ -684,9 +706,10 @@ body,
 .canvas-arrange {
   display: grid;
   place-items: center;
+  box-sizing: border-box;
   height: 28px;
   padding: 0;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 7px;
   background: none;
   color: var(--text-secondary);
@@ -709,6 +732,23 @@ body,
   stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+.canvas-props-choice {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.canvas-arrange.is-on {
+  border-color: var(--accent);
+  background: var(--overlay);
+  color: var(--text-primary);
+  box-shadow: var(--edge-on);
+}
+.canvas-arrange svg.is-line {
+  fill: none;
+}
+.canvas-props-gap {
+  margin-top: 10px;
 }
 .canvas-props-ends {
   display: grid;

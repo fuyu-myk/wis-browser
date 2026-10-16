@@ -347,6 +347,23 @@ describe('arrows', () => {
     assert.deepEqual(canvas.parseDoc(JSON.stringify({ version: 1, cards: [] })).edges, [])
   })
 
+  test('an arrow keeps its line, heads and a tidy label, and loses anything else', () => {
+    const stored = JSON.stringify({
+      ...doc,
+      edges: [
+        { id: 'e1', from: 'a', to: 'b', shape: 'straight', heads: 'both', label: '  leads   to ' },
+        { id: 'e2', from: 'b', to: 'a', shape: 'dotted', heads: 'sideways', label: 7 },
+        { id: 'e3', from: 'a', to: 'c', heads: 'none', label: 'x'.repeat(200) },
+      ],
+      cards: [...doc.cards, card('c', 800, 0)],
+    })
+    const [one, two, three] = canvas.parseDoc(stored).edges
+    assert.deepEqual(one, { id: 'e1', from: 'a', to: 'b', shape: 'straight', heads: 'both', label: 'leads to' })
+    assert.deepEqual(two, { id: 'e2', from: 'b', to: 'a' })
+    assert.equal(three.heads, 'none')
+    assert.equal(three.label.length, canvas.MAX_LABEL_CHARS)
+  })
+
   test('an arrow joins two different cards once', () => {
     const joined = canvas.addEdge(doc, 'a', 'b', 'e1')
     assert.deepEqual(joined.edges, [{ id: 'e1', from: 'a', to: 'b' }])
@@ -387,6 +404,37 @@ describe('arrows', () => {
     assert.ok(up.y > 25, 'coming from below, the head points up and in')
     assert.ok(down.y < 25, 'coming from above, the head points down and in')
     assert.ok(400 - up.x > 0 && 400 - down.x > 0, 'both still enter the left side')
+  })
+
+  test('a straight arrow runs side to side, a head short of each end that has one', () => {
+    const a = { x: 0, y: 0, w: 100, h: 50 }
+    const b = { x: 300, y: 0, w: 100, h: 50 }
+    const one = canvas.edgeGeometry(a, b, { shape: 'straight' })
+    assert.equal(one.d, `M100,25 L${300 - canvas.ARROW_LENGTH},25`)
+    const both = canvas.edgeGeometry(a, b, { shape: 'straight', heads: 'both' })
+    assert.equal(both.d, `M${100 + canvas.ARROW_LENGTH},25 L${300 - canvas.ARROW_LENGTH},25`)
+    const none = canvas.edgeGeometry(a, b, { shape: 'straight', heads: 'none' })
+    assert.equal(none.d, 'M100,25 L300,25')
+    assert.deepEqual(one.mid, { x: 200, y: 25 })
+  })
+
+  test('a curve without a head reaches the side, and one with two starts a head out', () => {
+    const a = { x: 0, y: 0, w: 100, h: 50 }
+    const b = { x: 300, y: 0, w: 100, h: 50 }
+    const none = lastTwo(canvas.edgeGeometry(a, b, { heads: 'none' }).d)
+    assert.deepEqual([none.x, none.y], [300, 25])
+    const both = canvas.edgeGeometry(a, b, { heads: 'both' })
+    assert.match(both.d, new RegExp(`^M${100 + canvas.ARROW_LENGTH},25 C`))
+    const mid = canvas.edgeGeometry(a, b).mid
+    assert.equal(mid.y, 25)
+    assert.ok(mid.x > 150 && mid.x < 250, `${mid.x} is about halfway`)
+  })
+
+  test('a link being drawn leaves its side and stops a head short of the pointer', () => {
+    const d = canvas.pointerArrow({ x: 100, y: 25 }, { x: 1, y: 0 }, { x: 400, y: 25 })
+    assert.match(d, /^M100,25 C/)
+    const end = lastTwo(d)
+    assert.equal(Math.round(Math.hypot(400 - end.x, 25 - end.y)), canvas.ARROW_LENGTH)
   })
 
   test('cards closer than a head get just the head', () => {

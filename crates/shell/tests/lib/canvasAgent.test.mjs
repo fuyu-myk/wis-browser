@@ -205,6 +205,52 @@ describe('colours', () => {
   })
 })
 
+describe('arrows the agent draws', () => {
+  const two = () => doc([note('a', 0, 0, 'Cause'), note('b', 400, 0, 'Effect'), note('c', 800, 0, 'Other')])
+
+  test('take a tidy label, heads and a line, and nothing off the list', () => {
+    const out = agent.runCanvasTool(
+      two(),
+      call('connect_cards', {
+        links: [
+          { from: 'a', to: 'b', label: '  causes ', heads: 'both', shape: 'straight' },
+          { from: 'b', to: 'c', heads: 'sideways', shape: 'dotted' },
+        ],
+      }),
+      ctx(),
+    )
+    const [ab, bc] = out.doc.edges
+    assert.deepEqual([ab.label, ab.heads, ab.shape], ['causes', 'both', 'straight'])
+    assert.deepEqual([bc.label, bc.heads, bc.shape], [undefined, undefined, undefined])
+    assert.equal(out.summary, 'Drew 2 arrows')
+    assert.deepEqual(out.details, ['Cause to Effect, “causes”', 'Effect to Other'])
+  })
+
+  test('joining cards already joined restyles their arrow instead of skipping it', () => {
+    const joined = agent.runCanvasTool(two(), call('connect_cards', { links: [{ from: 'a', to: 'b' }] }), ctx()).doc
+    const out = agent.runCanvasTool(joined, call('connect_cards', { links: [{ from: 'a', to: 'b', label: 'leads to', heads: 'none' }] }), ctx())
+    assert.equal(out.doc.edges.length, 1)
+    assert.deepEqual([out.doc.edges[0].label, out.doc.edges[0].heads], ['leads to', 'none'])
+    assert.equal(out.summary, 'Restyled an arrow')
+    assert.deepEqual(JSON.parse(out.result), { connected: 0, restyled: 1, skipped: [] })
+    const again = agent.runCanvasTool(out.doc, call('connect_cards', { links: [{ from: 'a', to: 'b' }] }), ctx())
+    assert.equal(again.doc, out.doc, 'nothing new to say about it')
+    assert.equal(JSON.parse(again.result).skipped.length, 1)
+  })
+
+  test('the canvas read back shows each arrow’s label and look', () => {
+    const d = doc([note('a', 0, 0), note('b', 400, 0)], {
+      edges: [{ id: 'e', from: 'a', to: 'b', label: 'then', heads: 'both', shape: 'straight' }],
+    })
+    const read = JSON.parse(agent.runCanvasTool(d, call('read_canvas', {}), ctx()).result)
+    assert.deepEqual(read.arrows, [{ from: 'a', to: 'b', label: 'then', heads: 'both', shape: 'straight' }])
+  })
+
+  test('the agent is told when to label arrows', () => {
+    assert.match(agent.CANVAS_AGENT_PROMPT, /Label an arrow/)
+  })
+})
+
 describe('sizes and space', () => {
   /** Notes as tall as their lines, the way the page measures them. */
   const lines = ctx({ heightOf: (c) => 24 + 20 * c.text.split('\n').length })

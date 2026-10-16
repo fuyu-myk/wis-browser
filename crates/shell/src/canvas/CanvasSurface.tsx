@@ -141,7 +141,7 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo, pulse, ha
     measure.current ??= noteMeasurer()
     return measure.current(layerRef.current, card.text, card.w)
   }).current
-  const edgeEls = useRef(new Map<string, SVGPathElement[]>())
+  const edgeEls = useRef(new Map<string, SVGGraphicsElement[]>())
   const [, setLayout] = useState(0)
   const resizes = useRef<ResizeObserver | null>(null)
   if (resizes.current === null && typeof ResizeObserver !== 'undefined') {
@@ -624,12 +624,12 @@ export function CanvasSurface({ doc, onChange, onView, onUndo, onRedo, pulse, ha
   }).current
 
   const edgeHandlers = useRef({
-    pick(id: string, e: ReactPointerEvent<SVGPathElement>) {
+    pick(id: string, e: ReactPointerEvent<SVGElement>) {
       if (e.button !== 0) return
       e.stopPropagation()
       pick({ kind: 'edge', id })
     },
-    register(id: string, el: SVGPathElement | null) {
+    register(id: string, el: SVGPathElement | SVGTextElement | null) {
       if (!el) return
       const list = (edgeEls.current.get(id) ?? []).filter((p) => p.isConnected)
       if (!list.includes(el)) list.push(el)

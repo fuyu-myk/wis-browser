@@ -17,30 +17,35 @@ interface CanvasEdgesProps {
   boxOf: (id: string) => Box | null
   selected: string | null
   linking: Linking | null
-  onPick: (id: string, e: ReactPointerEvent<SVGPathElement>) => void
-  register: (id: string, el: SVGPathElement | null) => void
+  onPick: (id: string, e: ReactPointerEvent<SVGElement>) => void
+  register: (id: string, el: SVGPathElement | SVGTextElement | null) => void
 }
+
+/** Heads at an arrow's end point forward; heads at its start point back. */
+const MARKERS = [
+  { id: 'canvas-arrow', on: false, start: false },
+  { id: 'canvas-arrow-on', on: true, start: false },
+  { id: 'canvas-arrow-start', on: false, start: true },
+  { id: 'canvas-arrow-start-on', on: true, start: true },
+] as const
 
 export function CanvasEdges({ edges, boxOf, selected, linking, onPick, register }: CanvasEdgesProps) {
   return (
     <svg className="canvas-edges" width="1" height="1" aria-hidden>
       <defs>
-        {(['canvas-arrow', 'canvas-arrow-on'] as const).map((id) => (
+        {MARKERS.map(({ id, on, start }) => (
           <marker
             key={id}
             id={id}
             viewBox="0 0 10 8"
-            refX="0"
+            refX={start ? 10 : 0}
             refY="4"
             markerUnits="userSpaceOnUse"
             markerWidth={ARROW_LENGTH}
             markerHeight={ARROW_LENGTH * 0.8}
             orient="auto"
           >
-            <path
-              d="M0,0 L10,4 L0,8 z"
-              className={cx('canvas-arrowhead', { 'is-selected': id === 'canvas-arrow-on' })}
-            />
+            <path d={start ? 'M10,0 L0,4 L10,8 z' : 'M0,0 L10,4 L0,8 z'} className={cx('canvas-arrowhead', { 'is-selected': on })} />
           </marker>
         ))}
       </defs>
@@ -48,8 +53,9 @@ export function CanvasEdges({ edges, boxOf, selected, linking, onPick, register 
         const a = boxOf(edge.from)
         const b = boxOf(edge.to)
         if (!a || !b) return null
-        const d = edgeGeometry(a, b).d
+        const { d, mid } = edgeGeometry(a, b, edge)
         const on = selected === edge.id
+        const lit = on ? '-on' : ''
         return (
           <g key={edge.id}>
             <path
@@ -63,8 +69,20 @@ export function CanvasEdges({ edges, boxOf, selected, linking, onPick, register 
               ref={(el) => register(edge.id, el)}
               className={cx('canvas-edge', { 'is-selected': on })}
               d={d}
-              markerEnd={on ? 'url(#canvas-arrow-on)' : 'url(#canvas-arrow)'}
+              markerEnd={edge.heads === 'none' ? undefined : `url(#canvas-arrow${lit})`}
+              markerStart={edge.heads === 'both' ? `url(#canvas-arrow-start${lit})` : undefined}
             />
+            {edge.label && (
+              <text
+                ref={(el) => register(edge.id, el)}
+                className={cx('canvas-edge-label', { 'is-selected': on })}
+                x={mid.x}
+                y={mid.y}
+                onPointerDown={(e) => onPick(edge.id, e)}
+              >
+                {edge.label}
+              </text>
+            )}
           </g>
         )
       })}
