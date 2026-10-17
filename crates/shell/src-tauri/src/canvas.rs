@@ -660,12 +660,13 @@ mod linux {
     use webkit2gtk::{SettingsExt, UserContentManagerExt, WebViewExt};
 
     const HANDLER: &str = "wisCanvas";
-    /// The WebKit features macOS turns off in `canvas_webview`, which bypass
-    /// CSP: WebRTC's STUN, and preconnect and DNS prefetch links.
-    const NETWORK_FEATURES: [&str; 3] = [
+    /// The WebKit features that reach the network without CSP's say: WebRTC's
+    /// STUN, and preconnect and DNS prefetch links.
+    const NETWORK_FEATURES: [&str; 4] = [
         "PeerConnectionEnabled",
         "LinkPreconnect",
         "LinkDNSPrefetchEnabled",
+        "LinkDNSPrefetch",
     ];
 
     static TOKENS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
@@ -735,7 +736,6 @@ mod linux {
         }
 
         let mut switched = Vec::new();
-        let mut related = Vec::new();
         for at in 0..length(list) {
             let feature = get(list, at);
             if feature.is_null() {
@@ -745,29 +745,15 @@ mod linux {
             if name.is_null() {
                 continue;
             }
-            let name = CStr::from_ptr(name).to_string_lossy().into_owned();
-            if NETWORK_FEATURES.contains(&name.as_str()) {
+            let name = CStr::from_ptr(name).to_string_lossy();
+            if NETWORK_FEATURES.contains(&name.as_ref()) {
                 set_enabled(settings, feature, 0);
-                switched.push(name);
-            } else if ["Preconnect", "Prefetch", "PeerConnection", "WebRTC"]
-                .iter()
-                .any(|word| name.contains(word))
-            {
-                related.push(name);
+                switched.push(name.into_owned());
             }
         }
 
         unref(list);
-        let missing: Vec<&str> = NETWORK_FEATURES
-            .iter()
-            .copied()
-            .filter(|feature| !switched.iter().any(|name| name == feature))
-            .collect();
-        if !missing.is_empty() {
-            log::info!(
-                "canvas: switched off {switched:?}; this WebKitGTK has no {missing:?} (related: {related:?})"
-            );
-        }
+        log::debug!("canvas: switched off {switched:?}");
     }
 
     pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, label: String) {
