@@ -53,6 +53,17 @@ impl From<windows::core::Error> for Error {
   }
 }
 
+
+/// WIS PATCH: names a webview's WebView2 profile, asked with the webview id
+/// when its controller is made; None keeps the default profile. Set once by
+/// the embedder; first registration wins.
+static PROFILE_HOOK: std::sync::OnceLock<Box<dyn Fn(&str) -> Option<String> + Send + Sync>> =
+  std::sync::OnceLock::new();
+
+pub fn set_profile_name_hook(hook: Box<dyn Fn(&str) -> Option<String> + Send + Sync>) {
+  let _ = PROFILE_HOOK.set(hook);
+}
+
 pub(crate) struct InnerWebView {
   id: String,
   parent: RefCell<HWND>,
@@ -146,7 +157,17 @@ impl InnerWebView {
     } else {
       Self::create_environment(&attributes, pl_attrs.clone())?
     };
-    let controller = Self::create_controller(hwnd, &env, attributes.incognito, background_color)?;
+    // WIS PATCH: the embedder may name the webview's profile.
+    let profile = attributes
+      .id
+      .and_then(|id| PROFILE_HOOK.get().and_then(|name_for| name_for(id)));
+    let controller = Self::create_controller(
+      hwnd,
+      &env,
+      attributes.incognito,
+      background_color,
+      profile.as_deref(),
+    )?;
     let webview = Self::init_webview(
       parent,
       hwnd,
@@ -382,6 +403,7 @@ impl InnerWebView {
     env: &ICoreWebView2Environment,
     incognito: bool,
     background_color: Option<(u8, u8, u8, u8)>,
+    profile: Option<&str>,
   ) -> Result<ICoreWebView2Controller> {
     let (tx, rx) = mpsc::channel();
 
@@ -418,8 +440,16 @@ impl InnerWebView {
         }
 
         controller_opts.SetIsInPrivateModeEnabled(incognito)?;
+        if let Some(name) = profile {
+          controller_opts.SetProfileName(&HSTRING::from(name))?;
+        }
         env10.CreateCoreWebView2ControllerWithOptions(hwnd, &controller_opts, &handler)?;
       } else {
+        // WIS PATCH: a named profile needs the options API; refuse rather
+        // than fall back to the default profile without a word.
+        if profile.is_some() {
+          return Err(windows::core::Error::from(E_NOINTERFACE).into());
+        }
         env.CreateCoreWebView2Controller(hwnd, &handler)?
       }
     }

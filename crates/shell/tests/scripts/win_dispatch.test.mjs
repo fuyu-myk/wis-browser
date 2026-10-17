@@ -261,3 +261,31 @@ test('every channel the wrapped scripts post to is one the private sender carrie
     for (const channel of posted) assert.ok(ACTING.includes(channel), `${name} posts to ${channel}`)
   }
 })
+
+describe('the canvas shim (Windows)', () => {
+  const SHIM_CANVAS = formatTemplate('canvas.rs', 'shim_script', { token: 't1' })
+  /** A WebView2 window after the canvas shim runs; `top` false makes it a card's frame. */
+  const loadCanvas = ({ top = true, webview = true } = {}) => {
+    const sent = []
+    const window = webview ? { chrome: { webview: { postMessage: (text) => sent.push(text) } } } : {}
+    window.top = top ? window : {}
+    new Function('window', SHIM_CANVAS)(window)
+    return { window, sent }
+  }
+
+  test('the canvas page posts each message sealed with its tab token', () => {
+    const p = loadCanvas()
+    p.window.webkit.messageHandlers.wisCanvas.postMessage('{"id":1,"op":"list"}')
+    assert.deepEqual(p.sent.map((t) => JSON.parse(t)), [{ handler: 'wisCanvas', token: 't1', body: '{"id":1,"op":"list"}' }])
+  })
+
+  test('a card frame gets no channel and never holds the token', () => {
+    const p = loadCanvas({ top: false })
+    assert.equal(p.window.webkit, undefined)
+    assert.deepEqual(p.sent, [])
+  })
+
+  test('outside WebView2 the shim does nothing', () => {
+    assert.equal(loadCanvas({ webview: false }).window.webkit, undefined)
+  })
+})

@@ -855,7 +855,7 @@ pub async fn navigate_tab(
     if let Some(webview) = app.webviews().get(&label).cloned() {
         let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
         webview
-            .navigate(parsed)
+            .navigate(crate::canvas::engine_url(parsed))
             .map_err(|err| WisError::InvalidInput {
                 message: format!("webview navigate failed: {err}"),
             })?;

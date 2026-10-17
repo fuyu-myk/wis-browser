@@ -29,7 +29,7 @@ pub async fn create_tab_webview(
 
     let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
     // A canvas tab loads its bundled page and may read its workspace's canvases.
-    let canvas_tab = crate::canvas::is_canvas_url(&parsed);
+    let canvas_tab = parsed.scheme() == crate::canvas::SCHEME;
     // Session restore: the frontend passes a blob when waking a slept tab; a
     // reopened (Cmd+Shift+T) tab's blob waits Rust-side keyed by tab id.
     let restore_state = match restore_state {
@@ -143,7 +143,17 @@ pub async fn create_tab_webview(
     // injects via each feature's `install` (a Windows no-op), ride the builder
     // here instead. The gate applies on every tab; capture skips private ones.
     #[cfg(windows)]
-    {
+    if canvas_tab {
+        builder = builder.scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
+        builder = builder.initialization_script(crate::canvas::shim_script(&label_ident));
+        let keybindings = state.browser.lock().await.settings.keybindings.clone();
+        let effective = wis_core::effective_keymap(&keybindings);
+        builder = builder.initialization_script(crate::win_dispatch::private_script(
+            &token,
+            &crate::keybind::page_script(&effective),
+            &["__wisKeybindUpdate"],
+        ));
+    } else {
         // Fluent overlay scrollbars. WebView2 only.
         builder = builder.scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
         builder = builder
@@ -233,7 +243,7 @@ pub async fn create_tab_webview(
     if let Some(ua) = &user_agent {
         builder = builder.user_agent(ua);
     }
-    if canvas_tab && cfg!(any(target_os = "macos", target_os = "linux")) {
+    if canvas_tab {
         #[cfg(target_os = "macos")]
         {
             builder = crate::canvas_webview::with_canvas_configuration(&app, builder).await?;
@@ -243,6 +253,14 @@ pub async fn create_tab_webview(
         #[cfg(target_os = "linux")]
         {
             builder = builder.data_directory(canvas_webview_data_dir(&app));
+        }
+        #[cfg(windows)]
+        {
+            builder = builder.incognito(true).data_directory(if ephemeral {
+                ephemeral_webview_data_dir(&app, workspace_id)
+            } else {
+                workspace_webview_data_dir(&app, workspace_id)
+            });
         }
     } else if ephemeral {
         #[cfg(target_os = "macos")]
@@ -306,7 +324,7 @@ pub async fn create_tab_webview(
         builder = builder.on_page_load(move |webview, payload: PageLoadPayload<'_>| {
             let event = payload.event();
             let loading = matches!(event, PageLoadEvent::Started);
-            let url_string = payload.url().to_string();
+            let url_string = crate::canvas::stored_url(payload.url().clone()).to_string();
             let page_url = payload.url().clone();
 
             #[cfg(target_os = "macos")]
@@ -730,7 +748,8 @@ pub async fn create_tab_webview(
     crate::win_dispatch::install(
         &child,
         ephemeral,
-        privacy_mode != wis_core::PrivacyMode::Permissive,
+        privacy_mode != wis_core::PrivacyMode::Permissive && !canvas_tab,
+        canvas_tab,
     );
 
     // Linux: register the same page->chrome channels natively on the WebKitGTK

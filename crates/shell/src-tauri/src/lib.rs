@@ -135,11 +135,12 @@ pub fn run() {
         }));
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    {
-        builder = builder
-            .register_asynchronous_uri_scheme_protocol(canvas::SCHEME, canvas::handle_request);
-    }
+    builder =
+        builder.register_asynchronous_uri_scheme_protocol(canvas::SCHEME, canvas::handle_request);
+    #[cfg(windows)]
+    wry::set_profile_name_hook(Box::new(|label| {
+        canvas::is_canvas_tab(label).then(|| canvas::WINDOWS_PROFILE.to_string())
+    }));
 
     builder = builder
         .register_asynchronous_uri_scheme_protocol("wis-asset", wallpapers::handle_asset_request)

@@ -177,6 +177,7 @@ pub fn install<R: tauri::Runtime>(
     webview: &tauri::webview::Webview<R>,
     ephemeral: bool,
     cosmetic_enabled: bool,
+    canvas: bool,
 ) {
     let label = webview.label().to_string();
     let token = token(&label);
@@ -196,6 +197,7 @@ pub fn install<R: tauri::Runtime>(
                             &token,
                             ephemeral,
                             cosmetic_enabled,
+                            canvas,
                             top_frame,
                             &CoTaskMemPWSTR::from(msg).to_string(),
                         );
@@ -371,6 +373,7 @@ fn dispatch(
     token: &str,
     ephemeral: bool,
     cosmetic_enabled: bool,
+    canvas: bool,
     top_frame: bool,
     text: &str,
 ) {
@@ -383,6 +386,11 @@ fn dispatch(
     };
     if !authorised(&env.handler, env.token.as_deref(), token) {
         log::debug!("win_dispatch: dropped {} without its token", env.handler);
+        return;
+    }
+
+    if canvas {
+        dispatch_canvas(label, top_frame, &env);
         return;
     }
 
@@ -466,6 +474,18 @@ fn dispatch(
             // wisPopout: deferred to the Windows runner (reparent plumbing).
             log::debug!("win_dispatch: handler {other} not yet wired");
         }
+    }
+}
+
+/// A canvas tab's receiver: its own sealed channel, from the top frame only,
+/// and shortcuts.
+fn dispatch_canvas(label: &str, top_frame: bool, env: &Envelope) {
+    match env.handler.as_str() {
+        "wisCanvas" if top_frame => {
+            crate::canvas::receive_sealed(label, env.token.as_deref(), &env.body)
+        }
+        "wisKeybind" if top_frame => crate::keybind::dispatch_action(label, &env.body),
+        other => log::debug!("win_dispatch: a canvas tab ignores {other}"),
     }
 }
 

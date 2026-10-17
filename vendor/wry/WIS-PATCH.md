@@ -445,3 +445,19 @@ page those first and keep only a few (new/close tab, address bar).
   page-declined resend still never reaches the menu, so the embedder runs
   the action itself when the page leaves the combo alone (Wis: the macOS
   `wisKeybind` forwarder).
+
+## Fourteenth patch: the embedder names a webview's profile (Windows) (Wis-original)
+
+WebView2 keeps per-profile state such as the preferred colour scheme, and
+every webview of an environment shares its default profile. Tauri's builder
+has no profile option, so Wis could not keep its canvas tabs' theme apart
+from its web tabs' without a separate environment (another browser process).
+
+- `src/webview2/mod.rs`: `wry::set_profile_name_hook(Box<dyn Fn(&str) ->
+  Option<String> + Send + Sync>)` (`OnceLock`, first registration wins),
+  asked with the webview id in `new`; `create_controller` passes the name to
+  `ICoreWebView2ControllerOptions::SetProfileName`. A runtime without
+  `ICoreWebView2Environment10` refuses a named profile (`E_NOINTERFACE`)
+  rather than fall back to the default one, which would undo the isolation.
+- `src/lib.rs`: re-exports the setter on Windows.
+

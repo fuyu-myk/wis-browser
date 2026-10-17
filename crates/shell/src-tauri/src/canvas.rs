@@ -21,9 +21,20 @@ pub use wis_core::canvas::SCHEME;
 const FLUSH_EVERY: Duration = Duration::from_secs(120);
 const MAX_MESSAGE_BYTES: usize = wis_core::canvas::MAX_DOC_BYTES + 64 * 1024;
 
+/// Where the canvas page's card frames load from, as the engine names it.
+#[cfg(not(windows))]
+const FRAME_SOURCE: &str = "wis-canvas://localhost/frame";
+#[cfg(windows)]
+const FRAME_SOURCE: &str = "http://wis-canvas.localhost/frame";
+
+#[cfg(not(windows))]
 const PAGE_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
      img-src 'self' data:; font-src 'self' data:; connect-src 'none'; \
      frame-src wis-canvas://localhost/frame; base-uri 'none'; form-action 'none'";
+#[cfg(windows)]
+const PAGE_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
+     img-src 'self' data:; font-src 'self' data:; connect-src 'none'; \
+     frame-src http://wis-canvas.localhost/frame; base-uri 'none'; form-action 'none'";
 
 /// The document an HTML card runs in: it takes the card's HTML from the canvas
 /// page once, and may run scripts but never reach the network or the page.
@@ -142,7 +153,7 @@ pub fn appearance(theme: wis_core::canvas::CanvasTheme) -> wis_core::ThemeMode {
 }
 
 pub fn is_canvas_tab(label: &str) -> bool {
-    tab_for(label).is_some()
+    TABS.lock().is_ok_and(|tabs| tabs.contains_key(label))
 }
 
 pub fn push_page(app: &AppHandle, settings: &wis_core::UserSettings) {
@@ -165,7 +176,25 @@ pub fn push_page(app: &AppHandle, settings: &wis_core::UserSettings) {
 }
 
 pub fn is_canvas_url(url: &Url) -> bool {
-    url.scheme() == SCHEME
+    url.scheme() == SCHEME || (cfg!(windows) && wis_core::canvas::from_engine_url(url).is_some())
+}
+
+/// A URL as Wis stores it.
+pub fn stored_url(url: Url) -> Url {
+    if cfg!(windows) {
+        wis_core::canvas::from_engine_url(&url).unwrap_or(url)
+    } else {
+        url
+    }
+}
+
+/// A URL as the engine loads it.
+pub fn engine_url(url: Url) -> Url {
+    if cfg!(windows) {
+        wis_core::canvas::to_engine_url(&url).unwrap_or(url)
+    } else {
+        url
+    }
 }
 
 /// Canvas tabs stay on the canvas page, and web tabs never reach it.
@@ -190,8 +219,8 @@ pub fn forget(app: &AppHandle, label: &str) {
         .expect("canvas tabs poisoned")
         .remove(label)
         .is_some();
-    #[cfg(target_os = "linux")]
-    linux::forget(label);
+    #[cfg(any(target_os = "linux", windows))]
+    seal::forget(label);
     if known {
         crate::dictation::forget(app, label);
         let mut health = HEALTH.lock().expect("canvas health poisoned");
@@ -569,7 +598,7 @@ fn dev_csp(origin: &str) -> String {
     let ws_origin = origin.replacen("http", "ws", 1);
     format!(
         "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: {origin} {ws_origin}; \
-         frame-src {SCHEME}://localhost{FRAME_PATH}; base-uri 'none'; form-action 'none'"
+         frame-src {FRAME_SOURCE}; base-uri 'none'; form-action 'none'"
     )
 }
 
@@ -644,6 +673,80 @@ fn unseal<'a>(token: &str, text: &'a str) -> Option<&'a str> {
 
 #[cfg(target_os = "linux")]
 pub use linux::{install, token_script};
+#[cfg(windows)]
+pub use windows::{receive_sealed, shim_script};
+
+/// The WebView2 profile canvas tabs share inside their workspace's browser
+/// process, apart from its web tabs.
+#[cfg(windows)]
+pub const WINDOWS_PROFILE: &str = "wis-canvas";
+
+/// Each canvas tab's token where the engine cannot say which frame posted:
+/// only the canvas page's main frame ever holds it.
+#[cfg(any(target_os = "linux", windows))]
+mod seal {
+    use std::collections::HashMap;
+    use std::sync::{LazyLock, Mutex};
+
+    static TOKENS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
+
+    /// A fresh token for the tab, replacing any it had.
+    pub fn issue(label: &str) -> String {
+        let token = uuid::Uuid::new_v4().simple().to_string();
+        if let Ok(mut tokens) = TOKENS.lock() {
+            tokens.insert(label.to_string(), token.clone());
+        }
+        token
+    }
+
+    pub fn token_of(label: &str) -> Option<String> {
+        TOKENS.lock().ok()?.get(label).cloned()
+    }
+
+    pub fn forget(label: &str) {
+        if let Ok(mut tokens) = TOKENS.lock() {
+            tokens.remove(label);
+        }
+    }
+}
+
+/// The canvas channel on Windows.
+#[cfg(windows)]
+mod windows {
+    /// The canvas page's `wisCanvas` channel, sealed with the tab's token.
+    pub fn shim_script(label: &str) -> String {
+        let token = super::seal::issue(label);
+        format!(
+            r#"(function () {{
+  if (window.top !== window) return;
+  var wv = window.chrome && window.chrome.webview;
+  if (!wv || !wv.postMessage) return;
+  var send = wv.postMessage.bind(wv);
+  var json = JSON.stringify;
+  var head = '{{"handler":"wisCanvas","token":"{token}","body":';
+  window.webkit = window.webkit || {{}};
+  var mh = window.webkit.messageHandlers = window.webkit.messageHandlers || {{}};
+  mh.wisCanvas = {{ postMessage: function (text) {{
+    try {{ send(head + json(String(text)) + '}}'); }} catch (e) {{}}
+  }} }};
+}})();"#
+        )
+    }
+
+    /// Hands a `wisCanvas` message to the canvas if it carries the tab's token.
+    pub fn receive_sealed(label: &str, sent: Option<&str>, body: &serde_json::Value) {
+        let Some(token) = super::seal::token_of(label) else {
+            return;
+        };
+        if sent != Some(token.as_str()) {
+            log::debug!("canvas: dropped a message without its tab's token");
+            return;
+        }
+        if let Some(text) = body.as_str() {
+            super::receive(label.to_string(), text.to_string());
+        }
+    }
+}
 
 /// The canvas channel on Linux. WebKitGTK's script messages carry no frame,
 /// so the canvas page proves it is the main frame with a per-tab token: only
@@ -651,9 +754,7 @@ pub use linux::{install, token_script};
 /// same webview settings that macOS sets keep cards off the network.
 #[cfg(target_os = "linux")]
 mod linux {
-    use std::collections::HashMap;
     use std::ffi::{c_char, c_int, c_void, CStr};
-    use std::sync::{LazyLock, Mutex};
 
     use javascriptcore::ValueExt;
     use webkit2gtk::glib::object::{ObjectExt, ObjectType};
@@ -669,30 +770,18 @@ mod linux {
         "LinkDNSPrefetch",
     ];
 
-    static TOKENS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
-
     /// The start script that hands the canvas page its tab's token.
     pub fn token_script(label: &str) -> String {
-        let token = uuid::Uuid::new_v4().simple().to_string();
-        if let Ok(mut tokens) = TOKENS.lock() {
-            tokens.insert(label.to_string(), token.clone());
-        }
+        let token = super::seal::issue(label);
         format!(
             "window.__wisCanvasToken={};",
             serde_json::to_string(&token).unwrap_or_default()
         )
     }
 
-    pub fn forget(label: &str) {
-        if let Ok(mut tokens) = TOKENS.lock() {
-            tokens.remove(label);
-        }
-    }
-
     /// The message without its token, if it carries this tab's.
     fn unsealed(label: &str, text: &str) -> Option<String> {
-        let tokens = TOKENS.lock().ok()?;
-        super::unseal(tokens.get(label)?, text).map(str::to_string)
+        super::unseal(&super::seal::token_of(label)?, text).map(str::to_string)
     }
 
     type AllFeatures = unsafe extern "C" fn() -> *mut c_void;
@@ -971,6 +1060,29 @@ mod tests {
     }
 
     #[test]
+    fn webview2s_canvas_address_counts_only_on_windows() {
+        let engine = url("http://wis-canvas.localhost/?canvas=x");
+        assert_eq!(is_canvas_url(&engine), cfg!(windows));
+        assert_eq!(
+            navigation_allowed(false, &engine),
+            !cfg!(windows),
+            "web tabs never reach it"
+        );
+        let stored = stored_url(engine.clone());
+        let back = engine_url(stored.clone());
+        if cfg!(windows) {
+            assert_eq!(stored.as_str(), "wis-canvas://localhost/?canvas=x");
+            assert_eq!(back, engine);
+        } else {
+            assert_eq!(stored, engine, "nothing changes elsewhere");
+            assert_eq!(engine_url(url("wis-canvas://localhost/")).scheme(), SCHEME);
+        }
+        let web = url("https://example.com/");
+        assert_eq!(stored_url(web.clone()), web);
+        assert_eq!(engine_url(web.clone()), web);
+    }
+
+    #[test]
     fn only_the_page_and_its_built_assets_are_served() {
         assert_eq!(asset_path("/").as_deref(), Some("canvas.html"));
         assert_eq!(
@@ -995,7 +1107,9 @@ mod tests {
 
     #[test]
     fn the_page_may_frame_only_the_card_host() {
-        let host = format!("frame-src {SCHEME}://localhost{FRAME_PATH}");
+        assert!(FRAME_SOURCE.ends_with(FRAME_PATH));
+        assert!(is_canvas_url(&url(FRAME_SOURCE)));
+        let host = format!("frame-src {FRAME_SOURCE}");
         assert!(directives(PAGE_CSP).contains(&host.as_str()));
         assert!(directives(&dev_csp("http://localhost:1420")).contains(&host.as_str()));
     }

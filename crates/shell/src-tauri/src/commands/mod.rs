@@ -264,6 +264,7 @@ pub(crate) async fn note_in_page_navigation(
     live_url: Url,
     title: String,
 ) {
+    let live_url = crate::canvas::stored_url(live_url);
     let canvas = crate::canvas::is_canvas_url(&live_url);
     if !canvas && !matches!(live_url.scheme(), "http" | "https") {
         return;

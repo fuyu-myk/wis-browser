@@ -102,6 +102,35 @@ pub fn canvas_in_url(url: &Url) -> Option<CanvasId> {
         .map(CanvasId::from)
 }
 
+/// The host WebView2 canvas host: it loads custom schemes as
+/// `http://<scheme>.localhost/`, and wry rewrites only the address a webview
+/// opens with.
+pub const ENGINE_HOST: &str = "wis-canvas.localhost";
+
+/// A canvas address in WebView2's form, as Wis stores it; None for any other.
+pub fn from_engine_url(url: &Url) -> Option<Url> {
+    let ours = url.scheme() == "http"
+        && url.host_str() == Some(ENGINE_HOST)
+        && url.port().is_none()
+        && url.username().is_empty()
+        && url.password().is_none();
+    if !ours {
+        return None;
+    }
+
+    let rest = &url[url::Position::BeforePath..];
+    Url::parse(&format!("{SCHEME}://localhost{rest}")).ok()
+}
+
+/// A stored canvas address in WebView2's form; None for any other.
+pub fn to_engine_url(url: &Url) -> Option<Url> {
+    if url.scheme() != SCHEME || url.host_str() != Some("localhost") {
+        return None;
+    }
+    let rest = &url[url::Position::BeforePath..];
+    Url::parse(&format!("http://{ENGINE_HOST}{rest}")).ok()
+}
+
 /// A canvas tab's address for `id`.
 pub fn canvas_url(id: CanvasId) -> Url {
     Url::parse(&format!("{SCHEME}://localhost/?canvas={}", id.as_uuid()))
@@ -126,6 +155,46 @@ pub fn check_doc(doc: &str) -> WisResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn webview2s_canvas_addresses_map_to_the_stored_form_and_back() {
+        let stored = Url::parse("wis-canvas://localhost/?canvas=abc#x").unwrap();
+        let engine = Url::parse("http://wis-canvas.localhost/?canvas=abc#x").unwrap();
+        assert_eq!(from_engine_url(&engine), Some(stored.clone()));
+        assert_eq!(to_engine_url(&stored), Some(engine.clone()));
+        let frame = Url::parse("http://wis-canvas.localhost/frame").unwrap();
+        assert_eq!(
+            from_engine_url(&frame).unwrap().as_str(),
+            "wis-canvas://localhost/frame"
+        );
+    }
+
+    #[test]
+    fn only_that_exact_origin_counts_as_a_canvas() {
+        for other in [
+            "https://wis-canvas.localhost/",
+            "http://wis-canvas.localhost:8080/",
+            "http://evil.wis-canvas.localhost/",
+            "http://wis-canvas.localhost.evil.com/",
+            "http://user@wis-canvas.localhost/",
+            "http://localhost/",
+            "wis-canvas://localhost/",
+        ] {
+            assert_eq!(
+                from_engine_url(&Url::parse(other).unwrap()),
+                None,
+                "{other}"
+            );
+        }
+        assert_eq!(
+            to_engine_url(&Url::parse("https://example.com/").unwrap()),
+            None
+        );
+        assert_eq!(
+            to_engine_url(&Url::parse("wis-canvas://elsewhere/").unwrap()),
+            None
+        );
+    }
 
     #[test]
     fn the_canvas_theme_defaults_to_dark_and_patches() {
