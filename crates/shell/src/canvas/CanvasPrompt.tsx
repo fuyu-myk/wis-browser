@@ -46,6 +46,7 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
   }
   const busy = agent.activity !== 'idle'
   const available = agent.status?.available ?? false
+  const documents = agent.status?.documents === true
   const reading = pending.length > 0
 
   useLayoutEffect(() => {
@@ -111,7 +112,11 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
     setPending((current) => [...current, ...list.map((f) => f.name)])
     queue.current = queue.current.then(async () => {
       try {
-        const { added, notes } = await attachFiles(list, attached.current, { readDocument: agent.readDocument, encode })
+        const { added, notes } = await attachFiles(list, attached.current, {
+          documents,
+          readDocument: agent.readDocument,
+          encode,
+        })
         keep([...attached.current, ...added])
         setNote(notes.length > 0 ? notes.join(' · ') : null)
       } catch {
@@ -175,7 +180,7 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
         className="canvas-prompt-attach"
         disabled={!available}
         aria-label="Attach files"
-        title="Attach text, PDF, Word, RTF or ODT files"
+        title={documents ? 'Attach text, PDF, Word, RTF or ODT files' : 'Attach text files'}
         onClick={() => picker.current?.click()}
       >
         <svg viewBox="0 0 24 24" aria-hidden>
@@ -246,7 +251,7 @@ export function CanvasPrompt({ agent }: { agent: CanvasAgent }) {
           onError={setNote}
         />
       )}
-      {available && (
+      {available && agent.status?.dictation === true && (
         <button
           type="button"
           className={cx('canvas-prompt-mic', { 'is-on': listening === 'on', 'is-starting': listening === 'starting' })}

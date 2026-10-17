@@ -232,6 +232,9 @@ async fn run(app: &AppHandle, label: &str, tab: CanvasTab, request: Request) -> 
             Ok(json!({
                 "available": ai::ready(settings),
                 "model": canvas_model(settings),
+                "supported": ai::ai_supported(),
+                "dictation": crate::dictation::SUPPORTED,
+                "documents": crate::document_text::SUPPORTED,
             }))
         }
         Request::Models => {

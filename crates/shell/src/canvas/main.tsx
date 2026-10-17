@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client'
 
 import { readGround, type Ground } from '@/lib/canvasGround'
 import { followPushed } from '@/lib/canvasPushed'
-import { createCanvasChannel } from '@/lib/canvasChannel'
+import { createCanvasChannel, sealMessage } from '@/lib/canvasChannel'
 
 import { CanvasApp } from './CanvasApp'
 import './canvas.css'
@@ -10,6 +10,7 @@ import './canvas.css'
 declare global {
   interface Window {
     webkit?: { messageHandlers?: { wisCanvas?: Handler } }
+    __wisCanvasToken?: unknown
     __wisCanvas?: {
       reply: (raw: unknown) => void
       ai: (requestId: unknown, event: unknown) => void
@@ -77,8 +78,11 @@ async function channelHandler(): Promise<Handler | null> {
   return null
 }
 
+const token = typeof window.__wisCanvasToken === 'string' ? window.__wisCanvasToken : null
+delete window.__wisCanvasToken
+
 void channelHandler().then((handler) => {
-  const channel = createCanvasChannel(handler ? (text) => handler.postMessage(text) : null)
+  const channel = createCanvasChannel(handler ? (text) => handler.postMessage(sealMessage(token, text)) : null)
 
   // Rust replies by evaluating `window.__wisCanvas.reply(...)`, streams AI
   // events through `window.__wisCanvas.ai(...)` and dictation through `.mic(...)`.

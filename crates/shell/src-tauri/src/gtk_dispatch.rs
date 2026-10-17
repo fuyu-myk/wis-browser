@@ -22,6 +22,7 @@ pub fn install<R: tauri::Runtime>(
     webview: &tauri::webview::Webview<R>,
     ephemeral: bool,
     cosmetic_enabled: bool,
+    canvas: bool,
     keybind_script: String,
 ) {
     let label = webview.label().to_string();
@@ -31,7 +32,9 @@ pub fn install<R: tauri::Runtime>(
         // getUserMedia consent is enforced in JS (wisMediaPermission); the native
         // request that follows is post-consent, so allow it or WebKitGTK denies
         // camera/mic by default.
-        crate::permissions::install_media_bridge(&wv);
+        if !canvas {
+            crate::permissions::install_media_bridge(&wv);
+        }
         crate::find::install_linux(&wv, &label);
 
         let Some(ucm) = wv.user_content_manager() else {
@@ -39,9 +42,11 @@ pub fn install<R: tauri::Runtime>(
             return;
         };
 
-        register(&ucm, "wisMediaPermission", &label);
-        register(&ucm, "wisPageText", &label);
-        register(&ucm, "wisPageSource", &label);
+        if !canvas {
+            register(&ucm, "wisMediaPermission", &label);
+            register(&ucm, "wisPageText", &label);
+            register(&ucm, "wisPageSource", &label);
+        }
 
         // Cosmetic filtering + the element-picker zapper.
         if cosmetic_enabled {

@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use wis_core::{WisError, WisResult};
 
 const CHILD_FLAG: &str = "--wis-read-document";
+/// Whether this platform reads documents.
+pub const SUPPORTED: bool = cfg!(target_os = "macos");
 pub const MAX_BYTES: usize = 20 * 1024 * 1024;
 pub const MAX_CHARS: usize = 200_000;
 const TIME_LIMIT: Duration = Duration::from_secs(30);

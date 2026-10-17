@@ -16,6 +16,7 @@ function openLink(href: string) {
 
 export function CanvasAgentHost(options: AgentOptions) {
   const agent = useCanvasAgent(options)
+  if (agent.status?.supported === false) return null
   return (
     <>
       <AgentPill agent={agent} />

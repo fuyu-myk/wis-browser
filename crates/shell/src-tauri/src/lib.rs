@@ -135,7 +135,7 @@ pub fn run() {
         }));
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         builder = builder
             .register_asynchronous_uri_scheme_protocol(canvas::SCHEME, canvas::handle_request);

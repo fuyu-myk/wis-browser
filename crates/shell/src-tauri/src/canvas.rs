@@ -190,6 +190,8 @@ pub fn forget(app: &AppHandle, label: &str) {
         .expect("canvas tabs poisoned")
         .remove(label)
         .is_some();
+    #[cfg(target_os = "linux")]
+    linux::forget(label);
     if known {
         crate::dictation::forget(app, label);
         let mut health = HEALTH.lock().expect("canvas health poisoned");
@@ -632,6 +634,163 @@ fn status(code: u16, msg: &str) -> http::Response<Vec<u8>> {
 #[cfg(target_os = "macos")]
 pub use macos::install;
 
+/// A message's body when it opens with `token` and a newline; nothing when
+/// the token is missing or another one.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn unseal<'a>(token: &str, text: &'a str) -> Option<&'a str> {
+    let (sent, body) = text.split_once('\n')?;
+    (!token.is_empty() && sent == token).then_some(body)
+}
+
+#[cfg(target_os = "linux")]
+pub use linux::{install, token_script};
+
+/// The canvas channel on Linux. WebKitGTK's script messages carry no frame,
+/// so the canvas page proves it is the main frame with a per-tab token: only
+/// the main frame's start script holds it, and cards are another origin. The
+/// same webview settings that macOS sets keep cards off the network.
+#[cfg(target_os = "linux")]
+mod linux {
+    use std::collections::HashMap;
+    use std::ffi::{c_char, c_int, c_void, CStr};
+    use std::sync::{LazyLock, Mutex};
+
+    use javascriptcore::ValueExt;
+    use webkit2gtk::glib::object::{ObjectExt, ObjectType};
+    use webkit2gtk::{SettingsExt, UserContentManagerExt, WebViewExt};
+
+    const HANDLER: &str = "wisCanvas";
+    /// The WebKit features macOS turns off in `canvas_webview`, which bypass
+    /// CSP: WebRTC's STUN, and preconnect and DNS prefetch links.
+    const NETWORK_FEATURES: [&str; 3] = [
+        "PeerConnectionEnabled",
+        "LinkPreconnect",
+        "LinkDNSPrefetchEnabled",
+    ];
+
+    static TOKENS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
+
+    /// The start script that hands the canvas page its tab's token.
+    pub fn token_script(label: &str) -> String {
+        let token = uuid::Uuid::new_v4().simple().to_string();
+        if let Ok(mut tokens) = TOKENS.lock() {
+            tokens.insert(label.to_string(), token.clone());
+        }
+        format!(
+            "window.__wisCanvasToken={};",
+            serde_json::to_string(&token).unwrap_or_default()
+        )
+    }
+
+    pub fn forget(label: &str) {
+        if let Ok(mut tokens) = TOKENS.lock() {
+            tokens.remove(label);
+        }
+    }
+
+    /// The message without its token, if it carries this tab's.
+    fn unsealed(label: &str, text: &str) -> Option<String> {
+        let tokens = TOKENS.lock().ok()?;
+        super::unseal(tokens.get(label)?, text).map(str::to_string)
+    }
+
+    type AllFeatures = unsafe extern "C" fn() -> *mut c_void;
+    type ListLength = unsafe extern "C" fn(*mut c_void) -> usize;
+    type ListGet = unsafe extern "C" fn(*mut c_void, usize) -> *mut c_void;
+    type Identifier = unsafe extern "C" fn(*mut c_void) -> *const c_char;
+    type SetEnabled = unsafe extern "C" fn(*mut c_void, *mut c_void, c_int);
+    type ListUnref = unsafe extern "C" fn(*mut c_void);
+
+    unsafe fn symbol(name: &CStr) -> *mut c_void {
+        libc::dlsym(libc::RTLD_DEFAULT, name.as_ptr())
+    }
+
+    /// Turns off WebKit features by name through the feature API WebKitGTK
+    /// 2.42 added, which the bindings predate. Older WebKitGTK lacks it, and
+    /// the card bootstrap then keeps cards off.
+    unsafe fn disable_features(settings: *mut c_void) {
+        let all = symbol(c"webkit_settings_get_all_features");
+        let length = symbol(c"webkit_feature_list_get_length");
+        let get = symbol(c"webkit_feature_list_get");
+        let identifier = symbol(c"webkit_feature_get_identifier");
+        let set_enabled = symbol(c"webkit_settings_set_feature_enabled");
+        let unref = symbol(c"webkit_feature_list_unref");
+        if [all, length, get, identifier, set_enabled, unref]
+            .iter()
+            .any(|f| f.is_null())
+        {
+            log::info!("canvas: this WebKitGTK cannot switch features; HTML cards stay off");
+            return;
+        }
+
+        let all: AllFeatures = std::mem::transmute(all);
+        let length: ListLength = std::mem::transmute(length);
+        let get: ListGet = std::mem::transmute(get);
+        let identifier: Identifier = std::mem::transmute(identifier);
+        let set_enabled: SetEnabled = std::mem::transmute(set_enabled);
+        let unref: ListUnref = std::mem::transmute(unref);
+        let list = all();
+        if list.is_null() {
+            return;
+        }
+
+        for at in 0..length(list) {
+            let feature = get(list, at);
+            if feature.is_null() {
+                continue;
+            }
+            let name = identifier(feature);
+            if name.is_null() {
+                continue;
+            }
+            let name = CStr::from_ptr(name).to_string_lossy();
+            if NETWORK_FEATURES.contains(&name.as_ref()) {
+                set_enabled(settings, feature, 0);
+            }
+        }
+
+        unref(list);
+    }
+
+    pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, label: String) {
+        let _ = webview.with_webview(move |w| {
+            let wv = w.inner();
+            if let Some(settings) = wv.settings() {
+                settings.set_enable_webrtc(false);
+                settings.set_enable_dns_prefetching(false);
+                // SAFETY: a live WebKitSettings, for the duration of the calls.
+                unsafe { disable_features(settings.as_ptr() as *mut c_void) };
+            }
+            let Some(ucm) = wv.user_content_manager() else {
+                log::warn!("canvas: webview has no user content manager");
+                return;
+            };
+            if !ucm.register_script_message_handler(HANDLER) {
+                log::warn!("canvas: failed to register {HANDLER}");
+                return;
+            }
+
+            let page = wv.downgrade();
+            ucm.connect_script_message_received(Some(HANDLER), move |_ucm, result| {
+                let on_canvas = page
+                    .upgrade()
+                    .and_then(|wv| wv.uri())
+                    .is_some_and(|uri| uri.starts_with(&format!("{}:", super::SCHEME)));
+                if !on_canvas {
+                    return;
+                }
+
+                let Some(value) = result.js_value().filter(|v| v.is_string()) else {
+                    return;
+                };
+                if let Some(text) = unsealed(&label, value.to_str().as_str()) {
+                    super::receive(label.clone(), text);
+                }
+            });
+        });
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod macos {
     use std::ffi::{CStr, CString};
@@ -899,6 +1058,19 @@ mod tests {
         );
         assert!(is_canvas_tab(label));
         TABS.lock().unwrap().remove(label);
+    }
+
+    #[test]
+    fn only_messages_sealed_with_the_tab_token_open() {
+        assert_eq!(unseal("abc", "abc\n{\"id\":1}"), Some("{\"id\":1}"));
+        assert_eq!(unseal("abc", "abd\n{}"), None, "another token");
+        assert_eq!(unseal("abc", "{\"id\":1}"), None, "no token at all");
+        assert_eq!(unseal("", "\n{}"), None, "an empty token never matches");
+        assert_eq!(
+            unseal("abc", "abc\nline\nmore"),
+            Some("line\nmore"),
+            "only the first line is the seal"
+        );
     }
 
     #[test]

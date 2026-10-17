@@ -19,6 +19,11 @@ export interface LoadedCanvas {
 export interface CanvasAiStatus {
   available: boolean
   model: string
+  /** Whether this platform has the agent at all. */
+  supported?: boolean
+  /** Whether this platform can dictate prompts, and read PDF and Word files. */
+  dictation?: boolean
+  documents?: boolean
 }
 
 export interface CanvasModels {
@@ -73,6 +78,12 @@ interface Waiting {
 }
 
 const UNAVAILABLE = 'Canvases are not available here.'
+
+/** On Linux, where the engine cannot tell frames apart, each message opens
+ *  with the tab's token, which only the canvas page holds. */
+export function sealMessage(token: string | null, text: string): string {
+  return token === null ? text : `${token}\n${text}`
+}
 
 export function createCanvasChannel(post: ((text: string) => void) | null): CanvasChannel {
   let next = 1

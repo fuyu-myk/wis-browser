@@ -27,6 +27,8 @@ export type DocumentOutcome =
   | { status: 'locked' | 'empty' | 'unreadable' }
 
 export interface AttachDeps {
+  /** Whether this platform reads PDF and word processor files. */
+  documents: boolean
   readDocument: (kind: DocumentKind, data: string, maxChars: number) => Promise<DocumentOutcome>
   /** The file's bytes as base64. */
   encode: (file: Blob) => Promise<string>
@@ -125,6 +127,7 @@ async function readFile(file: File, room: number, deps: AttachDeps): Promise<Rea
     const text = await (file.size > most ? file.slice(0, most) : file).text()
     return fitText(text, room, file.size)
   }
+  if (!deps.documents) return { refused: 'cannot be read here; attach it as text' }
   if (file.size > MAX_DOCUMENT_BYTES) return { refused: `is over ${MAX_DOCUMENT_BYTES / 1024 / 1024} MB` }
   const outcome = await within(deps.readDocument(kind, await deps.encode(file), room), DOCUMENT_WAIT_MS)
   if (outcome.status !== 'read') return { refused: DOCUMENT_REFUSALS[outcome.status] }

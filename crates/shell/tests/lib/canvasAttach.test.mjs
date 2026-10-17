@@ -102,6 +102,7 @@ const reader = (outcomes) => {
   return {
     asked,
     deps: {
+      documents: true,
       encode: async (file) => Buffer.from(await file.arrayBuffer()).toString('base64'),
       readDocument: async (kind, data, maxChars) => {
         asked.push({ kind, data, maxChars })
@@ -170,11 +171,19 @@ describe('attaching picked files', () => {
 
   test('a document read that never answers gives up', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] })
-    const deps = { encode: async () => 'eA==', readDocument: () => new Promise(() => {}) }
+    const deps = { documents: true, encode: async () => 'eA==', readDocument: () => new Promise(() => {}) }
     const reading = attach.attachFiles([fileOf('slow.pdf', 'x')], [], deps)
     await new Promise((resolve) => setImmediate(resolve))
     t.mock.timers.tick(attach.DOCUMENT_WAIT_MS)
     assert.deepEqual(await reading, { added: [], notes: ['slow.pdf could not be read'] })
+  })
+
+  test('where documents cannot be read, they are refused before anything is sent', async () => {
+    const { asked, deps } = reader([])
+    const { added, notes } = await attach.attachFiles([fileOf('plan.pdf', '%PDF-'), fileOf('a.md', '# A')], [], { ...deps, documents: false })
+    assert.deepEqual(added, [{ name: 'a.md', text: '# A' }])
+    assert.deepEqual(notes, ['plan.pdf cannot be read here; attach it as text'])
+    assert.deepEqual(asked, [])
   })
 
   test('binary text files are still refused', async () => {

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import * as canvas from '../../src/lib/canvas.ts'
-import { createCanvasChannel } from '../../src/lib/canvasChannel.ts'
+import { createCanvasChannel, sealMessage } from '../../src/lib/canvasChannel.ts'
 import { followPushed } from '../../src/lib/canvasPushed.ts'
 
 const card = (id, x = 0, y = 0, text = 'note') => ({ id, x, y, w: canvas.CARD_WIDTH, text })
@@ -197,6 +197,13 @@ describe('the channel', () => {
   test('without the native channel every request fails at once', async () => {
     const channel = createCanvasChannel(null)
     await assert.rejects(channel.list(), /not available/)
+  })
+})
+
+describe('sealing messages', () => {
+  test('a tab token opens each message; without one the text goes as it is', () => {
+    assert.equal(sealMessage('abc', '{"id":1}'), 'abc\n{"id":1}')
+    assert.equal(sealMessage(null, '{"id":1}'), '{"id":1}')
   })
 })
 

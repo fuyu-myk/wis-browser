@@ -12,6 +12,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use wis_core::{WisError, WisResult};
 
+/// Whether this platform can dictate.
+pub const SUPPORTED: bool = cfg!(target_os = "macos");
 const MAX_LENGTH: Duration = Duration::from_secs(120);
 /// How long a stopped dictation may take to hand over its last words.
 const SETTLE: Duration = Duration::from_secs(3);

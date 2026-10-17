@@ -187,7 +187,7 @@ pub async fn create_tab_webview(
     // Linux (WebKitGTK): inject the page-world scripts for the channels
     // `gtk_dispatch` receives; the rest it installs in Wis's own world.
     #[cfg(target_os = "linux")]
-    {
+    if !canvas_tab {
         builder = builder.initialization_script(crate::permissions::gate_script());
 
         // Cosmetic element-hiding page script; Permissive workspaces opt out.
@@ -233,11 +233,16 @@ pub async fn create_tab_webview(
     if let Some(ua) = &user_agent {
         builder = builder.user_agent(ua);
     }
-    if canvas_tab && cfg!(target_os = "macos") {
+    if canvas_tab && cfg!(any(target_os = "macos", target_os = "linux")) {
         #[cfg(target_os = "macos")]
         {
             builder = crate::canvas_webview::with_canvas_configuration(&app, builder).await?;
             builder = builder.transparent(true);
+        }
+        // One store for every canvas tab.
+        #[cfg(target_os = "linux")]
+        {
+            builder = builder.data_directory(canvas_webview_data_dir(&app));
         }
     } else if ephemeral {
         #[cfg(target_os = "macos")]
@@ -558,6 +563,10 @@ pub async fn create_tab_webview(
         );
         let script = crate::canvas::page_script(&state.browser.lock().await.settings);
         builder = builder.initialization_script(script);
+        #[cfg(target_os = "linux")]
+        {
+            builder = builder.initialization_script(crate::canvas::token_script(&label_ident));
+        }
     }
     let child = window
         .add_child(
@@ -663,7 +672,7 @@ pub async fn create_tab_webview(
         crate::capture::install(&child);
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     if canvas_tab {
         crate::canvas::install(&child, label_ident.clone());
     }
@@ -730,7 +739,8 @@ pub async fn create_tab_webview(
     crate::gtk_dispatch::install(
         &child,
         ephemeral,
-        privacy_mode != wis_core::PrivacyMode::Permissive,
+        privacy_mode != wis_core::PrivacyMode::Permissive && !canvas_tab,
+        canvas_tab,
         keybind_script,
     );
 
@@ -765,6 +775,16 @@ pub async fn create_tab_webview(
 
 pub(crate) fn workspace_id_to_data_store_bytes(workspace_id: WorkspaceId) -> [u8; 16] {
     *workspace_id.as_uuid().as_bytes()
+}
+
+/// The store every canvas tab shares on Linux.
+#[cfg(target_os = "linux")]
+fn canvas_webview_data_dir(app: &AppHandle) -> std::path::PathBuf {
+    app.path()
+        .app_local_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir().join("app.myk.wis"))
+        .join("webviews")
+        .join("canvas")
 }
 
 /// The engine user-data folder for a persistent workspace (Windows WebView2 /
