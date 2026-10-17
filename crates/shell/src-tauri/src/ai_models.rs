@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use futures_util::StreamExt;
+use tauri::State;
 use wis_core::ai_models::{parse_models, ModelInfo};
 use wis_core::{WisError, WisResult, WorkspaceId};
 
@@ -14,6 +15,14 @@ const MAX_LIST_BYTES: usize = 4 * 1024 * 1024;
 
 fn failed(message: String) -> WisError {
     WisError::InvalidInput { message }
+}
+
+#[tauri::command]
+pub async fn ai_list_models(
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+) -> WisResult<Vec<ModelInfo>> {
+    list_models(&state, workspace_id).await
 }
 
 pub(crate) async fn list_models(

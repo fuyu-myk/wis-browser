@@ -12,6 +12,7 @@ import type {
   AiFetchResponse,
   AiGrouped,
   AiHistoryHit,
+  AiModel,
   AiSearchResult,
   AiTab,
   AiTabRead,
@@ -1061,6 +1062,11 @@ export const commands = {
   /** Whether a provider API key is stored. */
   async aiKeyPresent(): Promise<boolean> {
     return invoke('ai_key_present')
+  },
+
+  /** The configured provider's models. */
+  async aiListModels(workspaceId: WorkspaceId): Promise<AiModel[]> {
+    return invoke('ai_list_models', { workspaceId })
   },
 
   /** Remove the stored provider API key. */

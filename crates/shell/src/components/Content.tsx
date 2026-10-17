@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import type { AiAskRequest } from '@/lib/aiAsk'
 
+import { commands } from '@/bindings/commands'
 import type { BrowserState, TabId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { isChromeUrl } from '@/lib/url'
@@ -57,6 +58,9 @@ export function Content({
   const aiWebAccess = state.settings.ai.web_access
   const aiLocalData = state.settings.ai.local_data
   const aiTabActions = aiLocalData && state.settings.ai.tab_actions
+  const chooseAiModel = async (model: string) => {
+    await commands.updateSettings({ ai: { ...state.settings.ai, model } })
+  }
 
   // Kept mounted after the first open.
   const aiMountedRef = useRef(false)
@@ -84,6 +88,7 @@ export function Content({
           workspaceId={activeWorkspace?.id ?? null}
           page={page}
           model={state.settings.ai.model}
+          onChooseModel={chooseAiModel}
           webAccess={aiWebAccess}
           localData={aiLocalData}
           tabActions={aiTabActions}

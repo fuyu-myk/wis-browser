@@ -769,6 +769,7 @@ pub fn run() {
             ai::ai_chat,
             ai::ai_cancel,
             ai::ai_assess_link,
+            ai_models::ai_list_models,
             ai_fetch::ai_web_search,
             ai_fetch::ai_web_fetch,
             ai_actions::ai_preview_tabs,

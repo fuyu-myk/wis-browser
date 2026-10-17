@@ -454,6 +454,12 @@ export interface AiToolCall {
   arguments: string
 }
 
+/** A model the provider lists (mirror of `wis_core::ai_models::ModelInfo`). */
+export interface AiModel {
+  id: string
+  name: string
+}
+
 /** One web search hit for the assistant (mirror of `ai_fetch::AiSearchResult`). */
 export interface AiSearchResult {
   title: string

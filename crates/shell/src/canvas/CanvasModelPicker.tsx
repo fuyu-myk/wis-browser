@@ -3,12 +3,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { CanvasModels } from '@/lib/canvasChannel'
 import { cx } from '@/lib/cx'
 import { ChevronDownIcon } from '@/lib/icons'
-
-interface Choice {
-  id: string | null
-  label: string
-  hint?: string
-}
+import { modelChoices, type ModelChoice } from '@/lib/modelChoices'
 
 interface PickerProps {
   model: string
@@ -16,8 +11,6 @@ interface PickerProps {
   choose: (model: string | null) => Promise<void>
   onError: (message: string) => void
 }
-
-const SHOWN = 200
 
 export function CanvasModelPicker({ model, load, choose, onError }: PickerProps) {
   const [open, setOpen] = useState(false)
@@ -86,20 +79,13 @@ function ModelList({
     }
   }, [load])
 
-  const choices = useMemo<Choice[]>(() => {
+  const choices = useMemo<ModelChoice[]>(() => {
     const q = query.trim().toLowerCase()
-    const models = (listing?.models ?? [])
-      .filter((m) => q === '' || m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
-      .slice(0, SHOWN)
-      .map((m) => ({ id: m.id, label: m.name, hint: m.name !== m.id ? m.id : undefined }))
-    const own = query.trim()
-    const settled = listing !== null || failure !== null
-    const listed = (listing?.models ?? []).some((m) => m.id === own)
-    const typed = own !== '' && settled && !listed ? [{ id: own, label: `Use “${own}”` }] : []
     const assistant = { id: null, label: 'Same as the assistant', hint: listing?.assistant || undefined }
     const showAssistant =
       q === '' || 'same as the assistant'.includes(q) || (listing?.assistant ?? '').toLowerCase().includes(q)
-    return [...(showAssistant ? [assistant] : []), ...models, ...typed]
+    const models = modelChoices(listing?.models ?? null, query, listing !== null || failure !== null)
+    return [...(showAssistant ? [assistant] : []), ...models]
   }, [listing, failure, query])
   const current = Math.min(active, choices.length - 1)
   const selected = listing?.selected ?? null

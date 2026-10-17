@@ -30,6 +30,7 @@ import { useAiChat, type AiPageSource } from '@/hooks/useAiChat'
 import { useDockWidth } from '@/hooks/useDockWidth'
 
 import { AiMarkdown } from '@/components/AiMarkdown'
+import { AiModelPicker } from '@/components/AiModelPicker'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 const WIDTH_STORAGE_KEY = 'wis-ai-panel-width'
@@ -62,6 +63,7 @@ interface AiPanelProps {
   page: AiPageSource | null
   /** The configured model id; empty means the assistant cannot send yet. */
   model: string
+  onChooseModel: (model: string) => Promise<void>
   /** Whether web tools can be offered for the current settings and platform. */
   webAccess: boolean
   /** Whether the tab, history and bookmark tools can be offered. */
@@ -86,6 +88,7 @@ export function AiPanel({
   workspaceId,
   page,
   model,
+  onChooseModel,
   webAccess,
   localData,
   tabActions,
@@ -263,7 +266,7 @@ export function AiPanel({
       />
       <div className="kb-ai-head">
         <span className="kb-ai-title">Assistant</span>
-        {modelReady && <span className="kb-ai-model">{model}</span>}
+        <AiModelPicker model={model} workspaceId={workspaceId} onChoose={onChooseModel} onError={showToast} />
         <div className="kb-ai-head-actions">
           {chat.turns.length > 0 && (
             <button
