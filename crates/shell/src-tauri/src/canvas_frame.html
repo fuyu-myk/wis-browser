@@ -6,8 +6,12 @@
     if (parent === window || e.source !== parent || !data || typeof data.html !== 'string') return
     removeEventListener('message', take)
     var links = document.createElement('link').relList
-    if (typeof RTCPeerConnection !== 'undefined' || links.supports('preconnect') || links.supports('dns-prefetch')) {
-      document.body.textContent = 'HTML cards are off: this WebKit could let them reach the network.'
+    var open = []
+    if (typeof RTCPeerConnection !== 'undefined') open.push('WebRTC')
+    if (links.supports('preconnect')) open.push('preconnect')
+    if (links.supports('dns-prefetch')) open.push('DNS prefetch')
+    if (open.length > 0) {
+      document.body.textContent = 'HTML cards are off: this WebKit could let them reach the network (' + open.join(', ') + ').'
       return
     }
     document.open()

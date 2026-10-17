@@ -734,6 +734,8 @@ mod linux {
             return;
         }
 
+        let mut switched = Vec::new();
+        let mut related = Vec::new();
         for at in 0..length(list) {
             let feature = get(list, at);
             if feature.is_null() {
@@ -743,13 +745,29 @@ mod linux {
             if name.is_null() {
                 continue;
             }
-            let name = CStr::from_ptr(name).to_string_lossy();
-            if NETWORK_FEATURES.contains(&name.as_ref()) {
+            let name = CStr::from_ptr(name).to_string_lossy().into_owned();
+            if NETWORK_FEATURES.contains(&name.as_str()) {
                 set_enabled(settings, feature, 0);
+                switched.push(name);
+            } else if ["Preconnect", "Prefetch", "PeerConnection", "WebRTC"]
+                .iter()
+                .any(|word| name.contains(word))
+            {
+                related.push(name);
             }
         }
 
         unref(list);
+        let missing: Vec<&str> = NETWORK_FEATURES
+            .iter()
+            .copied()
+            .filter(|feature| !switched.iter().any(|name| name == feature))
+            .collect();
+        if !missing.is_empty() {
+            log::info!(
+                "canvas: switched off {switched:?}; this WebKitGTK has no {missing:?} (related: {related:?})"
+            );
+        }
     }
 
     pub fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, label: String) {
