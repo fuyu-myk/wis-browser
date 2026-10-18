@@ -2,15 +2,20 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{WisError, WisResult};
+use crate::workspace::Workspace;
+use crate::{WisError, WisResult, WorkspaceId};
 
 /// An extension copied into Wis's extensions folder.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstalledExtension {
     /// Its folder name, and the identifier its storage is kept under.
     pub id: String,
     pub name: String,
     pub version: String,
+    #[serde(default)]
+    pub disabled_in: Vec<WorkspaceId>,
+    #[serde(default)]
+    pub allow_private: bool,
 }
 
 pub const MAX_EXTENSIONS: usize = 64;
@@ -146,6 +151,7 @@ pub fn with_extension(
         id: ext.id,
         name: tidy_name(&ext.name),
         version: tidy(&ext.version, MAX_VERSION),
+        ..Default::default()
     });
 
     Ok(next)
@@ -153,6 +159,60 @@ pub fn with_extension(
 
 pub fn without_extension(list: &[InstalledExtension], id: &str) -> Vec<InstalledExtension> {
     list.iter().filter(|e| e.id != id).cloned().collect()
+}
+
+pub fn runs_in(ext: &InstalledExtension, workspace: &Workspace) -> bool {
+    if workspace.ephemeral {
+        ext.allow_private
+    } else {
+        !ext.disabled_in.contains(&workspace.id)
+    }
+}
+
+/// The ids of the extensions that run in `workspace`.
+pub fn wanted_in(list: &[InstalledExtension], workspace: &Workspace) -> Vec<String> {
+    list.iter()
+        .filter(|e| is_extension_id(&e.id) && runs_in(e, workspace))
+        .map(|e| e.id.clone())
+        .collect()
+}
+
+fn with_changed(
+    list: &[InstalledExtension],
+    id: &str,
+    change: impl FnOnce(&mut InstalledExtension),
+) -> WisResult<Vec<InstalledExtension>> {
+    let mut next = list.to_vec();
+    let ext = next
+        .iter_mut()
+        .find(|e| e.id == id)
+        .ok_or_else(|| WisError::InvalidInput {
+            message: "that extension is not installed".into(),
+        })?;
+    change(ext);
+    Ok(next)
+}
+
+pub fn with_workspace_switch(
+    list: &[InstalledExtension],
+    id: &str,
+    workspace: WorkspaceId,
+    on: bool,
+) -> WisResult<Vec<InstalledExtension>> {
+    with_changed(list, id, |ext| {
+        ext.disabled_in.retain(|w| *w != workspace);
+        if !on {
+            ext.disabled_in.push(workspace);
+        }
+    })
+}
+
+pub fn with_private_allowed(
+    list: &[InstalledExtension],
+    id: &str,
+    allowed: bool,
+) -> WisResult<Vec<InstalledExtension>> {
+    with_changed(list, id, |ext| ext.allow_private = allowed)
 }
 
 fn is_site_pattern(permission: &str) -> bool {
@@ -293,7 +353,58 @@ mod tests {
             id: id.into(),
             name: "Dark Reader".into(),
             version: "4.9.133".into(),
+            ..Default::default()
         }
+    }
+
+    fn regular() -> Workspace {
+        Workspace::new("Work".into(), Default::default())
+    }
+
+    fn private() -> Workspace {
+        Workspace::new_private("Private".into(), Default::default())
+    }
+
+    #[test]
+    fn an_extension_runs_in_every_regular_workspace_until_switched_off() {
+        let (work, home) = (regular(), regular());
+        let list = with_workspace_switch(&[ext(ID)], ID, work.id, false).unwrap();
+        assert!(!runs_in(&list[0], &work));
+        assert!(runs_in(&list[0], &home));
+
+        let list = with_workspace_switch(&list, ID, work.id, true).unwrap();
+        assert!(runs_in(&list[0], &work));
+        assert!(list[0].disabled_in.is_empty());
+    }
+
+    #[test]
+    fn private_workspaces_run_only_what_is_allowed_there() {
+        let private = private();
+        assert!(!runs_in(&ext(ID), &private));
+        let list = with_private_allowed(&[ext(ID)], ID, true).unwrap();
+        assert!(runs_in(&list[0], &private));
+    }
+
+    #[test]
+    fn switches_refuse_an_unknown_extension() {
+        assert!(with_workspace_switch(&[ext(ID)], OTHER, regular().id, false).is_err());
+        assert!(with_private_allowed(&[ext(ID)], OTHER, true).is_err());
+    }
+
+    #[test]
+    fn switching_one_extension_leaves_the_others() {
+        let work = regular();
+        let list = with_workspace_switch(&[ext(ID), ext(OTHER)], ID, work.id, false).unwrap();
+        assert_eq!(wanted_in(&list, &work), vec![OTHER.to_string()]);
+    }
+
+    #[test]
+    fn wanted_ids_leave_out_any_that_could_not_name_a_folder() {
+        let work = regular();
+        assert_eq!(
+            wanted_in(&[ext("../x"), ext(ID)], &work),
+            vec![ID.to_string()]
+        );
     }
 
     const ID: &str = "0123456789abcdef0123456789abcdef";
@@ -336,6 +447,7 @@ mod tests {
                 id: ID.into(),
                 name: "  Dark\u{202e}  Reader\n".into(),
                 version: "4.9\u{0}.133".into(),
+                ..Default::default()
             },
         )
         .unwrap();

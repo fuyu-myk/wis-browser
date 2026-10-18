@@ -111,15 +111,59 @@ pub async fn extension_remove(
     }
 }
 
-/// The installed extensions' ids, never trusting the stored list for a path.
+#[tauri::command]
+pub async fn extension_set_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    workspace_id: wis_core::WorkspaceId,
+    enabled: bool,
+) -> WisResult<()> {
+    #[cfg(target_os = "macos")]
+    return install::change(app, state, move |list| {
+        wis_core::extensions::with_workspace_switch(list, &id, workspace_id, enabled)
+    })
+    .await;
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, state, id, workspace_id, enabled);
+        Err(unavailable())
+    }
+}
+
+#[tauri::command]
+pub async fn extension_set_private(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    allowed: bool,
+) -> WisResult<()> {
+    #[cfg(target_os = "macos")]
+    return install::change(app, state, move |list| {
+        wis_core::extensions::with_private_allowed(list, &id, allowed)
+    })
+    .await;
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, state, id, allowed);
+        Err(unavailable())
+    }
+}
+
+/// The extensions that run in each workspace, by id.
 #[cfg(target_os = "macos")]
-fn valid_ids(browser: &wis_core::state::BrowserState) -> Vec<String> {
-    browser
-        .settings
-        .extensions
+fn wanted_by_workspace(
+    state: &wis_core::state::BrowserState,
+) -> std::collections::HashMap<wis_core::WorkspaceId, Vec<String>> {
+    state
+        .workspaces
         .iter()
-        .map(|e| e.id.clone())
-        .filter(|id| wis_core::extensions::is_extension_id(id))
+        .map(|w| {
+            (
+                w.id,
+                wis_core::extensions::wanted_in(&state.settings.extensions, w),
+            )
+        })
         .collect()
 }
 
@@ -131,19 +175,24 @@ type Builder = tauri::webview::WebviewBuilder<tauri::Wry>;
 #[cfg(target_os = "macos")]
 pub const EXTENSIONS_CHANGED_EVENT: &str = "wis-extensions-changed";
 
-/// Tabs to rebuild when the installed extensions change.
+/// Tabs to rebuild when the installed extensions change: the web pages of
+/// the workspaces whose set of running extensions changed.
 #[cfg(any(target_os = "macos", test))]
-fn rebuild_targets(state: &wis_core::state::BrowserState) -> Vec<wis_core::TabId> {
-    let private: std::collections::HashSet<_> = state
+fn rebuild_targets(
+    before: &[wis_core::extensions::InstalledExtension],
+    state: &wis_core::state::BrowserState,
+) -> Vec<wis_core::TabId> {
+    use wis_core::extensions::wanted_in;
+    let changed: std::collections::HashSet<_> = state
         .workspaces
         .iter()
-        .filter(|w| w.ephemeral)
+        .filter(|w| wanted_in(before, w) != wanted_in(&state.settings.extensions, w))
         .map(|w| w.id)
         .collect();
     state
         .tabs
         .iter()
-        .filter(|t| !private.contains(&t.workspace_id))
+        .filter(|t| changed.contains(&t.workspace_id))
         .filter(|t| matches!(t.url.scheme(), "http" | "https"))
         .map(|t| t.id)
         .collect()
@@ -169,15 +218,22 @@ pub(crate) async fn with_extensions(
         return Ok((builder, false));
     }
 
-    let (wanted, active) = {
+    let found = {
         let browser = state.browser.lock().await;
-        let active = browser
+        browser
             .workspaces
             .iter()
             .find(|w| w.id == workspace)
-            .and_then(|w| w.active_tab_id)
-            .map(tab_label);
-        (valid_ids(&browser), active)
+            .map(|w| {
+                (
+                    wis_core::extensions::wanted_in(&browser.settings.extensions, w),
+                    w.ephemeral,
+                    w.active_tab_id.map(tab_label),
+                )
+            })
+    };
+    let Some((wanted, private, active)) = found else {
+        return Ok((builder, false));
     };
     if wanted.is_empty() {
         return Ok((builder, false));
@@ -188,7 +244,9 @@ pub(crate) async fn with_extensions(
 
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
     let ensured = app.run_on_main_thread(move || {
-        host::ensure(workspace, proxy_port, dir, wanted, active, ready_tx);
+        host::ensure(
+            workspace, private, proxy_port, dir, wanted, active, ready_tx,
+        );
     });
     if let Err(err) = ensured {
         log::warn!("extensions skipped for a tab: {err}");
@@ -290,13 +348,14 @@ pub(crate) fn sync_active(app: &AppHandle, actives: Vec<(wis_core::WorkspaceId, 
 
 #[cfg(test)]
 mod tests {
+    use wis_core::extensions::InstalledExtension;
     use wis_core::state::BrowserState;
     use wis_core::workspace::AccentColor;
 
     use super::{active_tab_changes, rebuild_targets};
 
     #[test]
-    fn only_regular_web_tabs_are_rebuilt() {
+    fn only_the_web_tabs_of_changed_workspaces_are_rebuilt() {
         let state = BrowserState::new_first_run();
         let regular = state.workspaces[0].id;
         let (state, web) = state.with_new_tab(regular, "https://example.com/").unwrap();
@@ -310,11 +369,22 @@ mod tests {
             .with_new_tab(private.id, "https://example.org/")
             .unwrap();
 
-        let targets = rebuild_targets(&state);
+        let ext = InstalledExtension {
+            id: "0123456789abcdef0123456789abcdef".into(),
+            ..Default::default()
+        };
+        let installed = state.with_extensions(vec![ext.clone()]);
+        let targets = rebuild_targets(&[], &installed);
         assert!(targets.contains(&web.id));
         for skipped in [chrome.id, canvas.id, hidden.id] {
             assert!(!targets.contains(&skipped));
         }
+
+        let allowed = installed.with_extensions(vec![InstalledExtension {
+            allow_private: true,
+            ..ext.clone()
+        }]);
+        assert_eq!(rebuild_targets(&[ext], &allowed), vec![hidden.id]);
     }
 
     #[test]

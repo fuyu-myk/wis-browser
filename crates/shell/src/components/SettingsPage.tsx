@@ -249,7 +249,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
           workspaceId={activeWorkspace?.id ?? null}
           ephemeral={activeWorkspace?.ephemeral ?? false}
         />
-        <ExtensionsSection installed={settings.extensions} />
+        <ExtensionsSection installed={settings.extensions} workspace={activeWorkspace} />
         <PasswordsSection />
         <AiSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <KeyboardShortcutsSection

@@ -1571,6 +1571,14 @@ export const commands = {
     return invoke('extension_remove', { id })
   },
 
+  async extensionSetWorkspace(id: string, workspaceId: WorkspaceId, enabled: boolean): Promise<void> {
+    return invoke('extension_set_workspace', { id, workspaceId, enabled })
+  },
+
+  async extensionSetPrivate(id: string, allowed: boolean): Promise<void> {
+    return invoke('extension_set_private', { id, allowed })
+  },
+
   /** Active time for local days `from..=to` (`YYYY-MM-DD`). */
   async usageSummary(from: string, to: string): Promise<UsageSummary> {
     return invoke('usage_summary', { from, to })

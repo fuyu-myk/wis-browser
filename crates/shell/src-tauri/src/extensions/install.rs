@@ -222,17 +222,17 @@ pub(super) async fn install(
         id,
         name: staged.name,
         version: staged.version,
+        ..Default::default()
     };
-    let added = crate::commands::mutate_unit_immediate(&app, &state, |s| {
-        Ok(s.with_extensions(extensions::with_extension(&s.settings.extensions, ext)?))
+    let added = change(app, state, move |list| {
+        extensions::with_extension(list, ext)
     })
     .await;
-    if let Err(err) = added {
+    if added.is_err() {
         discard_dir(target).await;
-        return Err(err);
     }
 
-    reload(&app, &state).await
+    added
 }
 
 pub(super) async fn remove(
@@ -244,13 +244,12 @@ pub(super) async fn remove(
         return Err(refused("not an extension id"));
     }
 
-    crate::commands::mutate_unit_immediate(&app, &state, |s| {
-        Ok(s.with_extensions(extensions::without_extension(&s.settings.extensions, &id)))
+    let dir = extensions_dir(&app)?.join(&id);
+    change(app, state, move |list| {
+        Ok(extensions::without_extension(list, &id))
     })
     .await?;
-    reload(&app, &state).await?;
 
-    let dir = extensions_dir(&app)?.join(&id);
     blocking(move || match std::fs::remove_dir_all(&dir) {
         Ok(()) => Ok(()),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -261,12 +260,33 @@ pub(super) async fn remove(
     .await
 }
 
-/// Brings every live workspace's extensions in line with the installed list,
-/// then has the windows rebuild their open pages.
-async fn reload(app: &AppHandle, state: &State<'_, AppState>) -> WisResult<()> {
+/// Applies `edit` to the installed list, then brings every live workspace in
+/// line with it and has the windows rebuild the pages whose set changed.
+pub(super) async fn change(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    edit: impl FnOnce(&[InstalledExtension]) -> WisResult<Vec<InstalledExtension>> + Send,
+) -> WisResult<()> {
+    let before =
+        crate::commands::mutate_with(&app, &state, crate::commands::Persist::Immediate, |s| {
+            let next = edit(&s.settings.extensions)?;
+            Ok((s.with_extensions(next), s.settings.extensions.clone()))
+        })
+        .await?;
+    reload(&app, &state, &before).await
+}
+
+async fn reload(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    before: &[InstalledExtension],
+) -> WisResult<()> {
     let (wanted, targets) = {
         let browser = state.browser.lock().await;
-        (super::valid_ids(&browser), super::rebuild_targets(&browser))
+        (
+            super::wanted_by_workspace(&browser),
+            super::rebuild_targets(before, &browser),
+        )
     };
     let dir = extensions_dir(app)?;
     app.run_on_main_thread(move || host::sync_all(dir, wanted))

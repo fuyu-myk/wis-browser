@@ -2,12 +2,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { commands } from '@/bindings/commands'
-import type { InstalledExtension, StagedExtension } from '@/bindings/types'
+import type { InstalledExtension, StagedExtension, Workspace } from '@/bindings/types'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { Switch } from '@/components/controls'
 import { errorMessage } from '@/lib/errors'
 
 interface ExtensionsSectionProps {
   installed: InstalledExtension[]
+  /** The workspace whose switch the section shows. */
+  workspace: Workspace | undefined
 }
 
 function ReviewDetails({ staged }: { staged: StagedExtension }) {
@@ -42,7 +45,7 @@ function ReviewDetails({ staged }: { staged: StagedExtension }) {
   )
 }
 
-export function ExtensionsSection({ installed }: ExtensionsSectionProps) {
+export function ExtensionsSection({ installed, workspace }: ExtensionsSectionProps) {
   const { data: supported } = useQuery({
     queryKey: ['extensions-supported'],
     queryFn: () => commands.extensionsSupported(),
@@ -85,6 +88,8 @@ export function ExtensionsSection({ installed }: ExtensionsSectionProps) {
     void run(() => commands.extensionRemove(id))
   }
 
+  const regular = workspace && !workspace.ephemeral ? workspace : undefined
+
   return (
     <section id="extensions" className="sec">
       <div className="sec-h">Extensions</div>
@@ -107,20 +112,46 @@ export function ExtensionsSection({ installed }: ExtensionsSectionProps) {
         </button>
       </div>
       {installed.map((ext) => (
-        <div className="row" key={ext.id}>
-          <div className="l">
-            <span>{ext.name}</span>
-            <span>Version {ext.version}</span>
+        <div key={ext.id}>
+          <div className="row">
+            <div className="l">
+              <span>{ext.name}</span>
+              <span>Version {ext.version}</span>
+            </div>
+            <button
+              type="button"
+              className="kb-btn"
+              onClick={() => setRemoving(ext)}
+              disabled={busy}
+              aria-label={`Remove ${ext.name}`}
+            >
+              Remove
+            </button>
           </div>
-          <button
-            type="button"
-            className="kb-btn"
-            onClick={() => setRemoving(ext)}
-            disabled={busy}
-            aria-label={`Remove ${ext.name}`}
-          >
-            Remove
-          </button>
+          {regular && (
+            <div className="row kb-ext-sub">
+              <div className="l">
+                <span>Run in {regular.name}</span>
+                <span>Other workspaces keep their own setting.</span>
+              </div>
+              <Switch
+                checked={!ext.disabled_in.includes(regular.id)}
+                onChange={(on) => void run(() => commands.extensionSetWorkspace(ext.id, regular.id, on))}
+                label={`Run ${ext.name} in ${regular.name}`}
+              />
+            </div>
+          )}
+          <div className="row kb-ext-sub">
+            <div className="l">
+              <span>Allow in private workspaces</span>
+              <span>It can then see what you do in private browsing.</span>
+            </div>
+            <Switch
+              checked={ext.allow_private}
+              onChange={(allowed) => void run(() => commands.extensionSetPrivate(ext.id, allowed))}
+              label={`Allow ${ext.name} in private workspaces`}
+            />
+          </div>
         </div>
       ))}
       {error && <p className="kb-backup-status is-error">{error}</p>}

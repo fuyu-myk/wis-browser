@@ -3321,6 +3321,7 @@ body.glass-chrome .kb-content {
 .kb-ext-item { position: relative; padding-left: 14px; }
 .kb-ext-item::before { content: '•'; position: absolute; left: 2px; }
 .kb-ext-warn { color: var(--text-primary); }
+.kb-settings-page .row.kb-ext-sub { padding: 4px 0 4px 16px; }
 .kb-modal-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
 .kb-modal-btn {
   padding: 8px 16px;

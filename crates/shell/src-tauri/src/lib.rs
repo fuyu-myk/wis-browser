@@ -780,6 +780,8 @@ pub fn run() {
             extensions::extension_install,
             extensions::extension_discard,
             extensions::extension_remove,
+            extensions::extension_set_workspace,
+            extensions::extension_set_private,
             ai_fetch::ai_web_search,
             ai_fetch::ai_web_fetch,
             ai_actions::ai_preview_tabs,

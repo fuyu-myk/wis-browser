@@ -528,6 +528,8 @@ export interface InstalledExtension {
   id: string
   name: string
   version: string
+  disabled_in: WorkspaceId[]
+  allow_private: boolean
 }
 
 /** What an extension asks for, shown before installing it (mirror of `ExtensionReview`). */

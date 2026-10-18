@@ -252,6 +252,7 @@ mod tests {
             id: "0123456789abcdef0123456789abcdef".into(),
             name: "Dark Reader".into(),
             version: "4.9".into(),
+            ..Default::default()
         }];
         let next = state.with_extensions(installed.clone());
         assert_eq!(next.settings.extensions, installed);

@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use wis_core::WorkspaceId;
 
 #[cfg(target_os = "macos")]
-pub use imp::{release, with_workspace_store};
+pub use imp::{release, store_for, with_workspace_store};
 
 /// Elsewhere private webviews keep the engine's incognito handling.
 #[cfg(not(target_os = "macos"))]
@@ -72,12 +72,7 @@ mod imp {
 
         app.run_on_main_thread(move || {
             let mtm = MainThreadMarker::new().expect("run_on_main_thread runs on the main thread");
-            let store = STORES.with_borrow_mut(|stores| {
-                // SAFETY: a class factory with no preconditions, on the main thread.
-                stores.get_or_create(workspace_id, || unsafe {
-                    WKWebsiteDataStore::nonPersistentDataStore(mtm)
-                })
-            });
+            let store = store_for(workspace_id, mtm);
             // SAFETY: main thread; a fresh configuration takes a live store.
             let config = unsafe {
                 let config = WKWebViewConfiguration::new(mtm);
@@ -92,6 +87,19 @@ mod imp {
 
         rx.await.map_err(|_| WisError::InvalidInput {
             message: "private store builder dropped".to_string(),
+        })
+    }
+
+    /// The workspace's in-memory store, made on first use.
+    pub fn store_for(
+        workspace_id: WorkspaceId,
+        mtm: MainThreadMarker,
+    ) -> Retained<WKWebsiteDataStore> {
+        STORES.with_borrow_mut(|stores| {
+            // SAFETY: a class factory with no preconditions, on the main thread.
+            stores.get_or_create(workspace_id, || unsafe {
+                WKWebsiteDataStore::nonPersistentDataStore(mtm)
+            })
         })
     }
 

@@ -575,7 +575,7 @@ pub async fn create_tab_webview(
 
     // After the cookies, so an extension's first requests carry the session.
     #[cfg(target_os = "macos")]
-    if !ephemeral && !canvas_tab {
+    if !canvas_tab {
         (builder, extended) =
             crate::extensions::with_extensions(&app, &state, workspace_id, proxy_port, builder)
                 .await?;

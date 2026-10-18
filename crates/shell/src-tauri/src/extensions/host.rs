@@ -41,6 +41,9 @@ extern "C" {
 
 struct Host {
     generation: u64,
+    /// A private workspace's host: in-memory store and controller, and its
+    /// extensions may see private browsing.
+    private: bool,
     controller: Retained<WKWebExtensionController>,
     window: Retained<HostWindow>,
     _delegate: Retained<HostDelegate>,
@@ -59,9 +62,9 @@ struct Host {
 thread_local! {
     static HOSTS: RefCell<HashMap<WorkspaceId, Host>> = RefCell::new(HashMap::new());
     static GENERATION: Cell<u64> = const { Cell::new(0) };
-    /// The installed list as the last install or removal left it, newer than
-    /// any a tab read before that change.
-    static LATEST: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+    /// Each workspace's extensions as the last change left them, newer than
+    /// any list a tab read before that change.
+    static LATEST: RefCell<Option<HashMap<WorkspaceId, Vec<String>>>> = const { RefCell::new(None) };
 }
 
 /// Whether any host is running, readable off the main thread.
@@ -140,11 +143,16 @@ fn workspace_store(workspace: WorkspaceId, mtm: MainThreadMarker) -> Retained<WK
 
 fn new_host(
     workspace: WorkspaceId,
+    private: bool,
     port: u16,
     wanted_active: Option<String>,
     mtm: MainThreadMarker,
 ) -> Option<Host> {
-    let store = workspace_store(workspace, mtm);
+    let store = if private {
+        crate::private_store::store_for(workspace, mtm)
+    } else {
+        workspace_store(workspace, mtm)
+    };
     // SAFETY: main thread; the store is live.
     if !unsafe { route_through_proxy(&store, port) } {
         log::error!("extensions stay off in {workspace}: its proxy could not be set");
@@ -155,10 +163,14 @@ fn new_host(
         crate::commands::workspace_id_to_data_store_bytes(workspace).map(|byte| byte ^ 0xa5);
     // SAFETY: main thread; each object is configured before the controller is built from it.
     let controller = unsafe {
-        let config = WKWebExtensionControllerConfiguration::configurationWithIdentifier(
-            &NSUUID::from_bytes(identifier),
-            mtm,
-        );
+        let config = if private {
+            WKWebExtensionControllerConfiguration::nonPersistentConfiguration(mtm)
+        } else {
+            WKWebExtensionControllerConfiguration::configurationWithIdentifier(
+                &NSUUID::from_bytes(identifier),
+                mtm,
+            )
+        };
         config.setDefaultWebsiteDataStore(Some(&store));
         let pages = config.webViewConfiguration();
         pages.setWebsiteDataStore(&store);
@@ -176,6 +188,7 @@ fn new_host(
     GENERATION.set(generation);
     Some(Host {
         generation,
+        private,
         controller,
         window: new_window(workspace, mtm),
         _delegate: delegate,
@@ -212,6 +225,7 @@ pub(super) fn tab_configuration(
 /// extensions are in: true, or false when it could not have one.
 pub(super) fn ensure(
     workspace: WorkspaceId,
+    private: bool,
     port: u16,
     dir: PathBuf,
     wanted: Vec<String>,
@@ -227,7 +241,7 @@ pub(super) fn ensure(
         return;
     }
 
-    let Some(host) = new_host(workspace, port, active, mtm) else {
+    let Some(host) = new_host(workspace, private, port, active, mtm) else {
         let _ = ready.send(false);
         return;
     };
@@ -245,7 +259,7 @@ pub(super) fn ensure(
     }
 
     let wanted = LATEST
-        .with_borrow(|latest| latest.clone())
+        .with_borrow(|latest| latest.as_ref()?.get(&workspace).cloned())
         .unwrap_or(wanted);
     sync_host(workspace, &dir, &wanted, mtm);
     wait_for_loads(workspace, ready);
@@ -265,16 +279,18 @@ fn wait_for_loads(workspace: WorkspaceId, ready: oneshot::Sender<bool>) {
     }
 }
 
-/// Loads what `wanted` adds and unloads what it drops, in every live host.
-pub(super) fn sync_all(dir: PathBuf, wanted: Vec<String>) {
+/// Loads what each workspace's list adds and unloads what it drops, in every
+/// live host.
+pub(super) fn sync_all(dir: PathBuf, wanted: HashMap<WorkspaceId, Vec<String>>) {
     let Some(mtm) = MainThreadMarker::new() else {
         return;
     };
-    LATEST.with_borrow_mut(|latest| *latest = Some(wanted.clone()));
     let workspaces: Vec<WorkspaceId> = HOSTS.with_borrow(|hosts| hosts.keys().copied().collect());
     for workspace in workspaces {
-        sync_host(workspace, &dir, &wanted, mtm);
+        let list = wanted.get(&workspace).cloned().unwrap_or_default();
+        sync_host(workspace, &dir, &list, mtm);
     }
+    LATEST.with_borrow_mut(|latest| *latest = Some(wanted));
 }
 
 fn sync_host(workspace: WorkspaceId, dir: &Path, wanted: &[String], mtm: MainThreadMarker) {
@@ -329,10 +345,14 @@ fn finish_load(
         let host = hosts
             .get(&workspace)
             .filter(|h| h.generation == generation)?;
-        host.wanted.contains(&id).then(|| host.controller.clone())
+        host.wanted
+            .contains(&id)
+            .then(|| (host.controller.clone(), host.private))
     });
     let context = match (controller, extension) {
-        (Some(controller), Ok(extension)) => load_context(&controller, &extension, &id),
+        (Some((controller, private)), Ok(extension)) => {
+            load_context(&controller, &extension, &id, private)
+        }
         (Some(_), Err(message)) => Err(message),
         (None, _) => Err("no longer wanted".into()),
     };
@@ -361,12 +381,14 @@ fn load_context(
     controller: &WKWebExtensionController,
     extension: &WKWebExtension,
     id: &str,
+    private: bool,
 ) -> Result<Retained<WKWebExtensionContext>, String> {
     let granted = WKWebExtensionContextPermissionStatus::GrantedExplicitly;
     // SAFETY: main thread; the context is configured before it is loaded.
     unsafe {
         let context = WKWebExtensionContext::contextForExtension(extension);
         context.setUniqueIdentifier(&NSString::from_str(id));
+        context.setHasAccessToPrivateData(private);
         for permission in extension.requestedPermissions().iter() {
             context.setPermissionStatus_forPermission(granted, &permission);
         }
