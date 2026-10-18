@@ -243,6 +243,8 @@ pub async fn create_tab_webview(
     if let Some(ua) = &user_agent {
         builder = builder.user_agent(ua);
     }
+    #[cfg(target_os = "macos")]
+    let mut extended = false;
     if canvas_tab {
         #[cfg(target_os = "macos")]
         {
@@ -571,6 +573,14 @@ pub async fn create_tab_webview(
         }
     }
 
+    // After the cookies, so an extension's first requests carry the session.
+    #[cfg(target_os = "macos")]
+    if !ephemeral && !canvas_tab {
+        (builder, extended) =
+            crate::extensions::with_extensions(&app, &state, workspace_id, proxy_port, builder)
+                .await?;
+    }
+
     if canvas_tab {
         crate::canvas::register(
             &label_ident,
@@ -600,6 +610,11 @@ pub async fn create_tab_webview(
         })?;
 
     crate::pane_container::wrap(&child);
+
+    #[cfg(target_os = "macos")]
+    if extended {
+        crate::extensions::tab_opened(&child, workspace_id);
+    }
 
     // Restore stacking above the freshly added tab webview:
     // tabs < widget panels < overlays.

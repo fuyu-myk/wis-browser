@@ -64,6 +64,7 @@ import type {
   WorkspaceId,
   WebviewMemory,
   Userscript,
+  StagedExtension,
 } from '@/bindings/types'
 
 export const commands = {
@@ -1544,6 +1545,30 @@ export const commands = {
 
   async importBrowserHistory(workspaceId: WorkspaceId, sourceId: string): Promise<HistoryImportStats> {
     return invoke('import_browser_history', { workspaceId, sourceId })
+  },
+
+  // -- Extensions -------------------------------------------------------------
+
+  /** Whether this platform can run extensions (macOS 15.4+). */
+  async extensionsSupported(): Promise<boolean> {
+    return invoke('extensions_supported')
+  },
+
+  /** Ask for a folder or `.zip` and return its review; `null` when cancelled. */
+  async extensionChoose(): Promise<StagedExtension | null> {
+    return invoke('extension_choose')
+  },
+
+  async extensionInstall(token: string): Promise<void> {
+    return invoke('extension_install', { token })
+  },
+
+  async extensionDiscard(token: string): Promise<void> {
+    return invoke('extension_discard', { token })
+  },
+
+  async extensionRemove(id: string): Promise<void> {
+    return invoke('extension_remove', { id })
   },
 
   /** Active time for local days `from..=to` (`YYYY-MM-DD`). */

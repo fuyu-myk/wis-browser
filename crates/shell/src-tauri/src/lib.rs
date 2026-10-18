@@ -32,6 +32,7 @@ mod document_text;
 mod downloads;
 mod edit_keys;
 mod error_compat;
+mod extensions;
 mod external;
 mod fatal_dialog;
 mod favicons;
@@ -774,6 +775,11 @@ pub fn run() {
             ai::ai_cancel,
             ai::ai_assess_link,
             ai_models::ai_list_models,
+            extensions::extensions_supported,
+            extensions::extension_choose,
+            extensions::extension_install,
+            extensions::extension_discard,
+            extensions::extension_remove,
             ai_fetch::ai_web_search,
             ai_fetch::ai_web_fetch,
             ai_actions::ai_preview_tabs,
@@ -858,6 +864,8 @@ pub fn run() {
                     video_popout::close_popout_window(app_handle);
                     if let Some(id) = app_handle.state::<AppState>().window_workspace("main") {
                         private_store::release(app_handle, id);
+                        #[cfg(target_os = "macos")]
+                        extensions::release(app_handle, id);
                     }
                 }
             }

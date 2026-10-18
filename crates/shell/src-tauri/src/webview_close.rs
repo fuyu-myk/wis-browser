@@ -12,7 +12,9 @@
 pub fn terminate_page(webview: &tauri::Webview) {
     use objc2::{msg_send, sel};
 
-    let dispatched = webview.with_webview(|w| {
+    let label = webview.label().to_string();
+    let dispatched = webview.with_webview(move |w| {
+        crate::extensions::tab_closed(&label);
         let wk = w.inner() as *mut objc2::runtime::AnyObject;
         if wk.is_null() {
             return;

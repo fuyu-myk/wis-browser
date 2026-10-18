@@ -138,6 +138,8 @@ pub async fn spawn_window(
                             .clear_window_workspace(&label_for_event);
                         if let Some(id) = shown {
                             crate::private_store::release(&app_for_event, id);
+                            #[cfg(target_os = "macos")]
+                            crate::extensions::release(&app_for_event, id);
                         }
                     }
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {

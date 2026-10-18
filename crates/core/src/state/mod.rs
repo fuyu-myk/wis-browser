@@ -128,6 +128,16 @@ impl BrowserState {
         }
     }
 
+    pub fn with_extensions(&self, extensions: Vec<crate::extensions::InstalledExtension>) -> Self {
+        Self {
+            settings: UserSettings {
+                extensions,
+                ..self.settings.clone()
+            },
+            ..self.clone()
+        }
+    }
+
     /// Check the structural invariant: every TabId mentioned by a workspace
     /// (tab_order, pinned_tab_ids, active_tab_id) must exist in `self.tabs`,
     /// and every Tab's `workspace_id` must point at an existing workspace.
@@ -234,6 +244,24 @@ impl BrowserState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extensions_change_only_through_their_own_transition() {
+        let state = BrowserState::new_first_run();
+        let installed = vec![crate::extensions::InstalledExtension {
+            id: "0123456789abcdef0123456789abcdef".into(),
+            name: "Dark Reader".into(),
+            version: "4.9".into(),
+        }];
+        let next = state.with_extensions(installed.clone());
+        assert_eq!(next.settings.extensions, installed);
+        assert_eq!(
+            next.with_settings(UserSettingsPatch::default())
+                .settings
+                .extensions,
+            installed
+        );
+    }
 
     #[test]
     fn first_run_seeds_one_valid_blank_tab() {

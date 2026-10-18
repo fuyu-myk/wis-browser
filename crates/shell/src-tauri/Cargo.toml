@@ -56,7 +56,30 @@ block2 = "0.5"
 libc = "0.2"
 # Both are already in the tree through tauri and wry.
 objc2-06 = { package = "objc2", version = "0.6" }
-objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "WKPreferences", "WKWebViewConfiguration", "WKWebsiteDataStore"] }
+objc2-web-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "block2",
+    "objc2-app-kit",
+    "WKPreferences",
+    "WKWebView",
+    "WKWebViewConfiguration",
+    "WKWebsiteDataStore",
+    "WKWebExtension",
+    "WKWebExtensionContext",
+    "WKWebExtensionController",
+    "WKWebExtensionControllerConfiguration",
+    "WKWebExtensionControllerDelegate",
+    "WKWebExtensionMatchPattern",
+    "WKWebExtensionPermission",
+    "WKWebExtensionTab",
+    "WKWebExtensionWindow",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSError", "NSKeyValueCoding", "NSObject", "NSSet", "NSString", "NSURL", "NSUUID"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView"] }
+block2-06 = { package = "block2", version = "0.6" }
+# Unpacking extension .zip files; flate2's Rust backend is already in the tree.
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 
 # Windows Hello biometric gate (UserConsentVerifier) for the password vault,
 # plus webview2-com to reach the WebView2 COM handles (mute, print, ...) behind

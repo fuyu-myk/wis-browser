@@ -127,8 +127,14 @@ where
         }
     }
 
+    #[cfg(target_os = "macos")]
+    let actives = crate::extensions::changed_active_tabs(&previous, &guard);
     drop(guard);
     emit_state_changed(app);
+    #[cfg(target_os = "macos")]
+    if let Some(actives) = actives {
+        crate::extensions::sync_active(app, actives);
+    }
 
     Ok(value)
 }

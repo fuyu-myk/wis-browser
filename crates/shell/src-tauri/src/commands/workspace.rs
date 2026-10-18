@@ -58,6 +58,9 @@ pub async fn delete_workspace(
     mutate_unit_immediate(&app, &state, |s| s.with_workspace_removed(id)).await?;
     crate::private_store::release(&app, id);
 
+    #[cfg(target_os = "macos")]
+    crate::extensions::release(&app, id);
+
     // What `close_tab` drops for each tab it closes.
     for tab in tabs {
         crate::page_source::forget(tab);

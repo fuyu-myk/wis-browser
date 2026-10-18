@@ -523,6 +523,31 @@ export type StreamEvent =
   | { type: 'done' }
   | { type: 'error'; message: string }
 
+/** An installed browser extension (mirror of `wis_core::extensions::InstalledExtension`). */
+export interface InstalledExtension {
+  id: string
+  name: string
+  version: string
+}
+
+/** What an extension asks for, shown before installing it (mirror of `ExtensionReview`). */
+export interface ExtensionReview {
+  name: string
+  version: string
+  description: string
+  abilities: string[]
+  /** Permissions it asks for that Wis cannot give. */
+  unsupported: string[]
+  /** Its blocking rules on by default, when there are enough to warn about. */
+  large_rule_set: number | null
+}
+
+/** An extension copied in and waiting on its review (mirror of `extensions::StagedExtension`). */
+export interface StagedExtension {
+  token: string
+  review: ExtensionReview
+}
+
 export interface UserSettings {
   layout: LayoutMode
   top_tabs_rail_side: RailSide
@@ -590,6 +615,8 @@ export interface UserSettings {
   media_permissions: Record<string, boolean>
   /** Remembered open-in-app decisions, keyed `"<scheme>|<host>"` (true = launch). */
   app_launch_permissions: Record<string, boolean>
+  /** Installed extensions; changed only through the extension commands. */
+  extensions: InstalledExtension[]
   /** Global quick-launch sidebar widgets, in display order. */
   sidebar_widgets: Widget[]
   /** Cap loaded widget panels (LRU reclaim); off means limitless. */

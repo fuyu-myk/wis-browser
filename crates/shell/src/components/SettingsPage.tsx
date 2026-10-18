@@ -13,12 +13,14 @@ import {
   KeyboardIcon,
   KeyIcon,
   PaletteIcon,
+  PuzzleIcon,
   ShieldIcon,
   SparkleIcon,
   WifiIcon,
 } from '@/components/settingsIcons'
 import { BookmarksSection } from '@/components/BookmarksSection'
 import { ImportSection } from '@/components/ImportSection'
+import { ExtensionsSection } from '@/components/ExtensionsSection'
 import { SearchSection } from '@/components/SearchSection'
 import { AppearanceSection } from '@/components/AppearanceSection'
 import { DesignSection } from '@/components/DesignSection'
@@ -58,6 +60,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'sitedata', label: 'Site data', icon: <DatabaseIcon /> },
   { id: 'bookmarks', label: 'Bookmarks', icon: <BookmarkIcon /> },
   { id: 'import', label: 'Import', icon: <ImportIcon /> },
+  { id: 'extensions', label: 'Extensions', icon: <PuzzleIcon /> },
   { id: 'passwords', label: 'Passwords', icon: <KeyIcon /> },
   { id: 'ai', label: 'AI assistant', icon: <SparkleIcon /> },
   { id: 'shortcuts', label: 'Shortcuts', icon: <KeyboardIcon /> },
@@ -246,6 +249,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
           workspaceId={activeWorkspace?.id ?? null}
           ephemeral={activeWorkspace?.ephemeral ?? false}
         />
+        <ExtensionsSection installed={settings.extensions} />
         <PasswordsSection />
         <AiSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <KeyboardShortcutsSection

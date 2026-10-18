@@ -3314,6 +3314,13 @@ body.glass-chrome .kb-content {
 }
 .kb-modal-title { font-size: 16px; font-weight: 650; color: var(--text-primary); }
 .kb-modal-msg { margin-top: 8px; font-size: 13px; color: var(--text-secondary); line-height: 1.45; }
+.kb-ext-line { display: block; }
+.kb-ext-line + .kb-ext-line { margin-top: 6px; }
+.kb-ext-heading { color: var(--text-primary); font-weight: 500; }
+.kb-ext-item + .kb-ext-item { margin-top: 2px; }
+.kb-ext-item { position: relative; padding-left: 14px; }
+.kb-ext-item::before { content: '•'; position: absolute; left: 2px; }
+.kb-ext-warn { color: var(--text-primary); }
 .kb-modal-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
 .kb-modal-btn {
   padding: 8px 16px;

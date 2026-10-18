@@ -169,6 +169,10 @@ pub struct UserSettings {
     /// True launches without asking; false drops silently.
     #[serde(default)]
     pub app_launch_permissions: HashMap<String, bool>,
+    /// Installed browser extensions. Changed only by the extension commands,
+    /// which keep the files and the list in step.
+    #[serde(default)]
+    pub extensions: Vec<crate::extensions::InstalledExtension>,
     /// Global quick-launch sidebar widgets (social apps + AI providers), in
     /// display order. Shown in every workspace's sidebar; clicking one opens
     /// its URL in a split pane. Empty by default.
@@ -474,6 +478,7 @@ impl Default for UserSettings {
             ua_site_overrides: HashMap::new(),
             media_permissions: HashMap::new(),
             app_launch_permissions: HashMap::new(),
+            extensions: Vec::new(),
             sidebar_widgets: Vec::new(),
             widget_panel_limit_enabled: true,
             widget_panel_limit: 2,
@@ -727,6 +732,7 @@ impl UserSettings {
             app_launch_permissions: patch
                 .app_launch_permissions
                 .unwrap_or_else(|| self.app_launch_permissions.clone()),
+            extensions: self.extensions.clone(),
             sidebar_widgets: patch
                 .sidebar_widgets
                 .unwrap_or_else(|| self.sidebar_widgets.clone()),
