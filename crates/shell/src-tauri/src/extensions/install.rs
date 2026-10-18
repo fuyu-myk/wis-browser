@@ -282,15 +282,16 @@ async fn reload(
     state: &State<'_, AppState>,
     before: &[InstalledExtension],
 ) -> WisResult<()> {
-    let (wanted, targets) = {
+    let (wanted, grants, targets) = {
         let browser = state.browser.lock().await;
         (
             super::wanted_by_workspace(&browser),
+            super::grants_by_extension(&browser.settings.extensions),
             super::rebuild_targets(before, &browser),
         )
     };
     let dir = extensions_dir(app)?;
-    app.run_on_main_thread(move || host::sync_all(dir, wanted))
+    app.run_on_main_thread(move || host::sync_all(dir, wanted, grants))
         .map_err(|err| refused(format!("run_on_main_thread: {err}")))?;
     if let Err(err) = app.emit(super::EXTENSIONS_CHANGED_EVENT, targets) {
         log::warn!("open tabs were not told the extensions changed: {err}");

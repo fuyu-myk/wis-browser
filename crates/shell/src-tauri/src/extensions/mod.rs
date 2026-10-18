@@ -7,15 +7,19 @@ mod actions;
 #[cfg(target_os = "macos")]
 mod adapters;
 #[cfg(target_os = "macos")]
+mod grants;
+#[cfg(target_os = "macos")]
 mod host;
 #[cfg(target_os = "macos")]
 mod install;
+#[cfg(target_os = "macos")]
+mod prompts;
 #[cfg(target_os = "macos")]
 mod stage;
 
 use serde::Serialize;
 use tauri::{AppHandle, State};
-use wis_core::extensions::ExtensionReview;
+use wis_core::extensions::{ExtensionReview, InstalledExtension};
 use wis_core::{WisError, WisResult};
 
 use crate::state::AppState;
@@ -317,6 +321,71 @@ pub async fn extension_open_options(
     }
 }
 
+/// Answers a running extension's request for more access.
+#[tauri::command]
+pub async fn extension_answer_permission(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    request: u64,
+    allow: bool,
+) -> WisResult<()> {
+    #[cfg(target_os = "macos")]
+    {
+        let workspace =
+            state
+                .window_workspace(window.label())
+                .ok_or_else(|| WisError::InvalidInput {
+                    message: "this window has no workspace".into(),
+                })?;
+        on_main(&window, move |_| prompts::answer(request, workspace, allow)).await
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, state, request, allow);
+        Err(unavailable())
+    }
+}
+
+/// What an extension was allowed while running, in words.
+#[tauri::command]
+pub async fn extension_granted_abilities(
+    state: State<'_, AppState>,
+    id: String,
+) -> WisResult<Vec<String>> {
+    let browser = state.browser.lock().await;
+    Ok(browser
+        .settings
+        .extensions
+        .iter()
+        .find(|e| e.id == id)
+        .map(wis_core::extension_access::granted_abilities)
+        .unwrap_or_default())
+}
+
+/// Takes back everything an extension was allowed while running.
+#[tauri::command]
+pub async fn extension_revoke_granted(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> WisResult<()> {
+    #[cfg(target_os = "macos")]
+    return install::change(app, state, move |list| {
+        let all = list
+            .iter()
+            .find(|e| e.id == id)
+            .map(|e| e.granted.clone())
+            .unwrap_or_default();
+        wis_core::extension_access::without_granted(list, &id, &all)
+    })
+    .await;
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, state, id);
+        Err(unavailable())
+    }
+}
+
 /// Runs `work` on the main thread with the window, and waits for its answer.
 #[cfg(target_os = "macos")]
 async fn on_main<T: Send + 'static>(
@@ -335,6 +404,44 @@ async fn on_main<T: Send + 'static>(
     rx.await.map_err(|_| WisError::InvalidInput {
         message: "the main thread dropped the request".into(),
     })
+}
+
+/// Each extension's grants from while it ran, by id.
+#[cfg(target_os = "macos")]
+fn grants_by_extension(
+    list: &[InstalledExtension],
+) -> std::collections::HashMap<String, Vec<String>> {
+    list.iter()
+        .map(|e| (e.id.clone(), e.granted.clone()))
+        .collect()
+}
+
+#[cfg(target_os = "macos")]
+fn remember_granted(id: String, items: Vec<String>) {
+    edit_later(move |list| wis_core::extension_access::with_granted(list, &id, &items));
+}
+
+#[cfg(target_os = "macos")]
+fn forget_granted(id: String, items: Vec<String>) {
+    edit_later(move |list| wis_core::extension_access::without_granted(list, &id, &items));
+}
+
+/// Saves a change to the installed extensions made from the main thread.
+#[cfg(target_os = "macos")]
+fn edit_later(
+    edit: impl FnOnce(&[InstalledExtension]) -> WisResult<Vec<InstalledExtension>> + Send + 'static,
+) {
+    use tauri::Manager;
+
+    let Some(app) = APP.get().cloned() else {
+        return;
+    };
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<AppState>();
+        if let Err(err) = install::change(app.clone(), state, edit).await {
+            log::warn!("an extension's access was not saved: {err}");
+        }
+    });
 }
 
 /// The extensions that run in each workspace, by id.
@@ -416,10 +523,11 @@ pub(crate) async fn with_extensions(
                     wis_core::extensions::wanted_in(&browser.settings.extensions, w),
                     w.ephemeral,
                     w.active_tab_id.map(tab_label),
+                    grants_by_extension(&browser.settings.extensions),
                 )
             })
     };
-    let Some((wanted, private, active)) = found else {
+    let Some((wanted, private, active, grants)) = found else {
         return Ok((builder, false));
     };
     if wanted.is_empty() {
@@ -431,6 +539,7 @@ pub(crate) async fn with_extensions(
 
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
     let ensured = app.run_on_main_thread(move || {
+        grants::init(grants);
         host::ensure(
             workspace, private, proxy_port, dir, wanted, active, ready_tx,
         );

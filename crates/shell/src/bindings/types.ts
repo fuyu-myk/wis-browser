@@ -531,6 +531,7 @@ export interface InstalledExtension {
   disabled_in: WorkspaceId[]
   allow_private: boolean
   pinned: boolean
+  granted: string[]
 }
 
 /** What an extension asks for, shown before installing it (mirror of `ExtensionReview`). */
@@ -556,6 +557,14 @@ export interface ExtensionAction {
   has_options: boolean
   /** A PNG data URL. */
   icon: string | null
+}
+
+/** A running extension asking for more access (mirror of `extensions::prompts::PermissionRequest`). */
+export interface ExtensionPermissionRequest {
+  request: number
+  workspace_id: WorkspaceId
+  name: string
+  abilities: string[]
 }
 
 /** An extension copied in and waiting on its review (mirror of `extensions::StagedExtension`). */

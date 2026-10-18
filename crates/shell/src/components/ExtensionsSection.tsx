@@ -45,6 +45,39 @@ function ReviewDetails({ staged }: { staged: StagedExtension }) {
   )
 }
 
+interface GrantedRowProps {
+  ext: InstalledExtension
+  busy: boolean
+  onTakeBack: () => void
+}
+
+function GrantedRow({ ext, busy, onTakeBack }: GrantedRowProps) {
+  const { data: abilities = [] } = useQuery({
+    queryKey: ['extension-granted', ext.id, ext.granted],
+    queryFn: () => commands.extensionGrantedAbilities(ext.id),
+  })
+  if (abilities.length === 0) return null
+  return (
+    <div className="row kb-ext-sub">
+      <div className="l">
+        <span>Allowed while running</span>
+        {abilities.map((ability) => (
+          <span key={ability}>{ability}</span>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="kb-btn"
+        onClick={onTakeBack}
+        disabled={busy}
+        aria-label={`Take back what ${ext.name} was allowed while running`}
+      >
+        Take back
+      </button>
+    </div>
+  )
+}
+
 export function ExtensionsSection({ installed, workspace }: ExtensionsSectionProps) {
   const { data: supported } = useQuery({
     queryKey: ['extensions-supported'],
@@ -152,6 +185,13 @@ export function ExtensionsSection({ installed, workspace }: ExtensionsSectionPro
               label={`Allow ${ext.name} in private workspaces`}
             />
           </div>
+          {ext.granted.length > 0 && (
+            <GrantedRow
+              ext={ext}
+              busy={busy}
+              onTakeBack={() => void run(() => commands.extensionRevokeGranted(ext.id))}
+            />
+          )}
         </div>
       ))}
       {error && <p className="kb-backup-status is-error">{error}</p>}

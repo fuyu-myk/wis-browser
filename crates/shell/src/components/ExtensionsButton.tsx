@@ -54,7 +54,7 @@ export function ExtensionsButton({ workspaceId, activeTabId }: ExtensionsButtonP
     staleTime: Infinity,
   })
   const buttonRef = useRef<HTMLButtonElement>(null)
-  const menu = useExtensionsMenu(workspaceId)
+  const menu = useExtensionsMenu(workspaceId, buttonRef)
   const installed = state?.settings.extensions ?? []
   const pinned = new Set(installed.filter((e) => e.pinned).map((e) => e.id))
   const actions = useExtensionActions(workspaceId, activeTabId, !!supported && pinned.size > 0)

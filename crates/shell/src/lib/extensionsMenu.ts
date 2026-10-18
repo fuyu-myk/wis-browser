@@ -1,6 +1,8 @@
 export const EXT_MENU_OPEN = 'wis-extmenu-open'
 export const EXT_MENU_READY = 'wis-extmenu-ready'
 export const EXT_MENU_DONE = 'wis-extmenu-done'
+/** The prompt's measured height, from the surface. */
+export const EXT_PROMPT_SIZE = 'wis-extmenu-prompt-size'
 
 export interface Box {
   x: number
@@ -10,6 +12,9 @@ export interface Box {
 }
 
 export const MENU_WIDTH = 264
+export const PROMPT_WIDTH = 300
+/** The prompt's height until the surface has measured it. */
+export const PROMPT_HEIGHT = 150
 const ROW = 34
 const PADDING = 6
 const BORDER = 1
@@ -22,15 +27,20 @@ export function menuHeight(rows: number): number {
   return BORDER * 2 + PADDING * 2 + Math.max(rows, 1) * ROW + DIVIDER + ROW
 }
 
+function below(button: Box, width: number, height: number, viewport: { width: number; height: number }): Box {
+  const x = Math.min(Math.max(MARGIN, button.x + button.width - width), viewport.width - width - MARGIN)
+  const under = button.y + button.height + GAP
+  const y = under + height > viewport.height - MARGIN ? Math.max(MARGIN, button.y - GAP - height) : under
+  return { x, y, width, height }
+}
+
 /** Below `button` with the right edges lined up, above it when there is no
  *  room below, and always inside the window. */
 export function menuBounds(button: Box, rows: number, viewport: { width: number; height: number }): Box {
-  const height = menuHeight(rows)
-  const x = Math.min(
-    Math.max(MARGIN, button.x + button.width - MENU_WIDTH),
-    viewport.width - MENU_WIDTH - MARGIN,
-  )
-  const below = button.y + button.height + GAP
-  const y = below + height > viewport.height - MARGIN ? Math.max(MARGIN, button.y - GAP - height) : below
-  return { x, y, width: MENU_WIDTH, height }
+  return below(button, MENU_WIDTH, menuHeight(rows), viewport)
+}
+
+/** Where a request for more access opens, placed like the menu. */
+export function promptBounds(button: Box, height: number, viewport: { width: number; height: number }): Box {
+  return below(button, PROMPT_WIDTH, height, viewport)
 }

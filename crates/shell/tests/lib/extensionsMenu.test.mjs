@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { MENU_WIDTH, menuBounds, menuHeight } from '../../src/lib/extensionsMenu.ts'
+import { MENU_WIDTH, PROMPT_WIDTH, menuBounds, menuHeight, promptBounds } from '../../src/lib/extensionsMenu.ts'
 
 const viewport = { width: 1200, height: 800 }
 const button = { x: 900, y: 20, width: 24, height: 24 }
@@ -31,5 +31,21 @@ describe('menuBounds', () => {
   test('grows with its rows and keeps room for one when empty', () => {
     assert.ok(menuHeight(3) > menuHeight(1))
     assert.equal(menuHeight(0), menuHeight(1))
+  })
+})
+
+describe('promptBounds', () => {
+  test('opens below the button at the height asked, its right edge on the button’s', () => {
+    const bounds = promptBounds(button, 180, viewport)
+    assert.equal(bounds.x, 924 - PROMPT_WIDTH)
+    assert.equal(bounds.y, 50)
+    assert.equal(bounds.width, PROMPT_WIDTH)
+    assert.equal(bounds.height, 180)
+  })
+
+  test('opens above the button when there is no room below', () => {
+    const low = { x: 900, y: 700, width: 24, height: 24 }
+    const bounds = promptBounds(low, 180, viewport)
+    assert.equal(bounds.y + bounds.height, 694)
   })
 })

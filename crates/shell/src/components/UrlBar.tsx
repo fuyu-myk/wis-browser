@@ -726,7 +726,7 @@ export function FloatingUrlBar({
       <AutofillKey activeTab={activeTab} />
       <OpenExternalButton activeTab={activeTab} />
       <ExtensionsButton
-        workspaceId={activeTab?.workspace_id ?? null}
+        workspaceId={activeTab?.workspace_id ?? fallbackWorkspaceId}
         activeTabId={activeTab?.id ?? null}
       />
       <BookmarkStar activeTab={activeTab} />

@@ -122,6 +122,26 @@ pub(super) fn context_of(
     })
 }
 
+pub(super) fn is_private(workspace: WorkspaceId) -> bool {
+    HOSTS.with(|hosts| {
+        hosts
+            .try_borrow()
+            .ok()
+            .and_then(|h| h.get(&workspace).map(|host| host.private))
+            .unwrap_or(true)
+    })
+}
+
+/// Every loaded context, with its extension's id.
+pub(super) fn contexts() -> Vec<(String, Retained<WKWebExtensionContext>)> {
+    HOSTS.with_borrow(|hosts| {
+        hosts
+            .values()
+            .flat_map(|host| host.contexts.iter().map(|(id, c)| (id.clone(), c.clone())))
+            .collect()
+    })
+}
+
 pub(super) fn selected_tab(workspace: WorkspaceId) -> Option<Retained<HostTab>> {
     HOSTS.with(|hosts| {
         let hosts = hosts.try_borrow().ok()?;
@@ -313,10 +333,15 @@ fn wait_for_loads(workspace: WorkspaceId, ready: oneshot::Sender<bool>) {
 
 /// Loads what each workspace's list adds and unloads what it drops, in every
 /// live host.
-pub(super) fn sync_all(dir: PathBuf, wanted: HashMap<WorkspaceId, Vec<String>>) {
+pub(super) fn sync_all(
+    dir: PathBuf,
+    wanted: HashMap<WorkspaceId, Vec<String>>,
+    grants: HashMap<String, Vec<String>>,
+) {
     let Some(mtm) = MainThreadMarker::new() else {
         return;
     };
+    super::grants::set(grants);
     let workspaces: Vec<WorkspaceId> = HOSTS.with_borrow(|hosts| hosts.keys().copied().collect());
     for workspace in workspaces {
         let list = wanted.get(&workspace).cloned().unwrap_or_default();
@@ -427,6 +452,7 @@ fn load_context(
         for pattern in extension.allRequestedMatchPatterns().iter() {
             context.setPermissionStatus_forMatchPattern(granted, &pattern);
         }
+        super::grants::apply(&context, id);
         controller
             .loadExtensionContext_error(&context)
             .map_err(|err| err.localizedDescription().to_string())?;
@@ -551,6 +577,7 @@ pub(super) fn close_tab(label: &str) {
 
 /// Ends the workspace's host with its window: its extensions stop running.
 pub(super) fn release(workspace: WorkspaceId) {
+    super::prompts::forget(workspace);
     let host = HOSTS.with_borrow_mut(|hosts| {
         let host = hosts.remove(&workspace);
         refresh_live(hosts);

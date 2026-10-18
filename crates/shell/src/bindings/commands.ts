@@ -1598,6 +1598,19 @@ export const commands = {
     return invoke('extension_open_options', { id })
   },
 
+  async extensionAnswerPermission(request: number, allow: boolean): Promise<void> {
+    return invoke('extension_answer_permission', { request, allow })
+  },
+
+  /** What an extension was allowed while running, in words. */
+  async extensionGrantedAbilities(id: string): Promise<string[]> {
+    return invoke('extension_granted_abilities', { id })
+  },
+
+  async extensionRevokeGranted(id: string): Promise<void> {
+    return invoke('extension_revoke_granted', { id })
+  },
+
   /** 
    * Close an extension popup on screen; names the extension whose popup this click
    * found open or just closed.

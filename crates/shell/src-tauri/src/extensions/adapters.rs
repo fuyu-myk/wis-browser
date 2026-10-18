@@ -4,14 +4,16 @@ use block2_06::DynBlock;
 use objc2_06::rc::{Retained, Weak};
 use objc2_06::runtime::{NSObject, NSObjectProtocol, ProtocolObject};
 use objc2_06::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly};
-use objc2_foundation::{NSArray, NSError, NSString, NSURL};
+use objc2_foundation::{NSArray, NSError, NSSet, NSString, NSURL};
 use objc2_web_kit::{
     WKWebExtensionAction, WKWebExtensionContext, WKWebExtensionController,
-    WKWebExtensionControllerDelegate, WKWebExtensionTab, WKWebExtensionWindow, WKWebView,
+    WKWebExtensionControllerDelegate, WKWebExtensionMatchPattern, WKWebExtensionTab,
+    WKWebExtensionWindow, WKWebView,
 };
 use wis_core::WorkspaceId;
 
 use super::host::{selected_tab, tabs_of, window_of};
+use super::prompts::{ask, Asked, Done};
 
 pub(super) struct TabIvars {
     workspace: WorkspaceId,
@@ -156,6 +158,45 @@ define_class!(
             _context: &WKWebExtensionContext,
         ) {
             super::notify_actions_changed(self.ivars().workspace);
+        }
+
+        #[unsafe(method(webExtensionController:promptForPermissions:inTab:forExtensionContext:completionHandler:))]
+        fn prompt_for_permissions(
+            &self,
+            _controller: &WKWebExtensionController,
+            permissions: &NSSet<NSString>,
+            _tab: Option<&ProtocolObject<dyn WKWebExtensionTab>>,
+            context: &WKWebExtensionContext,
+            done: &Done<NSString>,
+        ) {
+            let asked = Asked::Permissions(done.copy(), Retained::from(permissions));
+            ask(self.ivars().workspace, context, asked);
+        }
+
+        #[unsafe(method(webExtensionController:promptForPermissionMatchPatterns:inTab:forExtensionContext:completionHandler:))]
+        fn prompt_for_patterns(
+            &self,
+            _controller: &WKWebExtensionController,
+            patterns: &NSSet<WKWebExtensionMatchPattern>,
+            _tab: Option<&ProtocolObject<dyn WKWebExtensionTab>>,
+            context: &WKWebExtensionContext,
+            done: &Done<WKWebExtensionMatchPattern>,
+        ) {
+            let asked = Asked::Patterns(done.copy(), Retained::from(patterns));
+            ask(self.ivars().workspace, context, asked);
+        }
+
+        #[unsafe(method(webExtensionController:promptForPermissionToAccessURLs:inTab:forExtensionContext:completionHandler:))]
+        fn prompt_for_urls(
+            &self,
+            _controller: &WKWebExtensionController,
+            urls: &NSSet<NSURL>,
+            _tab: Option<&ProtocolObject<dyn WKWebExtensionTab>>,
+            context: &WKWebExtensionContext,
+            done: &Done<NSURL>,
+        ) {
+            let asked = Asked::Urls(done.copy(), Retained::from(urls));
+            ask(self.ivars().workspace, context, asked);
         }
 
         #[unsafe(method(webExtensionController:openOptionsPageForExtensionContext:completionHandler:))]

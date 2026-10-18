@@ -18,6 +18,9 @@ pub struct InstalledExtension {
     pub allow_private: bool,
     #[serde(default)]
     pub pinned: bool,
+    /// Permissions and match patterns it asked for while running and was allowed.
+    #[serde(default)]
+    pub granted: Vec<String>,
 }
 
 pub const MAX_EXTENSIONS: usize = 64;
@@ -120,7 +123,8 @@ fn tidy(raw: &str, max: usize) -> String {
         .collect()
 }
 
-fn tidy_name(raw: &str) -> String {
+/// An extension's name as Wis shows it.
+pub fn tidy_name(raw: &str) -> String {
     let name = tidy(raw, MAX_NAME);
     if name.is_empty() {
         "Extension".into()
@@ -179,7 +183,7 @@ pub fn wanted_in(list: &[InstalledExtension], workspace: &Workspace) -> Vec<Stri
         .collect()
 }
 
-fn with_changed(
+pub(crate) fn with_changed(
     list: &[InstalledExtension],
     id: &str,
     change: impl FnOnce(&mut InstalledExtension),
@@ -225,7 +229,7 @@ pub fn with_private_allowed(
     with_changed(list, id, |ext| ext.allow_private = allowed)
 }
 
-fn is_site_pattern(permission: &str) -> bool {
+pub fn is_site_pattern(permission: &str) -> bool {
     permission == "<all_urls>" || permission.contains("://")
 }
 
@@ -278,23 +282,18 @@ fn site_access(patterns: &[String]) -> Option<String> {
     Some(format!("Read and change your data on {named}"))
 }
 
-pub fn review(input: &ReviewInput) -> ExtensionReview {
-    let recognised = |p: &str| input.recognised.iter().any(|r| r == p);
-
-    let mut abilities: Vec<String> = site_access(input.patterns).into_iter().collect();
+/// What `permissions` and `patterns` let an extension do, in words, most
+/// far-reaching first.
+pub(crate) fn abilities(permissions: &[String], patterns: &[String]) -> Vec<String> {
+    let mut abilities: Vec<String> = site_access(patterns).into_iter().collect();
     for (permission, words) in SPOKEN {
-        if recognised(permission) && !abilities.iter().any(|a| a == words) {
+        if permissions.iter().any(|p| p == permission) && !abilities.iter().any(|a| a == words) {
             abilities.push(words.into());
         }
     }
-    let mut unknown: Vec<&String> = input
-        .recognised
+    let mut unknown: Vec<&String> = permissions
         .iter()
-        .filter(|p| {
-            !QUIET.contains(&p.as_str())
-                && !NEEDS_APP.contains(&p.as_str())
-                && !SPOKEN.iter().any(|(known, _)| known == p)
-        })
+        .filter(|p| !QUIET.contains(&p.as_str()) && !SPOKEN.iter().any(|(known, _)| known == p))
         .collect();
     unknown.sort();
     unknown.dedup();
@@ -303,6 +302,19 @@ pub fn review(input: &ReviewInput) -> ExtensionReview {
             .into_iter()
             .map(|p| format!("Use “{}”", tidy(p, MAX_NAME))),
     );
+
+    abilities
+}
+
+pub fn review(input: &ReviewInput) -> ExtensionReview {
+    let recognised = |p: &str| input.recognised.iter().any(|r| r == p);
+    let usable: Vec<String> = input
+        .recognised
+        .iter()
+        .filter(|p| !NEEDS_APP.contains(&p.as_str()))
+        .cloned()
+        .collect();
+    let abilities = abilities(&usable, input.patterns);
 
     let mut unsupported: Vec<String> = input
         .declared

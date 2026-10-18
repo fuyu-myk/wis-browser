@@ -1,6 +1,7 @@
 /**
  * The extensions menu, hosted by `overlay-extmenu`: each extension running in
- * the workspace, run from here with its popup anchored to the puzzle button.
+ * the workspace, run from here with its popup anchored to the puzzle button,
+ * or an extension's request for more access.
  */
 
 import { useEffect, useState } from 'react'
@@ -18,6 +19,7 @@ import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import type { ExtensionsMenuPayload } from '@/hooks/useExtensionsMenu'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { ExtensionPrompt } from '@/overlay/surfaces/ExtensionPrompt'
 
 export function ExtensionsMenuSurface() {
   const { data: state } = useBrowserState()
@@ -41,16 +43,21 @@ export function ExtensionsMenuSurface() {
 
   if (!menu) return null
 
-  const pinned = new Set(state?.settings.extensions.filter((e) => e.pinned).map((e) => e.id))
-
   const close = () => {
     setMenu(null)
     void commands.hideOverlay('extmenu').catch(() => undefined)
     void emit(EXT_MENU_DONE)
   }
 
+  if (menu.kind === 'prompt') {
+    return <ExtensionPrompt request={menu.request} glass={menusGlass(state?.settings)} onDone={close} />
+  }
+
+  const { anchor, actions, workspaceId } = menu
+  const pinned = new Set(state?.settings.extensions.filter((e) => e.pinned).map((e) => e.id))
+
   const run = (action: ExtensionAction) => {
-    const { x, y, width, height } = menu.anchor
+    const { x, y, width, height } = anchor
     close()
     void commands.extensionRun(action.id, x, y, width, height).catch(() => undefined)
   }
@@ -62,7 +69,6 @@ export function ExtensionsMenuSurface() {
 
   const manage = () => {
     close()
-    const workspaceId = menu.workspaceId
     if (!workspaceId) return
     const settings = state?.tabs.find((t) => t.url === SETTINGS_URL && t.workspace_id === workspaceId)
     if (settings) void commands.setActiveTab(settings.id).catch(() => undefined)
@@ -71,10 +77,10 @@ export function ExtensionsMenuSurface() {
 
   return (
     <div className={cx('kb-extmenu', { 'glass-menus': menusGlass(state?.settings) })} role="menu">
-      {menu.actions.length === 0 ? (
+      {actions.length === 0 ? (
         <div className="kb-extmenu-empty">No extensions run in this workspace.</div>
       ) : (
-        menu.actions.map((action) => (
+        actions.map((action) => (
           <div className="kb-extmenu-row" key={action.id}>
             <button
               type="button"
