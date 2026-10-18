@@ -8,22 +8,27 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::ffi::{c_char, c_void, CString};
 use std::path::{Path, PathBuf};
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use block2_06::RcBlock;
 use objc2_06::rc::Retained;
 use objc2_06::runtime::{AnyClass, AnyObject, ProtocolObject};
 use objc2_06::{MainThreadMarker, MainThreadOnly};
-use objc2_foundation::{NSArray, NSError, NSObjectNSKeyValueCoding, NSString, NSURL, NSUUID};
+use objc2_foundation::{
+    NSArray, NSError, NSObjectNSKeyValueCoding, NSSet, NSString, NSURL, NSUUID,
+};
 use objc2_web_kit::{
     WKWebExtension, WKWebExtensionContext, WKWebExtensionContextPermissionStatus,
-    WKWebExtensionController, WKWebExtensionControllerConfiguration, WKWebExtensionWindow,
-    WKWebView, WKWebViewConfiguration, WKWebsiteDataStore,
+    WKWebExtensionController, WKWebExtensionControllerConfiguration, WKWebExtensionDataRecord,
+    WKWebExtensionDataType, WKWebExtensionTabChangedProperties, WKWebExtensionWindow, WKWebView,
+    WKWebViewConfiguration, WKWebsiteDataStore,
 };
 use tokio::sync::oneshot;
 use wis_core::WorkspaceId;
 
 use super::adapters::{new_delegate, new_tab, new_window, HostDelegate, HostTab, HostWindow};
+use super::TabChange;
 
 /// Public from macOS 15.4; before that the class is missing.
 pub(super) fn supported() -> bool {
@@ -141,6 +146,23 @@ fn workspace_store(workspace: WorkspaceId, mtm: MainThreadMarker) -> Retained<WK
     unsafe { WKWebsiteDataStore::dataStoreForIdentifier(&id, mtm) }
 }
 
+/// A regular workspace's controller configuration, keeping its extensions'
+/// storage under an identifier derived from the workspace.
+fn persistent_configuration(
+    workspace: WorkspaceId,
+    mtm: MainThreadMarker,
+) -> Retained<WKWebExtensionControllerConfiguration> {
+    let identifier =
+        crate::commands::workspace_id_to_data_store_bytes(workspace).map(|byte| byte ^ 0xa5);
+    // SAFETY: a class factory with no preconditions, on the main thread.
+    unsafe {
+        WKWebExtensionControllerConfiguration::configurationWithIdentifier(
+            &NSUUID::from_bytes(identifier),
+            mtm,
+        )
+    }
+}
+
 fn new_host(
     workspace: WorkspaceId,
     private: bool,
@@ -159,17 +181,12 @@ fn new_host(
         return None;
     }
 
-    let identifier =
-        crate::commands::workspace_id_to_data_store_bytes(workspace).map(|byte| byte ^ 0xa5);
     // SAFETY: main thread; each object is configured before the controller is built from it.
     let controller = unsafe {
         let config = if private {
             WKWebExtensionControllerConfiguration::nonPersistentConfiguration(mtm)
         } else {
-            WKWebExtensionControllerConfiguration::configurationWithIdentifier(
-                &NSUUID::from_bytes(identifier),
-                mtm,
-            )
+            persistent_configuration(workspace, mtm)
         };
         config.setDefaultWebsiteDataStore(Some(&store));
         let pages = config.webViewConfiguration();
@@ -533,6 +550,102 @@ pub(super) fn release(workspace: WorkspaceId) {
     }
 }
 
+/// Tells the controller what changed about a tab, for `tabs.onUpdated`.
+pub(super) fn tab_changed(label: &str, change: TabChange) {
+    let properties = match change {
+        TabChange::Title => WKWebExtensionTabChangedProperties::Title,
+        TabChange::Started => {
+            WKWebExtensionTabChangedProperties::Loading | WKWebExtensionTabChangedProperties::URL
+        }
+        TabChange::Finished => WKWebExtensionTabChangedProperties::Loading,
+    };
+    let found = HOSTS.with_borrow(|hosts| {
+        hosts.values().find_map(|host| {
+            let tab = host.tabs.iter().find(|t| t.label() == label)?;
+            Some((host.controller.clone(), tab.clone()))
+        })
+    });
+    let Some((controller, tab)) = found else {
+        return;
+    };
+    // SAFETY: main thread; the tab is alive for the call.
+    unsafe {
+        controller.didChangeTabProperties_forTab(properties, ProtocolObject::from_ref(&*tab))
+    };
+}
+
+/// Whether a stored data record belongs to an extension no longer kept.
+fn is_stale(id: &str, size: usize, keep: &HashSet<String>) -> bool {
+    size > 0 && !keep.contains(id)
+}
+
+/// Clears the stored data of every extension not in `keep` from each listed
+/// regular workspace's extension storage, whether its window is open or not.
+pub(super) fn clear_data(workspaces: Vec<WorkspaceId>, keep: HashSet<String>) {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    // SAFETY: a class property, on the main thread.
+    let types = unsafe { WKWebExtensionController::allExtensionDataTypes(mtm) };
+    for workspace in workspaces {
+        let live = HOSTS.with_borrow(|hosts| {
+            hosts
+                .get(&workspace)
+                .filter(|host| !host.private)
+                .map(|host| host.controller.clone())
+        });
+        let controller = live.unwrap_or_else(|| {
+            // SAFETY: main thread; a controller on the workspace's storage, alive until the clearing ends.
+            unsafe {
+                WKWebExtensionController::initWithConfiguration(
+                    WKWebExtensionController::alloc(mtm),
+                    &persistent_configuration(workspace, mtm),
+                )
+            }
+        });
+        clear_records(controller, types.clone(), keep.clone());
+    }
+}
+
+fn clear_records(
+    controller: Retained<WKWebExtensionController>,
+    types: Retained<NSSet<WKWebExtensionDataType>>,
+    keep: HashSet<String>,
+) {
+    let held = controller.clone();
+    let removing = types.clone();
+    let fetched = RcBlock::new(move |records: NonNull<NSArray<WKWebExtensionDataRecord>>| {
+        // SAFETY: WebKit hands over a live array for the length of the call.
+        let records = unsafe { records.as_ref() };
+        let stale: Vec<Retained<WKWebExtensionDataRecord>> = records
+            .iter()
+            // SAFETY: property reads on the main thread.
+            .filter(|r| unsafe {
+                is_stale(
+                    &r.uniqueIdentifier().to_string(),
+                    r.totalSizeInBytes(),
+                    &keep,
+                )
+            })
+            .collect();
+        if stale.is_empty() {
+            return;
+        }
+
+        let stale = NSArray::from_retained_slice(&stale);
+        let until_done = held.clone();
+        let done = RcBlock::new(move || {
+            let _ = &until_done;
+        });
+        // SAFETY: main thread; the records came from this controller.
+        unsafe {
+            held.removeDataOfTypes_fromDataRecords_completionHandler(&removing, &stale, &done)
+        };
+    });
+    // SAFETY: main thread; the block keeps the controller alive until it runs.
+    unsafe { controller.fetchDataRecordsOfTypes_completionHandler(&types, &fetched) };
+}
+
 /// Records each workspace's active tab and tells its controller once that
 /// tab is registered.
 pub(super) fn set_active(actives: Vec<(WorkspaceId, Option<String>)>) {
@@ -569,9 +682,19 @@ mod tests {
     use objc2::runtime::AnyObject;
     use objc2::{class, sel};
 
-    use super::selected;
+    use std::collections::HashSet;
+
+    use super::{is_stale, selected};
 
     type Obj = *mut AnyObject;
+
+    #[test]
+    fn data_is_cleared_only_for_extensions_no_longer_kept() {
+        let keep: HashSet<String> = ["kept".to_string()].into();
+        assert!(is_stale("removed", 7, &keep));
+        assert!(!is_stale("kept", 7, &keep));
+        assert!(!is_stale("removed", 0, &keep));
+    }
 
     #[test]
     fn the_wanted_tab_is_active_once_registered() {

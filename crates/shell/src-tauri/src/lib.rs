@@ -503,6 +503,8 @@ pub fn run() {
             audio::start_poll(app.handle().clone());
             usage::start(app.handle().clone());
             canvas::start(app.handle().clone());
+            #[cfg(target_os = "macos")]
+            extensions::sweep_at_launch(app.handle());
 
             // Periodically snapshot session cookies for activated workspaces so
             // logins survive a restart even when no page reload occurs (e.g. a

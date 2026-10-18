@@ -2,7 +2,7 @@
 //! `.zip` is copied into a staging folder and reviewed; installing moves it
 //! into the extensions folder under a fresh id.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -245,10 +245,11 @@ pub(super) async fn remove(
     }
 
     let dir = extensions_dir(&app)?.join(&id);
-    change(app, state, move |list| {
+    change(app.clone(), state.clone(), move |list| {
         Ok(extensions::without_extension(list, &id))
     })
     .await?;
+    clear_removed_data(&app, &state).await;
 
     blocking(move || match std::fs::remove_dir_all(&dir) {
         Ok(()) => Ok(()),
@@ -295,6 +296,61 @@ async fn reload(
         log::warn!("open tabs were not told the extensions changed: {err}");
     }
     Ok(())
+}
+
+/// Clears what extensions no longer installed stored, in every regular
+/// workspace, including what earlier removals left.
+async fn clear_removed_data(app: &AppHandle, state: &State<'_, AppState>) {
+    let (workspaces, keep) = {
+        let browser = state.browser.lock().await;
+        let workspaces: Vec<_> = browser
+            .workspaces
+            .iter()
+            .filter(|w| !w.ephemeral)
+            .map(|w| w.id)
+            .collect();
+        let keep: HashSet<String> = browser
+            .settings
+            .extensions
+            .iter()
+            .map(|e| e.id.clone())
+            .collect();
+        (workspaces, keep)
+    };
+    if let Err(err) = app.run_on_main_thread(move || host::clear_data(workspaces, keep)) {
+        log::warn!("removed extensions' data was not cleared: {err}");
+    }
+}
+
+/// Extension folders that are not installed.
+fn orphans(names: &[String], installed: &HashSet<String>) -> Vec<String> {
+    names
+        .iter()
+        .filter(|name| extensions::is_extension_id(name) && !installed.contains(*name))
+        .cloned()
+        .collect()
+}
+
+pub(super) async fn sweep_orphans(app: AppHandle, installed: HashSet<String>) {
+    let Some(dir) = extensions_path(&app) else {
+        return;
+    };
+    let _ = blocking(move || {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            return Ok(());
+        };
+        let names: Vec<String> = entries
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        for name in orphans(&names, &installed) {
+            if let Err(err) = std::fs::remove_dir_all(dir.join(&name)) {
+                log::warn!("an orphaned extension folder was not removed: {err}");
+            }
+        }
+        Ok(())
+    })
+    .await;
 }
 
 /// The native open panel, for a folder or a `.zip`. Main thread only.
@@ -356,6 +412,26 @@ mod tests {
     use objc2::{class, sel};
 
     type Obj = *mut AnyObject;
+
+    #[test]
+    fn only_uninstalled_extension_folders_are_orphans() {
+        let installed: std::collections::HashSet<String> =
+            ["0123456789abcdef0123456789abcdef".to_string()].into();
+        let names: Vec<String> = [
+            "0123456789abcdef0123456789abcdef",
+            "fedcba9876543210fedcba9876543210",
+            "staging",
+            ".DS_Store",
+            "notes",
+        ]
+        .iter()
+        .map(|n| n.to_string())
+        .collect();
+        assert_eq!(
+            super::orphans(&names, &installed),
+            vec!["fedcba9876543210fedcba9876543210".to_string()]
+        );
+    }
 
     /// A wrong message type aborts at runtime only.
     #[test]

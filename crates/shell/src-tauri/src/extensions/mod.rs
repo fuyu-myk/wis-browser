@@ -294,6 +294,60 @@ pub(crate) fn tab_closed(label: &str) {
     }
 }
 
+/// What changed about a tab, for the extensions watching it.
+#[cfg(target_os = "macos")]
+pub(crate) enum TabChange {
+    Title,
+    Started,
+    Finished,
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn tab_changed(app: &AppHandle, label: &str, change: TabChange) {
+    if !host::LIVE.load(std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let label = label.to_string();
+    if let Err(err) = app.run_on_main_thread(move || host::tab_changed(&label, change)) {
+        log::warn!("extensions missed a tab change: {err}");
+    }
+}
+
+/// At launch, removes extension folders no longer installed, such as one
+/// whose removal could not delete it.
+#[cfg(target_os = "macos")]
+pub(crate) fn sweep_at_launch(app: &AppHandle) {
+    use tauri::Manager;
+
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let installed = {
+            let state = app.state::<AppState>();
+            let browser = state.browser.lock().await;
+            browser
+                .settings
+                .extensions
+                .iter()
+                .map(|e| e.id.clone())
+                .collect()
+        };
+        install::sweep_orphans(app, installed).await;
+    });
+}
+
+/// Clears a deleted regular workspace's extension data, when any extension
+/// was ever installed.
+#[cfg(target_os = "macos")]
+pub(crate) fn forget_workspace(app: &AppHandle, workspace: wis_core::WorkspaceId) {
+    if !host::supported() || !install::extensions_path(app).is_some_and(|d| d.is_dir()) {
+        return;
+    }
+    let keep = std::collections::HashSet::new();
+    if let Err(err) = app.run_on_main_thread(move || host::clear_data(vec![workspace], keep)) {
+        log::warn!("extension data of {workspace} was not cleared: {err}");
+    }
+}
+
 /// Stops a workspace's extensions with its window.
 #[cfg(target_os = "macos")]
 pub(crate) fn release(app: &AppHandle, workspace: wis_core::WorkspaceId) {

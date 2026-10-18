@@ -55,11 +55,24 @@ pub async fn delete_workspace(
         .map(|w| w.tab_order.clone())
         .unwrap_or_default();
 
+    #[cfg(target_os = "macos")]
+    let ephemeral = state
+        .browser
+        .lock()
+        .await
+        .workspace(id)
+        .is_ok_and(|w| w.ephemeral);
+
     mutate_unit_immediate(&app, &state, |s| s.with_workspace_removed(id)).await?;
     crate::private_store::release(&app, id);
 
     #[cfg(target_os = "macos")]
-    crate::extensions::release(&app, id);
+    {
+        crate::extensions::release(&app, id);
+        if !ephemeral {
+            crate::extensions::forget_workspace(&app, id);
+        }
+    }
 
     // What `close_tab` drops for each tab it closes.
     for tab in tabs {

@@ -297,6 +297,12 @@ pub async fn create_tab_webview(
     {
         let app = app.clone();
         builder = builder.on_document_title_changed(move |webview, title: String| {
+            #[cfg(target_os = "macos")]
+            crate::extensions::tab_changed(
+                &app,
+                webview.label(),
+                crate::extensions::TabChange::Title,
+            );
             let nav = crate::swipe_nav::push_nav_state(&webview);
             let app = app.clone();
             let live_url = webview.url().ok();
@@ -326,6 +332,16 @@ pub async fn create_tab_webview(
         builder = builder.on_page_load(move |webview, payload: PageLoadPayload<'_>| {
             let event = payload.event();
             let loading = matches!(event, PageLoadEvent::Started);
+            #[cfg(target_os = "macos")]
+            crate::extensions::tab_changed(
+                &app,
+                webview.label(),
+                if loading {
+                    crate::extensions::TabChange::Started
+                } else {
+                    crate::extensions::TabChange::Finished
+                },
+            );
             let url_string = crate::canvas::stored_url(payload.url().clone()).to_string();
             let page_url = payload.url().clone();
 
