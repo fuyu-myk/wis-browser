@@ -193,6 +193,7 @@ pub async fn extension_set_private(
 /// for its active tab, in installed order.
 #[tauri::command]
 pub async fn extension_actions(
+    app: AppHandle,
     window: tauri::Window,
     state: State<'_, AppState>,
 ) -> WisResult<Vec<ExtensionAction>> {
@@ -211,11 +212,20 @@ pub async fn extension_actions(
                 None => Vec::new(),
             }
         };
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let proxy_port = state
+            .ensure_proxy_for(workspace)
+            .await
+            .map_err(WisError::from)?;
+        ensure_host(&app, &state, workspace, proxy_port).await;
         on_main(&window, move |_| actions::list(workspace, &ids)).await
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (window, state);
+        let _ = (app, window, state);
         Ok(Vec::new())
     }
 }
@@ -497,19 +507,17 @@ fn tab_label(id: wis_core::TabId) -> String {
     format!("tab-{}", id.as_uuid())
 }
 
-/// Gives a regular workspace's new tab its extensions, when any are
-/// installed; true when it did. Anything going wrong opens the tab without
-/// them, short of losing the builder to a main thread that is gone.
+/// Starts the extensions that run in `workspace`, unless they are running;
+/// true once they have loaded or are still loading.
 #[cfg(target_os = "macos")]
-pub(crate) async fn with_extensions(
+async fn ensure_host(
     app: &AppHandle,
     state: &AppState,
     workspace: wis_core::WorkspaceId,
     proxy_port: u16,
-    builder: Builder,
-) -> WisResult<(Builder, bool)> {
+) -> bool {
     if !host::supported() {
-        return Ok((builder, false));
+        return false;
     }
 
     let found = {
@@ -528,14 +536,17 @@ pub(crate) async fn with_extensions(
             })
     };
     let Some((wanted, private, active, grants)) = found else {
-        return Ok((builder, false));
+        return false;
     };
     if wanted.is_empty() {
-        return Ok((builder, false));
+        return false;
     }
     let Some(dir) = install::extensions_path(app) else {
-        return Ok((builder, false));
+        return false;
     };
+    if !private && state.restored_cookies.lock().await.insert(workspace) {
+        crate::cookies::restore_session_cookies(app, workspace).await;
+    }
 
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
     let ensured = app.run_on_main_thread(move || {
@@ -545,11 +556,26 @@ pub(crate) async fn with_extensions(
         );
     });
     if let Err(err) = ensured {
-        log::warn!("extensions skipped for a tab: {err}");
-        return Ok((builder, false));
+        log::warn!("extensions not started: {err}");
+        return false;
     }
+
     let ready = tokio::time::timeout(std::time::Duration::from_secs(5), ready_rx).await;
-    if matches!(ready, Ok(Ok(false)) | Ok(Err(_))) {
+    !matches!(ready, Ok(Ok(false)) | Ok(Err(_)))
+}
+
+/// Gives a regular workspace's new tab its extensions, when any are
+/// installed; true when it did. Anything going wrong opens the tab without
+/// them, short of losing the builder to a main thread that is gone.
+#[cfg(target_os = "macos")]
+pub(crate) async fn with_extensions(
+    app: &AppHandle,
+    state: &AppState,
+    workspace: wis_core::WorkspaceId,
+    proxy_port: u16,
+    builder: Builder,
+) -> WisResult<(Builder, bool)> {
+    if !ensure_host(app, state, workspace, proxy_port).await {
         return Ok((builder, false));
     }
 
