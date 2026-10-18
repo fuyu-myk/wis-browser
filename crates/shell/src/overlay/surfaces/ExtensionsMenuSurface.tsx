@@ -11,7 +11,7 @@ import type { ExtensionAction } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { EXT_MENU_DONE, EXT_MENU_OPEN, EXT_MENU_READY } from '@/lib/extensionsMenu'
 import { menusGlass } from '@/lib/glass'
-import { SettingsIcon } from '@/lib/icons'
+import { PinIcon, SettingsIcon } from '@/lib/icons'
 import { SETTINGS_URL } from '@/lib/url'
 import { PuzzleIcon } from '@/components/settingsIcons'
 import { useBrowserState } from '@/hooks/useBrowserState'
@@ -40,6 +40,8 @@ export function ExtensionsMenuSurface() {
   }, [])
 
   if (!menu) return null
+
+  const pinned = new Set(state?.settings.extensions.filter((e) => e.pinned).map((e) => e.id))
 
   const close = () => {
     setMenu(null)
@@ -91,6 +93,18 @@ export function ExtensionsMenuSurface() {
               )}
               <span className="kb-extmenu-name">{action.name}</span>
               {action.badge && <span className="kb-extmenu-badge">{action.badge}</span>}
+            </button>
+            <button
+              type="button"
+              className={cx('kb-extmenu-options', { 'is-on': pinned.has(action.id) })}
+              title={pinned.has(action.id) ? 'Unpin from the address bar' : 'Pin to the address bar'}
+              aria-label={`${pinned.has(action.id) ? 'Unpin' : 'Pin'} ${action.name}`}
+              aria-pressed={pinned.has(action.id)}
+              onClick={() =>
+                void commands.extensionSetPinned(action.id, !pinned.has(action.id)).catch(() => undefined)
+              }
+            >
+              <PinIcon />
             </button>
             {action.has_options && (
               <button

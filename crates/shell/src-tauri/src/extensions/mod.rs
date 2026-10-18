@@ -148,6 +148,25 @@ pub async fn extension_set_workspace(
 }
 
 #[tauri::command]
+pub async fn extension_set_pinned(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    pinned: bool,
+) -> WisResult<()> {
+    #[cfg(target_os = "macos")]
+    return install::change(app, state, move |list| {
+        wis_core::extensions::with_pinned(list, &id, pinned)
+    })
+    .await;
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, state, id, pinned);
+        Err(unavailable())
+    }
+}
+
+#[tauri::command]
 pub async fn extension_set_private(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -251,21 +270,21 @@ pub async fn extension_run(
     }
 }
 
-/// Closes an extension popup on screen; true when the puzzle button's click
-/// closed one, so it should not also open the menu.
+/// Closes an extension popup on screen. Names the extension whose popup the
+/// click found open or just closed, so its button does not reopen it.
 #[tauri::command]
-pub async fn extension_dismiss_popup(window: tauri::Window) -> WisResult<bool> {
+pub async fn extension_dismiss_popup(window: tauri::Window) -> WisResult<Option<String>> {
     #[cfg(target_os = "macos")]
     {
         if !host::supported() {
-            return Ok(false);
+            return Ok(None);
         }
         on_main(&window, |_| actions::dismiss_popup()).await
     }
     #[cfg(not(target_os = "macos"))]
     {
         let _ = window;
-        Ok(false)
+        Ok(None)
     }
 }
 
@@ -481,12 +500,32 @@ pub(crate) fn tab_changed(app: &AppHandle, label: &str, change: TabChange) {
     }
 }
 
-/// At launch, removes extension folders no longer installed, such as one
-/// whose removal could not delete it.
 #[cfg(target_os = "macos")]
-pub(crate) fn sweep_at_launch(app: &AppHandle) {
+static APP: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
+
+/// Tells the windows an extension's action changed in a workspace, such as
+/// its badge, so pinned buttons can redraw.
+#[cfg(target_os = "macos")]
+pub const ACTIONS_CHANGED_EVENT: &str = "wis-extension-actions-changed";
+
+#[cfg(target_os = "macos")]
+fn notify_actions_changed(workspace: wis_core::WorkspaceId) {
+    use tauri::Emitter;
+
+    if let Some(app) = APP.get() {
+        if let Err(err) = app.emit(ACTIONS_CHANGED_EVENT, workspace) {
+            log::warn!("extension action change not sent: {err}");
+        }
+    }
+}
+
+/// At launch: keeps the app for events, and removes extension folders no
+/// longer installed, such as one whose removal could not delete it.
+#[cfg(target_os = "macos")]
+pub(crate) fn start(app: &AppHandle) {
     use tauri::Manager;
 
+    let _ = APP.set(app.clone());
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let installed = {

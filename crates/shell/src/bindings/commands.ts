@@ -1576,6 +1576,10 @@ export const commands = {
     return invoke('extension_set_workspace', { id, workspaceId, enabled })
   },
 
+  async extensionSetPinned(id: string, pinned: boolean): Promise<void> {
+    return invoke('extension_set_pinned', { id, pinned })
+  },
+
   async extensionSetPrivate(id: string, allowed: boolean): Promise<void> {
     return invoke('extension_set_private', { id, allowed })
   },
@@ -1594,8 +1598,11 @@ export const commands = {
     return invoke('extension_open_options', { id })
   },
 
-  /** Close an extension popup on screen; true when this click closed one. */
-  async extensionDismissPopup(): Promise<boolean> {
+  /** 
+   * Close an extension popup on screen; names the extension whose popup this click
+   * found open or just closed.
+   */
+  async extensionDismissPopup(): Promise<string | null> {
     return invoke('extension_dismiss_popup')
   },
 

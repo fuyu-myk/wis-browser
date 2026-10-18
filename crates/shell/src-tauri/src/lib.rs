@@ -504,7 +504,7 @@ pub fn run() {
             usage::start(app.handle().clone());
             canvas::start(app.handle().clone());
             #[cfg(target_os = "macos")]
-            extensions::sweep_at_launch(app.handle());
+            extensions::start(app.handle());
 
             // Periodically snapshot session cookies for activated workspaces so
             // logins survive a restart even when no page reload occurs (e.g. a
@@ -784,6 +784,7 @@ pub fn run() {
             extensions::extension_remove,
             extensions::extension_set_workspace,
             extensions::extension_set_private,
+            extensions::extension_set_pinned,
             extensions::extension_actions,
             extensions::extension_run,
             extensions::extension_open_options,

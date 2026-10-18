@@ -89,7 +89,7 @@ Wis is an open-source, lightweight, secure, and fast browser with AI integration
 - **Default browser integration**: set Wis as your system default; links from other apps open in Wis
 - **Two-finger swipe gestures** for back/forward navigation
 - **Screenshot capture**: visible page, drag-select region, or full window, copy or save (region/window compositing is macOS only; Windows covers the visible tab)
-- **Extensions** (macOS 15.4+, early): install a WebExtension from its folder or `.zip` after a review of what it can do; it runs in your workspaces, switchable per workspace, and in private ones only if you allow it. The puzzle button in the address bar runs them and opens their popups and options
+- **Extensions** (macOS 15.4+, early): install a WebExtension from its folder or `.zip` after a review of what it can do; it runs in your workspaces, switchable per workspace, and in private ones only if you allow it. The puzzle button in the address bar runs them and opens their popups and options, and pinned ones get their own button with a live badge
 - Command palette, find-in-page, fully rebindable keyboard shortcuts, print/export to PDF, and a configurable new-tab launchpad and homepage
 
 ### Customization

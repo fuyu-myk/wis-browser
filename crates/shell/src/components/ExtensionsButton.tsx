@@ -2,12 +2,51 @@ import { useQuery } from '@tanstack/react-query'
 import { useRef } from 'react'
 
 import { commands } from '@/bindings/commands'
-import type { WorkspaceId } from '@/bindings/types'
+import type { ExtensionAction, TabId, WorkspaceId } from '@/bindings/types'
 import { PuzzleIcon } from '@/components/settingsIcons'
 import { useBrowserState } from '@/hooks/useBrowserState'
+import { useExtensionActions } from '@/hooks/useExtensionActions'
 import { EXT_BUTTON_ATTR, useExtensionsMenu } from '@/hooks/useExtensionsMenu'
 
-export function ExtensionsButton({ workspaceId }: { workspaceId: WorkspaceId | null }) {
+interface ExtensionsButtonProps {
+  workspaceId: WorkspaceId | null
+  activeTabId: TabId | null
+}
+
+const keepFocus = (e: React.MouseEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+}
+
+function PinnedAction({ action }: { action: ExtensionAction }) {
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const label = action.label || action.name
+
+  const run = async () => {
+    const button = buttonRef.current
+    if (!button || (await commands.extensionDismissPopup()) === action.id) return
+    const rect = button.getBoundingClientRect()
+    await commands.extensionRun(action.id, rect.x, rect.y, rect.width, rect.height)
+  }
+
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      className="kb-urlbar-key kb-ext-pinned"
+      title={label}
+      aria-label={label}
+      disabled={!action.enabled}
+      onMouseDown={keepFocus}
+      onClick={() => void run().catch(() => undefined)}
+    >
+      {action.icon ? <img className="kb-ext-pinned-icon" src={action.icon} alt="" /> : <PuzzleIcon />}
+      {action.badge && <span className="kb-ext-pinned-badge">{action.badge}</span>}
+    </button>
+  )
+}
+
+export function ExtensionsButton({ workspaceId, activeTabId }: ExtensionsButtonProps) {
   const { data: state } = useBrowserState()
   const { data: supported } = useQuery({
     queryKey: ['extensions-supported'],
@@ -16,23 +55,30 @@ export function ExtensionsButton({ workspaceId }: { workspaceId: WorkspaceId | n
   })
   const buttonRef = useRef<HTMLButtonElement>(null)
   const menu = useExtensionsMenu(workspaceId)
+  const installed = state?.settings.extensions ?? []
+  const pinned = new Set(installed.filter((e) => e.pinned).map((e) => e.id))
+  const actions = useExtensionActions(workspaceId, activeTabId, !!supported && pinned.size > 0)
 
-  if (!supported || !state?.settings.extensions.length) return null
+  if (!supported || installed.length === 0) return null
   return (
-    <button
-      ref={buttonRef}
-      type="button"
-      className="kb-urlbar-key"
-      title="Extensions"
-      aria-label="Extensions"
-      {...{ [EXT_BUTTON_ATTR]: '' }}
-      onMouseDown={(e) => {
-        e.preventDefault()
-        e.stopPropagation()
-      }}
-      onClick={() => buttonRef.current && menu.toggle(buttonRef.current)}
-    >
-      <PuzzleIcon />
-    </button>
+    <>
+      {actions
+        .filter((action) => pinned.has(action.id))
+        .map((action) => (
+          <PinnedAction key={action.id} action={action} />
+        ))}
+      <button
+        ref={buttonRef}
+        type="button"
+        className="kb-urlbar-key"
+        title="Extensions"
+        aria-label="Extensions"
+        {...{ [EXT_BUTTON_ATTR]: '' }}
+        onMouseDown={keepFocus}
+        onClick={() => buttonRef.current && menu.toggle(buttonRef.current)}
+      >
+        <PuzzleIcon />
+      </button>
+    </>
   )
 }

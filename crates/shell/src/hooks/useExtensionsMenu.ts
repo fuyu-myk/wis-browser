@@ -99,7 +99,7 @@ export function useExtensionsMenu(workspaceId: WorkspaceId | null): {
     const rect = button.getBoundingClientRect()
     const anchor = { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
     const show = async () => {
-      if (await commands.extensionDismissPopup()) return
+      if ((await commands.extensionDismissPopup()) !== null) return
       const actions = await commands.extensionActions()
       const payload = { anchor, actions, workspaceId }
       const bounds = menuBounds(anchor, actions.length, {

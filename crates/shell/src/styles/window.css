@@ -2516,6 +2516,29 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   cursor: pointer;
 }
 .kb-extmenu-options:hover { background: var(--overlay); color: var(--text-primary); }
+.kb-extmenu-options.is-on { color: var(--primary-500); }
+.kb-ext-pinned { position: relative; }
+.kb-ext-pinned-icon { width: 16px; height: 16px; object-fit: contain; }
+.kb-ext-pinned:disabled { opacity: 0.45; cursor: default; }
+.kb-ext-pinned-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -2px;
+  max-width: 26px;
+  min-width: 12px;
+  padding: 0 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--primary-500);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 12px;
+  text-align: center;
+  white-space: nowrap;
+  text-overflow: clip;
+  pointer-events: none;
+}
 .kb-extmenu-options svg { width: 15px; height: 15px; }
 .kb-extmenu-empty {
   display: flex;

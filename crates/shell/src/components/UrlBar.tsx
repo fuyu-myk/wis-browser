@@ -725,7 +725,10 @@ export function FloatingUrlBar({
       <ZoomIndicator activeTab={activeTab} />
       <AutofillKey activeTab={activeTab} />
       <OpenExternalButton activeTab={activeTab} />
-      <ExtensionsButton workspaceId={activeTab?.workspace_id ?? null} />
+      <ExtensionsButton
+        workspaceId={activeTab?.workspace_id ?? null}
+        activeTabId={activeTab?.id ?? null}
+      />
       <BookmarkStar activeTab={activeTab} />
       <LoadProgressBar activeTab={activeTab} />
     </form>

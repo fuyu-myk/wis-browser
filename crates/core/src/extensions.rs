@@ -16,6 +16,8 @@ pub struct InstalledExtension {
     pub disabled_in: Vec<WorkspaceId>,
     #[serde(default)]
     pub allow_private: bool,
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 pub const MAX_EXTENSIONS: usize = 64;
@@ -207,6 +209,14 @@ pub fn with_workspace_switch(
     })
 }
 
+pub fn with_pinned(
+    list: &[InstalledExtension],
+    id: &str,
+    pinned: bool,
+) -> WisResult<Vec<InstalledExtension>> {
+    with_changed(list, id, |ext| ext.pinned = pinned)
+}
+
 pub fn with_private_allowed(
     list: &[InstalledExtension],
     id: &str,
@@ -383,6 +393,14 @@ mod tests {
         assert!(!runs_in(&ext(ID), &private));
         let list = with_private_allowed(&[ext(ID)], ID, true).unwrap();
         assert!(runs_in(&list[0], &private));
+    }
+
+    #[test]
+    fn pinning_marks_only_that_extension() {
+        let list = with_pinned(&[ext(ID), ext(OTHER)], ID, true).unwrap();
+        assert!(list[0].pinned && !list[1].pinned);
+        assert!(!with_pinned(&list, ID, false).unwrap()[0].pinned);
+        assert!(with_pinned(&list, "missing", true).is_err());
     }
 
     #[test]

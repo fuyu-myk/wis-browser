@@ -140,10 +140,22 @@ define_class!(
             &self,
             _controller: &WKWebExtensionController,
             action: &WKWebExtensionAction,
-            _context: &WKWebExtensionContext,
+            context: &WKWebExtensionContext,
             done: &DynBlock<dyn Fn(*mut NSError)>,
         ) {
-            answer(done, super::actions::present_popup(action));
+            // SAFETY: a property read on the main thread.
+            let id = unsafe { context.uniqueIdentifier() }.to_string();
+            answer(done, super::actions::present_popup(action, id));
+        }
+
+        #[unsafe(method(webExtensionController:didUpdateAction:forExtensionContext:))]
+        fn did_update_action(
+            &self,
+            _controller: &WKWebExtensionController,
+            _action: &WKWebExtensionAction,
+            _context: &WKWebExtensionContext,
+        ) {
+            super::notify_actions_changed(self.ivars().workspace);
         }
 
         #[unsafe(method(webExtensionController:openOptionsPageForExtensionContext:completionHandler:))]

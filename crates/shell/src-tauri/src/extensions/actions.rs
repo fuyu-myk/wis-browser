@@ -2,7 +2,7 @@
 //! anchored to the button that ran it, and options pages in a window of
 //! their own. Main thread only.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ptr::NonNull;
@@ -40,11 +40,13 @@ struct Anchor {
 
 /// The popup on screen, and its close observer.
 struct Shown {
+    id: String,
     popover: Retained<NSPopover>,
     observer: Retained<ProtocolObject<dyn NSObjectProtocol>>,
 }
 
 const ICON_POINTS: f64 = 32.0;
+const CACHED_ICONS: usize = 32;
 const OPTIONS_SIZE: (f64, f64) = (820.0, 620.0);
 
 /// A popup that closed this recently was closed by the click now asking to
@@ -54,8 +56,10 @@ const CLOSING_CLICK: Duration = Duration::from_millis(600);
 thread_local! {
     static ANCHOR: RefCell<Option<Anchor>> = const { RefCell::new(None) };
     static SHOWN: RefCell<Option<Shown>> = const { RefCell::new(None) };
-    static CLOSED_AT: Cell<Option<Instant>> = const { Cell::new(None) };
+    static CLOSED: RefCell<Option<(Instant, String)>> = const { RefCell::new(None) };
     static OPTIONS: RefCell<HashMap<String, Retained<NSWindow>>> = RefCell::new(HashMap::new());
+    /// Icons already encoded, by image.
+    static ICONS: RefCell<Vec<(Retained<NSImage>, String)>> = const { RefCell::new(Vec::new()) };
 }
 
 fn png_data_url(image: &NSImage) -> Option<String> {
@@ -69,6 +73,28 @@ fn png_data_url(image: &NSImage) -> Option<String> {
         "data:image/png;base64,{}",
         base64::engine::general_purpose::STANDARD.encode(png.to_vec())
     ))
+}
+
+fn icon_url(image: Retained<NSImage>) -> Option<String> {
+    let known = ICONS.with_borrow(|icons| {
+        icons
+            .iter()
+            .find(|(cached, _)| Retained::as_ptr(cached) == Retained::as_ptr(&image))
+            .map(|(_, url)| url.clone())
+    });
+    if known.is_some() {
+        return known;
+    }
+
+    let url = png_data_url(&image)?;
+    ICONS.with_borrow_mut(|icons| {
+        if icons.len() >= CACHED_ICONS {
+            icons.remove(0);
+        }
+        icons.push((image, url.clone()));
+    });
+
+    Some(url)
 }
 
 /// The actions of `ids` running in `workspace`, for its active tab.
@@ -103,7 +129,7 @@ pub(super) fn list(workspace: WorkspaceId, ids: &[String]) -> Vec<ExtensionActio
                         .unwrap_or_default(),
                     enabled: action.as_ref().is_some_and(|a| a.isEnabled()),
                     has_options: extension.hasOptionsPage(),
-                    icon: icon.as_deref().and_then(png_data_url),
+                    icon: icon.and_then(icon_url),
                 })
             }
         })
@@ -134,7 +160,7 @@ pub(super) fn run(
 }
 
 /// Shows the action's popup at the last anchor.
-pub(super) fn present_popup(action: &WKWebExtensionAction) -> Result<(), String> {
+pub(super) fn present_popup(action: &WKWebExtensionAction, id: String) -> Result<(), String> {
     let anchor = ANCHOR.take().ok_or("no button to anchor the popup to")?;
     // SAFETY: a property read on the main thread.
     let popover = unsafe { action.popupPopover() }.ok_or("the extension has no popup")?;
@@ -163,7 +189,11 @@ pub(super) fn present_popup(action: &WKWebExtensionAction) -> Result<(), String>
     popover.showRelativeToRect_ofView_preferredEdge(rect, &anchor.view, edge);
 
     let observer = observe_close(&popover);
-    SHOWN.set(Some(Shown { popover, observer }));
+    SHOWN.set(Some(Shown {
+        id,
+        popover,
+        observer,
+    }));
     Ok(())
 }
 
@@ -176,8 +206,8 @@ fn observe_close(popover: &NSPopover) -> Retained<ProtocolObject<dyn NSObjectPro
     let closed = RcBlock::new(|_: NonNull<NSNotification>| {
         let shown = SHOWN.with(|s| s.try_borrow_mut().ok().and_then(|mut s| s.take()));
         if let Some(shown) = shown {
-            CLOSED_AT.set(Some(Instant::now()));
             forget(&shown);
+            CLOSED.set(Some((Instant::now(), shown.id)));
         }
     });
     // SAFETY: main thread; the observer is removed when the popover closes or
@@ -192,9 +222,9 @@ fn observe_close(popover: &NSPopover) -> Retained<ProtocolObject<dyn NSObjectPro
     }
 }
 
-/// Closes the popup on screen; true when there was one, or when one closed
-/// a moment ago because of the click asking.
-pub(super) fn dismiss_popup() -> bool {
+/// Closes the popup on screen. Names the extension whose popup there was, or
+/// whose popup closed a moment ago because of the click asking.
+pub(super) fn dismiss_popup() -> Option<String> {
     let shown = SHOWN.with(|s| s.borrow_mut().take());
     if let Some(shown) = shown {
         forget(&shown);
@@ -202,12 +232,13 @@ pub(super) fn dismiss_popup() -> bool {
             // SAFETY: main thread; closing a popover on screen.
             unsafe { shown.popover.performClose(None) };
         }
-        CLOSED_AT.set(None);
-        return true;
+        CLOSED.set(None);
+        return Some(shown.id);
     }
-    CLOSED_AT
+    CLOSED
         .take()
-        .is_some_and(|at| at.elapsed() < CLOSING_CLICK)
+        .filter(|(at, _)| at.elapsed() < CLOSING_CLICK)
+        .map(|(_, id)| id)
 }
 
 /// Opens an extension's options page in a window of its own, built on the
