@@ -1,12 +1,13 @@
 //! The objects WebKit asks about a workspace's tabs and window.
 
+use block2_06::DynBlock;
 use objc2_06::rc::{Retained, Weak};
 use objc2_06::runtime::{NSObject, NSObjectProtocol, ProtocolObject};
 use objc2_06::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly};
-use objc2_foundation::{NSArray, NSString, NSURL};
+use objc2_foundation::{NSArray, NSError, NSString, NSURL};
 use objc2_web_kit::{
-    WKWebExtensionContext, WKWebExtensionController, WKWebExtensionControllerDelegate,
-    WKWebExtensionTab, WKWebExtensionWindow, WKWebView,
+    WKWebExtensionAction, WKWebExtensionContext, WKWebExtensionController,
+    WKWebExtensionControllerDelegate, WKWebExtensionTab, WKWebExtensionWindow, WKWebView,
 };
 use wis_core::WorkspaceId;
 
@@ -133,8 +134,41 @@ define_class!(
         ) -> Option<Retained<ProtocolObject<dyn WKWebExtensionWindow>>> {
             window_of(self.ivars().workspace)
         }
+
+        #[unsafe(method(webExtensionController:presentPopupForAction:forExtensionContext:completionHandler:))]
+        fn present_popup(
+            &self,
+            _controller: &WKWebExtensionController,
+            action: &WKWebExtensionAction,
+            _context: &WKWebExtensionContext,
+            done: &DynBlock<dyn Fn(*mut NSError)>,
+        ) {
+            answer(done, super::actions::present_popup(action));
+        }
+
+        #[unsafe(method(webExtensionController:openOptionsPageForExtensionContext:completionHandler:))]
+        fn open_options(
+            &self,
+            _controller: &WKWebExtensionController,
+            context: &WKWebExtensionContext,
+            done: &DynBlock<dyn Fn(*mut NSError)>,
+        ) {
+            answer(done, super::actions::open_options(context));
+        }
     }
 );
+
+/// Answers WebKit: no error, or one carrying `message`.
+fn answer(done: &DynBlock<dyn Fn(*mut NSError)>, result: Result<(), String>) {
+    match result {
+        Ok(()) => done.call((std::ptr::null_mut(),)),
+        Err(message) => {
+            log::warn!("extension request failed: {message}");
+            let error = NSError::new(1, &NSString::from_str("Wis"));
+            done.call((Retained::as_ptr(&error).cast_mut(),));
+        }
+    }
+}
 
 pub(super) fn new_tab(
     workspace: WorkspaceId,

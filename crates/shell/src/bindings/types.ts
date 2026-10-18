@@ -544,6 +544,19 @@ export interface ExtensionReview {
   large_rule_set: number | null
 }
 
+/** An extension's toolbar action for the active tab (mirror of `extensions::ExtensionAction`). */
+export interface ExtensionAction {
+  id: string
+  name: string
+  label: string
+  /** Empty when there is no badge. */
+  badge: string
+  enabled: boolean
+  has_options: boolean
+  /** A PNG data URL. */
+  icon: string | null
+}
+
 /** An extension copied in and waiting on its review (mirror of `extensions::StagedExtension`). */
 export interface StagedExtension {
   token: string

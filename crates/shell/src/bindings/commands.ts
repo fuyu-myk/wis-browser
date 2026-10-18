@@ -65,6 +65,7 @@ import type {
   WebviewMemory,
   Userscript,
   StagedExtension,
+  ExtensionAction,
 } from '@/bindings/types'
 
 export const commands = {
@@ -1577,6 +1578,25 @@ export const commands = {
 
   async extensionSetPrivate(id: string, allowed: boolean): Promise<void> {
     return invoke('extension_set_private', { id, allowed })
+  },
+
+  /** The actions of the extensions running in this window's workspace, for its active tab. */
+  async extensionActions(): Promise<ExtensionAction[]> {
+    return invoke('extension_actions')
+  },
+
+  /** Run an extension's action; its popup anchors to the button at this window rectangle. */
+  async extensionRun(id: string, x: number, y: number, width: number, height: number): Promise<void> {
+    return invoke('extension_run', { id, x, y, width, height })
+  },
+
+  async extensionOpenOptions(id: string): Promise<void> {
+    return invoke('extension_open_options', { id })
+  },
+
+  /** Close an extension popup on screen; true when this click closed one. */
+  async extensionDismissPopup(): Promise<boolean> {
+    return invoke('extension_dismiss_popup')
   },
 
   /** Active time for local days `from..=to` (`YYYY-MM-DD`). */

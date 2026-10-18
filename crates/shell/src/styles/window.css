@@ -2440,6 +2440,93 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
 .kb-islandmenu-item:hover { background: var(--overlay); }
 .kb-islandmenu-item.danger { color: var(--danger); }
 
+.kb-extmenu {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border-radius: var(--radius-xl);
+  box-sizing: border-box;
+  background: color-mix(in oklab, var(--surface) 96%, transparent);
+  border: 1px solid var(--border);
+}
+[data-mode="dark"] .kb-extmenu { background: var(--chrome-bg); }
+.kb-extmenu.glass-menus {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.30);
+  -webkit-backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+  backdrop-filter: blur(calc(28px * var(--glass-scale))) saturate(180%);
+}
+[data-mode="dark"] .kb-extmenu.glass-menus {
+  background: rgba(28, 28, 34, 0.85);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.kb-extmenu-row { display: flex; align-items: center; gap: 2px; }
+.kb-extmenu-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: calc(7px * var(--radius-scale));
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.kb-extmenu-item:hover:not(:disabled) { background: var(--overlay); }
+.kb-extmenu-item:disabled { opacity: 0.5; cursor: default; }
+.kb-extmenu-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--text-tertiary);
+  object-fit: contain;
+}
+.kb-extmenu-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.kb-extmenu-badge {
+  flex: none;
+  min-width: 16px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--primary-500);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+}
+.kb-extmenu-options {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: calc(7px * var(--radius-scale));
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+.kb-extmenu-options:hover { background: var(--overlay); color: var(--text-primary); }
+.kb-extmenu-options svg { width: 15px; height: 15px; }
+.kb-extmenu-empty {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 8px;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+}
+.kb-extmenu-divider { height: 1px; margin: 4px 6px; background: var(--border); }
+
 /* Close (X) on horizontal tab. */
 .kb-topbar .h-tab .close {
   position: absolute;

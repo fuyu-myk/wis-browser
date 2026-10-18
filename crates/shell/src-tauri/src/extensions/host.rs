@@ -107,6 +107,21 @@ pub(super) fn window_of(
     })
 }
 
+pub(super) fn context_of(
+    workspace: WorkspaceId,
+    id: &str,
+) -> Option<Retained<WKWebExtensionContext>> {
+    HOSTS.with(|hosts| {
+        hosts
+            .try_borrow()
+            .ok()?
+            .get(&workspace)?
+            .contexts
+            .get(id)
+            .cloned()
+    })
+}
+
 pub(super) fn selected_tab(workspace: WorkspaceId) -> Option<Retained<HostTab>> {
     HOSTS.with(|hosts| {
         let hosts = hosts.try_borrow().ok()?;

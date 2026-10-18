@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
+import { ExtensionsButton } from '@/components/ExtensionsButton'
 import { ZoomIndicator } from '@/components/ZoomIndicator'
 import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { LoadProgressBar } from '@/components/LoadProgressBar'
@@ -724,6 +725,7 @@ export function FloatingUrlBar({
       <ZoomIndicator activeTab={activeTab} />
       <AutofillKey activeTab={activeTab} />
       <OpenExternalButton activeTab={activeTab} />
+      <ExtensionsButton workspaceId={activeTab?.workspace_id ?? null} />
       <BookmarkStar activeTab={activeTab} />
       <LoadProgressBar activeTab={activeTab} />
     </form>

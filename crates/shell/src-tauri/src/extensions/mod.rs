@@ -3,6 +3,8 @@
 //! extension controller. Elsewhere the commands say they are unavailable.
 
 #[cfg(target_os = "macos")]
+mod actions;
+#[cfg(target_os = "macos")]
 mod adapters;
 #[cfg(target_os = "macos")]
 mod host;
@@ -17,6 +19,20 @@ use wis_core::extensions::ExtensionReview;
 use wis_core::{WisError, WisResult};
 
 use crate::state::AppState;
+
+/// An extension's toolbar action for the active tab.
+#[derive(Debug, Clone, Serialize)]
+pub struct ExtensionAction {
+    pub id: String,
+    pub name: String,
+    pub label: String,
+    /// Empty when there is no badge.
+    pub badge: String,
+    pub enabled: bool,
+    pub has_options: bool,
+    /// A PNG data URL.
+    pub icon: Option<String>,
+}
 
 /// An extension copied in and waiting on its review.
 #[derive(Debug, Clone, Serialize)]
@@ -148,6 +164,158 @@ pub async fn extension_set_private(
         let _ = (app, state, id, allowed);
         Err(unavailable())
     }
+}
+
+/// The actions of the extensions running in the calling window's workspace,
+/// for its active tab, in installed order.
+#[tauri::command]
+pub async fn extension_actions(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+) -> WisResult<Vec<ExtensionAction>> {
+    #[cfg(target_os = "macos")]
+    {
+        if !host::supported() {
+            return Ok(Vec::new());
+        }
+        let Some(workspace) = state.window_workspace(window.label()) else {
+            return Ok(Vec::new());
+        };
+        let ids: Vec<String> = {
+            let browser = state.browser.lock().await;
+            match browser.workspaces.iter().find(|w| w.id == workspace) {
+                Some(w) => wis_core::extensions::wanted_in(&browser.settings.extensions, w),
+                None => Vec::new(),
+            }
+        };
+        on_main(&window, move |_| actions::list(workspace, &ids)).await
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, state);
+        Ok(Vec::new())
+    }
+}
+
+/// Runs an extension's action on the active tab; a popup it opens anchors to
+/// the button at `x, y, width, height` in window points.
+#[tauri::command]
+pub async fn extension_run(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    id: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> WisResult<()> {
+    #[cfg(target_os = "macos")]
+    {
+        require_support()?;
+        if !wis_core::extensions::is_extension_id(&id)
+            || ![x, y, width, height].iter().all(|n| n.is_finite())
+        {
+            return Err(WisError::InvalidInput {
+                message: "not an extension action".into(),
+            });
+        }
+        let workspace =
+            state
+                .window_workspace(window.label())
+                .ok_or_else(|| WisError::InvalidInput {
+                    message: "this window has no workspace".into(),
+                })?;
+        let dark = match state.browser.lock().await.settings.theme {
+            wis_core::ThemeMode::Dark => Some(true),
+            wis_core::ThemeMode::Light => Some(false),
+            wis_core::ThemeMode::System => None,
+        };
+        let ran = on_main(&window, move |window| {
+            window
+                .ns_view()
+                .is_ok_and(|view| actions::run(workspace, &id, view, (x, y, width, height), dark))
+        })
+        .await?;
+        if ran {
+            Ok(())
+        } else {
+            Err(WisError::InvalidInput {
+                message: "that extension is not running in this workspace".into(),
+            })
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, state, id, x, y, width, height);
+        Err(unavailable())
+    }
+}
+
+/// Closes an extension popup on screen; true when the puzzle button's click
+/// closed one, so it should not also open the menu.
+#[tauri::command]
+pub async fn extension_dismiss_popup(window: tauri::Window) -> WisResult<bool> {
+    #[cfg(target_os = "macos")]
+    {
+        if !host::supported() {
+            return Ok(false);
+        }
+        on_main(&window, |_| actions::dismiss_popup()).await
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = window;
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+pub async fn extension_open_options(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    id: String,
+) -> WisResult<()> {
+    #[cfg(target_os = "macos")]
+    {
+        require_support()?;
+        let workspace =
+            state
+                .window_workspace(window.label())
+                .ok_or_else(|| WisError::InvalidInput {
+                    message: "this window has no workspace".into(),
+                })?;
+        on_main(&window, move |_| match host::context_of(workspace, &id) {
+            Some(context) => actions::open_options(&context),
+            None => Err("turn the extension on in this workspace to open its options".into()),
+        })
+        .await?
+        .map_err(|message| WisError::InvalidInput { message })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, state, id);
+        Err(unavailable())
+    }
+}
+
+/// Runs `work` on the main thread with the window, and waits for its answer.
+#[cfg(target_os = "macos")]
+async fn on_main<T: Send + 'static>(
+    window: &tauri::Window,
+    work: impl FnOnce(&tauri::Window) -> T + Send + 'static,
+) -> WisResult<T> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let target = window.clone();
+    window
+        .run_on_main_thread(move || {
+            let _ = tx.send(work(&target));
+        })
+        .map_err(|err| WisError::InvalidInput {
+            message: format!("run_on_main_thread: {err}"),
+        })?;
+    rx.await.map_err(|_| WisError::InvalidInput {
+        message: "the main thread dropped the request".into(),
+    })
 }
 
 /// The extensions that run in each workspace, by id.

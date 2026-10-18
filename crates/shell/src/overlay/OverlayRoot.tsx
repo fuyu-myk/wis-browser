@@ -10,6 +10,7 @@ import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useKeybindCapture } from '@/hooks/useKeybindCapture'
 import { ClearDataSurface } from '@/overlay/surfaces/ClearDataSurface'
 import { DownloadsMenuSurface } from '@/overlay/surfaces/DownloadsMenuSurface'
+import { ExtensionsMenuSurface } from '@/overlay/surfaces/ExtensionsMenuSurface'
 import { FindSurface } from '@/overlay/surfaces/FindSurface'
 import { BookmarkPickerSurface } from '@/overlay/surfaces/BookmarkPickerSurface'
 import { BookmarksMenuSurface } from '@/overlay/surfaces/BookmarksMenuSurface'
@@ -48,6 +49,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'pagemenu') return <PageMenuSurface />
   if (surface === 'tabpreview') return <TabPreviewSurface />
   if (surface === 'islandmenu') return <IslandMenuSurface />
+  if (surface === 'extmenu') return <ExtensionsMenuSurface />
   if (surface === 'cleardata') return <ClearDataSurface />
   if (surface === 'urlbar') return <UrlbarSuggestSurface />
   if (surface === 'vaultmenu') return <VaultMenuSurface />
