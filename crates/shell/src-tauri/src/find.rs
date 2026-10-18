@@ -82,6 +82,16 @@ pub(crate) fn install_linux(webview: &webkit2gtk::WebView, label: &str) {
     });
 }
 
+/// Records `query` as the webview's latest search; true when it changed.
+#[cfg(any(target_os = "macos", test))]
+fn new_query(last: &std::cell::RefCell<String>, query: &str) -> bool {
+    if *last.borrow() == query {
+        return false;
+    }
+    last.replace(query.to_string());
+    true
+}
+
 /// While a peek preview is up in the calling window, find acts on it instead
 /// of the tab hidden behind it. Results then carry the peek label as their
 /// `tab_id`; the FindBar accepts both.
@@ -322,6 +332,7 @@ fn accent_rgb() -> (u8, u8, u8) {
 
 #[cfg(target_os = "macos")]
 mod imp {
+    use std::cell::RefCell;
     use std::ffi::{CStr, CString};
     use std::os::raw::{c_char, c_void};
 
@@ -360,8 +371,12 @@ mod imp {
         fn objc_getAssociatedObject(object: *mut AnyObject, key: *const c_void) -> *mut AnyObject;
     }
 
+    /// A new query searches from a caret at the top of the page.
+    const START_AT_TOP: &str = "(()=>{for(let i=0;i<frames.length;i++){try{frames[i].getSelection().removeAllRanges()}catch(e){}}const r=document.documentElement;if(r)getSelection().collapse(r,0)})()";
+
     struct FindIvars {
         label: String,
+        query: RefCell<String>,
     }
 
     declare_class!(
@@ -414,27 +429,35 @@ mod imp {
 
     impl WisFindDelegate {
         fn new(label: String) -> Id<Self> {
-            let this = Self::alloc().set_ivars(FindIvars { label });
+            let this = Self::alloc().set_ivars(FindIvars {
+                label,
+                query: RefCell::default(),
+            });
             unsafe { msg_send_id![super(this), init] }
         }
     }
 
-    /// Set the find delegate once per webview, retained as an associated object
-    /// so it lives exactly as long as the webview.
-    unsafe fn ensure_delegate(wk: *mut AnyObject, label: &str) {
+    /// The webview's find delegate, retained as an associated object so it
+    /// lives exactly as long as the webview.
+    unsafe fn delegate_of<'a>(wk: *mut AnyObject) -> Option<&'a WisFindDelegate> {
         let key = &ASSOC_KEY as *const u8 as *const c_void;
-        if !objc_getAssociatedObject(wk, key).is_null() {
-            return;
-        }
+        objc_getAssociatedObject(wk, key)
+            .cast::<WisFindDelegate>()
+            .as_ref()
+    }
 
-        let delegate = WisFindDelegate::new(label.to_string());
-        let _: () = msg_send![wk, _setFindDelegate: &*delegate];
-        objc_setAssociatedObject(
-            wk,
-            key,
-            Id::as_ptr(&delegate) as *mut AnyObject,
-            ASSOCIATION_RETAIN,
-        );
+    unsafe fn ensure_delegate<'a>(wk: *mut AnyObject, label: &str) -> Option<&'a WisFindDelegate> {
+        if delegate_of(wk).is_none() {
+            let delegate = WisFindDelegate::new(label.to_string());
+            let _: () = msg_send![wk, _setFindDelegate: &*delegate];
+            objc_setAssociatedObject(
+                wk,
+                &ASSOC_KEY as *const u8 as *const c_void,
+                Id::as_ptr(&delegate) as *mut AnyObject,
+                ASSOCIATION_RETAIN,
+            );
+        }
+        delegate_of(wk)
     }
 
     pub unsafe fn find(
@@ -448,7 +471,11 @@ mod imp {
         let spi: Bool = msg_send![wk, respondsToSelector: sel!(_findString:options:maxCount:)];
         let can_delegate: Bool = msg_send![wk, respondsToSelector: sel!(_setFindDelegate:)];
         if spi.as_bool() && can_delegate.as_bool() {
-            ensure_delegate(wk, label);
+            if let Some(delegate) = ensure_delegate(wk, label) {
+                if super::new_query(&delegate.ivars().query, query) {
+                    crate::content_world::macos::run(wk, START_AT_TOP);
+                }
+            }
             // Indicate the current match and highlight the rest.
             let mut options =
                 WRAP_AROUND | SHOW_FIND_INDICATOR | SHOW_HIGHLIGHT | DETERMINE_MATCH_INDEX;
@@ -501,6 +528,10 @@ mod imp {
     }
 
     pub unsafe fn clear(wk: *mut AnyObject) {
+        if let Some(delegate) = delegate_of(wk) {
+            delegate.ivars().query.take();
+        }
+
         let hides: Bool = msg_send![wk, respondsToSelector: sel!(_hideFindUI)];
         if hides.as_bool() {
             let _: () = msg_send![wk, _hideFindUI];
@@ -716,6 +747,16 @@ mod tests {
         assert_eq!(find_colors((255, 185, 0)).text, "#000");
         assert_eq!(find_colors((247, 99, 12)).text, "#000");
         assert_eq!(find_colors((240, 240, 240)).text, "#000");
+    }
+
+    #[test]
+    fn only_a_changed_query_starts_from_the_top() {
+        let last = std::cell::RefCell::new(String::new());
+        assert!(new_query(&last, "fo"));
+        assert!(!new_query(&last, "fo"));
+        assert!(new_query(&last, "fox"));
+        last.take();
+        assert!(new_query(&last, "fox"));
     }
 
     #[test]
