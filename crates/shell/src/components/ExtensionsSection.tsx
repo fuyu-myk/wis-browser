@@ -94,7 +94,7 @@ export function ExtensionsSection({ installed }: ExtensionsSectionProps) {
           <span>
             {supported === false
               ? 'Extensions need macOS 15.4 or later, and are not available on Windows or Linux yet.'
-              : 'From an unpacked folder or a .zip. They run in your regular workspaces, in tabs opened from then on.'}
+              : 'From an unpacked folder or a .zip. They run in your regular workspaces, and open pages reload with them.'}
           </span>
         </div>
         <button
@@ -135,7 +135,7 @@ export function ExtensionsSection({ installed }: ExtensionsSectionProps) {
       <ConfirmDialog
         open={removing !== null}
         title={removing ? `Remove ${removing.name}?` : ''}
-        message="It stops running in every workspace. Pages it already changed stay that way until you reload them, and adding it again later starts it afresh."
+        message="It stops running in every workspace, and open pages reload without it. Adding it again later starts it afresh."
         confirmLabel="Remove"
         danger
         onConfirm={() => removing && remove(removing.id)}

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::oneshot;
 use wis_core::extensions::{self, InstalledExtension, ReviewInput};
 use wis_core::{WisError, WisResult};
@@ -261,12 +261,20 @@ pub(super) async fn remove(
     .await
 }
 
-/// Brings every live workspace's extensions in line with the installed list.
+/// Brings every live workspace's extensions in line with the installed list,
+/// then has the windows rebuild their open pages.
 async fn reload(app: &AppHandle, state: &State<'_, AppState>) -> WisResult<()> {
-    let wanted = super::installed_ids(state).await;
+    let (wanted, targets) = {
+        let browser = state.browser.lock().await;
+        (super::valid_ids(&browser), super::rebuild_targets(&browser))
+    };
     let dir = extensions_dir(app)?;
     app.run_on_main_thread(move || host::sync_all(dir, wanted))
-        .map_err(|err| refused(format!("run_on_main_thread: {err}")))
+        .map_err(|err| refused(format!("run_on_main_thread: {err}")))?;
+    if let Err(err) = app.emit(super::EXTENSIONS_CHANGED_EVENT, targets) {
+        log::warn!("open tabs were not told the extensions changed: {err}");
+    }
+    Ok(())
 }
 
 /// The native open panel, for a folder or a `.zip`. Main thread only.

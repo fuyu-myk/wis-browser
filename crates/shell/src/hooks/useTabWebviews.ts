@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { Webview } from '@tauri-apps/api/webview'
 import { Window, getCurrentWindow } from '@tauri-apps/api/window'
 
@@ -26,6 +27,8 @@ const LABEL_PREFIX = 'tab-'
 const PENDING = Symbol('pending-webview')
 const OFFSCREEN_BOUNDS: Bounds = { x: 100000, y: 100000, width: 800, height: 600 }
 const PLACEHOLDER_BOUNDS: Bounds = OFFSCREEN_BOUNDS
+
+const EXTENSIONS_CHANGED_EVENT = 'wis-extensions-changed'
 
 // How often the idle sweep checks for background webviews to discard.
 const SWEEP_INTERVAL_MS = 60_000
@@ -261,6 +264,28 @@ export function useTabWebviews({
     },
     [recomputeDiscarded],
   )
+
+  // Extensions changed: rebuild the listed tabs through the sleep path, so
+  // they keep their session and run the current set.
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null
+    let cancelled = false
+    void listen<TabId[]>(EXTENSIONS_CHANGED_EVENT, (event) => {
+      for (const id of event.payload) {
+        const wv = webviewsRef.current.get(id)
+        if (!wv || (wv as unknown) === PENDING) continue
+        if (popoutRef.current?.isPopout(id) || audibleRef.current.has(id)) continue
+        sleepWebview(id, wv)
+      }
+    }).then((fn) => {
+      if (cancelled) fn()
+      else unlisten = fn
+    })
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [sleepWebview])
 
   // Reconcile a single webview's visibility/position against the desired layout.
   const reconcileOne = useCallback((id: TabId, wv: Webview) => {

@@ -124,12 +124,30 @@ fn valid_ids(browser: &wis_core::state::BrowserState) -> Vec<String> {
 }
 
 #[cfg(target_os = "macos")]
-async fn installed_ids(state: &AppState) -> Vec<String> {
-    valid_ids(&*state.browser.lock().await)
-}
-
-#[cfg(target_os = "macos")]
 type Builder = tauri::webview::WebviewBuilder<tauri::Wry>;
+
+/// Tells each window which tabs to rebuild after the installed extensions
+/// change, with the session each had.
+#[cfg(target_os = "macos")]
+pub const EXTENSIONS_CHANGED_EVENT: &str = "wis-extensions-changed";
+
+/// Tabs to rebuild when the installed extensions change.
+#[cfg(any(target_os = "macos", test))]
+fn rebuild_targets(state: &wis_core::state::BrowserState) -> Vec<wis_core::TabId> {
+    let private: std::collections::HashSet<_> = state
+        .workspaces
+        .iter()
+        .filter(|w| w.ephemeral)
+        .map(|w| w.id)
+        .collect();
+    state
+        .tabs
+        .iter()
+        .filter(|t| !private.contains(&t.workspace_id))
+        .filter(|t| matches!(t.url.scheme(), "http" | "https"))
+        .map(|t| t.id)
+        .collect()
+}
 
 #[cfg(any(target_os = "macos", test))]
 fn tab_label(id: wis_core::TabId) -> String {
@@ -273,8 +291,31 @@ pub(crate) fn sync_active(app: &AppHandle, actives: Vec<(wis_core::WorkspaceId, 
 #[cfg(test)]
 mod tests {
     use wis_core::state::BrowserState;
+    use wis_core::workspace::AccentColor;
 
-    use super::active_tab_changes;
+    use super::{active_tab_changes, rebuild_targets};
+
+    #[test]
+    fn only_regular_web_tabs_are_rebuilt() {
+        let state = BrowserState::new_first_run();
+        let regular = state.workspaces[0].id;
+        let (state, web) = state.with_new_tab(regular, "https://example.com/").unwrap();
+        let (state, chrome) = state.with_new_tab(regular, "about:settings").unwrap();
+        let (state, canvas) = state
+            .with_new_tab(regular, "wis-canvas://localhost/")
+            .unwrap();
+        let (state, private) =
+            state.with_new_private_workspace("Private".into(), AccentColor::default());
+        let (state, hidden) = state
+            .with_new_tab(private.id, "https://example.org/")
+            .unwrap();
+
+        let targets = rebuild_targets(&state);
+        assert!(targets.contains(&web.id));
+        for skipped in [chrome.id, canvas.id, hidden.id] {
+            assert!(!targets.contains(&skipped));
+        }
+    }
 
     #[test]
     fn only_workspaces_whose_active_tab_moved_are_passed_on() {
