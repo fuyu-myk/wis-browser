@@ -55,6 +55,9 @@ function hostOf(tab: Tab | null): string | null {
   }
 }
 
+/** How long a focus request waits for a hidden address bar to appear. */
+const REVEAL_WAIT_MS = 330
+
 const VAULT_HAS_KEY = 'vault-has'
 const SIGNUP_FIELD_KEY = 'signup-field'
 
@@ -362,12 +365,11 @@ function useFocusOnEvent(
       const select = (event as CustomEvent<{ select?: boolean }>).detail?.select ?? true
       beforeFocus?.()
 
-      let attempts = 0
-      const tryFocus = () => {
+      const until = performance.now() + REVEAL_WAIT_MS
+      const tryFocus = (now: number) => {
         const input = inputRef.current
         if (!input) return
-        if (input.offsetParent === null && attempts < 20) {
-          attempts += 1
+        if (input.offsetParent === null && now < until) {
           requestAnimationFrame(tryFocus)
           return
         }

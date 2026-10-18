@@ -14,6 +14,7 @@ import {
   withSources,
   type ResearchReport,
 } from '@/lib/research'
+import { flushDue } from '@/lib/streamFlush'
 import {
   ANSWER_NOW_DIRECTIVE,
   appendDelta,
@@ -147,6 +148,7 @@ export function useAiChat(
 
   const deltaRef = useRef<{ id: number; content: string; reasoning: string } | null>(null)
   const rafRef = useRef<number | null>(null)
+  const lastFlushRef = useRef(-Infinity)
 
   const applyPending = useCallback(() => {
     const chunk = deltaRef.current
@@ -174,10 +176,16 @@ export function useAiChat(
             }
           : { id, content, reasoning }
       if (rafRef.current !== null) return
-      rafRef.current = window.requestAnimationFrame(() => {
+      const onFrame = (now: number) => {
+        if (!flushDue(now, lastFlushRef.current)) {
+          rafRef.current = window.requestAnimationFrame(onFrame)
+          return
+        }
+        lastFlushRef.current = now
         rafRef.current = null
         applyPending()
-      })
+      }
+      rafRef.current = window.requestAnimationFrame(onFrame)
     },
     [applyPending],
   )

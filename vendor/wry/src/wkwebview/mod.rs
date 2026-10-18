@@ -182,6 +182,25 @@ pub(crate) fn apply_webpage_preferences(url: &str, preferences: *mut std::ffi::c
     hook(url, preferences);
   }
 }
+
+// WIS patch: embedder hook given each webview's id and its
+// `WKWebViewConfiguration` (as a raw object pointer) on the main thread, just
+// before WebKit creates the webview, so creation-time preferences can differ
+// per webview. See WIS-PATCH.md.
+type ConfigurationHook = Box<dyn Fn(&str, *mut std::ffi::c_void) + Send + Sync>;
+static CONFIGURATION_HOOK: std::sync::OnceLock<ConfigurationHook> = std::sync::OnceLock::new();
+
+/// WIS patch: register the process-wide configuration hook. The first
+/// registration wins; later calls are ignored.
+pub fn set_configuration_hook(hook: ConfigurationHook) {
+  let _ = CONFIGURATION_HOOK.set(hook);
+}
+
+fn configure_webview(id: &str, config: *mut std::ffi::c_void) {
+  if let Some(hook) = CONFIGURATION_HOOK.get() {
+    hook(id, config);
+  }
+}
 #[cfg(target_os = "macos")]
 use class::wry_web_view_parent::WryWebViewParent;
 use class::{
@@ -557,6 +576,8 @@ impl InnerWebView {
       #[cfg(feature = "fullscreen")]
       // NOTE: Private API — `fullScreenEnabled` is a private KVC key on WKPreferences.
       _preference.setValue_forKey(Some(&_yes), ns_string!("fullScreenEnabled"));
+
+      configure_webview(&webview_id, Retained::as_ptr(&config).cast_mut().cast());
 
       #[cfg(target_os = "macos")]
       let webview = {

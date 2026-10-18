@@ -461,3 +461,17 @@ from its web tabs' without a separate environment (another browser process).
   rather than fall back to the default one, which would undo the isolation.
 - `src/lib.rs`: re-exports the setter on Windows.
 
+## Fifteenth patch: the embedder adjusts each webview's configuration (macOS) (Wis-original)
+
+Some WebKit preferences only take effect when the webview is created, such as
+the internal `PreferPageRenderingUpdatesNear60FPSEnabled` that holds pages to
+60 fps on faster displays. Tauri builds the main window's webview from the app
+config, so Wis could not hand it a configuration of its own.
+
+- `src/wkwebview/mod.rs`: `wry::set_configuration_hook(Box<dyn Fn(&str, *mut
+  c_void) + Send + Sync>)` (`OnceLock`, first registration wins), called on
+  the main thread with the webview id and its `WKWebViewConfiguration` as a
+  raw pointer (so the embedder's objc2 version need not match wry's), after
+  wry's own setup and just before the `WKWebView` is created. It also runs
+  for a configuration the embedder passed in.
+- `src/lib.rs`: re-exports the setter on macOS and iOS.

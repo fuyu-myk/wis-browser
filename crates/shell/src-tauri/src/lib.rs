@@ -84,6 +84,8 @@ mod vault;
 mod video_popout;
 mod wake;
 mod wallpapers;
+#[cfg(target_os = "macos")]
+mod webkit_features;
 mod webview_close;
 mod webview_prefs;
 mod widget_panel;
@@ -120,6 +122,8 @@ pub fn run() {
         .finish();
     let _ = tracing::subscriber::set_global_default(subscriber);
     webview_prefs::keep_ipc_global_off_remote_pages();
+    #[cfg(target_os = "macos")]
+    webkit_features::uncap_own_surfaces();
 
     let mut builder = tauri::Builder::default();
 

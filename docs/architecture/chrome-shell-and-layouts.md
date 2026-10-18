@@ -62,6 +62,7 @@ Refetch and re-render are coalesced so unrelated state churn stays cheap:
 - Always-mounted leaves are `React.memo`'d (e.g. `Brand`), so they hold steady through unrelated parent re-renders.
 - The startup widget-favicon prefetch runs through a concurrency cap of 4 (`WidgetFavicon.tsx` `PREFETCH_CONCURRENCY`), deferred a few seconds after mount, so a cold-cache launch does not flood the favicon path.
 - `open_widget_panel`'s main-thread surface hop is awaited on the blocking pool, so the calling task never blocks the async runtime on it.
+- **Frame rate (macOS)**: each window's chrome and its overlays draw at the display's full rate. `webkit_features::uncap_own_surfaces` registers wry's configuration hook, which turns off WebKit's internal `PreferPageRenderingUpdatesNear60FPSEnabled` for `main`, `win-*` and `overlay-*` before each is created (the preference only counts at creation). Tabs, widget panels, Peek and the hidden readers keep the 60 fps cap. Per-frame work stays bounded: animations step by elapsed time, the address bar's focus retry waits up to 330 ms rather than counting frames, and streamed assistant text repaints at most 60 times a second (`lib/streamFlush.ts`).
 
 ## Settings page
 
