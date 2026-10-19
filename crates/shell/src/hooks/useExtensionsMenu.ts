@@ -168,7 +168,8 @@ export function useExtensionsMenu(
       if ((await commands.extensionDismissPopup()) !== null) return
       const actions = await commands.extensionActions()
       const payload: ExtensionsMenuPayload = { kind: 'menu', anchor, actions, workspaceId }
-      const bounds = menuBounds(anchor, actions.length, viewport())
+      const siteLines = actions.filter((a) => a.site).length
+      const bounds = menuBounds(anchor, actions.length, viewport(), siteLines)
       await ensure()
       await commands.setOverlayBounds('extmenu', bounds.x, bounds.y, bounds.width, bounds.height)
       pendingRef.current = payload

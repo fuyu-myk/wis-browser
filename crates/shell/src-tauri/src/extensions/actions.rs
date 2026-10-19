@@ -20,12 +20,14 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{
     NSDictionary, NSNotification, NSNotificationCenter, NSPoint, NSRect, NSRectEdge, NSSize,
-    NSString, NSURLRequest,
+    NSString, NSURLRequest, NSURL,
 };
-use objc2_web_kit::{WKWebExtensionAction, WKWebExtensionContext, WKWebView};
+use objc2_web_kit::{
+    WKWebExtensionAction, WKWebExtensionContext, WKWebExtensionContextPermissionStatus, WKWebView,
+};
 use wis_core::WorkspaceId;
 
-use super::{host, ExtensionAction};
+use super::{grants, host, ExtensionAction, SiteState};
 
 /// The button rectangle, in window points from the top left.
 pub(crate) type Rect = (f64, f64, f64, f64);
@@ -97,9 +99,36 @@ fn icon_url(image: Retained<NSImage>) -> Option<String> {
     Some(url)
 }
 
+/// Whether an extension that runs only on allowed sites wants the page at
+/// `url`, and is allowed there.
+fn site_state(context: &WKWebExtensionContext, id: &str, url: &NSURL) -> Option<SiteState> {
+    if grants::access_of(id)?.all_sites {
+        return None;
+    }
+    let host = wis_core::extension_access::plain_host(&url.host()?.to_string())?;
+    // SAFETY: property reads on the main thread.
+    let (wants, status) = unsafe {
+        let wants = context.hasInjectedContentForURL(url)
+            || context
+                .webExtension()
+                .allRequestedMatchPatterns()
+                .iter()
+                .any(|p| p.matchesURL(Some(url)));
+        (wants, context.permissionStatusForURL(url))
+    };
+    wants.then_some(SiteState {
+        host,
+        allowed: status.0 >= WKWebExtensionContextPermissionStatus::GrantedImplicitly.0,
+    })
+}
+
 /// The actions of `ids` running in `workspace`, for its active tab.
 pub(super) fn list(workspace: WorkspaceId, ids: &[String]) -> Vec<ExtensionAction> {
     let tab = host::selected_tab(workspace);
+    let url = tab.as_ref().and_then(|t| t.page_url()).filter(|u| {
+        u.scheme()
+            .is_some_and(|s| s.to_string().starts_with("http"))
+    });
     let tab = tab.as_deref().map(ProtocolObject::from_ref);
     let size = NSSize::new(ICON_POINTS, ICON_POINTS);
     ids.iter()
@@ -130,6 +159,7 @@ pub(super) fn list(workspace: WorkspaceId, ids: &[String]) -> Vec<ExtensionActio
                     enabled: action.as_ref().is_some_and(|a| a.isEnabled()),
                     has_options: extension.hasOptionsPage(),
                     icon: icon.and_then(icon_url),
+                    site: url.as_deref().and_then(|u| site_state(&context, id, u)),
                 })
             }
         })

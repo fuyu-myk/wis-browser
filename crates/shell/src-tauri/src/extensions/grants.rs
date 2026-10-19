@@ -1,6 +1,6 @@
-//! What extensions were allowed while running: applied to each of their
-//! contexts, and forgotten when an extension gives some back with
-//! `permissions.remove`. Main thread only.
+//! Where each extension may run and what it was allowed while running:
+//! applied to each of its contexts, and forgotten when an extension gives
+//! some back with `permissions.remove`. Main thread only.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -19,72 +19,193 @@ use objc2_web_kit::{
     WKWebExtensionContextNotificationUserInfoKeyPermissions, WKWebExtensionContextPermissionStatus,
     WKWebExtensionMatchPattern,
 };
-use wis_core::extensions::is_site_pattern;
+use wis_core::extension_access::{plain_host, site_pattern, SiteAccess};
+use wis_core::extensions::{is_site_pattern, InstalledExtension};
 
 use super::host;
 
+/// What an extension may reach, as the settings say.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Access {
+    /// Every site its manifest asks for, rather than only `hosts`.
+    pub all_sites: bool,
+    pub hosts: Vec<String>,
+    /// Permissions and match patterns it was allowed while running.
+    pub granted: Vec<String>,
+}
+
+impl Access {
+    pub(super) fn of(ext: &InstalledExtension) -> Self {
+        Self {
+            all_sites: ext.site_access == SiteAccess::All,
+            hosts: ext
+                .allowed_sites
+                .iter()
+                .filter_map(|h| plain_host(h))
+                .collect(),
+            granted: ext.granted.clone(),
+        }
+    }
+
+    fn everywhere() -> Self {
+        Self {
+            all_sites: true,
+            hosts: Vec::new(),
+            granted: Vec::new(),
+        }
+    }
+}
+
 thread_local! {
-    static GRANTS: RefCell<Option<HashMap<String, Vec<String>>>> = const { RefCell::new(None) };
+    static ACCESS: RefCell<Option<HashMap<String, Access>>> = const { RefCell::new(None) };
     static OBSERVERS: RefCell<Vec<Retained<ProtocolObject<dyn NSObjectProtocol>>>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Takes the grants a new host read, unless a change already brought newer
-/// ones, and starts noticing extensions giving some back.
-pub(super) fn init(grants: HashMap<String, Vec<String>>) {
+/// Takes what a new host read, unless a change already brought newer
+/// settings, and starts noticing extensions giving some back.
+pub(super) fn init(access: HashMap<String, Access>) {
     watch();
-    GRANTS.with_borrow_mut(|current| {
-        current.get_or_insert(grants);
+    ACCESS.with_borrow_mut(|current| {
+        current.get_or_insert(access);
     });
 }
 
-/// Takes the latest grants, granting what is new and withdrawing what was
-/// revoked in every loaded context.
-pub(super) fn set(next: HashMap<String, Vec<String>>) {
-    let previous = GRANTS.replace(Some(next.clone())).unwrap_or_default();
-    let none = Vec::new();
+pub(super) fn access_of(id: &str) -> Option<Access> {
+    ACCESS.with_borrow(|access| access.as_ref().and_then(|a| a.get(id).cloned()))
+}
+
+/// Takes the latest settings, and moves every loaded context whose
+/// extension's access changed to the new access.
+pub(super) fn set(next: HashMap<String, Access>) {
+    let previous = ACCESS.replace(Some(next.clone())).unwrap_or_default();
     for (id, context) in host::contexts() {
-        let before = previous.get(&id).unwrap_or(&none);
-        let after = next.get(&id).unwrap_or(&none);
-        let added: Vec<String> = after
-            .iter()
-            .filter(|g| !before.contains(g))
+        let Some(after) = next.get(&id) else {
+            continue;
+        };
+        let before = previous
+            .get(&id)
             .cloned()
-            .collect();
-        let revoked: Vec<String> = before
-            .iter()
-            .filter(|g| !after.contains(g))
-            .cloned()
-            .collect();
-        if revoked.is_empty() {
-            grant(&context, &added);
-        } else {
-            revoke(&context, &revoked);
-            // Clearing a site also clears the narrower sites it covers.
-            grant_required_sites(&context);
-            grant(&context, after);
+            .unwrap_or_else(Access::everywhere);
+        if before != *after {
+            change(&context, &before, after);
         }
     }
 }
 
-fn grant_required_sites(context: &WKWebExtensionContext) {
-    let granted = WKWebExtensionContextPermissionStatus::GrantedExplicitly;
-    // SAFETY: main thread; property reads and permission changes on a live context.
-    unsafe {
-        for pattern in context.webExtension().allRequestedMatchPatterns().iter() {
-            context.setPermissionStatus_forMatchPattern(granted, &pattern);
+/// Withdraws what `before` granted and `after` does not, then grants `after`
+/// again. Losing every host takes a reload.
+fn change(context: &WKWebExtensionContext, before: &Access, after: &Access) {
+    let kept: Vec<String> = sites(context, after).iter().map(|p| named(p)).collect();
+    let gone: Vec<_> = sites(context, before)
+        .into_iter()
+        .filter(|p| !kept.contains(&named(p)))
+        .collect();
+    // SAFETY: main thread; property reads of live objects.
+    let reload = gone.iter().any(|p| unsafe { p.matchesAllHosts() });
+    let controller = if reload {
+        // SAFETY: main thread; a property read on a live context.
+        unsafe { context.webExtensionController() }
+    } else {
+        None
+    };
+    // SAFETY: main thread; the context is loaded in this controller.
+    let controller =
+        controller.filter(
+            |c| match unsafe { c.unloadExtensionContext_error(context) } {
+                Ok(()) => true,
+                Err(err) => {
+                    log::warn!(
+                        "an extension was not reloaded: {}",
+                        err.localizedDescription()
+                    );
+                    false
+                }
+            },
+        );
+
+    let unknown = WKWebExtensionContextPermissionStatus::Unknown;
+    for site in &gone {
+        // SAFETY: main thread; clearing on a live context.
+        unsafe { context.setPermissionStatus_forMatchPattern(unknown, site) };
+    }
+
+    let kept = permissions(context, after);
+    for permission in permissions(context, before) {
+        if !kept.contains(&permission) {
+            // SAFETY: main thread; clearing on a live context.
+            unsafe { context.setPermissionStatus_forPermission(unknown, &permission) };
+        }
+    }
+    grant(context, after);
+
+    if let Some(controller) = controller {
+        // SAFETY: main thread; the context was unloaded from this controller.
+        if let Err(err) = unsafe { controller.loadExtensionContext_error(context) } {
+            log::warn!(
+                "an extension did not load again: {}",
+                err.localizedDescription()
+            );
         }
     }
 }
 
-/// Grants an extension's remembered extras to its context before it loads.
+/// Grants an extension's sites and extras to its context before it loads.
 pub(super) fn apply(context: &WKWebExtensionContext, id: &str) {
-    let items = GRANTS.with_borrow(|grants| {
-        grants
-            .as_ref()
-            .and_then(|g| g.get(id).cloned())
-            .unwrap_or_default()
-    });
-    grant(context, &items);
+    let access = access_of(id).unwrap_or_else(Access::everywhere);
+    grant(context, &access);
+}
+
+/// Allows or stops an extension on a host for one private workspace's
+/// context, leaving the settings alone.
+pub(super) fn set_session_site(
+    context: &WKWebExtensionContext,
+    id: &str,
+    host: &str,
+    allowed: bool,
+) {
+    let status = if allowed {
+        WKWebExtensionContextPermissionStatus::GrantedExplicitly
+    } else {
+        WKWebExtensionContextPermissionStatus::Unknown
+    };
+    for site in host_sites(context, host) {
+        // SAFETY: main thread; changing a permission on a live context.
+        unsafe { context.setPermissionStatus_forMatchPattern(status, &site) };
+    }
+    if !allowed {
+        apply(context, id);
+    }
+}
+
+fn named(pattern: &WKWebExtensionMatchPattern) -> String {
+    // SAFETY: a property read of a live pattern on the main thread.
+    unsafe { pattern.string() }.to_string()
+}
+
+/// The patterns that allow `host` within what the extension asks for: both
+/// schemes when it asks for both, else the one it does.
+fn host_sites(
+    context: &WKWebExtensionContext,
+    host: &str,
+) -> Vec<Retained<WKWebExtensionMatchPattern>> {
+    // SAFETY: main thread; a property read on a live context.
+    let requested = unsafe { context.webExtension().allRequestedMatchPatterns() };
+    // SAFETY: main thread; matching live patterns.
+    let covered = |p: &WKWebExtensionMatchPattern| {
+        requested
+            .iter()
+            .any(|r| unsafe { r.matchesPattern(Some(p)) })
+    };
+    let both = pattern(&site_pattern(host));
+    if let Some(both) = both.filter(|p| covered(p)) {
+        return vec![both];
+    }
+
+    ["https", "http"]
+        .iter()
+        .filter_map(|scheme| pattern(&format!("{scheme}://{host}/*")))
+        .filter(|p| covered(p))
+        .collect()
 }
 
 fn pattern(item: &str) -> Option<Retained<WKWebExtensionMatchPattern>> {
@@ -93,53 +214,70 @@ fn pattern(item: &str) -> Option<Retained<WKWebExtensionMatchPattern>> {
     unsafe { WKWebExtensionMatchPattern::matchPatternWithString(&NSString::from_str(item), mtm) }
 }
 
-/// Grants what the extension still declares it may ask for.
-fn grant(context: &WKWebExtensionContext, items: &[String]) {
-    let granted = WKWebExtensionContextPermissionStatus::GrantedExplicitly;
+/// The sites `access` reaches: the manifest's or the allowed ones, and those
+/// allowed while running that the extension still declares.
+fn sites(
+    context: &WKWebExtensionContext,
+    access: &Access,
+) -> Vec<Retained<WKWebExtensionMatchPattern>> {
     // SAFETY: main thread; property reads on a live context.
-    let (optional, reachable) = unsafe {
+    let (requested, reachable) = unsafe {
         let extension = context.webExtension();
         let reachable: Vec<_> = extension
             .optionalPermissionMatchPatterns()
             .iter()
             .chain(extension.requestedPermissionMatchPatterns().iter())
             .collect();
-        (extension.optionalPermissions(), reachable)
+        (extension.allRequestedMatchPatterns().to_vec(), reachable)
     };
-    for item in items {
-        if is_site_pattern(item) {
-            let Some(pattern) = pattern(item) else {
-                continue;
-            };
-            // SAFETY: main thread; matching and granting on live objects.
-            unsafe {
-                if reachable.iter().any(|r| r.matchesPattern(Some(&pattern))) {
-                    context.setPermissionStatus_forMatchPattern(granted, &pattern);
-                }
-            }
-        } else {
-            let permission = NSString::from_str(item);
-            if optional.containsObject(&permission) {
-                // SAFETY: main thread; granting on a live context.
-                unsafe { context.setPermissionStatus_forPermission(granted, &permission) };
-            }
-        }
-    }
+    let mut sites: Vec<_> = if access.all_sites {
+        requested
+    } else {
+        access
+            .hosts
+            .iter()
+            .flat_map(|h| host_sites(context, h))
+            .collect()
+    };
+    sites.extend(
+        access
+            .granted
+            .iter()
+            .filter(|g| is_site_pattern(g))
+            .filter_map(|g| pattern(g))
+            // SAFETY: main thread; matching live patterns.
+            .filter(|p| {
+                reachable
+                    .iter()
+                    .any(|r| unsafe { r.matchesPattern(Some(p)) })
+            }),
+    );
+
+    sites
 }
 
-fn revoke(context: &WKWebExtensionContext, items: &[String]) {
-    let unknown = WKWebExtensionContextPermissionStatus::Unknown;
-    for item in items {
-        // SAFETY: main thread; clearing a permission on a live context.
-        unsafe {
-            if is_site_pattern(item) {
-                if let Some(pattern) = pattern(item) {
-                    context.setPermissionStatus_forMatchPattern(unknown, &pattern);
-                }
-            } else {
-                context.setPermissionStatus_forPermission(unknown, &NSString::from_str(item));
-            }
-        }
+/// The permissions allowed while running that the extension still declares.
+fn permissions(context: &WKWebExtensionContext, access: &Access) -> Vec<Retained<NSString>> {
+    // SAFETY: main thread; a property read on a live context.
+    let optional = unsafe { context.webExtension().optionalPermissions() };
+    access
+        .granted
+        .iter()
+        .filter(|g| !is_site_pattern(g))
+        .map(|g| NSString::from_str(g))
+        .filter(|p| optional.containsObject(p))
+        .collect()
+}
+
+fn grant(context: &WKWebExtensionContext, access: &Access) {
+    let granted = WKWebExtensionContextPermissionStatus::GrantedExplicitly;
+    for site in sites(context, access) {
+        // SAFETY: main thread; granting on a live context.
+        unsafe { context.setPermissionStatus_forMatchPattern(granted, &site) };
+    }
+    for permission in permissions(context, access) {
+        // SAFETY: main thread; granting on a live context.
+        unsafe { context.setPermissionStatus_forPermission(granted, &permission) };
     }
 }
 
@@ -211,10 +349,11 @@ fn given_back(note: &NSNotification) {
         .into_iter()
         .flat_map(|key| strings_under(note, key))
         .collect();
-    let held: Vec<String> = GRANTS.with_borrow(|grants| {
-        grants
+    let held: Vec<String> = ACCESS.with_borrow(|access| {
+        access
             .as_ref()
-            .and_then(|g| g.get(&id))
+            .and_then(|a| a.get(&id))
+            .map(|a| &a.granted)
             .map(|items| {
                 removed
                     .iter()
@@ -224,7 +363,26 @@ fn given_back(note: &NSNotification) {
             })
             .unwrap_or_default()
     });
-    if !held.is_empty() {
-        super::forget_granted(id, held);
+    let given_up: Vec<String> = held
+        .into_iter()
+        .filter(|item| !still_granted(&context, item))
+        .collect();
+    if !given_up.is_empty() {
+        super::access::forget_granted(id, given_up);
+    }
+}
+
+fn still_granted(context: &WKWebExtensionContext, item: &str) -> bool {
+    let granted = WKWebExtensionContextPermissionStatus::GrantedImplicitly.0;
+    // SAFETY: main thread; status reads on a live context.
+    unsafe {
+        if is_site_pattern(item) {
+            pattern(item).is_some_and(|p| context.permissionStatusForMatchPattern(&p).0 >= granted)
+        } else {
+            context
+                .permissionStatusForPermission(&NSString::from_str(item))
+                .0
+                >= granted
+        }
     }
 }

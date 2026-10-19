@@ -532,7 +532,11 @@ export interface InstalledExtension {
   allow_private: boolean
   pinned: boolean
   granted: string[]
+  site_access: SiteAccess
+  allowed_sites: string[]
 }
+
+export type SiteAccess = 'all' | 'allowed'
 
 /** What an extension asks for, shown before installing it (mirror of `ExtensionReview`). */
 export interface ExtensionReview {
@@ -557,6 +561,8 @@ export interface ExtensionAction {
   has_options: boolean
   /** A PNG data URL. */
   icon: string | null
+  /** The active tab's host, when the extension runs only on allowed sites and wants this one. */
+  site: { host: string; allowed: boolean } | null
 }
 
 /** A running extension asking for more access (mirror of `extensions::prompts::PermissionRequest`). */

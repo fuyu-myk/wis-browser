@@ -286,7 +286,7 @@ async fn reload(
         let browser = state.browser.lock().await;
         (
             super::wanted_by_workspace(&browser),
-            super::grants_by_extension(&browser.settings.extensions),
+            super::access::access_by_extension(&browser.settings.extensions),
             super::rebuild_targets(before, &browser),
         )
     };

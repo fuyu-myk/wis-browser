@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::extension_access::SiteAccess;
 use crate::workspace::Workspace;
 use crate::{WisError, WisResult, WorkspaceId};
 
@@ -21,6 +22,10 @@ pub struct InstalledExtension {
     /// Permissions and match patterns it asked for while running and was allowed.
     #[serde(default)]
     pub granted: Vec<String>,
+    #[serde(default)]
+    pub site_access: SiteAccess,
+    #[serde(default)]
+    pub allowed_sites: Vec<String>,
 }
 
 pub const MAX_EXTENSIONS: usize = 64;

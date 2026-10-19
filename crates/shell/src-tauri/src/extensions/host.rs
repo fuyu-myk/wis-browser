@@ -336,12 +336,12 @@ fn wait_for_loads(workspace: WorkspaceId, ready: oneshot::Sender<bool>) {
 pub(super) fn sync_all(
     dir: PathBuf,
     wanted: HashMap<WorkspaceId, Vec<String>>,
-    grants: HashMap<String, Vec<String>>,
+    access: HashMap<String, super::grants::Access>,
 ) {
     let Some(mtm) = MainThreadMarker::new() else {
         return;
     };
-    super::grants::set(grants);
+    super::grants::set(access);
     let workspaces: Vec<WorkspaceId> = HOSTS.with_borrow(|hosts| hosts.keys().copied().collect());
     for workspace in workspaces {
         let list = wanted.get(&workspace).cloned().unwrap_or_default();
@@ -448,9 +448,6 @@ fn load_context(
         context.setHasAccessToPrivateData(private);
         for permission in extension.requestedPermissions().iter() {
             context.setPermissionStatus_forPermission(granted, &permission);
-        }
-        for pattern in extension.allRequestedMatchPatterns().iter() {
-            context.setPermissionStatus_forMatchPattern(granted, &pattern);
         }
         super::grants::apply(&context, id);
         controller

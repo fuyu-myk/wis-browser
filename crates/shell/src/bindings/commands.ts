@@ -66,6 +66,7 @@ import type {
   Userscript,
   StagedExtension,
   ExtensionAction,
+  SiteAccess,
 } from '@/bindings/types'
 
 export const commands = {
@@ -1609,6 +1610,19 @@ export const commands = {
 
   async extensionRevokeGranted(id: string): Promise<void> {
     return invoke('extension_revoke_granted', { id })
+  },
+
+  async extensionSetSiteAccess(id: string, access: SiteAccess): Promise<void> {
+    return invoke('extension_set_site_access', { id, access })
+  },
+
+  async extensionSetSite(id: string, host: string, allowed: boolean): Promise<void> {
+    return invoke('extension_set_site', { id, host, allowed })
+  },
+
+  /** Allow or stop an extension on a host from this window; kept only for the session in a private workspace. */
+  async extensionSetSiteHere(id: string, host: string, allowed: boolean): Promise<void> {
+    return invoke('extension_set_site_here', { id, host, allowed })
   },
 
   /** 

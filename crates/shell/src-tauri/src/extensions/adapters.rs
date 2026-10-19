@@ -55,8 +55,7 @@ define_class!(
 
         #[unsafe(method_id(urlForWebExtensionContext:))]
         fn url(&self, _context: &WKWebExtensionContext) -> Option<Retained<NSURL>> {
-            // SAFETY: a property read on the main thread.
-            self.ivars().webview.load().and_then(|w| unsafe { w.URL() })
+            self.page_url()
         }
 
         #[unsafe(method_id(titleForWebExtensionContext:))]
@@ -71,6 +70,11 @@ define_class!(
 );
 
 impl HostTab {
+    pub(super) fn page_url(&self) -> Option<Retained<NSURL>> {
+        // SAFETY: a property read on the main thread.
+        self.ivars().webview.load().and_then(|w| unsafe { w.URL() })
+    }
+
     pub(super) fn label(&self) -> &str {
         &self.ivars().label
     }

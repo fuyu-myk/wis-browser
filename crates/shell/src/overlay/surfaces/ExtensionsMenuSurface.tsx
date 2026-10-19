@@ -4,7 +4,7 @@
  * or an extension's request for more access.
  */
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
@@ -20,6 +20,28 @@ import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import type { ExtensionsMenuPayload } from '@/hooks/useExtensionsMenu'
 import { useThemeApply } from '@/hooks/useThemeApply'
 import { ExtensionPrompt } from '@/overlay/surfaces/ExtensionPrompt'
+
+interface SiteLineProps {
+  site: { host: string; allowed: boolean }
+  /** Whether stopping it here is up to the user. */
+  removable: boolean
+  onChange: (allowed: boolean) => void
+}
+
+function SiteLine({ site, removable, onChange }: SiteLineProps) {
+  return (
+    <div className="kb-extmenu-site">
+      <span className="kb-extmenu-site-text">
+        {site.allowed ? 'Runs on' : 'Wants'} {site.host}
+      </span>
+      {(!site.allowed || removable) && (
+        <button type="button" className="kb-extmenu-site-btn" onClick={() => onChange(!site.allowed)}>
+          {site.allowed ? 'Remove' : 'Allow'}
+        </button>
+      )}
+    </div>
+  )
+}
 
 export function ExtensionsMenuSurface() {
   const { data: state } = useBrowserState()
@@ -67,6 +89,19 @@ export function ExtensionsMenuSurface() {
     void commands.extensionOpenOptions(action.id).catch(() => undefined)
   }
 
+  const workspace = state?.workspaces.find((w) => w.id === workspaceId)
+  const listed = (action: ExtensionAction, host: string) =>
+    !!state?.settings.extensions.find((e) => e.id === action.id)?.allowed_sites.includes(host)
+
+  const setSite = (action: ExtensionAction, host: string, allowed: boolean) => {
+    close()
+    const tabId = workspace?.active_tab_id
+    void commands
+      .extensionSetSiteHere(action.id, host, allowed)
+      .then(() => (tabId ? commands.tabReload(tabId) : undefined))
+      .catch(() => undefined)
+  }
+
   const manage = () => {
     close()
     if (!workspaceId) return
@@ -81,49 +116,58 @@ export function ExtensionsMenuSurface() {
         <div className="kb-extmenu-empty">No extensions run in this workspace.</div>
       ) : (
         actions.map((action) => (
-          <div className="kb-extmenu-row" key={action.id}>
-            <button
-              type="button"
-              role="menuitem"
-              className="kb-extmenu-item"
-              disabled={!action.enabled}
-              title={action.label || action.name}
-              onClick={() => run(action)}
-            >
-              {action.icon ? (
-                <img className="kb-extmenu-icon" src={action.icon} alt="" />
-              ) : (
-                <span className="kb-extmenu-icon">
-                  <PuzzleIcon />
-                </span>
-              )}
-              <span className="kb-extmenu-name">{action.name}</span>
-              {action.badge && <span className="kb-extmenu-badge">{action.badge}</span>}
-            </button>
-            <button
-              type="button"
-              className={cx('kb-extmenu-options', { 'is-on': pinned.has(action.id) })}
-              title={pinned.has(action.id) ? 'Unpin from the address bar' : 'Pin to the address bar'}
-              aria-label={`${pinned.has(action.id) ? 'Unpin' : 'Pin'} ${action.name}`}
-              aria-pressed={pinned.has(action.id)}
-              onClick={() =>
-                void commands.extensionSetPinned(action.id, !pinned.has(action.id)).catch(() => undefined)
-              }
-            >
-              <PinIcon />
-            </button>
-            {action.has_options && (
+          <Fragment key={action.id}>
+            <div className="kb-extmenu-row">
               <button
                 type="button"
-                className="kb-extmenu-options"
-                title="Options"
-                aria-label={`${action.name} options`}
-                onClick={() => openOptions(action)}
+                role="menuitem"
+                className="kb-extmenu-item"
+                disabled={!action.enabled}
+                title={action.label || action.name}
+                onClick={() => run(action)}
               >
-                <SettingsIcon />
+                {action.icon ? (
+                  <img className="kb-extmenu-icon" src={action.icon} alt="" />
+                ) : (
+                  <span className="kb-extmenu-icon">
+                    <PuzzleIcon />
+                  </span>
+                )}
+                <span className="kb-extmenu-name">{action.name}</span>
+                {action.badge && <span className="kb-extmenu-badge">{action.badge}</span>}
               </button>
+              <button
+                type="button"
+                className={cx('kb-extmenu-options', { 'is-on': pinned.has(action.id) })}
+                title={pinned.has(action.id) ? 'Unpin from the address bar' : 'Pin to the address bar'}
+                aria-label={`${pinned.has(action.id) ? 'Unpin' : 'Pin'} ${action.name}`}
+                aria-pressed={pinned.has(action.id)}
+                onClick={() =>
+                  void commands.extensionSetPinned(action.id, !pinned.has(action.id)).catch(() => undefined)
+                }
+              >
+                <PinIcon />
+              </button>
+              {action.has_options && (
+                <button
+                  type="button"
+                  className="kb-extmenu-options"
+                  title="Options"
+                  aria-label={`${action.name} options`}
+                  onClick={() => openOptions(action)}
+                >
+                  <SettingsIcon />
+                </button>
+              )}
+            </div>
+            {action.site && (
+              <SiteLine
+                site={action.site}
+                removable={!!workspace?.ephemeral || listed(action, action.site.host)}
+                onChange={(allowed) => action.site && setSite(action, action.site.host, allowed)}
+              />
             )}
-          </div>
+          </Fragment>
         ))
       )}
       <div className="kb-extmenu-divider" />

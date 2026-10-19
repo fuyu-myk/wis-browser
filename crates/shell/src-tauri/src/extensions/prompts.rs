@@ -222,7 +222,7 @@ pub(super) fn answer(request: u64, workspace: WorkspaceId, allow: bool) {
     }
     if !pending.private {
         let items = pending.asked.iter().flat_map(Asked::items).collect();
-        super::remember_granted(pending.id, items);
+        super::access::remember_granted(pending.id, items);
     }
 }
 

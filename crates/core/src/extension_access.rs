@@ -1,11 +1,87 @@
-//! What an extension may do beyond what it was installed with: the
-//! permissions and sites it asked for while running and was allowed.
+//! Where an extension may run, and what it may do beyond what it was
+//! installed with: the permissions and sites it asked for while running and
+//! was allowed.
+
+use serde::{Deserialize, Serialize};
 
 use crate::extensions::{abilities, is_site_pattern, with_changed, InstalledExtension};
 use crate::{WisError, WisResult};
 
 pub const MAX_GRANTED: usize = 64;
 const MAX_GRANT: usize = 512;
+pub const MAX_SITES: usize = 256;
+const MAX_HOST: usize = 253;
+
+/// Whether an extension runs on every site it asks for, or only on the
+/// sites the user allowed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SiteAccess {
+    #[default]
+    All,
+    Allowed,
+}
+
+pub fn with_site_access(
+    list: &[InstalledExtension],
+    id: &str,
+    access: SiteAccess,
+) -> WisResult<Vec<InstalledExtension>> {
+    with_changed(list, id, |ext| ext.site_access = access)
+}
+
+/// A host as a page's URL gives it, lowercased; `None` for anything else,
+/// such as a wildcard or a path.
+pub fn plain_host(raw: &str) -> Option<String> {
+    let host = raw.trim_end_matches('.').to_ascii_lowercase();
+    let label_ok = |label: &str| {
+        (1..=63).contains(&label.len())
+            && label
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    };
+    (host.len() <= MAX_HOST && host.split('.').all(label_ok)).then_some(host)
+}
+
+/// Allows or stops an extension on a host, given as a page's host is.
+pub fn with_site(
+    list: &[InstalledExtension],
+    id: &str,
+    host: &str,
+    allowed: bool,
+) -> WisResult<Vec<InstalledExtension>> {
+    let refuse = |message: &str| {
+        Err(WisError::InvalidInput {
+            message: message.into(),
+        })
+    };
+    let Some(host) = plain_host(host) else {
+        return refuse("not a site");
+    };
+    let sites = list
+        .iter()
+        .find(|e| e.id == id)
+        .map(|e| e.allowed_sites.len())
+        .unwrap_or_default();
+    let listed = list
+        .iter()
+        .any(|e| e.id == id && e.allowed_sites.contains(&host));
+    if allowed && !listed && sites >= MAX_SITES {
+        return refuse("that extension is allowed on too many sites already");
+    }
+
+    with_changed(list, id, |ext| {
+        ext.allowed_sites.retain(|s| *s != host);
+        if allowed {
+            ext.allowed_sites.push(host);
+        }
+    })
+}
+
+/// The match pattern that allows a host, over http and https.
+pub fn site_pattern(host: &str) -> String {
+    format!("*://{host}/*")
+}
 
 /// A permission or match pattern as WebKit spells it.
 fn is_grant(item: &str) -> bool {
@@ -80,6 +156,64 @@ mod tests {
             granted: strings(granted),
             ..Default::default()
         }]
+    }
+
+    #[test]
+    fn extensions_run_on_all_sites_until_narrowed() {
+        assert_eq!(installed(&[])[0].site_access, SiteAccess::All);
+        let list = with_site_access(&installed(&[]), ID, SiteAccess::Allowed).unwrap();
+        assert_eq!(list[0].site_access, SiteAccess::Allowed);
+        assert!(with_site_access(&list, "missing", SiteAccess::All).is_err());
+    }
+
+    #[test]
+    fn sites_are_kept_once_by_their_host() {
+        let list = with_site(&installed(&[]), ID, "En.Wikipedia.org.", true).unwrap();
+        let list = with_site(&list, ID, "en.wikipedia.org", true).unwrap();
+        assert_eq!(list[0].allowed_sites, strings(&["en.wikipedia.org"]));
+        let list = with_site(&list, ID, "en.wikipedia.org", false).unwrap();
+        assert!(list[0].allowed_sites.is_empty());
+    }
+
+    #[test]
+    fn only_plain_hosts_are_sites() {
+        for bad in [
+            "",
+            "*.example.com",
+            "example.com/path",
+            "[::1]",
+            "a b.com",
+            "exa_mple.com",
+            ".com",
+        ] {
+            assert!(with_site(&installed(&[]), ID, bad, true).is_err(), "{bad}");
+        }
+        for good in ["localhost", "127.0.0.1", "xn--bcher-kva.example"] {
+            assert!(with_site(&installed(&[]), ID, good, true).is_ok(), "{good}");
+        }
+    }
+
+    #[test]
+    fn sites_stop_at_the_cap() {
+        let mut list = installed(&[]);
+        for i in 0..MAX_SITES {
+            list = with_site(&list, ID, &format!("s{i}.test"), true).unwrap();
+        }
+        assert!(with_site(&list, ID, "one-more.test", true).is_err());
+        assert!(with_site(&list, ID, "s0.test", false).is_ok());
+    }
+
+    #[test]
+    fn a_site_is_allowed_over_both_schemes() {
+        assert_eq!(site_pattern("en.wikipedia.org"), "*://en.wikipedia.org/*");
+    }
+
+    #[test]
+    fn older_settings_read_as_all_sites() {
+        let ext: InstalledExtension =
+            serde_json::from_str(&format!(r#"{{"id":"{ID}","name":"x","version":"1"}}"#)).unwrap();
+        assert_eq!(ext.site_access, SiteAccess::All);
+        assert!(ext.allowed_sites.is_empty());
     }
 
     #[test]

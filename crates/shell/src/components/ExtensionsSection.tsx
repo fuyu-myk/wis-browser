@@ -2,9 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { commands } from '@/bindings/commands'
-import type { InstalledExtension, StagedExtension, Workspace } from '@/bindings/types'
+import type { InstalledExtension, SiteAccess, StagedExtension, Workspace } from '@/bindings/types'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { Switch } from '@/components/controls'
+import { Segmented, Switch } from '@/components/controls'
 import { errorMessage } from '@/lib/errors'
 
 interface ExtensionsSectionProps {
@@ -44,6 +44,11 @@ function ReviewDetails({ staged }: { staged: StagedExtension }) {
     </>
   )
 }
+
+const SITE_ACCESS: ReadonlyArray<{ value: SiteAccess; label: string }> = [
+  { value: 'all', label: 'All sites' },
+  { value: 'allowed', label: 'Sites I allow' },
+]
 
 interface GrantedRowProps {
   ext: InstalledExtension
@@ -185,6 +190,41 @@ export function ExtensionsSection({ installed, workspace }: ExtensionsSectionPro
               label={`Allow ${ext.name} in private workspaces`}
             />
           </div>
+          <div className="row kb-ext-sub">
+            <div className="l">
+              <span>Site access</span>
+              <span>
+                {ext.site_access === 'all'
+                  ? 'Every site it asks for.'
+                  : 'Only sites you allow from the extensions menu while on them.'}{' '}
+                Open pages follow when they reload.
+              </span>
+            </div>
+            <Segmented
+              value={ext.site_access}
+              onChange={(access) => void run(() => commands.extensionSetSiteAccess(ext.id, access))}
+              options={SITE_ACCESS}
+              ariaLabel={`Where ${ext.name} runs`}
+              disabled={busy}
+            />
+          </div>
+          {ext.site_access === 'allowed' &&
+            ext.allowed_sites.map((host) => (
+              <div key={host} className="row kb-ext-sub">
+                <div className="l">
+                  <span>{host}</span>
+                </div>
+                <button
+                  type="button"
+                  className="kb-btn"
+                  onClick={() => void run(() => commands.extensionSetSite(ext.id, host, false))}
+                  disabled={busy}
+                  aria-label={`Stop ${ext.name} on ${host}`}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
           {ext.granted.length > 0 && (
             <GrantedRow
               ext={ext}
