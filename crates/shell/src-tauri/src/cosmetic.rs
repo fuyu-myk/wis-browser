@@ -451,9 +451,9 @@ mod imp {
         }
     }
 
-    /// Replace the per-page injected scripts: drop every previously injected
-    /// script (shared marker prefix), re-add every other (non-injected) user
-    /// script, then add the new document-start and document-end payloads.
+    /// Replace the per-page injected scripts (shared marker prefix) with the
+    /// new document-start and document-end payloads, leaving every other user
+    /// script in place.
     pub fn swap_injected_scripts<R: tauri::Runtime>(
         webview: &tauri::webview::Webview<R>,
         start_payload: &str,
@@ -492,7 +492,8 @@ mod imp {
                 msg_send![existing, count]
             };
             let marker = ns_string(INJECT_MARKER_PREFIX);
-            let mut keep: Vec<*mut AnyObject> = Vec::with_capacity(count);
+            let mut injected: Vec<*mut AnyObject> = Vec::new();
+            let mut others: Vec<*mut AnyObject> = Vec::with_capacity(count);
             for i in 0..count {
                 let script: *mut AnyObject = msg_send![existing, objectAtIndex: i];
                 let src: *mut AnyObject = msg_send![script, source];
@@ -501,18 +502,14 @@ mod imp {
                 } else {
                     msg_send![src, hasPrefix: marker]
                 };
-                if !marked {
-                    let _: *mut AnyObject = msg_send![script, retain];
-                    keep.push(script);
+                if marked {
+                    injected.push(script);
+                } else {
+                    others.push(script);
                 }
             }
-            let kept = keep.len();
-            let _: () = msg_send![controller, removeAllUserScripts];
-            for script in keep {
-                let _: () = msg_send![controller, addUserScript: script];
-                let _: () = msg_send![script, release];
-            }
-            log::debug!("script swap: had {count}, kept {kept}");
+            remove_scripts(controller, &injected, &others);
+            log::debug!("script swap: removed {} of {count}", injected.len());
 
             let add = |source: &str, injection_time: isize| {
                 if source.is_empty() {
@@ -532,6 +529,36 @@ mod imp {
             add(&start_src, 0); // WKUserScriptInjectionTimeAtDocumentStart
             add(&end_src, 1); // WKUserScriptInjectionTimeAtDocumentEnd
         });
+    }
+
+    /// WebKit's `removeAllUserScripts` leaves web extensions' scripts in
+    /// place, so the fallback re-adds only what it removed. The scripts
+    /// must outlive the call.
+    unsafe fn remove_scripts(
+        controller: *mut AnyObject,
+        injected: &[*mut AnyObject],
+        others: &[*mut AnyObject],
+    ) {
+        let remove_one = sel!(_removeUserScript:);
+        let can_remove_one: bool = msg_send![controller, respondsToSelector: remove_one];
+        if can_remove_one {
+            for &script in injected {
+                let _: () = msg_send![controller, _removeUserScript: script];
+            }
+            return;
+        }
+        if injected.is_empty() {
+            return;
+        }
+
+        let _: () = msg_send![controller, removeAllUserScripts];
+        let left: *mut AnyObject = msg_send![controller, userScripts];
+        for &script in others {
+            let survived: bool = !left.is_null() && msg_send![left, containsObject: script];
+            if !survived {
+                let _: () = msg_send![controller, addUserScript: script];
+            }
+        }
     }
 
     unsafe fn handle_zap(message: *mut AnyObject) {
@@ -616,6 +643,29 @@ mod imp {
             let zap_name = ns_string("wisZap");
             let _: () = msg_send![controller, addScriptMessageHandler: &*zap, name: zap_name];
         });
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use objc2::runtime::{AnyObject, Bool};
+        use objc2::{class, sel};
+
+        #[test]
+        fn every_send_matches_its_method() {
+            let controller = class!(WKUserContentController);
+            controller
+                .verify_sel::<(*mut AnyObject,), ()>(sel!(_removeUserScript:))
+                .unwrap();
+            controller
+                .verify_sel::<(), *mut AnyObject>(sel!(userScripts))
+                .unwrap();
+            controller
+                .verify_sel::<(*mut AnyObject,), ()>(sel!(addUserScript:))
+                .unwrap();
+            class!(NSArray)
+                .verify_sel::<(*mut AnyObject,), Bool>(sel!(containsObject:))
+                .unwrap();
+        }
     }
 }
 
