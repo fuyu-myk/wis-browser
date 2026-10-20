@@ -7,6 +7,7 @@ import { PuzzleIcon } from '@/components/settingsIcons'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useExtensionActions } from '@/hooks/useExtensionActions'
 import { EXT_BUTTON_ATTR, useExtensionsMenu } from '@/hooks/useExtensionsMenu'
+import { isStoreItemPage } from '@/lib/extensionsMenu'
 
 interface ExtensionsButtonProps {
   workspaceId: WorkspaceId | null
@@ -59,7 +60,8 @@ export function ExtensionsButton({ workspaceId, activeTabId }: ExtensionsButtonP
   const pinned = new Set(installed.filter((e) => e.pinned).map((e) => e.id))
   const actions = useExtensionActions(workspaceId, activeTabId, !!supported && pinned.size > 0)
 
-  if (!supported || installed.length === 0) return null
+  const activeUrl = state?.tabs.find((t) => t.id === activeTabId)?.url ?? ''
+  if (!supported || (installed.length === 0 && !isStoreItemPage(activeUrl))) return null
   return (
     <>
       {actions

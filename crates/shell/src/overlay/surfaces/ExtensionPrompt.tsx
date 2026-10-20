@@ -27,7 +27,7 @@ export function ExtensionPrompt({ request, glass, onDone }: ExtensionPromptProps
     const body = bodyRef.current
     if (!body) return
     void emit(EXT_PROMPT_SIZE, {
-      request: request.request,
+      key: `prompt-${request.request}`,
       height: Math.ceil(body.getBoundingClientRect().height) + BORDERS,
     })
   }, [request])

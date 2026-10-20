@@ -8,6 +8,8 @@ mod actions;
 #[cfg(target_os = "macos")]
 mod adapters;
 #[cfg(target_os = "macos")]
+mod crx;
+#[cfg(target_os = "macos")]
 mod grants;
 #[cfg(target_os = "macos")]
 mod host;
@@ -17,6 +19,7 @@ mod install;
 mod prompts;
 #[cfg(target_os = "macos")]
 mod stage;
+pub mod store;
 
 use serde::Serialize;
 use tauri::{AppHandle, State};

@@ -3,7 +3,16 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { MENU_WIDTH, PROMPT_WIDTH, SITE_LINE, menuBounds, menuHeight, promptBounds } from '../../src/lib/extensionsMenu.ts'
+import {
+  MENU_WIDTH,
+  OFFER_BLOCK,
+  PROMPT_WIDTH,
+  SITE_LINE,
+  isStoreItemPage,
+  menuBounds,
+  menuHeight,
+  promptBounds,
+} from '../../src/lib/extensionsMenu.ts'
 
 const viewport = { width: 1200, height: 800 }
 const button = { x: 900, y: 20, width: 24, height: 24 }
@@ -37,6 +46,11 @@ describe('menuBounds', () => {
     assert.equal(menuHeight(2, 1) - menuHeight(2), SITE_LINE)
     assert.equal(menuBounds(button, 2, viewport, 2).height, menuHeight(2, 2))
   })
+
+  test('makes room for the store offer', () => {
+    assert.equal(menuHeight(2, 0, true) - menuHeight(2), OFFER_BLOCK)
+    assert.equal(menuBounds(button, 2, viewport, 0, true).height, menuHeight(2, 0, true))
+  })
 })
 
 describe('promptBounds', () => {
@@ -52,5 +66,20 @@ describe('promptBounds', () => {
     const low = { x: 900, y: 700, width: 24, height: 24 }
     const bounds = promptBounds(low, 180, viewport)
     assert.equal(bounds.y + bounds.height, 694)
+  })
+})
+
+describe('isStoreItemPage', () => {
+  test('knows Chrome Web Store item pages', () => {
+    assert.ok(isStoreItemPage('https://chromewebstore.google.com/detail/dark-reader/eimadpbcbfnmbkopoojfekhnkhdbieeh'))
+    assert.ok(isStoreItemPage('https://chrome.google.com/webstore/detail/dark-reader/eimadpbcbfnmbkopoojfekhnkhdbieeh'))
+  })
+
+  test('leaves other pages alone', () => {
+    assert.ok(!isStoreItemPage('https://chromewebstore.google.com/'))
+    assert.ok(!isStoreItemPage('https://chromewebstore.google.com.evil.test/detail/x/y'))
+    assert.ok(!isStoreItemPage('http://chromewebstore.google.com/detail/x/y'))
+    assert.ok(!isStoreItemPage('about:blank'))
+    assert.ok(!isStoreItemPage('not a url'))
   })
 })

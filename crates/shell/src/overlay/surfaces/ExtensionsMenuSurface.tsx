@@ -1,16 +1,17 @@
 /**
  * The extensions menu, hosted by `overlay-extmenu`: each extension running in
  * the workspace, run from here with its popup anchored to the puzzle button,
- * or an extension's request for more access.
+ * an extension's request for more access, or adding a Chrome Web Store page's
+ * extension.
  */
 
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { ExtensionAction } from '@/bindings/types'
 import { cx } from '@/lib/cx'
-import { EXT_MENU_DONE, EXT_MENU_OPEN, EXT_MENU_READY } from '@/lib/extensionsMenu'
+import { EXT_MENU_DONE, EXT_MENU_OPEN, EXT_MENU_READY, EXT_STORE_DECLINED } from '@/lib/extensionsMenu'
 import { menusGlass } from '@/lib/glass'
 import { PinIcon, SettingsIcon } from '@/lib/icons'
 import { SETTINGS_URL } from '@/lib/url'
@@ -20,6 +21,7 @@ import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import type { ExtensionsMenuPayload } from '@/hooks/useExtensionsMenu'
 import { useThemeApply } from '@/hooks/useThemeApply'
 import { ExtensionPrompt } from '@/overlay/surfaces/ExtensionPrompt'
+import { ExtensionStoreAdd } from '@/overlay/surfaces/ExtensionStoreAdd'
 
 interface SiteLineProps {
   site: { host: string; allowed: boolean }
@@ -48,11 +50,19 @@ export function ExtensionsMenuSurface() {
   useBrowserStateEvents()
   useThemeApply(state?.settings)
   const [menu, setMenu] = useState<ExtensionsMenuPayload | null>(null)
+  const [adding, setAdding] = useState<string | null>(null)
+  const stagedRef = useRef<string | null>(null)
 
   useEffect(() => {
     let unlisten: UnlistenFn | null = null
     let cancelled = false
-    void listen<ExtensionsMenuPayload>(EXT_MENU_OPEN, (e) => setMenu(e.payload)).then((fn) => {
+    const open = (payload: ExtensionsMenuPayload) => {
+      if (stagedRef.current) void commands.extensionDiscard(stagedRef.current).catch(() => undefined)
+      stagedRef.current = null
+      setAdding(null)
+      setMenu(payload)
+    }
+    void listen<ExtensionsMenuPayload>(EXT_MENU_OPEN, (e) => open(e.payload)).then((fn) => {
       if (cancelled) fn()
       else unlisten = fn
     })
@@ -67,15 +77,32 @@ export function ExtensionsMenuSurface() {
 
   const close = () => {
     setMenu(null)
+    setAdding(null)
     void commands.hideOverlay('extmenu').catch(() => undefined)
     void emit(EXT_MENU_DONE)
+  }
+
+  if (adding) {
+    return (
+      <ExtensionStoreAdd
+        storeId={adding}
+        glass={menusGlass(state?.settings)}
+        stagedRef={stagedRef}
+        onDone={close}
+      />
+    )
   }
 
   if (menu.kind === 'prompt') {
     return <ExtensionPrompt request={menu.request} glass={menusGlass(state?.settings)} onDone={close} />
   }
 
-  const { anchor, actions, workspaceId } = menu
+  const { anchor, actions, workspaceId, offer } = menu
+
+  const decline = (storeId: string) => {
+    void emit(EXT_STORE_DECLINED, storeId)
+    close()
+  }
   const pinned = new Set(state?.settings.extensions.filter((e) => e.pinned).map((e) => e.id))
 
   const run = (action: ExtensionAction) => {
@@ -112,6 +139,22 @@ export function ExtensionsMenuSurface() {
 
   return (
     <div className={cx('kb-extmenu', { 'glass-menus': menusGlass(state?.settings) })} role="menu">
+      {offer && (
+        <>
+          <div className="kb-extmenu-offer">
+            <span className="kb-extmenu-offer-text">Add this page’s extension to Wis?</span>
+            <div className="kb-perm-actions">
+              <button type="button" className="kb-perm-btn" onClick={() => decline(offer)}>
+                No
+              </button>
+              <button type="button" className="kb-perm-btn is-primary" onClick={() => setAdding(offer)}>
+                Yes
+              </button>
+            </div>
+          </div>
+          <div className="kb-extmenu-divider" />
+        </>
+      )}
       {actions.length === 0 ? (
         <div className="kb-extmenu-empty">No extensions run in this workspace.</div>
       ) : (

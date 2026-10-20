@@ -2583,6 +2583,18 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   color: var(--text-primary);
 }
 .kb-extprompt-note { font-size: 11.5px; color: var(--text-secondary); }
+.kb-extprompt-review { font-size: 12.5px; color: var(--text-secondary); }
+.kb-extmenu-offer {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  flex: none;
+  height: 74px;
+  padding: 0 6px;
+  box-sizing: border-box;
+}
+.kb-extmenu-offer-text { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
 
 /* Close (X) on horizontal tab. */
 .kb-topbar .h-tab .close {

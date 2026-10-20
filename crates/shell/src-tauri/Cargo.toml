@@ -84,6 +84,9 @@ block2-06 = { package = "block2", version = "0.6" }
 # Unpacking extension .zip files; flate2's Rust backend is already in the tree.
 zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+# Checking Chrome Web Store packages; both are already in the tree through rustls and Tor.
+ring = "0.17"
+spki = "0.7"
 
 # Windows Hello biometric gate (UserConsentVerifier) for the password vault,
 # plus webview2-com to reach the WebView2 COM handles (mute, print, ...) behind

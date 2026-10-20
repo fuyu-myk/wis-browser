@@ -1620,6 +1620,16 @@ export const commands = {
     return invoke('extension_set_site', { id, host, allowed })
   },
 
+  /** The store id of the extension this window's active tab shows, unless it is installed. */
+  async extensionStoreOffer(): Promise<string | null> {
+    return invoke('extension_store_offer')
+  },
+
+  /** Download a Chrome Web Store extension over this window's workspace proxy and stage it for review. */
+  async extensionStageFromStore(storeId: string): Promise<StagedExtension> {
+    return invoke('extension_stage_from_store', { storeId })
+  },
+
   /** Allow or stop an extension on a host from this window; kept only for the session in a private workspace. */
   async extensionSetSiteHere(id: string, host: string, allowed: boolean): Promise<void> {
     return invoke('extension_set_site_here', { id, host, allowed })

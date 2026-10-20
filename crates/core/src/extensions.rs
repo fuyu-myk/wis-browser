@@ -26,6 +26,8 @@ pub struct InstalledExtension {
     pub site_access: SiteAccess,
     #[serde(default)]
     pub allowed_sites: Vec<String>,
+    #[serde(default)]
+    pub store_id: Option<String>,
 }
 
 pub const MAX_EXTENSIONS: usize = 64;
@@ -104,6 +106,55 @@ const SPOKEN: [(&str, &str); 8] = [
 /// Recognised by WebKit, but only usable through an app helper Wis does not provide.
 const NEEDS_APP: [&str; 1] = ["nativeMessaging"];
 
+/// The installed extension, `name` from a folder, or from the store as `store_id`.
+/// Used for identifying duplicates when installing a new extension.
+pub fn duplicate_of<'a>(
+    list: &'a [InstalledExtension],
+    name: Option<&str>,
+    store_id: Option<&str>,
+) -> Option<&'a InstalledExtension> {
+    let name = name.map(|n| tidy_name(n).to_lowercase());
+    list.iter().find(|e| {
+        store_id.is_some_and(|id| e.store_id.as_deref() == Some(id))
+            || name
+                .as_ref()
+                .is_some_and(|n| tidy_name(&e.name).to_lowercase() == *n)
+    })
+}
+
+/// The extension name a Chrome Web Store item page's title gives.
+pub fn store_page_name(title: &str) -> Option<&str> {
+    title
+        .strip_suffix(" - Chrome Web Store")
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+}
+
+/// A Chrome Web Store id: 32 letters from `a` to `p`.
+pub fn is_store_id(id: &str) -> bool {
+    id.len() == 32 && id.bytes().all(|b| (b'a'..=b'p').contains(&b))
+}
+
+/// The store id of a Chrome Web Store item page.
+pub fn store_id_from_url(raw: &str) -> Option<String> {
+    let url = url::Url::parse(raw).ok()?;
+    if url.scheme() != "https" {
+        return None;
+    }
+
+    let segments: Vec<&str> = url.path_segments()?.collect();
+    let item = match url.host_str()? {
+        "chromewebstore.google.com" => segments.strip_prefix(&["detail"])?,
+        "chrome.google.com" => segments.strip_prefix(&["webstore", "detail"])?,
+        _ => return None,
+    };
+
+    item.iter()
+        .take(2)
+        .find(|s| is_store_id(s))
+        .map(|s| s.to_string())
+}
+
 pub fn is_extension_id(id: &str) -> bool {
     id.len() == 32
         && id
@@ -153,6 +204,12 @@ pub fn with_extension(
     if list.iter().any(|e| e.id == ext.id) {
         return refuse("that extension is already installed");
     }
+    if ext.store_id.as_deref().is_some_and(|id| !is_store_id(id)) {
+        return refuse("not a Chrome Web Store id");
+    }
+    if let Some(installed) = duplicate_of(list, Some(&ext.name), ext.store_id.as_deref()) {
+        return refuse(&format!("{} is already installed", installed.name));
+    }
     if list.len() >= MAX_EXTENSIONS {
         return refuse("too many extensions are installed");
     }
@@ -162,6 +219,7 @@ pub fn with_extension(
         id: ext.id,
         name: tidy_name(&ext.name),
         version: tidy(&ext.version, MAX_VERSION),
+        store_id: ext.store_id,
         ..Default::default()
     });
 
@@ -477,7 +535,7 @@ mod tests {
     #[test]
     fn installs_append_and_tidy_their_labels() {
         let added = with_extension(
-            &[ext(OTHER)],
+            &[named(OTHER, "SponsorBlock")],
             InstalledExtension {
                 id: ID.into(),
                 name: "  Dark\u{202e}  Reader\n".into(),
@@ -491,12 +549,96 @@ mod tests {
         assert_eq!(added[1].version, "4.9.133");
     }
 
+    const STORE: &str = "eimadpbcbfnmbkopoojfekhnkhdbieeh";
+
+    #[test]
+    fn store_ids_are_32_letters_from_a_to_p() {
+        assert!(is_store_id(STORE));
+        assert!(!is_store_id("eimadpbcbfnmbkopoojfekhnkhdbieez"));
+        assert!(!is_store_id("EIMADPBCBFNMBKOPOOJFEKHNKHDBIEEH"));
+        assert!(!is_store_id(&STORE[1..]));
+    }
+
+    #[test]
+    fn store_item_pages_name_their_extension() {
+        for url in [
+            "https://chromewebstore.google.com/detail/dark-reader/eimadpbcbfnmbkopoojfekhnkhdbieeh",
+            "https://chromewebstore.google.com/detail/dark-reader/eimadpbcbfnmbkopoojfekhnkhdbieeh?hl=en&pli=1",
+            "https://chromewebstore.google.com/detail/eimadpbcbfnmbkopoojfekhnkhdbieeh/reviews",
+            "https://chrome.google.com/webstore/detail/dark-reader/eimadpbcbfnmbkopoojfekhnkhdbieeh",
+        ] {
+            assert_eq!(store_id_from_url(url).as_deref(), Some(STORE), "{url}");
+        }
+        for url in [
+            "https://chromewebstore.google.com/",
+            "https://chromewebstore.google.com/category/extensions",
+            "http://chromewebstore.google.com/detail/x/eimadpbcbfnmbkopoojfekhnkhdbieeh",
+            "https://evil.test/detail/x/eimadpbcbfnmbkopoojfekhnkhdbieeh",
+            "https://chromewebstore.google.com.evil.test/detail/x/eimadpbcbfnmbkopoojfekhnkhdbieeh",
+        ] {
+            assert_eq!(store_id_from_url(url), None, "{url}");
+        }
+    }
+
+    fn named(id: &str, name: &str) -> InstalledExtension {
+        InstalledExtension {
+            name: name.into(),
+            ..ext(id)
+        }
+    }
+
+    #[test]
+    fn an_extension_installs_once_by_name_or_store_id() {
+        let list = with_extension(&[], ext(ID)).unwrap();
+        assert!(with_extension(&list, named(OTHER, "dark  READER ")).is_err());
+        assert_eq!(
+            duplicate_of(&list, Some(" DARK Reader"), None).map(|e| e.id.as_str()),
+            Some(ID)
+        );
+        assert!(duplicate_of(&list, Some("Dark Reader Pro"), None).is_none());
+
+        let mut from_store = named(OTHER, "SponsorBlock");
+        from_store.store_id = Some(STORE.into());
+        let list = with_extension(&list, from_store).unwrap();
+        assert_eq!(
+            duplicate_of(&list, Some("Renamed"), Some(STORE)).map(|e| e.id.as_str()),
+            Some(OTHER)
+        );
+        assert!(with_extension(&list, named("aaaabbbbccccddddeeeeffff00001111", "Vimium")).is_ok());
+        assert!(duplicate_of(&list, None, Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")).is_none());
+    }
+
+    #[test]
+    fn store_page_titles_name_their_extension() {
+        assert_eq!(
+            store_page_name("Dark Reader - Chrome Web Store"),
+            Some("Dark Reader")
+        );
+        assert_eq!(store_page_name("Chrome Web Store"), None);
+        assert_eq!(store_page_name(" - Chrome Web Store"), None);
+        assert_eq!(store_page_name("Dark Reader"), None);
+    }
+
+    #[test]
+    fn a_store_extension_installs_once() {
+        let mut from_store = ext(ID);
+        from_store.store_id = Some(STORE.into());
+        let list = with_extension(&[], from_store).unwrap();
+        assert_eq!(list[0].store_id.as_deref(), Some(STORE));
+        let mut again = ext(OTHER);
+        again.store_id = Some(STORE.into());
+        assert!(with_extension(&list, again).is_err());
+        let mut bad = ext(OTHER);
+        bad.store_id = Some("not-an-id".into());
+        assert!(with_extension(&list, bad).is_err());
+    }
+
     #[test]
     fn installs_refuse_bad_ids_duplicates_and_overflow() {
         assert!(with_extension(&[], ext("nope")).is_err());
         assert!(with_extension(&[ext(ID)], ext(ID)).is_err());
         let full: Vec<_> = (0..MAX_EXTENSIONS)
-            .map(|i| ext(&format!("{i:032x}")))
+            .map(|i| named(&format!("{i:032x}"), &format!("Extension {i}")))
             .collect();
         assert!(with_extension(&full, ext(ID)).is_err());
     }

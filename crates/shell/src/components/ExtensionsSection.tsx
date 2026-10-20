@@ -13,7 +13,7 @@ interface ExtensionsSectionProps {
   workspace: Workspace | undefined
 }
 
-function ReviewDetails({ staged }: { staged: StagedExtension }) {
+export function ReviewDetails({ staged }: { staged: StagedExtension }) {
   const { review } = staged
   return (
     <>

@@ -16,6 +16,7 @@ import {
   EXT_MENU_OPEN,
   EXT_MENU_READY,
   EXT_PROMPT_SIZE,
+  EXT_STORE_DECLINED,
   PROMPT_HEIGHT,
   menuBounds,
   promptBounds,
@@ -23,8 +24,23 @@ import {
 } from '@/lib/extensionsMenu'
 
 export type ExtensionsMenuPayload =
-  | { kind: 'menu'; anchor: Box; actions: ExtensionAction[]; workspaceId: WorkspaceId | null }
+  | {
+      kind: 'menu'
+      anchor: Box
+      actions: ExtensionAction[]
+      workspaceId: WorkspaceId | null
+      /** The store id of the Chrome Web Store page's extension. */
+      offer: string | null
+    }
   | { kind: 'prompt'; request: ExtensionPermissionRequest }
+
+/** A panel's height, measured by the surface: a prompt's, or the store review's. */
+export interface PanelSize {
+  key: string
+  height: number
+}
+
+export const STORE_PANEL = 'store'
 
 const PANE_FOCUS_EVENT = 'wis-pane-focus'
 const PERMISSION_REQUEST_EVENT = 'wis-extension-permission-request'
@@ -50,6 +66,7 @@ export function useExtensionsMenu(
   const ensuredRef = useRef(false)
   const pendingRef = useRef<ExtensionsMenuPayload | null>(null)
   const promptsRef = useRef<ExtensionPermissionRequest[]>([])
+  const declinedRef = useRef(new Set<string>())
   const [open, setOpen] = useState(false)
 
   const ensure = useCallback(async () => {
@@ -98,11 +115,17 @@ export function useExtensionsMenu(
       }
     }).then(kept)
 
-    void listen<{ request: number; height: number }>(EXT_PROMPT_SIZE, (e) => {
+    void listen<PanelSize>(EXT_PROMPT_SIZE, (e) => {
       const current = pendingRef.current
-      if (current?.kind === 'prompt' && current.request.request === e.payload.request) {
-        void placePrompt(e.payload.height).catch(() => undefined)
-      }
+      const fits =
+        current?.kind === 'prompt'
+          ? e.payload.key === `prompt-${current.request.request}`
+          : current?.kind === 'menu' && e.payload.key === STORE_PANEL
+      if (fits) void placePrompt(e.payload.height).catch(() => undefined)
+    }).then(kept)
+
+    void listen<string>(EXT_STORE_DECLINED, (e) => {
+      declinedRef.current.add(e.payload)
     }).then(kept)
 
     return () => {
@@ -166,10 +189,14 @@ export function useExtensionsMenu(
     const anchor = { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
     const show = async () => {
       if ((await commands.extensionDismissPopup()) !== null) return
-      const actions = await commands.extensionActions()
-      const payload: ExtensionsMenuPayload = { kind: 'menu', anchor, actions, workspaceId }
+      const [actions, storeId] = await Promise.all([
+        commands.extensionActions(),
+        commands.extensionStoreOffer().catch(() => null),
+      ])
+      const offer = storeId && !declinedRef.current.has(storeId) ? storeId : null
+      const payload: ExtensionsMenuPayload = { kind: 'menu', anchor, actions, workspaceId, offer }
       const siteLines = actions.filter((a) => a.site).length
-      const bounds = menuBounds(anchor, actions.length, viewport(), siteLines)
+      const bounds = menuBounds(anchor, actions.length, viewport(), siteLines, offer !== null)
       await ensure()
       await commands.setOverlayBounds('extmenu', bounds.x, bounds.y, bounds.width, bounds.height)
       pendingRef.current = payload

@@ -534,6 +534,7 @@ export interface InstalledExtension {
   granted: string[]
   site_access: SiteAccess
   allowed_sites: string[]
+  store_id: string | null
 }
 
 export type SiteAccess = 'all' | 'allowed'

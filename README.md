@@ -89,7 +89,7 @@ Wis is an open-source, lightweight, secure, and fast browser with AI integration
 - **Default browser integration**: set Wis as your system default; links from other apps open in Wis
 - **Two-finger swipe gestures** for back/forward navigation
 - **Screenshot capture**: visible page, drag-select region, or full window, copy or save (region/window compositing is macOS only; Windows covers the visible tab)
-- **Extensions** (macOS 15.4+, early): install a WebExtension from its folder or `.zip` after a review of what it can do; it runs in your workspaces, switchable per workspace, and in private ones only if you allow it. The puzzle button in the address bar runs them and opens their popups and options, and pinned ones get their own button with a live badge. When one asks for more access while running, Wis asks you first and remembers your answer, and each can run on every site or only on the sites you allow
+- **Extensions** (macOS 15.4+, early): install a WebExtension from the Chrome Web Store, its folder or a `.zip` after a review of what it can do; it runs in your workspaces, switchable per workspace, and in private ones only if you allow it. The puzzle button in the address bar runs them and opens their popups and options, and pinned ones get their own button with a live badge. When one asks for more access while running, Wis asks you first and remembers your answer, and each can run on every site or only on the sites you allow
 - Command palette, find-in-page, fully rebindable keyboard shortcuts, print/export to PDF, and a configurable new-tab launchpad and homepage
 
 ### Customization
@@ -104,7 +104,7 @@ Wis is an open-source, lightweight, secure, and fast browser with AI integration
 
 Wis is macOS-first. The Windows and Linux builds are previews: Windows is a growing tier-1 platform (encrypted vault via DPAPI + Windows Hello, Mica glass styling) and Linux follows the same design, but both are tested less than macOS. A few pieces remain macOS-only today: native session/history restore, encrypted session-cookie persistence, per-tab memory readouts in the task manager, and full window/region screenshot capture.
 
-Wis renders with the OS system WebView (WebKit on macOS, via Tauri/wry) rather than Chromium: a tiny bundle, low RAM use, and Safari-class battery life, at the cost of a few structural tradeoffs: premium DRM streaming (e.g. Netflix 4K) is limited, with an "Open in default browser" fallback, and there's no cross-device sync or mobile app yet. Browser extensions are early: macOS 15.4 or later, installed from a folder or `.zip`.
+Wis renders with the OS system WebView (WebKit on macOS, via Tauri/wry) rather than Chromium: a tiny bundle, low RAM use, and Safari-class battery life, at the cost of a few structural tradeoffs: premium DRM streaming (e.g. Netflix 4K) is limited, with an "Open in default browser" fallback, and there's no cross-device sync or mobile app yet. Browser extensions are early: macOS 15.4 or later, installed from the Chrome Web Store, a folder or a `.zip`.
 
 ## Installation
 

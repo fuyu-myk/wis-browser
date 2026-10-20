@@ -25,12 +25,21 @@ struct Staged {
     root: PathBuf,
     name: String,
     version: String,
+    store_id: Option<String>,
+}
+
+/// Where an extension being added comes from.
+pub(super) enum Source {
+    /// A folder or `.zip` the user chose.
+    Chosen(PathBuf),
+    /// The ZIP inside a verified store package, and the store id it is under.
+    Store(Vec<u8>, String),
 }
 
 static STAGED: Mutex<Option<HashMap<String, Staged>>> = Mutex::new(None);
 
 /// Whether this run has cleared what an earlier one left staged.
-static SWEPT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static SWEPT: std::sync::Once = std::sync::Once::new();
 
 fn refused(message: impl Into<String>) -> WisError {
     WisError::InvalidInput {
@@ -95,21 +104,37 @@ pub(super) async fn choose(app: AppHandle) -> WisResult<Option<StagedExtension>>
         return Ok(None);
     };
 
-    let staging = extensions_dir(&app)?.join(STAGING_DIR);
+    stage_from(&app, Source::Chosen(source)).await.map(Some)
+}
+
+/// Copies or unpacks an extension into a staging folder and reviews it.
+pub(super) async fn stage_from(app: &AppHandle, source: Source) -> WisResult<StagedExtension> {
+    let staging = extensions_dir(app)?.join(STAGING_DIR);
     let token = uuid::Uuid::new_v4().simple().to_string();
     let dir = staging.join(&token);
+    let store_id = match &source {
+        Source::Store(_, id) => Some(id.clone()),
+        Source::Chosen(_) => None,
+    };
     let copied = {
         let dir = dir.clone();
+        let package = staging.join(format!("{token}.zip"));
         blocking(move || {
-            if !SWEPT.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            SWEPT.call_once(|| {
                 let _ = std::fs::remove_dir_all(&staging);
-            }
+            });
             std::fs::create_dir_all(&staging)
                 .map_err(|err| refused(format!("create the staging folder: {err}")))?;
-            if source.is_dir() {
-                stage::copy_folder(&source, &dir)?;
-            } else {
-                stage::unzip(&source, &dir)?;
+            match source {
+                Source::Chosen(path) if path.is_dir() => stage::copy_folder(&path, &dir)?,
+                Source::Chosen(path) => stage::unzip(&path, &dir)?,
+                Source::Store(archive, _) => {
+                    let unpacked = std::fs::write(&package, archive)
+                        .map_err(|err| refused(format!("save the download: {err}")))
+                        .and_then(|()| stage::unzip(&package, &dir));
+                    let _ = std::fs::remove_file(&package);
+                    unpacked?
+                }
             }
             let root = stage::manifest_root(&dir)
                 .ok_or_else(|| refused("there is no manifest.json at the top of the extension"))?;
@@ -131,7 +156,7 @@ pub(super) async fn choose(app: AppHandle) -> WisResult<Option<StagedExtension>>
     };
 
     let read_root = root.clone();
-    let facts = on_main(&app, READ_WAIT, move |tx| {
+    let facts = on_main(app, READ_WAIT, move |tx| {
         let Some(mtm) = objc2_06::MainThreadMarker::new() else {
             return;
         };
@@ -158,6 +183,21 @@ pub(super) async fn choose(app: AppHandle) -> WisResult<Option<StagedExtension>>
         patterns: &facts.patterns,
         default_rules,
     });
+    let installed = {
+        let state = app.state::<AppState>();
+        let browser = state.browser.lock().await;
+        extensions::duplicate_of(
+            &browser.settings.extensions,
+            Some(&review.name),
+            store_id.as_deref(),
+        )
+        .map(|e| e.name.clone())
+    };
+    if let Some(name) = installed {
+        discard_dir(dir).await;
+        return Err(refused(format!("{name} is already installed")));
+    }
+
     staged(|map| {
         map.insert(
             token.clone(),
@@ -166,10 +206,12 @@ pub(super) async fn choose(app: AppHandle) -> WisResult<Option<StagedExtension>>
                 root,
                 name: review.name.clone(),
                 version: review.version.clone(),
+                store_id,
             },
         )
     });
-    Ok(Some(StagedExtension { token, review }))
+
+    Ok(StagedExtension { token, review })
 }
 
 async fn discard_dir(dir: PathBuf) {
@@ -222,6 +264,7 @@ pub(super) async fn install(
         id,
         name: staged.name,
         version: staged.version,
+        store_id: staged.store_id,
         ..Default::default()
     };
     let added = change(app, state, move |list| {
