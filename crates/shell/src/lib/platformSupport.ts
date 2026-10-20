@@ -39,6 +39,8 @@ const FEATURES: Readonly<Record<string, FeatureSupport>> = {
   ai_assistant: { label: 'AI assistant', unavailableOn: ['linux'] },
   // The `wisCanvas` page channel is macOS only so far.
   canvases: { label: 'Canvases', unavailableOn: [] },
+  // Set per page through WebKit's navigation preferences.
+  site_javascript: { label: 'JavaScript switch', unavailableOn: ['windows', 'linux'] },
 }
 
 /** True when `featureId` is not available on the running platform. */

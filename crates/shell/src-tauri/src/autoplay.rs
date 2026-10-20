@@ -31,23 +31,8 @@ pub fn policy_for_url(cache: &AutoplayCache, url: &str) -> AutoplayPolicy {
     autoplay_policy_for_host(&host, &cache.overrides, cache.policy)
 }
 
-/// Register the per-navigation hook with wry. Call once at setup.
 #[cfg(target_os = "macos")]
-pub fn install_hook(app: tauri::AppHandle) {
-    use tauri::Manager;
-
-    wry::set_webpage_preferences_hook(Box::new(move |url, preferences| {
-        let policy = app
-            .state::<crate::state::AppState>()
-            .autoplay_policy_for(url);
-        // SAFETY: called by the navigation delegate on the main thread with a
-        // live WKWebpagePreferences; the pointer is used only for this call.
-        unsafe { imp::apply(preferences.cast(), policy) };
-    }));
-}
-
-#[cfg(target_os = "macos")]
-mod imp {
+pub mod imp {
     use objc2::runtime::AnyObject;
     use objc2::{msg_send, sel};
 

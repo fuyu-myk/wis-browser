@@ -67,6 +67,11 @@ pub async fn update_settings(
         );
     }
 
+    if let Some(map) = patch.site_protection_overrides.take() {
+        patch.site_protection_overrides =
+            Some(wis_core::site_protection::sanitized_site_protection(map));
+    }
+
     let keybindings_touched = patch.keybindings.is_some();
     let userscripts_touched = patch.userscripts.is_some();
     let cosmetic_touched = patch.user_cosmetic_rules.is_some();
@@ -79,6 +84,7 @@ pub async fn update_settings(
     let zoom_touched = patch.default_zoom_percent.is_some() || patch.zoom_site_overrides.is_some();
     let autoplay_touched =
         patch.autoplay_policy.is_some() || patch.autoplay_site_overrides.is_some();
+    let site_protection_touched = patch.site_protection_overrides.is_some();
     let media_extensions_changed = patch.media_extensions_enabled;
     let canvas_page_touched = patch.canvas_theme.is_some()
         || patch.layout.is_some()
@@ -155,6 +161,10 @@ pub async fn update_settings(
 
         #[cfg(target_os = "linux")]
         crate::autoplay::apply_to_all_remote(&app);
+    }
+
+    if site_protection_touched {
+        state.refresh_site_protection_cache().await;
     }
 
     if let Some(enabled) = media_extensions_changed {

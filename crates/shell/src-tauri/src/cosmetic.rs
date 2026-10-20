@@ -43,12 +43,14 @@ pub fn swap_scriptlets(app: &tauri::AppHandle, label: &str, url: &str) {
     };
 
     let state = app.state::<crate::state::AppState>();
-    let scriptlets = {
+    let scriptlets = if state.site_protection_for(url).blocking {
         let guard = state
             .tracker_blocker
             .read()
             .expect("tracker_blocker poisoned");
         guard.scriptlets_for_page(url)
+    } else {
+        String::new()
     };
     let (start_scripts, end_scripts) = state.matching_userscripts(url);
 
@@ -180,10 +182,13 @@ const COSMETIC_JS: &str = r#"(function () {
 /// or `None` when there is nothing to apply (a non-initial scan with no matching
 /// generic selectors). The platform-agnostic core of the cosmetic handler,
 /// shared by the macOS `wisCosmetic` handler and the Windows dispatcher; only
-/// the eval-back (frame-aware on macOS, main-frame on Windows) differs.
+/// the eval-back (frame-aware on macOS, main-frame on Windows) differs. The
+/// filter lists follow the protection of `top`, the tab's page; the user's own
+/// hidden elements always apply.
 #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
 fn build_cosmetic_apply(
     href: &str,
+    top: &str,
     initial: bool,
     classes: &[String],
     ids: &[String],
@@ -194,34 +199,41 @@ fn build_cosmetic_apply(
         return None;
     }
     let app = APP.get()?;
-    let blocker = {
-        let state = app.state::<crate::state::AppState>();
-        let guard = state
-            .tracker_blocker
-            .read()
-            .expect("tracker_blocker poisoned");
-        guard.clone()
-    };
+    let state = app.state::<crate::state::AppState>();
+    let filtering = state.site_protection_for(top).blocking;
+    if !filtering && !initial {
+        return None;
+    }
 
-    let page = blocker.cosmetic_for_page(href);
     let mut host_css = String::new();
+    let mut generic_css = String::new();
+    if filtering {
+        let blocker = {
+            let guard = state
+                .tracker_blocker
+                .read()
+                .expect("tracker_blocker poisoned");
+            guard.clone()
+        };
+        let page = blocker.cosmetic_for_page(href);
+        if initial {
+            host_css.push_str(&page.hide_css);
+        }
+        if !page.generichide && (!classes.is_empty() || !ids.is_empty()) {
+            generic_css = blocker.cosmetic_generic_css(classes, ids, &page.exceptions);
+        }
+    }
     if initial {
-        host_css.push_str(&page.hide_css);
-        if let Ok(parsed) = url::Url::parse(href) {
-            if let Some(host) = parsed.host_str() {
-                let state = app.state::<crate::state::AppState>();
-                for selector in state.user_cosmetic_selectors(host) {
-                    host_css.push_str(&selector);
-                    host_css.push_str("{display:none!important;}\n");
-                }
+        if let Some(host) = url::Url::parse(href)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_owned))
+        {
+            for selector in state.user_cosmetic_selectors(&host) {
+                host_css.push_str(&selector);
+                host_css.push_str("{display:none!important;}\n");
             }
         }
     }
-    let generic_css = if !page.generichide && (!classes.is_empty() || !ids.is_empty()) {
-        blocker.cosmetic_generic_css(classes, ids, &page.exceptions)
-    } else {
-        String::new()
-    };
     // Nothing to apply: a non-initial scan with no matching generics.
     if !initial && generic_css.is_empty() {
         return None;
@@ -397,18 +409,30 @@ mod imp {
         let classes = dict_string_array(body, "classes", 2000);
         let ids = dict_string_array(body, "ids", 2000);
 
-        let Some(arg) = super::build_cosmetic_apply(&href, initial, &classes, &ids) else {
+        let webview: *mut AnyObject = msg_send![message, webView];
+        if webview.is_null() {
+            return;
+        }
+        let top_url: *mut AnyObject = msg_send![webview, URL];
+        let top = if top_url.is_null() {
+            None
+        } else {
+            nsstring_to_string(msg_send![top_url, absoluteString])
+        };
+
+        let Some(arg) = super::build_cosmetic_apply(
+            &href,
+            top.as_deref().unwrap_or_default(),
+            initial,
+            &classes,
+            &ids,
+        ) else {
             return;
         };
         let js = ns_string(&format!("window.__wisCosmeticApply({arg});"));
 
         // Reply into the sender's frame so iframes receive their own CSS;
         // fall back to the main frame when the frame-targeted API is absent.
-        let webview: *mut AnyObject = msg_send![message, webView];
-        if webview.is_null() {
-            return;
-        }
-
         let nil_block: *mut AnyObject = std::ptr::null_mut();
         let frame: *mut AnyObject = msg_send![message, frameInfo];
         let in_frame_sel = sel!(evaluateJavaScript:inFrame:inContentWorld:completionHandler:);
@@ -808,15 +832,14 @@ pub(crate) fn dispatch_cosmetic(label: &str, body: &serde_json::Value) {
     let classes = json_str_array(body, "classes");
     let ids = json_str_array(body, "ids");
 
-    let Some(arg) = build_cosmetic_apply(href, initial, &classes, &ids) else {
+    let Some(webview) = APP.get().and_then(|app| app.webviews().get(label).cloned()) else {
         return;
     };
-
-    if let Some(app) = APP.get() {
-        if let Some(wv) = app.webviews().get(label).cloned() {
-            let _ = wv.eval(format!("window.__wisCosmeticApply({arg});"));
-        }
-    }
+    let top = webview.url().map(|u| u.to_string()).unwrap_or_default();
+    let Some(arg) = build_cosmetic_apply(href, &top, initial, &classes, &ids) else {
+        return;
+    };
+    let _ = webview.eval(format!("window.__wisCosmeticApply({arg});"));
 }
 
 /// Windows dispatcher entry for `wisZap`: persist the zapped selector for the

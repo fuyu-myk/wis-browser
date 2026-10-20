@@ -24,6 +24,7 @@ import { PeekSurface } from '@/overlay/surfaces/PeekSurface'
 import { AppLaunchSurface } from '@/overlay/surfaces/AppLaunchSurface'
 import { SavedLoginsSurface } from '@/overlay/surfaces/SavedLoginsSurface'
 import { SignupOfferSurface } from '@/overlay/surfaces/SignupOfferSurface'
+import { SitePanelSurface } from '@/overlay/surfaces/SitePanelSurface'
 import { PermissionSurface } from '@/overlay/surfaces/PermissionSurface'
 import { ScreenshotRegionSurface } from '@/overlay/surfaces/ScreenshotRegionSurface'
 import { ScreenshotToastSurface } from '@/overlay/surfaces/ScreenshotToastSurface'
@@ -50,6 +51,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'tabpreview') return <TabPreviewSurface />
   if (surface === 'islandmenu') return <IslandMenuSurface />
   if (surface === 'extmenu') return <ExtensionsMenuSurface />
+  if (surface === 'site') return <SitePanelSurface />
   if (surface === 'cleardata') return <ClearDataSurface />
   if (surface === 'urlbar') return <UrlbarSuggestSurface />
   if (surface === 'vaultmenu') return <VaultMenuSurface />

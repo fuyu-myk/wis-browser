@@ -68,6 +68,7 @@ import type {
   ExtensionAction,
   Linked,
   SiteAccess,
+  SiteProtection,
   StoreOffer,
   UpdateSummary,
 } from '@/bindings/types'
@@ -499,6 +500,15 @@ export const commands = {
    */
   async tabZoom(id: TabId, kind: 'in' | 'out' | 'reset'): Promise<void> {
     return invoke('tab_zoom', { id, kind })
+  },
+
+  /** Switch `site`, the site the tab showed, then reload the tab. */
+  async tabSetSiteProtection(id: TabId, site: string, protection: SiteProtection): Promise<void> {
+    return invoke('tab_set_site_protection', { id, site, protection })
+  },
+
+  async siteProtectionSession(): Promise<Record<string, SiteProtection>> {
+    return invoke('site_protection_session')
   },
 
   /** Forget one site's remembered zoom. */

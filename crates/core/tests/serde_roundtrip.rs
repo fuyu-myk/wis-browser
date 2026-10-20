@@ -140,6 +140,13 @@ fn settings_patch_round_trips_when_all_fields_set() {
             "video.example".to_string(),
             wis_core::AutoplayPolicy::Block,
         )])),
+        site_protection_overrides: Some(HashMap::from([(
+            "news.example".to_string(),
+            wis_core::SiteProtection {
+                blocking: false,
+                javascript: false,
+            },
+        )])),
         media_extensions_enabled: Some(false),
         extension_store_search: Some(false),
         video_popout_enabled: Some(false),

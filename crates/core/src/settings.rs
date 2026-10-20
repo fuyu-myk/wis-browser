@@ -11,6 +11,7 @@ use crate::layout::{LayoutMode, MotionLevel, RailSide, ThemeMode};
 use crate::new_tab::{default_shortcuts, NewTabTarget, ShortcutTile};
 use crate::privacy::PrivacyMode;
 use crate::search::{CustomSearchEngine, SearchEngine};
+use crate::site_protection::SiteProtection;
 use crate::theme::CustomTheme;
 use crate::usage::WeekStart;
 use crate::user_agent::UaProfile;
@@ -130,6 +131,10 @@ pub struct UserSettings {
     /// Per-host autoplay overrides, keyed by normalised host.
     #[serde(default)]
     pub autoplay_site_overrides: HashMap<String, AutoplayPolicy>,
+    /// Hosts with in-page filtering or JavaScript switched off, keyed by
+    /// normalised host.
+    #[serde(default)]
+    pub site_protection_overrides: HashMap<String, SiteProtection>,
     /// Page zoom for sites without one of their own, as a whole percentage.
     #[serde(default = "default_zoom_percent")]
     pub default_zoom_percent: u16,
@@ -477,6 +482,7 @@ impl Default for UserSettings {
             global_privacy_control: true,
             autoplay_policy: AutoplayPolicy::default(),
             autoplay_site_overrides: HashMap::new(),
+            site_protection_overrides: HashMap::new(),
             default_zoom_percent: default_zoom_percent(),
             zoom_site_overrides: HashMap::new(),
             media_extensions_enabled: true,
@@ -583,6 +589,8 @@ pub struct UserSettingsPatch {
     pub autoplay_policy: Option<AutoplayPolicy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub autoplay_site_overrides: Option<HashMap<String, AutoplayPolicy>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub site_protection_overrides: Option<HashMap<String, SiteProtection>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_zoom_percent: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -718,6 +726,9 @@ impl UserSettings {
             autoplay_site_overrides: patch
                 .autoplay_site_overrides
                 .unwrap_or_else(|| self.autoplay_site_overrides.clone()),
+            site_protection_overrides: patch
+                .site_protection_overrides
+                .unwrap_or_else(|| self.site_protection_overrides.clone()),
             default_zoom_percent: patch
                 .default_zoom_percent
                 .unwrap_or(self.default_zoom_percent),

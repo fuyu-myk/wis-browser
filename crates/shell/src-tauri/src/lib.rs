@@ -58,6 +58,7 @@ mod page_image;
 mod page_menu;
 #[cfg(any(windows, target_os = "linux", test))]
 mod page_message;
+mod page_preferences;
 mod page_source;
 mod page_text;
 mod pane_container;
@@ -74,6 +75,7 @@ mod save_coalescer;
 mod screenshot;
 mod selection_color;
 mod signup;
+mod site_protection;
 mod state;
 mod suggest;
 mod swipe_nav;
@@ -441,7 +443,7 @@ pub fn run() {
             // App handle for the native "Save password?" capture handler.
             capture::set_app_handle(app.handle().clone());
             #[cfg(target_os = "macos")]
-            autoplay::install_hook(app.handle().clone());
+            page_preferences::install_hook(app.handle().clone());
             signup::set_app_handle(app.handle().clone());
 
             // App handle for the AI page-text channel's native handler.
@@ -675,6 +677,8 @@ pub fn run() {
             commands::tab_hard_reload,
             commands::tab_zoom,
             commands::zoom_forget_site,
+            site_protection::tab_set_site_protection,
+            site_protection::site_protection_session,
             commands::reorder_tabs,
             commands::pin_tab,
             commands::create_tab_folder,

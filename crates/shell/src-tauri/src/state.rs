@@ -153,6 +153,11 @@ pub struct AppState {
     /// Sync mirror of the autoplay setting and its per-host overrides, read
     /// per navigation on the main thread.
     pub autoplay: std::sync::RwLock<crate::autoplay::AutoplayCache>,
+    /// Sync mirror of the saved per-site protection, read per navigation on
+    /// the main thread.
+    pub site_protection: std::sync::RwLock<HashMap<String, wis_core::SiteProtection>>,
+    /// Per-site protection changed in private workspaces, never saved.
+    pub site_protection_session: std::sync::RwLock<HashMap<String, wis_core::SiteProtection>>,
     /// Sync mirror of the page-zoom setting and its per-host overrides, read
     /// per navigation on the main thread.
     pub zoom: std::sync::RwLock<crate::zoom::ZoomCache>,
@@ -213,6 +218,7 @@ impl AppState {
             policy: browser.settings.autoplay_policy,
             overrides: browser.settings.autoplay_site_overrides.clone(),
         };
+        let initial_site_protection = browser.settings.site_protection_overrides.clone();
         let initial_zoom = crate::zoom::ZoomCache {
             default_percent: browser.settings.default_zoom_percent,
             overrides: browser.settings.zoom_site_overrides.clone(),
@@ -261,6 +267,8 @@ impl AppState {
             media_permissions: std::sync::RwLock::new(initial_media_permissions),
             media_permissions_session: std::sync::RwLock::new(HashMap::new()),
             autoplay: std::sync::RwLock::new(initial_autoplay),
+            site_protection: std::sync::RwLock::new(initial_site_protection),
+            site_protection_session: std::sync::RwLock::new(HashMap::new()),
             zoom: std::sync::RwLock::new(initial_zoom),
             pending_media: std::sync::Mutex::new(HashMap::new()),
             media_seq: std::sync::atomic::AtomicU64::new(0),
@@ -412,6 +420,37 @@ impl AppState {
     pub fn refresh_autoplay_cache(&self, cache: crate::autoplay::AutoplayCache) {
         let mut guard = self.autoplay.write().expect("autoplay poisoned");
         *guard = cache;
+    }
+
+    pub async fn refresh_site_protection_cache(&self) {
+        let browser = self.browser.lock().await;
+        *self
+            .site_protection
+            .write()
+            .expect("site_protection poisoned") =
+            browser.settings.site_protection_overrides.clone();
+    }
+
+    pub fn site_protection_for(&self, url: &str) -> wis_core::SiteProtection {
+        let saved = self
+            .site_protection
+            .read()
+            .expect("site_protection poisoned");
+        let session = self
+            .site_protection_session
+            .read()
+            .expect("site_protection_session poisoned");
+        crate::site_protection::for_url(&saved, &session, url)
+    }
+
+    pub fn wis_rule_list_ids(&self) -> Vec<String> {
+        self.content_rules
+            .read()
+            .expect("content_rules poisoned")
+            .values()
+            .flatten()
+            .map(|spec| spec.identifier.clone())
+            .collect()
     }
 
     /// Re-read the page-zoom cache from the current settings.

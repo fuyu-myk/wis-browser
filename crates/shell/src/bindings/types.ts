@@ -651,6 +651,7 @@ export interface UserSettings {
   autoplay_policy: AutoplayPolicy
   /** Per-host autoplay overrides, keyed by normalised host. */
   autoplay_site_overrides: Record<string, AutoplayPolicy>
+  site_protection_overrides: Record<string, SiteProtection>
   /** Page zoom for sites without one of their own, as a whole percentage. */
   default_zoom_percent: number
   /** Remembered per-host page zoom, keyed by normalised host. */
@@ -747,6 +748,7 @@ export interface UserSettingsPatch {
   global_privacy_control?: boolean
   autoplay_policy?: AutoplayPolicy
   autoplay_site_overrides?: Record<string, AutoplayPolicy>
+  site_protection_overrides?: Record<string, SiteProtection>
   default_zoom_percent?: number
   zoom_site_overrides?: Record<string, number>
   media_extensions_enabled?: boolean
@@ -936,6 +938,11 @@ export interface ClosedTabRecord {
 
 /** What media may start without a gesture; mirrors `wis_core::AutoplayPolicy`. */
 export type AutoplayPolicy = 'allow' | 'block_audible' | 'block'
+
+export interface SiteProtection {
+  blocking: boolean
+  javascript: boolean
+}
 
 /** One separable slice of a workspace's site data; mirrors `SiteDataKind`. */
 export type SiteDataKind = 'cookies' | 'cache' | 'storage'

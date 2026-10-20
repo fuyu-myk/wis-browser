@@ -15,12 +15,12 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import { ExtensionsButton } from '@/components/ExtensionsButton'
+import { SiteButton } from '@/components/SiteButton'
 import { ZoomIndicator } from '@/components/ZoomIndicator'
 import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { LoadProgressBar } from '@/components/LoadProgressBar'
 import { cx } from '@/lib/cx'
-import { SearchIcon } from '@/lib/icons'
-import { activeEngine, connectionKind, isChromeUrl, NEW_TAB_URL, resolveInput } from '@/lib/url'
+import { activeEngine, isChromeUrl, resolveInput } from '@/lib/url'
 import { bookmarkFoldersKey, bookmarksKey } from '@/lib/bookmarkKeys'
 import { useBookmarkSync } from '@/hooks/useBookmarkSync'
 import { BMPICKER_OPEN_EVENT, BOOKMARK_PAGE_EVENT, lastFolderKey, PIN_CAP } from '@/lib/bookmarkMenu'
@@ -31,7 +31,6 @@ import {
   type CaptureEvent,
 } from '@/lib/vaultMenu'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
-import { WisMark } from '@/components/WisMark'
 import { FOCUS_URLBAR_EVENT } from '@/hooks/useKeyActions'
 import { SIGNUP_FIELD_EVENT } from '@/hooks/useSignupOffer'
 import { useOpenTabActions } from '@/hooks/useOpenTabActions'
@@ -418,78 +417,6 @@ function useSelectAllOnChromeClick(inputRef: RefObject<HTMLInputElement>) {
 }
 
 /**
- * Leading URL-bar icon that reflects the active tab's connection security:
- * a padlock for HTTPS, a device mark for plain HTTP to this machine, a "not
- * secure" mark for other plain HTTP, the Wis mark for Wis's own pages, and the
- * neutral search glyph for the launchpad (where the bar is a search box).
- */
-function SecurityIndicator({ activeTab }: { activeTab: Tab | null }) {
-  const url = activeTab?.url ?? ''
-  if (!url || url === NEW_TAB_URL) return <SearchIcon className="ico" />
-  const kind = connectionKind(url)
-  if (kind === 'wis') {
-    return (
-      <span className="ico kb-chrome-page" title="Wis page" aria-label="Wis page">
-        <WisMark variant="solid-closed" size={14} />
-      </span>
-    )
-  }
-
-  if (kind === 'local') {
-    return (
-      <span className="ico kb-local" title="Local address: served from this device" aria-label="Local address">
-        <LocalGlyph />
-      </span>
-    )
-  }
-
-  if (kind === 'secure') {
-    return (
-      <span className="ico kb-secure" title="Connection is secure (HTTPS)" aria-label="Secure connection">
-        <LockGlyph />
-      </span>
-    )
-  }
-  return (
-    <span
-      className="ico kb-insecure"
-      title="Not secure — this site is loaded over HTTP"
-      aria-label="Connection is not secure"
-    >
-      <NotSecureGlyph />
-    </span>
-  )
-}
-
-function LockGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="5" y="11" width="14" height="9" rx="2" />
-      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-    </svg>
-  )
-}
-
-function LocalGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="4" y="5" width="16" height="11" rx="2" />
-      <path d="M2 20h20" />
-    </svg>
-  )
-}
-
-function NotSecureGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M10.3 3.8 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.8a2 2 0 0 0-3.4 0Z" />
-      <path d="M12 9v4" />
-      <path d="M12 17h.01" />
-    </svg>
-  )
-}
-
-/**
  * Bookmark star on the right of the address bar. Clicking bookmarks the active
  * page into the last-used folder (default: unfiled) and opens a small folder
  * picker anchored under the star to confirm/change it; the choice persists for
@@ -709,7 +636,7 @@ export function FloatingUrlBar({
       onMouseDown={handleMouseDown}
       onSubmit={form.onSubmit}
     >
-      <SecurityIndicator activeTab={activeTab} />
+      <SiteButton activeTab={activeTab} />
       <input
         ref={inputRef}
         className="kb-urlbar-input"

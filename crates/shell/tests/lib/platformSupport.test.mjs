@@ -29,7 +29,7 @@ beforeEach(() => {
 })
 
 /** What the feature checks report on `platform`, from a fresh process. */
-function probe(platform) {
+function probe(platform, features = FEATURES) {
   return inFreshProcess(
     async (_harness, { userAgent, module, features }) => {
       Object.defineProperty(globalThis, 'navigator', { value: { userAgent } })
@@ -43,7 +43,7 @@ function probe(platform) {
         toasts,
       }
     },
-    { userAgent: UA[platform], module: srcUrl('lib/platformSupport.ts'), features: FEATURES },
+    { userAgent: UA[platform], module: srcUrl('lib/platformSupport.ts'), features },
   )
 }
 
@@ -94,4 +94,12 @@ test('the AI assistant is offered exactly where ai.rs can seal its key', () => {
   }
   assert.deepEqual(rustSupports, { macos: true, windows: true, linux: false })
   assert.equal(isFeatureUnavailableHere('ai_assistant'), true, 'Linux')
+})
+
+test('the JavaScript switch is offered exactly where page_preferences.rs sets it per page', () => {
+  const rust = readSource('src-tauri/src/page_preferences.rs')
+  assert.match(rust, /#\[cfg\(target_os = "macos"\)\]\npub fn install_hook/)
+  assert.equal(isFeatureUnavailableHere('site_javascript'), true, 'Linux')
+  assert.deepEqual(probe('windows', ['site_javascript']).unavailable, ['site_javascript'])
+  assert.deepEqual(probe('macos', ['site_javascript']).unavailable, [])
 })

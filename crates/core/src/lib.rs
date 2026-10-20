@@ -38,6 +38,7 @@ pub mod proxy;
 pub mod search;
 pub mod settings;
 pub mod site;
+pub mod site_protection;
 pub mod state;
 pub mod tab;
 pub mod tab_folder;
@@ -86,6 +87,7 @@ pub use search::{
 };
 pub use settings::AiSettings;
 pub use settings::{UserSettings, UserSettingsPatch};
+pub use site_protection::{site_protection_for_host, SiteProtection};
 pub use state::BrowserState;
 pub use tab::{FaviconRef, Tab};
 pub use tab_folder::TabFolder;
