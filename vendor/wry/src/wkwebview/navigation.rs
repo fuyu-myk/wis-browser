@@ -19,6 +19,35 @@ use crate::PageLoadEvent;
 
 use super::class::wry_navigation_delegate::WryNavigationDelegate;
 
+// WIS patch: pass a blocked load on to the embedder's hook.
+pub(crate) fn content_rule_list_performed_action(
+  webview: &WKWebView,
+  identifier: &NSString,
+  action: &objc2::runtime::AnyObject,
+  url: Option<&NSURL>,
+) {
+  unsafe {
+    let reports_loads: bool = msg_send![action, respondsToSelector: objc2::sel!(blockedLoad)];
+    if !reports_loads {
+      return;
+    }
+    let blocked: bool = msg_send![action, blockedLoad];
+    if !blocked {
+      return;
+    }
+    let url = url
+      .and_then(|url| url.absoluteString())
+      .map(|s| s.to_string())
+      .unwrap_or_default();
+    let webview: *const WKWebView = webview;
+    super::report_content_rule_block(
+      webview as *mut std::ffi::c_void,
+      &identifier.to_string(),
+      &url,
+    );
+  }
+}
+
 pub(crate) fn did_commit_navigation(
   this: &WryNavigationDelegate,
   webview: &WKWebView,

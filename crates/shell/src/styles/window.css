@@ -2585,6 +2585,30 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
 .kb-sitepanel-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .kb-sitepanel-text { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--text-primary); }
 .kb-sitepanel-note { font-size: 11.5px; color: var(--text-secondary); }
+.kb-sitepanel-blocked { display: flex; flex-direction: column; gap: 6px; margin-top: -4px; }
+.kb-sitepanel-blocked-line {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--primary-500);
+  cursor: pointer;
+}
+.kb-sitepanel-blocked-line:disabled { color: var(--text-secondary); cursor: default; }
+.kb-sitepanel-hosts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11.5px;
+  color: var(--text-primary);
+}
+.kb-sitepanel-hosts li { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
+.kb-sitepanel-host { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .kb-extprompt-body { display: flex; flex-direction: column; gap: 10px; padding: 14px; }
 .kb-extprompt-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .kb-extprompt-list {

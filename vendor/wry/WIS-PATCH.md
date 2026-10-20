@@ -475,3 +475,22 @@ config, so Wis could not hand it a configuration of its own.
   wry's own setup and just before the `WKWebView` is created. It also runs
   for a configuration the embedder passed in.
 - `src/lib.rs`: re-exports the setter on macOS and iOS.
+
+## Sixteenth patch: the embedder hears of loads content rule lists block (macOS) (Wis-original)
+
+WebKit reports each content rule list action through the private delegate
+method `_webView:contentRuleListWithIdentifier:performedAction:forURL:`, and
+only when the navigation delegate implements it when it is set, so the
+embedder cannot add it to wry's delegate later. Wis counts the loads its own
+lists block for the site panel.
+
+- `src/wkwebview/mod.rs`: `wry::set_content_rule_block_hook(Box<dyn Fn(*mut
+  c_void, &str, &str) + Send + Sync>)` (`OnceLock`, first registration wins),
+  called on the main thread with the `WKWebView` as a raw pointer, the rule
+  list's identifier and the blocked URL.
+- `wry_navigation_delegate.rs` + `navigation.rs`: the delegate implements the
+  method and calls the hook for actions whose `blockedLoad` is set, guarded by
+  `respondsToSelector:`. The method sits in its own `impl` block: objc2 aborts
+  at class registration when a protocol block holds a method the protocol does
+  not declare.
+- `src/lib.rs`: re-exports the setter on macOS and iOS.

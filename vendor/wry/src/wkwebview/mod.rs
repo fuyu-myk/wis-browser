@@ -183,6 +183,29 @@ pub(crate) fn apply_webpage_preferences(url: &str, preferences: *mut std::ffi::c
   }
 }
 
+// WIS patch: embedder hook told of each load a content rule list blocked, with
+// the webview (as a raw object pointer), the rule list's identifier and the
+// blocked URL. See WIS-PATCH.md.
+type ContentRuleBlockHook = Box<dyn Fn(*mut std::ffi::c_void, &str, &str) + Send + Sync>;
+static CONTENT_RULE_BLOCK_HOOK: std::sync::OnceLock<ContentRuleBlockHook> =
+  std::sync::OnceLock::new();
+
+/// WIS patch: register the process-wide content-rule block hook. The first
+/// registration wins; later calls are ignored.
+pub fn set_content_rule_block_hook(hook: ContentRuleBlockHook) {
+  let _ = CONTENT_RULE_BLOCK_HOOK.set(hook);
+}
+
+pub(crate) fn report_content_rule_block(
+  webview: *mut std::ffi::c_void,
+  identifier: &str,
+  url: &str,
+) {
+  if let Some(hook) = CONTENT_RULE_BLOCK_HOOK.get() {
+    hook(webview, identifier, url);
+  }
+}
+
 // WIS patch: embedder hook given each webview's id and its
 // `WKWebViewConfiguration` (as a raw object pointer) on the main thread, just
 // before WebKit creates the webview, so creation-time preferences can differ

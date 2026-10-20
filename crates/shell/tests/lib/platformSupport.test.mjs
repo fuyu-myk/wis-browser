@@ -103,3 +103,11 @@ test('the JavaScript switch is offered exactly where page_preferences.rs sets it
   assert.deepEqual(probe('windows', ['site_javascript']).unavailable, ['site_javascript'])
   assert.deepEqual(probe('macos', ['site_javascript']).unavailable, [])
 })
+
+test('blocked counts are offered exactly where page_blocks.rs hears of blocks', () => {
+  const rust = readSource('src-tauri/src/page_blocks.rs')
+  assert.match(rust, /#\[cfg\(target_os = "macos"\)\]\npub fn install/)
+  assert.equal(isFeatureUnavailableHere('site_block_counts'), true, 'Linux')
+  assert.deepEqual(probe('windows', ['site_block_counts']).unavailable, ['site_block_counts'])
+  assert.deepEqual(probe('macos', ['site_block_counts']).unavailable, [])
+})

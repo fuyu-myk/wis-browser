@@ -69,6 +69,7 @@ import type {
   Linked,
   SiteAccess,
   SiteProtection,
+  PageBlocks,
   StoreOffer,
   UpdateSummary,
 } from '@/bindings/types'
@@ -509,6 +510,11 @@ export const commands = {
 
   async siteProtectionSession(): Promise<Record<string, SiteProtection>> {
     return invoke('site_protection_session')
+  },
+
+  /** What was blocked on the page in the current tab. */
+  async tabPageBlocks(id: TabId): Promise<PageBlocks> {
+    return invoke('tab_page_blocks', { id })
   },
 
   /** Forget one site's remembered zoom. */

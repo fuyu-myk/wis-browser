@@ -15,6 +15,7 @@ pub fn terminate_page(webview: &tauri::Webview) {
     let label = webview.label().to_string();
     let dispatched = webview.with_webview(move |w| {
         crate::extensions::tab_closed(&label);
+        crate::page_blocks::forget(&label);
         let wk = w.inner() as *mut objc2::runtime::AnyObject;
         if wk.is_null() {
             return;
@@ -23,6 +24,7 @@ pub fn terminate_page(webview: &tauri::Webview) {
         // SAFETY: `wk` is the live WKWebView handed over by `with_webview` on
         // the main thread; `_close` is gated on `respondsToSelector`.
         unsafe {
+            crate::page_blocks::stop_watching(wk.cast());
             let responds: bool = msg_send![wk, respondsToSelector: sel!(_close)];
             if responds {
                 let _: () = msg_send![wk, _close];

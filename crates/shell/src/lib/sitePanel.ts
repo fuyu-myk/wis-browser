@@ -6,6 +6,7 @@ export const SITE_PANEL_OPEN = 'wis-sitepanel-open'
 export const SITE_PANEL_READY = 'wis-sitepanel-ready'
 export const SITE_PANEL_DONE = 'wis-sitepanel-done'
 export const SITE_PANEL_SIZE = 'wis-sitepanel-size'
+export const SITE_PANEL_CLOSE = 'wis-sitepanel-close'
 export const SITE_PROTECTION_SESSION_EVENT = 'wis-site-protection-session'
 
 export const PANEL_WIDTH = 280
@@ -49,4 +50,15 @@ export function siteProtection(saved: Overrides, session: Overrides, site: strin
 
 export function isUnprotected(protection: SiteProtection): boolean {
   return !protection.blocking || !protection.javascript
+}
+
+export function blockedLine(total: number): string {
+  return total === 0 ? 'Nothing blocked on this page' : `${total} blocked on this page`
+}
+
+export function shownHosts(
+  hosts: [string, number][],
+  limit: number,
+): { shown: [string, number][]; more: number } {
+  return { shown: hosts.slice(0, limit), more: Math.max(0, hosts.length - limit) }
 }

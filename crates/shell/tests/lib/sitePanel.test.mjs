@@ -3,7 +3,15 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { PANEL_WIDTH, isUnprotected, panelBounds, siteOf, siteProtection } from '../../src/lib/sitePanel.ts'
+import {
+  PANEL_WIDTH,
+  blockedLine,
+  isUnprotected,
+  panelBounds,
+  shownHosts,
+  siteOf,
+  siteProtection,
+} from '../../src/lib/sitePanel.ts'
 
 const viewport = { width: 1200, height: 800 }
 const padlock = { x: 300, y: 20, width: 20, height: 24 }
@@ -54,5 +62,19 @@ describe('siteProtection', () => {
     assert.equal(isUnprotected({ blocking: true, javascript: true }), false)
     assert.equal(isUnprotected(off), true)
     assert.equal(isUnprotected({ blocking: true, javascript: false }), true)
+  })
+})
+
+describe('what was blocked', () => {
+  test('reads as a count on the page', () => {
+    assert.equal(blockedLine(0), 'Nothing blocked on this page')
+    assert.equal(blockedLine(1), '1 blocked on this page')
+    assert.equal(blockedLine(14), '14 blocked on this page')
+  })
+
+  test('lists the most blocked servers and counts the rest', () => {
+    const hosts = Array.from({ length: 10 }, (_, n) => [`h${n}.test`, 10 - n])
+    assert.deepEqual(shownHosts(hosts, 8), { shown: hosts.slice(0, 8), more: 2 })
+    assert.deepEqual(shownHosts(hosts.slice(0, 3), 8), { shown: hosts.slice(0, 3), more: 0 })
   })
 })

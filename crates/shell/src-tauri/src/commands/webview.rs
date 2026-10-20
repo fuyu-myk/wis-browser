@@ -372,6 +372,7 @@ pub async fn create_tab_webview(
 
             // A popped-out tab navigating loses its pinned video.
             if matches!(event, PageLoadEvent::Started) {
+                crate::page_blocks::forget(&label_for_load);
                 crate::signup::forget_field(&tab_id.as_uuid().to_string());
                 if let Err(err) = crate::find::clear_webview(&webview) {
                     log::debug!("clearing find on navigation failed: {err}");
@@ -655,6 +656,7 @@ pub async fn create_tab_webview(
             let ns: *mut AnyObject =
                 msg_send![objc2::class!(NSString), stringWithUTF8String: c.as_ptr()];
             let _: () = msg_send![wk, setAccessibilityIdentifier: ns];
+            crate::page_blocks::watch_failed_loads(wk.cast());
         });
     }
 

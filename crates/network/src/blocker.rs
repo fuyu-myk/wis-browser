@@ -286,6 +286,21 @@ impl TrackerBlocker {
             Ok(BlockerVerdict::Allow)
         }
     }
+
+    pub fn blocks_tunnel(&self, host: &str) -> bool {
+        tunnel_url(host).is_some_and(|url| {
+            matches!(
+                self.check_request(&url, &url, RequestType::Document),
+                Ok(BlockerVerdict::Block { .. })
+            )
+        })
+    }
+}
+
+/// A tunnel hides its path, so the proxy judges it as a document request for
+/// the host's root.
+pub fn tunnel_url(host: &str) -> Option<Url> {
+    Url::parse(&format!("https://{host}/")).ok()
 }
 
 #[cfg(test)]
@@ -298,6 +313,16 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create temp cache dir");
         dir
+    }
+
+    #[test]
+    fn a_tunnel_is_judged_by_its_host_alone() {
+        let blocker = TrackerBlocker::from_filter_texts(&["||tracker.test^\n/ads/banner.js\n"])
+            .expect("list");
+        assert!(blocker.blocks_tunnel("tracker.test"));
+        assert!(blocker.blocks_tunnel("cdn.tracker.test"));
+        assert!(!blocker.blocks_tunnel("site.test"));
+        assert!(!blocker.blocks_tunnel(""));
     }
 
     fn assert_blocks_tracker(blocker: &TrackerBlocker) {

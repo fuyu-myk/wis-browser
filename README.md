@@ -65,7 +65,7 @@ Wis is an open-source, lightweight, secure, and fast browser with AI integration
 - **Phishing/malware warnings** and a navigation safety interstitial that flags risky links before they load
 - **Peek**: Option+click / Alt+click a link to preview it in an isolated mini-card without leaving the page
 - **Built-in ad and tracker blocking**: cosmetic filtering, an element picker/zapper, Tampermonkey-style userscripts, and filter-list subscriptions
-- **Site panel**: click the padlock icon to turn blocking or JavaScript off for one site (JavaScript on macOS only)
+- **Site panel**: click the padlock icon to see what was blocked on the page and to turn blocking or JavaScript off for one site (counts and JavaScript on macOS only)
 - **HTTPS-First** enforcement and encrypted DNS (DoH)
 - **Built-in Tor VPN toggle** for one-click anonymous routing
 - **Per-site camera/microphone permission prompts**

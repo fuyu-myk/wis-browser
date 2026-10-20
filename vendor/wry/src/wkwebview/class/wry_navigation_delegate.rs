@@ -11,8 +11,8 @@ use objc2::{
   MainThreadOnly,
 };
 use objc2_foundation::{
-  MainThreadMarker, NSError, NSObjectProtocol, NSURLAuthenticationChallenge, NSURLCredential,
-  NSURLSessionAuthChallengeDisposition,
+  MainThreadMarker, NSError, NSObjectProtocol, NSString, NSURLAuthenticationChallenge,
+  NSURLCredential, NSURLSessionAuthChallengeDisposition, NSURL,
 };
 use objc2_web_kit::{
   WKDownload, WKNavigation, WKNavigationAction, WKNavigationActionPolicy, WKNavigationDelegate,
@@ -29,9 +29,10 @@ use crate::{
   wkwebview::{
     download::{navigation_download_action, navigation_download_response},
     navigation::{
-      did_commit_navigation, did_fail_provisional_navigation, did_finish_navigation,
-      did_receive_authentication_challenge, navigation_policy, navigation_policy_response,
-      navigation_policy_with_preferences, web_content_process_did_terminate,
+      content_rule_list_performed_action, did_commit_navigation, did_fail_provisional_navigation,
+      did_finish_navigation, did_receive_authentication_challenge, navigation_policy,
+      navigation_policy_response, navigation_policy_with_preferences,
+      web_content_process_did_terminate,
     },
   },
   PageLoadEvent, WryWebView,
@@ -146,6 +147,21 @@ define_class!(
     #[unsafe(method(webViewWebContentProcessDidTerminate:))]
     fn web_content_process_did_terminate(&self, webview: &WKWebView) {
       web_content_process_did_terminate(self, webview);
+    }
+  }
+
+  // WIS patch: WebKit's private delegate method for content rule list
+  // actions. See WIS-PATCH.md.
+  impl WryNavigationDelegate {
+    #[unsafe(method(_webView:contentRuleListWithIdentifier:performedAction:forURL:))]
+    fn content_rule_list_performed_action(
+      &self,
+      webview: &WKWebView,
+      identifier: &NSString,
+      action: &AnyObject,
+      url: Option<&NSURL>,
+    ) {
+      content_rule_list_performed_action(webview, identifier, action, url);
     }
   }
 );

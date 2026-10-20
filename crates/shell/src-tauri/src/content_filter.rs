@@ -49,10 +49,16 @@ fn spec_for(mode: PrivacyMode, filter_text: &str) -> Option<RuleSpec> {
     }
 }
 
+pub const RULE_LIST_PREFIX: &str = "wis-cb-";
+
 fn identifier_for(mode: PrivacyMode, json: &str) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     json.hash(&mut hasher);
-    format!("wis-cb-{}-{:016x}", mode_slug(mode), hasher.finish())
+    format!(
+        "{RULE_LIST_PREFIX}{}-{:016x}",
+        mode_slug(mode),
+        hasher.finish()
+    )
 }
 
 fn mode_slug(mode: PrivacyMode) -> &'static str {
@@ -229,7 +235,7 @@ pub fn prune_stale_rule_lists(keep: Vec<String>) {
                     continue;
                 }
                 let id = CStr::from_ptr(utf8).to_string_lossy().into_owned();
-                if !id.starts_with("wis-cb-") || keep.contains(&id) {
+                if !id.starts_with(RULE_LIST_PREFIX) || keep.contains(&id) {
                     continue;
                 }
 

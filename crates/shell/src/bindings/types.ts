@@ -944,6 +944,12 @@ export interface SiteProtection {
   javascript: boolean
 }
 
+export interface PageBlocks {
+  total: number
+  /** Most blocked first. */
+  hosts: [string, number][]
+}
+
 /** One separable slice of a workspace's site data; mirrors `SiteDataKind`. */
 export type SiteDataKind = 'cookies' | 'cache' | 'storage'
 

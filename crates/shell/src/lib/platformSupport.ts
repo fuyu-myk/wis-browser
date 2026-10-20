@@ -41,6 +41,8 @@ const FEATURES: Readonly<Record<string, FeatureSupport>> = {
   canvases: { label: 'Canvases', unavailableOn: [] },
   // Set per page through WebKit's navigation preferences.
   site_javascript: { label: 'JavaScript switch', unavailableOn: ['windows', 'linux'] },
+  // WebKit reports what its rule lists and the page's failed loads blocked.
+  site_block_counts: { label: 'Blocked counts', unavailableOn: ['windows', 'linux'] },
 }
 
 /** True when `featureId` is not available on the running platform. */

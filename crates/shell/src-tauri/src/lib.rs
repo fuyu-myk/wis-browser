@@ -54,6 +54,7 @@ mod menu;
 mod navguard;
 mod overlay;
 mod page_archive;
+mod page_blocks;
 mod page_image;
 mod page_menu;
 #[cfg(any(windows, target_os = "linux", test))]
@@ -444,6 +445,8 @@ pub fn run() {
             capture::set_app_handle(app.handle().clone());
             #[cfg(target_os = "macos")]
             page_preferences::install_hook(app.handle().clone());
+            #[cfg(target_os = "macos")]
+            page_blocks::install(app.handle().clone());
             signup::set_app_handle(app.handle().clone());
 
             // App handle for the AI page-text channel's native handler.
@@ -679,6 +682,7 @@ pub fn run() {
             commands::zoom_forget_site,
             site_protection::tab_set_site_protection,
             site_protection::site_protection_session,
+            page_blocks::tab_page_blocks,
             commands::reorder_tabs,
             commands::pin_tab,
             commands::create_tab_folder,

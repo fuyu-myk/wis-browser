@@ -91,16 +91,14 @@ async fn handle_connect(
     resolver: Arc<dyn Resolver>,
     signals: Signals,
 ) -> Response<BoxBody<Bytes, hyper::Error>> {
-    // The path can't be seen for HTTPS, an https://host/ document request
-    // is synthesized and run that through the policy. Host-level
-    // blocking works; path-level filtering is enforced in the WebView engine.
+    // Host-level blocking works; path-level filtering is enforced in the
+    // WebView engine.
     let authority = match req.uri().authority() {
         Some(a) => a,
         None => return bad_gateway("CONNECT missing authority"),
     };
-    let synthetic = match Url::parse(&format!("https://{}/", authority.host())) {
-        Ok(u) => u,
-        Err(err) => return bad_gateway(&format!("invalid CONNECT host: {err}")),
+    let Some(synthetic) = crate::blocker::tunnel_url(authority.host()) else {
+        return bad_gateway("invalid CONNECT host");
     };
 
     let outbound = OutboundRequest {

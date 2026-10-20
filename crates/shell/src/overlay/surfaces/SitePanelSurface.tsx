@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
@@ -19,10 +20,13 @@ import { cx } from '@/lib/cx'
 import { menusGlass } from '@/lib/glass'
 import { isFeatureUnavailableHere } from '@/lib/platformSupport'
 import {
+  SITE_PANEL_CLOSE,
   SITE_PANEL_DONE,
   SITE_PANEL_OPEN,
   SITE_PANEL_READY,
   SITE_PANEL_SIZE,
+  blockedLine,
+  shownHosts,
   siteOf,
   type SitePanelPayload,
 } from '@/lib/sitePanel'
@@ -36,33 +40,50 @@ const CONNECTION = {
 }
 
 const TOP_AND_BOTTOM_BORDERS = 2
+const BLOCKS_POLL_MS = 1000
+const HOSTS_SHOWN = 8
 
 export function SitePanelSurface() {
   const { data: state } = useBrowserState()
   useBrowserStateEvents()
   useThemeApply(state?.settings)
   const [panel, setPanel] = useState<SitePanelPayload | null>(null)
+  const [expanded, setExpanded] = useState(false)
   const bodyRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    let unlisten: UnlistenFn | null = null
     let cancelled = false
+    const unlistens: UnlistenFn[] = []
+    const keep = (fn: UnlistenFn) => (cancelled ? fn() : unlistens.push(fn))
     const label = getCurrentWindow().label
     void listen<SitePanelPayload>(SITE_PANEL_OPEN, (e) => {
-      if (e.payload.window === label) setPanel(e.payload)
-    }).then((fn) => {
-      if (cancelled) fn()
-      else unlisten = fn
-    })
+      if (e.payload.window !== label) return
+      setExpanded(false)
+      setPanel(e.payload)
+    }).then(keep)
+    void listen<string>(SITE_PANEL_CLOSE, (e) => {
+      if (e.payload === label) setPanel(null)
+    }).then(keep)
     void emit(SITE_PANEL_READY)
     return () => {
       cancelled = true
-      unlisten?.()
+      unlistens.forEach((fn) => fn())
     }
   }, [])
 
   const site = panel ? siteOf(panel.url) : null
   const protection = useSiteProtection(site)
+  const counting = !!panel && !isFeatureUnavailableHere('site_block_counts')
+  const { data: blocks } = useQuery({
+    queryKey: ['page-blocks', panel?.tabId],
+    queryFn: () => commands.tabPageBlocks(panel!.tabId),
+    enabled: counting,
+    refetchInterval: counting ? BLOCKS_POLL_MS : false,
+    staleTime: 0,
+  })
+  const { shown, more } = shownHosts(blocks?.hosts ?? [], HOSTS_SHOWN)
+  const counted = !!blocks
+  const listed = expanded && counted && blocks.total > 0
 
   useLayoutEffect(() => {
     const body = bodyRef.current
@@ -72,7 +93,7 @@ export function SitePanelSurface() {
       height: Math.ceil(body.getBoundingClientRect().height) + TOP_AND_BOTTOM_BORDERS,
     }
     void emit(SITE_PANEL_SIZE, size)
-  }, [panel, protection.blocking, protection.javascript])
+  }, [panel, protection.blocking, protection.javascript, counted, listed, shown.length, more])
 
   if (!panel || !site) return null
 
@@ -113,6 +134,30 @@ export function SitePanelSurface() {
             label="Block trackers and ads"
           />
         </div>
+        {blocks && (
+          <div className="kb-sitepanel-blocked">
+            <button
+              type="button"
+              className="kb-sitepanel-blocked-line"
+              disabled={blocks.total === 0}
+              aria-expanded={listed}
+              onClick={() => setExpanded(!expanded)}
+            >
+              {blockedLine(blocks.total)}
+            </button>
+            {listed && (
+              <ul className="kb-sitepanel-hosts">
+                {shown.map(([host, count]) => (
+                  <li key={host}>
+                    <span className="kb-sitepanel-host">{host}</span>
+                    <span>{count}</span>
+                  </li>
+                ))}
+                {more > 0 && <li className="kb-sitepanel-note">and {more} more</li>}
+              </ul>
+            )}
+          </div>
+        )}
         {!isFeatureUnavailableHere('site_javascript') && (
           <div className="kb-sitepanel-row">
             <span className="kb-sitepanel-text">JavaScript</span>

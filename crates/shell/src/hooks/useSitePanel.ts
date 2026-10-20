@@ -12,6 +12,7 @@ import { commands } from '@/bindings/commands'
 import type { Tab } from '@/bindings/types'
 import {
   UNMEASURED_PANEL_HEIGHT,
+  SITE_PANEL_CLOSE,
   SITE_PANEL_DONE,
   SITE_PANEL_OPEN,
   SITE_PANEL_READY,
@@ -49,6 +50,7 @@ export function useSitePanel(buttonRef: RefObject<HTMLElement>, shown: Tab | nul
     pendingRef.current = null
     setOpen(false)
     void commands.hideOverlay(OVERLAY).catch(() => undefined)
+    void emit(SITE_PANEL_CLOSE, getCurrentWindow().label)
   }, [])
 
   useEffect(() => {
