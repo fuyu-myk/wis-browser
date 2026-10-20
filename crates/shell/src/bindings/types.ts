@@ -656,6 +656,7 @@ export interface UserSettings {
   /** Remembered per-host page zoom, keyed by normalised host. */
   zoom_site_overrides: Record<string, number>
   media_extensions_enabled: boolean
+  extension_store_search: boolean
   /** Float a playing video as an always-on-top mini player on tab switch. */
   video_popout_enabled: boolean
   /** Default user agent presented to remote pages. */
@@ -749,6 +750,7 @@ export interface UserSettingsPatch {
   default_zoom_percent?: number
   zoom_site_overrides?: Record<string, number>
   media_extensions_enabled?: boolean
+  extension_store_search?: boolean
   video_popout_enabled?: boolean
   user_agent_profile?: UaProfile
   password_offer?: PasswordOffer

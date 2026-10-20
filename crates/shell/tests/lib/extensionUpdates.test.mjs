@@ -27,7 +27,7 @@ describe('describeLinked', () => {
     assert.equal(describeLinked('Dark Reader', 'updated'), 'Dark Reader now gets its updates from the Chrome Web Store, and was just updated.')
     assert.equal(
       describeLinked('Dark Reader', 'waiting'),
-      'Dark Reader now gets its updates from the Chrome Web Store. Its update asks for more, and waits in Settings.',
+      'Dark Reader now gets its updates from the Chrome Web Store. Its update asks for more, and awaits approval in Settings.',
     )
   })
 })

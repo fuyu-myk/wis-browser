@@ -141,6 +141,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
             wis_core::AutoplayPolicy::Block,
         )])),
         media_extensions_enabled: Some(false),
+        extension_store_search: Some(false),
         video_popout_enabled: Some(false),
         user_agent_profile: Some(wis_core::UaProfile::Chrome),
         ua_site_overrides: Some(HashMap::from([(

@@ -193,6 +193,17 @@ pub(super) async fn suggest(app: &AppHandle, unlinked: &[InstalledExtension]) {
     let Ok(_searching) = SEARCHING.try_lock() else {
         return;
     };
+    let allowed = app
+        .state::<AppState>()
+        .browser
+        .lock()
+        .await
+        .settings
+        .extension_store_search;
+    if !allowed {
+        return;
+    }
+
     let now = updates::now();
     for ext in unlinked.iter().filter(|e| wants_search(e, now)) {
         let found = search(app, ext).await.unwrap_or_else(|err| {

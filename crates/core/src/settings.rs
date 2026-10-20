@@ -173,6 +173,10 @@ pub struct UserSettings {
     /// which keep the files and the list in step.
     #[serde(default)]
     pub extensions: Vec<crate::extensions::InstalledExtension>,
+    /// Look up the Chrome Web Store listings of extensions added from a
+    /// folder, which sends their names to the store.
+    #[serde(default = "default_extension_store_search")]
+    pub extension_store_search: bool,
     /// Global quick-launch sidebar widgets (social apps + AI providers), in
     /// display order. Shown in every workspace's sidebar; clicking one opens
     /// its URL in a split pane. Empty by default.
@@ -358,6 +362,10 @@ fn default_media_extensions_enabled() -> bool {
     true
 }
 
+fn default_extension_store_search() -> bool {
+    true
+}
+
 fn default_fraud_warning_enabled() -> bool {
     true
 }
@@ -479,6 +487,7 @@ impl Default for UserSettings {
             media_permissions: HashMap::new(),
             app_launch_permissions: HashMap::new(),
             extensions: Vec::new(),
+            extension_store_search: true,
             sidebar_widgets: Vec::new(),
             widget_panel_limit_enabled: true,
             widget_panel_limit: 2,
@@ -580,6 +589,8 @@ pub struct UserSettingsPatch {
     pub zoom_site_overrides: Option<HashMap<String, u16>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media_extensions_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension_store_search: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video_popout_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -733,6 +744,9 @@ impl UserSettings {
                 .app_launch_permissions
                 .unwrap_or_else(|| self.app_launch_permissions.clone()),
             extensions: self.extensions.clone(),
+            extension_store_search: patch
+                .extension_store_search
+                .unwrap_or(self.extension_store_search),
             sidebar_widgets: patch
                 .sidebar_widgets
                 .unwrap_or_else(|| self.sidebar_widgets.clone()),
@@ -821,6 +835,24 @@ mod tests {
         });
         assert_eq!(switched.canvas_model, None);
     }
+    #[test]
+    fn store_listing_searches_are_on_until_switched_off() {
+        assert!(UserSettings::default().extension_store_search);
+        let mut older = serde_json::to_value(UserSettings::default()).unwrap();
+        older
+            .as_object_mut()
+            .unwrap()
+            .remove("extension_store_search");
+        let read: UserSettings = serde_json::from_value(older).unwrap();
+        assert!(read.extension_store_search);
+
+        let off = read.with_patch(UserSettingsPatch {
+            extension_store_search: Some(false),
+            ..Default::default()
+        });
+        assert!(!off.extension_store_search);
+    }
+
     #[test]
     fn unknown_keybinding_ids_are_dropped_not_fatal() {
         // A persisted settings blob carrying a removed/renamed action id (here

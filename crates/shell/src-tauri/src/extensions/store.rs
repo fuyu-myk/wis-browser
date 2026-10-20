@@ -34,7 +34,9 @@ const DOWNLOAD_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StoreOffer {
-    Add { store_id: String },
+    Add {
+        store_id: String,
+    },
     /// Taking updates from the listing for `id`, installed from a folder or
     /// `.zip` under the name the page gives.
     Link {

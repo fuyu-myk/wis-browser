@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { commands } from '@/bindings/commands'
-import type { InstalledExtension, SiteAccess, StagedExtension, Workspace } from '@/bindings/types'
+import type { InstalledExtension, SiteAccess, StagedExtension, UserSettingsPatch, Workspace } from '@/bindings/types'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Segmented, Switch } from '@/components/controls'
 import { errorMessage } from '@/lib/errors'
@@ -10,6 +10,9 @@ import { describeLinked, describeUpdates } from '@/lib/extensionUpdates'
 
 interface ExtensionsSectionProps {
   installed: InstalledExtension[]
+  /** Whether the store listings of folder installs are looked for. */
+  storeSearch: boolean
+  onUpdate: (patch: UserSettingsPatch) => void
   /** The workspace whose switch the section shows. */
   workspace: Workspace | undefined
 }
@@ -86,7 +89,7 @@ function GrantedRow({ ext, busy, onTakeBack }: GrantedRowProps) {
   )
 }
 
-export function ExtensionsSection({ installed, workspace }: ExtensionsSectionProps) {
+export function ExtensionsSection({ installed, workspace, storeSearch, onUpdate }: ExtensionsSectionProps) {
   const { data: supported } = useQuery({
     queryKey: ['extensions-supported'],
     queryFn: () => commands.extensionsSupported(),
@@ -159,7 +162,7 @@ export function ExtensionsSection({ installed, workspace }: ExtensionsSectionPro
             <span>Updates</span>
             <span>
               {updateNote ??
-                'Extensions from the Chrome Web Store are checked for updates about once a day, and the store listings of those added from a folder are looked for.'}
+                'Extensions from the Chrome Web Store are checked for updates about once a day.'}
             </span>
           </div>
           <button
@@ -172,6 +175,22 @@ export function ExtensionsSection({ installed, workspace }: ExtensionsSectionPro
           >
             Check now
           </button>
+        </div>
+      )}
+      {installed.some((ext) => !ext.store_id) && (
+        <div className="row">
+          <div className="l">
+            <span>Find store listings</span>
+            <span>
+              Looks for the Chrome Web Store listing of each extension added from a folder, so it can update
+              too. Sends their names to the store about once a week.
+            </span>
+          </div>
+          <Switch
+            checked={storeSearch}
+            onChange={(on) => onUpdate({ extension_store_search: on })}
+            label="Find store listings for extensions added from a folder"
+          />
         </div>
       )}
       {installed.map((ext) => (
