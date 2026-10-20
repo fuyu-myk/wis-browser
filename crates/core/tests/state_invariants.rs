@@ -261,6 +261,19 @@ fn creating_a_workspace_returns_a_new_state_without_mutating_the_old() {
 }
 
 #[test]
+fn new_workspaces_take_the_default_privacy_mode() {
+    let state = BrowserState::new_with_defaults().with_settings(UserSettingsPatch {
+        default_privacy_mode: Some(PrivacyMode::Strict),
+        ..Default::default()
+    });
+    let (state, regular) = state.with_new_workspace("Work".into(), AccentColor::Mint);
+    let (_, private) = state.with_new_private_workspace("Private".into(), AccentColor::Rose);
+
+    assert_eq!(regular.privacy_mode, PrivacyMode::Strict);
+    assert_eq!(private.privacy_mode, PrivacyMode::Strict);
+}
+
+#[test]
 fn renaming_a_missing_workspace_errors() {
     let state = BrowserState::new_with_defaults();
     let ghost = Workspace::new("ghost".into(), AccentColor::Primary);

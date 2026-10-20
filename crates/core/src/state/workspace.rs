@@ -17,6 +17,7 @@ impl BrowserState {
     }
 
     fn with_appended_workspace(&self, workspace: Workspace) -> (Self, Workspace) {
+        let workspace = workspace.with_privacy_mode(self.settings.default_privacy_mode);
         let mut workspaces = self.workspaces.clone();
         workspaces.push(workspace.clone());
 
