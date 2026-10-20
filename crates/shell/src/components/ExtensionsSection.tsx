@@ -6,7 +6,7 @@ import type { InstalledExtension, SiteAccess, StagedExtension, Workspace } from 
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Segmented, Switch } from '@/components/controls'
 import { errorMessage } from '@/lib/errors'
-import { describeUpdates } from '@/lib/extensionUpdates'
+import { describeLinked, describeUpdates } from '@/lib/extensionUpdates'
 
 interface ExtensionsSectionProps {
   installed: InstalledExtension[]
@@ -45,6 +45,8 @@ export function ReviewDetails({ staged }: { staged: StagedExtension }) {
     </>
   )
 }
+
+const STORE_ITEM_URL = 'https://chromewebstore.google.com/detail/'
 
 const SITE_ACCESS: ReadonlyArray<{ value: SiteAccess; label: string }> = [
   { value: 'all', label: 'All sites' },
@@ -151,11 +153,14 @@ export function ExtensionsSection({ installed, workspace }: ExtensionsSectionPro
           Add extension…
         </button>
       </div>
-      {installed.some((ext) => ext.store_id) && (
+      {installed.length > 0 && (
         <div className="row">
           <div className="l">
             <span>Updates</span>
-            <span>{updateNote ?? 'Extensions from the Chrome Web Store are checked for updates about once a day.'}</span>
+            <span>
+              {updateNote ??
+                'Extensions from the Chrome Web Store are checked for updates about once a day, and the store listings of those added from a folder are looked for.'}
+            </span>
           </div>
           <button
             type="button"
@@ -189,6 +194,59 @@ export function ExtensionsSection({ installed, workspace }: ExtensionsSectionPro
               Remove
             </button>
           </div>
+          {ext.store_suggestion && !ext.store_id && (
+            <div className="row kb-ext-sub">
+              <div className="l">
+                <span>Get its updates from the Chrome Web Store?</span>
+                <span>
+                  {ext.store_suggestion.same_files
+                    ? 'A store listing has this extension with the same files.'
+                    : 'A store listing has an extension of this name at another version.'}{' '}
+                  Open it to check if it is the one you use.
+                </span>
+              </div>
+              <div className="kb-ext-actions">
+                <button
+                  type="button"
+                  className="kb-btn"
+                  onClick={() =>
+                    workspace &&
+                    void commands
+                      .createTab(workspace.id, `${STORE_ITEM_URL}${ext.store_suggestion?.store_id}`)
+                      .catch(() => undefined)
+                  }
+                  disabled={!workspace}
+                >
+                  Open listing
+                </button>
+                <button
+                  type="button"
+                  className="kb-btn"
+                  onClick={() => {
+                    const storeId = ext.store_suggestion?.store_id
+                    if (!storeId) return
+                    void run(async () =>
+                      setUpdateNote(describeLinked(ext.name, await commands.extensionLinkStore(ext.id, storeId))),
+                    )
+                  }}
+                  disabled={busy}
+                >
+                  Link
+                </button>
+                <button
+                  type="button"
+                  className="kb-btn"
+                  onClick={() => {
+                    const storeId = ext.store_suggestion?.store_id
+                    if (storeId) void run(() => commands.extensionDeclineListing(ext.id, storeId))
+                  }}
+                  disabled={busy}
+                >
+                  Not this one
+                </button>
+              </div>
+            </div>
+          )}
           {ext.pending_update && (
             <div className="row kb-ext-sub">
               <div className="l">

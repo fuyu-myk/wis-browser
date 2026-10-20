@@ -66,7 +66,9 @@ import type {
   Userscript,
   StagedExtension,
   ExtensionAction,
+  Linked,
   SiteAccess,
+  StoreOffer,
   UpdateSummary,
 } from '@/bindings/types'
 
@@ -1621,9 +1623,19 @@ export const commands = {
     return invoke('extension_set_site', { id, host, allowed })
   },
 
-  /** The store id of the extension this window's active tab shows, unless it is installed. */
-  async extensionStoreOffer(): Promise<string | null> {
+  /** What the extensions menu offers for the Chrome Web Store page in this window's active tab. */
+  async extensionStoreOffer(): Promise<StoreOffer | null> {
     return invoke('extension_store_offer')
+  },
+
+  /** Take an extension's updates from a store listing, once its package proves to be the same extension. */
+  async extensionLinkStore(id: string, storeId: string): Promise<Linked> {
+    return invoke('extension_link_store', { id, storeId })
+  },
+
+  /** Remember that a store listing is not an extension's. */
+  async extensionDeclineListing(id: string, storeId: string): Promise<void> {
+    return invoke('extension_decline_listing', { id, storeId })
   },
 
   /** Download a Chrome Web Store extension over this window's workspace proxy and stage it for review. */

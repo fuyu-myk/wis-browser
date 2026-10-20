@@ -2,6 +2,7 @@
 //! page, and its package, downloaded over the window's workspace proxy and
 //! checked against Google's signature before the usual review.
 
+use serde::Serialize;
 use tauri::{AppHandle, State};
 #[cfg(target_os = "macos")]
 use wis_core::extensions;
@@ -29,13 +30,28 @@ const MAX_REDIRECTS: usize = 5;
 #[cfg(target_os = "macos")]
 const DOWNLOAD_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
 
-/// The store id of the extension the window's active tab shows, unless it,
-/// or one going by the name the page gives, is installed already.
+/// What the extensions menu offers on a Chrome Web Store item page.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum StoreOffer {
+    Add { store_id: String },
+    /// Taking updates from the listing for `id`, installed from a folder or
+    /// `.zip` under the name the page gives.
+    Link {
+        store_id: String,
+        id: String,
+        name: String,
+    },
+}
+
+/// The offer for the extension the window's active tab shows: adding it, or
+/// linking the copy installed from a folder, and nothing once it is from the
+/// store or on user rejection.
 #[tauri::command]
 pub async fn extension_store_offer(
     window: tauri::Window,
     state: State<'_, AppState>,
-) -> WisResult<Option<String>> {
+) -> WisResult<Option<StoreOffer>> {
     #[cfg(target_os = "macos")]
     {
         if !super::host::supported() {
@@ -58,13 +74,24 @@ pub async fn extension_store_offer(
         let Some(store_id) = extensions::store_id_from_url(tab.url.as_str()) else {
             return Ok(None);
         };
-        let installed = extensions::duplicate_of(
-            &browser.settings.extensions,
-            extensions::store_page_name(&tab.title),
-            Some(&store_id),
-        );
+        let list = &browser.settings.extensions;
+        if list.iter().any(|e| e.store_id.as_ref() == Some(&store_id)) {
+            return Ok(None);
+        }
 
-        Ok(installed.is_none().then_some(store_id))
+        let Some(installed) =
+            extensions::duplicate_of(list, extensions::store_page_name(&tab.title), None)
+        else {
+            return Ok(Some(StoreOffer::Add { store_id }));
+        };
+
+        let linkable =
+            installed.store_id.is_none() && !installed.declined_listings.contains(&store_id);
+        Ok(linkable.then(|| StoreOffer::Link {
+            store_id,
+            id: installed.id.clone(),
+            name: installed.name.clone(),
+        }))
     }
     #[cfg(not(target_os = "macos"))]
     {

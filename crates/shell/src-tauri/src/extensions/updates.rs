@@ -20,7 +20,7 @@ use wis_core::WisResult;
 #[cfg(not(target_os = "macos"))]
 use super::unavailable;
 #[cfg(target_os = "macos")]
-use super::{host, install, store};
+use super::{host, install, linking, store};
 use crate::state::AppState;
 
 #[cfg(target_os = "macos")]
@@ -157,7 +157,7 @@ const WAKE_EVERY: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 const STAMP: &str = "last-update-check";
 
 #[cfg(target_os = "macos")]
-static CHECKING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+pub(super) static CHECKING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[cfg(target_os = "macos")]
 fn refuse(message: impl Into<String>) -> WisError {
@@ -168,7 +168,7 @@ fn refuse(message: impl Into<String>) -> WisError {
 
 #[cfg(target_os = "macos")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Outcome {
+pub(super) enum Outcome {
     Current,
     Updated,
     Waiting,
@@ -189,7 +189,7 @@ pub(crate) fn schedule(app: AppHandle) {
 }
 
 #[cfg(target_os = "macos")]
-fn now() -> u64 {
+pub(super) fn now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -212,18 +212,17 @@ async fn due(app: &AppHandle) -> bool {
 async fn check_all(app: &AppHandle) -> UpdateSummary {
     let _guard = CHECKING.lock().await;
     let mut summary = UpdateSummary::default();
-    let linked: Vec<InstalledExtension> = {
+    let (linked, unlinked): (Vec<InstalledExtension>, Vec<InstalledExtension>) = {
         let state = app.state::<AppState>();
         let browser = state.browser.lock().await;
         browser
             .settings
             .extensions
             .iter()
-            .filter(|e| e.store_id.is_some())
             .cloned()
-            .collect()
+            .partition(|e| e.store_id.is_some())
     };
-    if linked.is_empty() {
+    if linked.is_empty() && unlinked.is_empty() {
         return summary;
     }
 
@@ -240,13 +239,15 @@ async fn check_all(app: &AppHandle) -> UpdateSummary {
         }
     }
 
-    if summary.failed.len() < linked.len() {
+    if linked.is_empty() || summary.failed.len() < linked.len() {
         if let Some(stamp) = install::extensions_path(app).map(|dir| dir.join(STAMP)) {
             if let Err(err) = tokio::fs::write(stamp, now().to_string()).await {
                 log::warn!("the extension update check was not recorded: {err}");
             }
         }
     }
+    drop(_guard);
+    linking::suggest(app, &unlinked).await;
 
     summary
 }
@@ -254,7 +255,7 @@ async fn check_all(app: &AppHandle) -> UpdateSummary {
 /// The proxy to ask through: a regular workspace the extension runs in, or
 /// any regular workspace.
 #[cfg(target_os = "macos")]
-async fn proxy_for(app: &AppHandle, ext: &InstalledExtension) -> WisResult<Option<u16>> {
+pub(super) async fn proxy_for(app: &AppHandle, ext: &InstalledExtension) -> WisResult<Option<u16>> {
     let state = app.state::<AppState>();
     let workspace = {
         let browser = state.browser.lock().await;
@@ -287,7 +288,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// requires more permissions than the installed version waits, unless
 /// `approved` covers it.
 #[cfg(target_os = "macos")]
-async fn update(
+pub(super) async fn update(
     app: &AppHandle,
     ext: &InstalledExtension,
     approved: Option<&Reach>,

@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::extension_access::SiteAccess;
+use crate::extension_listing::{same_name, StoreSuggestion};
 use crate::extension_updates::PendingUpdate;
 use crate::workspace::Workspace;
 use crate::{WisError, WisResult, WorkspaceId};
@@ -31,6 +32,13 @@ pub struct InstalledExtension {
     pub store_id: Option<String>,
     #[serde(default)]
     pub pending_update: Option<PendingUpdate>,
+    #[serde(default)]
+    pub store_suggestion: Option<StoreSuggestion>,
+    #[serde(default)]
+    pub declined_listings: Vec<String>,
+    /// When the daily search last looked for its listing, in Unix seconds.
+    #[serde(default)]
+    pub store_searched_at: Option<u64>,
 }
 
 pub const MAX_EXTENSIONS: usize = 64;
@@ -116,12 +124,9 @@ pub fn duplicate_of<'a>(
     name: Option<&str>,
     store_id: Option<&str>,
 ) -> Option<&'a InstalledExtension> {
-    let name = name.map(|n| tidy_name(n).to_lowercase());
     list.iter().find(|e| {
         store_id.is_some_and(|id| e.store_id.as_deref() == Some(id))
-            || name
-                .as_ref()
-                .is_some_and(|n| tidy_name(&e.name).to_lowercase() == *n)
+            || name.is_some_and(|n| same_name(n, &e.name))
     })
 }
 

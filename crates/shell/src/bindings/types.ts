@@ -537,7 +537,18 @@ export interface InstalledExtension {
   store_id: string | null
   /** An update that requires more than this version. */
   pending_update: { version: string; abilities: string[] } | null
+  /** A listing the daily search found for an extension from a folder or `.zip`. */
+  store_suggestion: { store_id: string; same_files: boolean } | null
+  declined_listings: string[]
 }
+
+/** What the extensions menu offers on a Chrome Web Store item page (mirror of `extensions::store::StoreOffer`). */
+export type StoreOffer =
+  | { kind: 'add'; store_id: string }
+  | { kind: 'link'; store_id: string; id: string; name: string }
+
+/** What linking an extension to its listing did (mirror of `extensions::linking::Linked`). */
+export type Linked = 'current' | 'updated' | 'waiting'
 
 /** What a check for extension updates did, by extension name (mirror of `extensions::updates::UpdateSummary`). */
 export interface UpdateSummary {

@@ -2594,7 +2594,15 @@ body.is-tab-dragging .kb-loose { min-height: 30px; border-radius: var(--radius-m
   padding: 0 6px;
   box-sizing: border-box;
 }
-.kb-extmenu-offer-text { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.kb-extmenu-offer-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
 
 /* Close (X) on horizontal tab. */
 .kb-topbar .h-tab .close {
@@ -3477,6 +3485,7 @@ body.glass-chrome .kb-content {
 .kb-ext-item { position: relative; padding-left: 14px; }
 .kb-ext-item::before { content: '•'; position: absolute; left: 2px; }
 .kb-ext-warn { color: var(--text-primary); }
+.kb-ext-actions { display: flex; flex: none; gap: 6px; }
 .kb-settings-page .row.kb-ext-sub { padding: 4px 0 4px 16px; }
 .kb-modal-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
 .kb-modal-btn {

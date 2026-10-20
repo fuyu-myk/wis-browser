@@ -9,7 +9,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
-import type { ExtensionAction } from '@/bindings/types'
+import type { ExtensionAction, StoreOffer } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { EXT_MENU_DONE, EXT_MENU_OPEN, EXT_MENU_READY, EXT_STORE_DECLINED } from '@/lib/extensionsMenu'
 import { menusGlass } from '@/lib/glass'
@@ -22,6 +22,7 @@ import type { ExtensionsMenuPayload } from '@/hooks/useExtensionsMenu'
 import { useThemeApply } from '@/hooks/useThemeApply'
 import { ExtensionPrompt } from '@/overlay/surfaces/ExtensionPrompt'
 import { ExtensionStoreAdd } from '@/overlay/surfaces/ExtensionStoreAdd'
+import { ExtensionStoreLink } from '@/overlay/surfaces/ExtensionStoreLink'
 
 interface SiteLineProps {
   site: { host: string; allowed: boolean }
@@ -51,6 +52,7 @@ export function ExtensionsMenuSurface() {
   useThemeApply(state?.settings)
   const [menu, setMenu] = useState<ExtensionsMenuPayload | null>(null)
   const [adding, setAdding] = useState<string | null>(null)
+  const [linking, setLinking] = useState<Extract<StoreOffer, { kind: 'link' }> | null>(null)
   const stagedRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -60,6 +62,7 @@ export function ExtensionsMenuSurface() {
       if (stagedRef.current) void commands.extensionDiscard(stagedRef.current).catch(() => undefined)
       stagedRef.current = null
       setAdding(null)
+      setLinking(null)
       setMenu(payload)
     }
     void listen<ExtensionsMenuPayload>(EXT_MENU_OPEN, (e) => open(e.payload)).then((fn) => {
@@ -78,8 +81,21 @@ export function ExtensionsMenuSurface() {
   const close = () => {
     setMenu(null)
     setAdding(null)
+    setLinking(null)
     void commands.hideOverlay('extmenu').catch(() => undefined)
     void emit(EXT_MENU_DONE)
+  }
+
+  if (linking) {
+    return (
+      <ExtensionStoreLink
+        id={linking.id}
+        storeId={linking.store_id}
+        name={linking.name}
+        glass={menusGlass(state?.settings)}
+        onDone={close}
+      />
+    )
   }
 
   if (adding) {
@@ -99,9 +115,15 @@ export function ExtensionsMenuSurface() {
 
   const { anchor, actions, workspaceId, offer } = menu
 
-  const decline = (storeId: string) => {
-    void emit(EXT_STORE_DECLINED, storeId)
+  const decline = (offered: StoreOffer) => {
+    if (offered.kind === 'add') void emit(EXT_STORE_DECLINED, offered.store_id)
+    else void commands.extensionDeclineListing(offered.id, offered.store_id).catch(() => undefined)
     close()
+  }
+
+  const accept = (offered: StoreOffer) => {
+    if (offered.kind === 'add') setAdding(offered.store_id)
+    else setLinking(offered)
   }
   const pinned = new Set(state?.settings.extensions.filter((e) => e.pinned).map((e) => e.id))
 
@@ -142,12 +164,16 @@ export function ExtensionsMenuSurface() {
       {offer && (
         <>
           <div className="kb-extmenu-offer">
-            <span className="kb-extmenu-offer-text">Add this page’s extension to Wis?</span>
+            <span className="kb-extmenu-offer-text">
+              {offer.kind === 'add'
+                ? 'Add this page’s extension to Wis?'
+                : `Get updates for ${offer.name} from this listing?`}
+            </span>
             <div className="kb-perm-actions">
               <button type="button" className="kb-perm-btn" onClick={() => decline(offer)}>
                 No
               </button>
-              <button type="button" className="kb-perm-btn is-primary" onClick={() => setAdding(offer)}>
+              <button type="button" className="kb-perm-btn is-primary" onClick={() => accept(offer)}>
                 Yes
               </button>
             </div>

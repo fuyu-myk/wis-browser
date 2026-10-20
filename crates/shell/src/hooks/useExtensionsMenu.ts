@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
-import type { ExtensionAction, ExtensionPermissionRequest, WorkspaceId } from '@/bindings/types'
+import type { ExtensionAction, ExtensionPermissionRequest, StoreOffer, WorkspaceId } from '@/bindings/types'
 import {
   EXT_MENU_DONE,
   EXT_MENU_OPEN,
@@ -30,7 +30,7 @@ export type ExtensionsMenuPayload =
       actions: ExtensionAction[]
       workspaceId: WorkspaceId | null
       /** The store id of the Chrome Web Store page's extension. */
-      offer: string | null
+      offer: StoreOffer | null
     }
   | { kind: 'prompt'; request: ExtensionPermissionRequest }
 
@@ -189,11 +189,12 @@ export function useExtensionsMenu(
     const anchor = { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
     const show = async () => {
       if ((await commands.extensionDismissPopup()) !== null) return
-      const [actions, storeId] = await Promise.all([
+      const [actions, found] = await Promise.all([
         commands.extensionActions(),
         commands.extensionStoreOffer().catch(() => null),
       ])
-      const offer = storeId && !declinedRef.current.has(storeId) ? storeId : null
+      const declined = found?.kind === 'add' && declinedRef.current.has(found.store_id)
+      const offer = declined ? null : found
       const payload: ExtensionsMenuPayload = { kind: 'menu', anchor, actions, workspaceId, offer }
       const siteLines = actions.filter((a) => a.site).length
       const bounds = menuBounds(anchor, actions.length, viewport(), siteLines, offer !== null)

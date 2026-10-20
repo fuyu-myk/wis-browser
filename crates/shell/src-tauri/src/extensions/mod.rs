@@ -15,6 +15,7 @@ mod grants;
 mod host;
 #[cfg(target_os = "macos")]
 mod install;
+pub mod linking;
 #[cfg(target_os = "macos")]
 mod prompts;
 #[cfg(target_os = "macos")]

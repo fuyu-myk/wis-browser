@@ -798,6 +798,8 @@ pub fn run() {
             extensions::store::extension_stage_from_store,
             extensions::updates::extension_check_updates,
             extensions::updates::extension_approve_update,
+            extensions::linking::extension_link_store,
+            extensions::linking::extension_decline_listing,
             extensions::extension_dismiss_popup,
             ai_fetch::ai_web_search,
             ai_fetch::ai_web_fetch,
