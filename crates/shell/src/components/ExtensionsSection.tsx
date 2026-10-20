@@ -6,6 +6,7 @@ import type { InstalledExtension, SiteAccess, StagedExtension, Workspace } from 
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Segmented, Switch } from '@/components/controls'
 import { errorMessage } from '@/lib/errors'
+import { describeUpdates } from '@/lib/extensionUpdates'
 
 interface ExtensionsSectionProps {
   installed: InstalledExtension[]
@@ -93,6 +94,7 @@ export function ExtensionsSection({ installed, workspace }: ExtensionsSectionPro
   const [removing, setRemoving] = useState<InstalledExtension | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [updateNote, setUpdateNote] = useState<string | null>(null)
 
   const run = async (work: () => Promise<void>) => {
     setBusy(true)
@@ -137,7 +139,7 @@ export function ExtensionsSection({ installed, workspace }: ExtensionsSectionPro
           <span>
             {supported === false
               ? 'Extensions need macOS 15.4 or later, and are not available on Windows or Linux yet.'
-              : 'From an unpacked folder or a .zip. They run in your regular workspaces, and open pages reload with them.'}
+              : 'From a Chrome Web Store page through the extensions menu, or from an unpacked folder or a .zip here. They run in your regular workspaces, and open pages reload with them.'}
           </span>
         </div>
         <button
@@ -149,12 +151,33 @@ export function ExtensionsSection({ installed, workspace }: ExtensionsSectionPro
           Add extension…
         </button>
       </div>
+      {installed.some((ext) => ext.store_id) && (
+        <div className="row">
+          <div className="l">
+            <span>Updates</span>
+            <span>{updateNote ?? 'Extensions from the Chrome Web Store are checked for updates about once a day.'}</span>
+          </div>
+          <button
+            type="button"
+            className="kb-btn"
+            onClick={() =>
+              void run(async () => setUpdateNote(describeUpdates(await commands.extensionCheckUpdates())))
+            }
+            disabled={busy}
+          >
+            Check now
+          </button>
+        </div>
+      )}
       {installed.map((ext) => (
         <div key={ext.id}>
           <div className="row">
             <div className="l">
               <span>{ext.name}</span>
-              <span>Version {ext.version}</span>
+              <span>
+                Version {ext.version}
+                {ext.store_id && ' · From the Chrome Web Store'}
+              </span>
             </div>
             <button
               type="button"
@@ -166,6 +189,25 @@ export function ExtensionsSection({ installed, workspace }: ExtensionsSectionPro
               Remove
             </button>
           </div>
+          {ext.pending_update && (
+            <div className="row kb-ext-sub">
+              <div className="l">
+                <span>Update to {ext.pending_update.version} is pending for approval</span>
+                <span>It also asks to:</span>
+                {ext.pending_update.abilities.map((ability) => (
+                  <span key={ability}>{ability}</span>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="kb-btn"
+                onClick={() => void run(() => commands.extensionApproveUpdate(ext.id))}
+                disabled={busy}
+              >
+                Update
+              </button>
+            </div>
+          )}
           {regular && (
             <div className="row kb-ext-sub">
               <div className="l">

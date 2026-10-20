@@ -38,6 +38,8 @@ pub(super) enum Source {
 
 static STAGED: Mutex<Option<HashMap<String, Staged>>> = Mutex::new(None);
 
+static CHANGES: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Whether this run has cleared what an earlier one left staged.
 static SWEPT: std::sync::Once = std::sync::Once::new();
 
@@ -107,15 +109,20 @@ pub(super) async fn choose(app: AppHandle) -> WisResult<Option<StagedExtension>>
     stage_from(&app, Source::Chosen(source)).await.map(Some)
 }
 
-/// Copies or unpacks an extension into a staging folder and reviews it.
-pub(super) async fn stage_from(app: &AppHandle, source: Source) -> WisResult<StagedExtension> {
+/// An extension copied or unpacked into a staging folder.
+pub(super) struct Unpacked {
+    pub dir: PathBuf,
+    /// The folder holding its manifest, `dir` or one folder down.
+    pub root: PathBuf,
+    pub declared: Vec<String>,
+    pub default_rules: usize,
+}
+
+/// Copies or unpacks an extension into a fresh staging folder.
+pub(super) async fn unpack(app: &AppHandle, source: Source) -> WisResult<(String, Unpacked)> {
     let staging = extensions_dir(app)?.join(STAGING_DIR);
     let token = uuid::Uuid::new_v4().simple().to_string();
     let dir = staging.join(&token);
-    let store_id = match &source {
-        Source::Store(_, id) => Some(id.clone()),
-        Source::Chosen(_) => None,
-    };
     let copied = {
         let dir = dir.clone();
         let package = staging.join(format!("{token}.zip"));
@@ -147,26 +154,51 @@ pub(super) async fn stage_from(app: &AppHandle, source: Source) -> WisResult<Sta
         })
         .await
     };
-    let (root, declared, default_rules) = match copied {
-        Ok(found) => found,
+    match copied {
+        Ok((root, declared, default_rules)) => Ok((
+            token,
+            Unpacked {
+                dir,
+                root,
+                declared,
+                default_rules,
+            },
+        )),
         Err(err) => {
             discard_dir(dir).await;
-            return Err(err);
+            Err(err)
         }
-    };
+    }
+}
 
-    let read_root = root.clone();
-    let facts = on_main(app, READ_WAIT, move |tx| {
+/// What WebKit makes of the extension at `root`.
+pub(super) async fn read_facts(app: &AppHandle, root: PathBuf) -> WisResult<host::Facts> {
+    on_main(app, READ_WAIT, move |tx| {
         let Some(mtm) = objc2_06::MainThreadMarker::new() else {
             return;
         };
-        host::load_extension(&read_root, mtm, move |result| {
+        host::load_extension(&root, mtm, move |result| {
             let _ = tx.send(result.map(|extension| host::facts_of(&extension)));
         });
     })
     .await
-    .and_then(|read| read.map_err(refused));
-    let facts = match facts {
+    .and_then(|read| read.map_err(refused))
+}
+
+/// Copies or unpacks an extension into a staging folder and reviews it.
+pub(super) async fn stage_from(app: &AppHandle, source: Source) -> WisResult<StagedExtension> {
+    let store_id = match &source {
+        Source::Store(_, id) => Some(id.clone()),
+        Source::Chosen(_) => None,
+    };
+    let (token, unpacked) = unpack(app, source).await?;
+    let Unpacked {
+        dir,
+        root,
+        declared,
+        default_rules,
+    } = unpacked;
+    let facts = match read_facts(app, root.clone()).await {
         Ok(facts) => facts,
         Err(err) => {
             discard_dir(dir).await;
@@ -214,7 +246,7 @@ pub(super) async fn stage_from(app: &AppHandle, source: Source) -> WisResult<Sta
     Ok(StagedExtension { token, review })
 }
 
-async fn discard_dir(dir: PathBuf) {
+pub(super) async fn discard_dir(dir: PathBuf) {
     let _ = blocking(move || {
         let _ = std::fs::remove_dir_all(&dir);
         Ok(())
@@ -278,6 +310,87 @@ pub(super) async fn install(
     added
 }
 
+/// Puts the unpacked extension in `unpacked` in place of installed `id`,
+/// under the same id and records its name and version. It is unloaded
+/// everywhere before its files change.
+pub(super) async fn replace(
+    app: &AppHandle,
+    unpacked: Unpacked,
+    id: &str,
+    name: &str,
+    version: &str,
+) -> WisResult<()> {
+    let _changing = CHANGES.lock().await;
+    let state = app.state::<AppState>();
+    let (without, access, before) = {
+        let browser = state.browser.lock().await;
+        let mut wanted = super::wanted_by_workspace(&browser);
+        wanted.values_mut().for_each(|ids| ids.retain(|w| w != id));
+        (
+            wanted,
+            super::access::access_by_extension(&browser.settings.extensions),
+            browser.settings.extensions.clone(),
+        )
+    };
+    let staged = unpacked.dir.clone();
+    let swapped = swap(app, unpacked, id, without, access).await;
+    let updated = match swapped {
+        Ok(()) => {
+            let (id, name, version) = (id.to_string(), name.to_string(), version.to_string());
+            change_held(app.clone(), app.state::<AppState>(), move |list| {
+                wis_core::extension_updates::with_update(list, &id, &name, &version)
+            })
+            .await
+        }
+        Err(err) => Err(err),
+    };
+    if updated.is_err() {
+        discard_dir(staged).await;
+        reload(app, &state, &before).await?;
+    }
+
+    updated
+}
+
+/// Unloads `id` everywhere, then puts the unpacked files where its folder was.
+async fn swap(
+    app: &AppHandle,
+    unpacked: Unpacked,
+    id: &str,
+    without: std::collections::HashMap<wis_core::WorkspaceId, Vec<String>>,
+    access: std::collections::HashMap<String, super::grants::Access>,
+) -> WisResult<()> {
+    let dir = extensions_dir(app)?;
+    {
+        let dir = dir.clone();
+        on_main(app, READ_WAIT, move |tx| {
+            host::sync_all(dir, without, access);
+            let _ = tx.send(());
+        })
+        .await?;
+    }
+
+    let target = dir.join(id);
+    let old = dir
+        .join(STAGING_DIR)
+        .join(format!("{}-old", uuid::Uuid::new_v4().simple()));
+    blocking(move || {
+        std::fs::rename(&target, &old)
+            .map_err(|err| refused(format!("move the old version aside: {err}")))?;
+        if let Err(err) = std::fs::rename(&unpacked.root, &target) {
+            if let Err(back) = std::fs::rename(&old, &target) {
+                log::error!("an extension's old version could not be put back: {back}");
+            }
+            return Err(refused(format!("put the new version in place: {err}")));
+        }
+
+        let _ = std::fs::remove_dir_all(&old);
+        let _ = std::fs::remove_dir_all(&unpacked.dir);
+        Ok(())
+    })
+    .await
+}
+
 pub(super) async fn remove(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -307,6 +420,16 @@ pub(super) async fn remove(
 /// Applies `edit` to the installed list, then brings every live workspace in
 /// line with it and has the windows rebuild the pages whose set changed.
 pub(super) async fn change(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    edit: impl FnOnce(&[InstalledExtension]) -> WisResult<Vec<InstalledExtension>> + Send,
+) -> WisResult<()> {
+    let _changing = CHANGES.lock().await;
+    change_held(app, state, edit).await
+}
+
+/// `change`, for a caller already holding `CHANGES`.
+async fn change_held(
     app: AppHandle,
     state: State<'_, AppState>,
     edit: impl FnOnce(&[InstalledExtension]) -> WisResult<Vec<InstalledExtension>> + Send,

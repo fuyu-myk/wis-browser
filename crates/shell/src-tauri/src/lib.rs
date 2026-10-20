@@ -796,6 +796,8 @@ pub fn run() {
             extensions::access::extension_set_site_here,
             extensions::store::extension_store_offer,
             extensions::store::extension_stage_from_store,
+            extensions::updates::extension_check_updates,
+            extensions::updates::extension_approve_update,
             extensions::extension_dismiss_popup,
             ai_fetch::ai_web_search,
             ai_fetch::ai_web_fetch,

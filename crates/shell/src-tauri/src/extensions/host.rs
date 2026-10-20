@@ -498,7 +498,7 @@ pub(super) fn facts_of(extension: &WKWebExtension) -> Facts {
     unsafe {
         Facts {
             name: text(extension.displayName()),
-            version: text(extension.displayVersion().or_else(|| extension.version())),
+            version: text(extension.version()),
             description: text(extension.displayDescription()),
             recognised: extension
                 .requestedPermissions()

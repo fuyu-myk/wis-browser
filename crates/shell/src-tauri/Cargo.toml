@@ -87,6 +87,8 @@ flate2 = { version = "1", default-features = false, features = ["rust_backend"] 
 # Checking Chrome Web Store packages; both are already in the tree through rustls and Tor.
 ring = "0.17"
 spki = "0.7"
+# Reading the store's update answers; already in the tree through plist.
+quick-xml = "0.39"
 
 # Windows Hello biometric gate (UserConsentVerifier) for the password vault,
 # plus webview2-com to reach the WebView2 COM handles (mute, print, ...) behind

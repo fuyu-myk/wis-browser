@@ -67,6 +67,7 @@ import type {
   StagedExtension,
   ExtensionAction,
   SiteAccess,
+  UpdateSummary,
 } from '@/bindings/types'
 
 export const commands = {
@@ -1628,6 +1629,16 @@ export const commands = {
   /** Download a Chrome Web Store extension over this window's workspace proxy and stage it for review. */
   async extensionStageFromStore(storeId: string): Promise<StagedExtension> {
     return invoke('extension_stage_from_store', { storeId })
+  },
+
+  /** Check every Chrome Web Store extension for an update now. */
+  async extensionCheckUpdates(): Promise<UpdateSummary> {
+    return invoke('extension_check_updates')
+  },
+
+  /** Install the update that waited for approval because it asks for more. */
+  async extensionApproveUpdate(id: string): Promise<void> {
+    return invoke('extension_approve_update', { id })
   },
 
   /** Allow or stop an extension on a host from this window; kept only for the session in a private workspace. */

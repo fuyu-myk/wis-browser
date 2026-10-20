@@ -535,6 +535,15 @@ export interface InstalledExtension {
   site_access: SiteAccess
   allowed_sites: string[]
   store_id: string | null
+  /** An update that requires more than this version. */
+  pending_update: { version: string; abilities: string[] } | null
+}
+
+/** What a check for extension updates did, by extension name (mirror of `extensions::updates::UpdateSummary`). */
+export interface UpdateSummary {
+  updated: string[]
+  waiting: string[]
+  failed: string[]
 }
 
 export type SiteAccess = 'all' | 'allowed'

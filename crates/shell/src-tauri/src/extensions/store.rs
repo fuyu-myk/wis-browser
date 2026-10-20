@@ -104,18 +104,13 @@ pub async fn extension_stage_from_store(
             .ensure_proxy_for(workspace)
             .await
             .map_err(WisError::from)?;
-        let package = download(proxy_port, &store_id).await?;
-        let id = store_id.clone();
-        let archive = tauri::async_runtime::spawn_blocking(move || {
-            crx::verified_archive(&package, &id, &crx::STORE_PUBLISHER).map(|start| {
-                let mut archive = package;
-                archive.drain(..start);
-                archive
-            })
-        })
-        .await
-        .map_err(|err| refuse(format!("the check stopped: {err}")))?
-        .map_err(|err| refuse(err.to_string()))?;
+        let client = client(proxy_port)?;
+        let package = fetch(
+            &client,
+            store_url(&[("response", "redirect")], &store_id, None)?,
+        )
+        .await?;
+        let archive = verified(package, &store_id).await?;
         install::stage_from(&app, install::Source::Store(archive, store_id)).await
     }
     #[cfg(not(target_os = "macos"))]
@@ -125,19 +120,19 @@ pub async fn extension_stage_from_store(
     }
 }
 
-/// A store extension's package, fetched as Chrome fetches one on demand.
 #[cfg(target_os = "macos")]
-async fn download(proxy_port: u16, store_id: &str) -> WisResult<Vec<u8>> {
-    let failed = |what: &str, err: &dyn std::fmt::Display| WisError::InvalidInput {
+fn failed(what: &str, err: &dyn std::fmt::Display) -> WisError {
+    WisError::InvalidInput {
         message: format!("{what}: {err}"),
-    };
-    let too_large = || WisError::InvalidInput {
-        message: "the extension package is too large".into(),
-    };
+    }
+}
 
+/// A client through a workspace's proxy that follows only https redirects.
+#[cfg(target_os = "macos")]
+pub(super) fn client(proxy_port: u16) -> WisResult<reqwest::Client> {
     let proxy = reqwest::Proxy::all(format!("http://127.0.0.1:{proxy_port}"))
         .map_err(|err| failed("proxy", &err))?;
-    let client = reqwest::Client::builder()
+    reqwest::Client::builder()
         .proxy(proxy)
         .timeout(DOWNLOAD_WAIT)
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
@@ -150,19 +145,33 @@ async fn download(proxy_port: u16, store_id: &str) -> WisResult<Vec<u8>> {
             attempt.follow()
         }))
         .build()
-        .map_err(|err| failed("http client", &err))?;
-    let request = format!("id={store_id}&installsource=ondemand&uc");
-    let url = reqwest::Url::parse_with_params(
-        UPDATE_URL,
-        [
-            ("response", "redirect"),
-            ("prodversion", CHROME_VERSION),
-            ("acceptformat", "crx3"),
-            ("x", request.as_str()),
-        ],
-    )
-    .map_err(|err| failed("store address", &err))?;
+        .map_err(|err| failed("http client", &err))
+}
 
+/// The store's update address for one extension, as Chrome asks: for its
+/// package on demand, or whether a newer one than `version` exists.
+#[cfg(target_os = "macos")]
+pub(super) fn store_url(
+    extra: &[(&str, &str)],
+    store_id: &str,
+    version: Option<&str>,
+) -> WisResult<reqwest::Url> {
+    let request = match version {
+        Some(version) => format!("id={store_id}&v={version}&uc"),
+        None => format!("id={store_id}&installsource=ondemand&uc"),
+    };
+    let mut params = vec![("prodversion", CHROME_VERSION), ("acceptformat", "crx3")];
+    params.extend_from_slice(extra);
+    params.push(("x", request.as_str()));
+    reqwest::Url::parse_with_params(UPDATE_URL, params).map_err(|err| failed("store address", &err))
+}
+
+/// A response body, refused past the package cap.
+#[cfg(target_os = "macos")]
+pub(super) async fn fetch(client: &reqwest::Client, url: reqwest::Url) -> WisResult<Vec<u8>> {
+    let too_large = || WisError::InvalidInput {
+        message: "the extension package is too large".into(),
+    };
     let mut response = client
         .get(url)
         .send()
@@ -174,17 +183,33 @@ async fn download(proxy_port: u16, store_id: &str) -> WisResult<Vec<u8>> {
     }
 
     let expected = response.content_length().unwrap_or(0).min(MAX_PACKAGE);
-    let mut package = Vec::with_capacity(usize::try_from(expected).unwrap_or(0));
+    let mut body = Vec::with_capacity(usize::try_from(expected).unwrap_or(0));
     while let Some(chunk) = response
         .chunk()
         .await
         .map_err(|err| failed("the download stopped", &err))?
     {
-        package.extend_from_slice(&chunk);
-        if package.len() as u64 > MAX_PACKAGE {
+        body.extend_from_slice(&chunk);
+        if body.len() as u64 > MAX_PACKAGE {
             return Err(too_large());
         }
     }
 
-    Ok(package)
+    Ok(body)
+}
+
+/// The ZIP inside a store package, once its signatures hold for `store_id`.
+#[cfg(target_os = "macos")]
+pub(super) async fn verified(package: Vec<u8>, store_id: &str) -> WisResult<Vec<u8>> {
+    let id = store_id.to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        crx::verified_archive(&package, &id, &crx::STORE_PUBLISHER).map(|start| {
+            let mut archive = package;
+            archive.drain(..start);
+            archive
+        })
+    })
+    .await
+    .map_err(|err| failed("the check stopped", &err))?
+    .map_err(|err| failed("the package was refused", &err))
 }

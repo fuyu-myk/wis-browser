@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::extension_access::SiteAccess;
+use crate::extension_updates::PendingUpdate;
 use crate::workspace::Workspace;
 use crate::{WisError, WisResult, WorkspaceId};
 
@@ -28,6 +29,8 @@ pub struct InstalledExtension {
     pub allowed_sites: Vec<String>,
     #[serde(default)]
     pub store_id: Option<String>,
+    #[serde(default)]
+    pub pending_update: Option<PendingUpdate>,
 }
 
 pub const MAX_EXTENSIONS: usize = 64;
@@ -65,7 +68,7 @@ pub struct ReviewInput<'a> {
 }
 
 const MAX_NAME: usize = 100;
-const MAX_VERSION: usize = 32;
+pub(crate) const MAX_VERSION: usize = 32;
 const MAX_DESCRIPTION: usize = 300;
 const NAMED_SITES: usize = 3;
 
@@ -168,7 +171,7 @@ fn is_hidden(c: char) -> bool {
 }
 
 /// Words cut to `max` characters, with hidden and direction-changing characters dropped.
-fn tidy(raw: &str, max: usize) -> String {
+pub(crate) fn tidy(raw: &str, max: usize) -> String {
     raw.split(|c: char| c.is_whitespace())
         .map(|word| word.chars().filter(|c| !is_hidden(*c)).collect::<String>())
         .filter(|word| !word.is_empty())

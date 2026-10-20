@@ -18,6 +18,7 @@ pub mod design;
 pub mod download;
 pub mod error;
 pub mod extension_access;
+pub mod extension_updates;
 pub mod extensions;
 pub mod icon;
 pub mod ids;

@@ -20,6 +20,7 @@ mod prompts;
 #[cfg(target_os = "macos")]
 mod stage;
 pub mod store;
+pub mod updates;
 
 use serde::Serialize;
 use tauri::{AppHandle, State};
@@ -571,6 +572,9 @@ pub(crate) fn start(app: &AppHandle) {
     use tauri::Manager;
 
     let _ = APP.set(app.clone());
+    if host::supported() {
+        updates::schedule(app.clone());
+    }
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let installed = {
