@@ -5,6 +5,7 @@ import type { UaProfile, UserSettingsPatch } from '@/bindings/types'
 import { Segmented } from '@/components/controls'
 import { normalizeHostInput } from '@/lib/host'
 import { currentPlatform } from '@/lib/platform'
+import { uaProfileLabel } from '@/lib/siteRules'
 
 type SimpleUa = 'safari' | 'chrome' | 'default'
 
@@ -13,13 +14,6 @@ const UA_OPTIONS = [
   { value: 'chrome' as const, label: 'Chrome' },
   { value: 'default' as const, label: 'Engine' },
 ] satisfies ReadonlyArray<{ value: SimpleUa; label: string }>
-
-function uaProfileLabel(p: UaProfile): string {
-  if (p === 'safari') return 'Safari'
-  if (p === 'chrome') return 'Chrome'
-  if (p === 'default') return 'Engine default'
-  return 'Custom'
-}
 
 function defaultBrowserHelp(isDefault: boolean | null): string {
   if (isDefault === true) return 'Wis is your default browser. Links from other apps open here.'

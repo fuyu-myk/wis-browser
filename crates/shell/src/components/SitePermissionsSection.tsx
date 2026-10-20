@@ -7,6 +7,7 @@
 
 import { cx } from '@/lib/cx'
 import { XIcon } from '@/lib/icons'
+import { deviceLabel } from '@/lib/siteRules'
 
 interface SitePermissionsSectionProps {
   permissions: Record<string, boolean>
@@ -17,12 +18,6 @@ interface SitePermissionsSectionProps {
 function hostOf(origin: string): string {
   const rest = origin.includes('://') ? origin.split('://')[1] : origin
   return rest.split('/')[0] || origin
-}
-
-function deviceLabel(kind: string): string {
-  if (kind === 'microphone') return 'Microphone'
-  if (kind === 'camera+microphone') return 'Camera & mic'
-  return 'Camera'
 }
 
 export function SitePermissionsSection({ permissions, onChange }: SitePermissionsSectionProps) {

@@ -18,6 +18,7 @@ import { useSiteProtection } from '@/hooks/useSiteProtection'
 import { useThemeApply } from '@/hooks/useThemeApply'
 import { cx } from '@/lib/cx'
 import { menusGlass } from '@/lib/glass'
+import { XIcon } from '@/lib/icons'
 import { isFeatureUnavailableHere } from '@/lib/platformSupport'
 import {
   SITE_PANEL_CLOSE,
@@ -30,7 +31,8 @@ import {
   siteOf,
   type SitePanelPayload,
 } from '@/lib/sitePanel'
-import { connectionKind } from '@/lib/url'
+import { forgetSiteRule, siteRules } from '@/lib/siteRules'
+import { connectionKind, SETTINGS_URL } from '@/lib/url'
 
 const CONNECTION = {
   secure: 'Secure connection',
@@ -84,6 +86,7 @@ export function SitePanelSurface() {
   const { shown, more } = shownHosts(blocks?.hosts ?? [], HOSTS_SHOWN)
   const counted = !!blocks
   const listed = expanded && counted && blocks.total > 0
+  const rules = state && site ? siteRules(state.settings, site) : []
 
   useLayoutEffect(() => {
     const body = bodyRef.current
@@ -93,7 +96,7 @@ export function SitePanelSurface() {
       height: Math.ceil(body.getBoundingClientRect().height) + TOP_AND_BOTTOM_BORDERS,
     }
     void emit(SITE_PANEL_SIZE, size)
-  }, [panel, protection.blocking, protection.javascript, counted, listed, shown.length, more])
+  }, [panel, protection.blocking, protection.javascript, counted, listed, shown.length, more, rules.length])
 
   if (!panel || !site) return null
 
@@ -105,6 +108,20 @@ export function SitePanelSurface() {
 
   const change = (next: SiteProtection) => {
     void commands.tabSetSiteProtection(panel.tabId, site, next).catch(() => undefined)
+  }
+
+  const forget = (id: string) => {
+    if (!state) return
+    void commands.updateSettings(forgetSiteRule(state.settings, site, id)).catch(() => undefined)
+  }
+
+  const openSettings = () => {
+    close()
+    const workspaceId = state?.tabs.find((t) => t.id === panel.tabId)?.workspace_id
+    if (!workspaceId) return
+    const settings = state?.tabs.find((t) => t.url === SETTINGS_URL && t.workspace_id === workspaceId)
+    if (settings) void commands.setActiveTab(settings.id).catch(() => undefined)
+    else void commands.createTab(workspaceId, SETTINGS_URL).catch(() => undefined)
   }
 
   return (
@@ -138,7 +155,7 @@ export function SitePanelSurface() {
           <div className="kb-sitepanel-blocked">
             <button
               type="button"
-              className="kb-sitepanel-blocked-line"
+              className="kb-sitepanel-link"
               disabled={blocks.total === 0}
               aria-expanded={listed}
               onClick={() => setExpanded(!expanded)}
@@ -168,6 +185,28 @@ export function SitePanelSurface() {
             />
           </div>
         )}
+        {rules.length > 0 && (
+          <ul className="kb-sitepanel-rules" aria-label={`Saved for ${site}`}>
+            {rules.map((rule) => (
+              <li key={rule.id}>
+                <span className="kb-sitepanel-rule">{rule.label}</span>
+                <span className="kb-sitepanel-note">{rule.value}</span>
+                <button
+                  type="button"
+                  className="kb-sitepanel-forget"
+                  title="Forget"
+                  aria-label={`Forget ${rule.label} for ${site}`}
+                  onClick={() => forget(rule.id)}
+                >
+                  <XIcon />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button type="button" className="kb-sitepanel-link" onClick={openSettings}>
+          Open Settings
+        </button>
       </div>
     </div>
   )

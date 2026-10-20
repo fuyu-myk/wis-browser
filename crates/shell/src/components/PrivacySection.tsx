@@ -19,6 +19,7 @@ import { FilterListsSection } from '@/components/FilterListsSection'
 import { UserscriptsSection } from '@/components/UserscriptsSection'
 import { AppLaunchSection } from '@/components/AppLaunchSection'
 import { SitePermissionsSection } from '@/components/SitePermissionsSection'
+import { SiteProtectionSection } from '@/components/SiteProtectionSection'
 import { OPEN_CLEAR_DATA_EVENT } from '@/hooks/useClearDataOverlay'
 
 const USAGE_IDLE_OPTIONS = [
@@ -246,6 +247,10 @@ export function PrivacySection({ settings, activeWorkspace, onUpdate }: PrivacyS
         <UserscriptsSection
           scripts={settings.userscripts}
           onChange={(userscripts) => onUpdate({ userscripts })}
+        />
+        <SiteProtectionSection
+          overrides={settings.site_protection_overrides}
+          onChange={(site_protection_overrides) => onUpdate({ site_protection_overrides })}
         />
         <SitePermissionsSection
           permissions={settings.media_permissions}

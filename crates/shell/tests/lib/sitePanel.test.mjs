@@ -8,6 +8,7 @@ import {
   blockedLine,
   isUnprotected,
   panelBounds,
+  protectionLabel,
   shownHosts,
   siteOf,
   siteProtection,
@@ -76,5 +77,14 @@ describe('what was blocked', () => {
     const hosts = Array.from({ length: 10 }, (_, n) => [`h${n}.test`, 10 - n])
     assert.deepEqual(shownHosts(hosts, 8), { shown: hosts.slice(0, 8), more: 2 })
     assert.deepEqual(shownHosts(hosts.slice(0, 3), 8), { shown: hosts.slice(0, 3), more: 0 })
+  })
+})
+
+describe('protectionLabel', () => {
+  test('names what is switched off', () => {
+    assert.equal(protectionLabel({ blocking: false, javascript: true }), 'Blocking off')
+    assert.equal(protectionLabel({ blocking: true, javascript: false }), 'JavaScript off')
+    assert.equal(protectionLabel({ blocking: false, javascript: false }), 'Blocking and JavaScript off')
+    assert.equal(protectionLabel({ blocking: true, javascript: true }), 'Protected')
   })
 })

@@ -62,3 +62,10 @@ export function shownHosts(
 ): { shown: [string, number][]; more: number } {
   return { shown: hosts.slice(0, limit), more: Math.max(0, hosts.length - limit) }
 }
+
+export function protectionLabel(protection: SiteProtection): string {
+  if (!protection.blocking && !protection.javascript) return 'Blocking and JavaScript off'
+  if (!protection.blocking) return 'Blocking off'
+  if (!protection.javascript) return 'JavaScript off'
+  return 'Protected'
+}

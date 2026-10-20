@@ -7,19 +7,10 @@ import { useState } from 'react'
 import type { AutoplayPolicy, UserSettings, UserSettingsPatch } from '@/bindings/types'
 import { Segmented } from '@/components/controls'
 import { normalizeHostInput } from '@/lib/host'
+import { AUTOPLAY_OPTIONS, autoplayLabel } from '@/lib/siteRules'
 import { currentPlatform } from '@/lib/platform'
 
-const AUTOPLAY_OPTIONS = [
-  { value: 'allow' as const, label: 'Allow' },
-  { value: 'block_audible' as const, label: 'Block sound' },
-  { value: 'block' as const, label: 'Block all' },
-] satisfies ReadonlyArray<{ value: AutoplayPolicy; label: string }>
-
 const PLATFORM = currentPlatform()
-
-function policyLabel(policy: AutoplayPolicy): string {
-  return AUTOPLAY_OPTIONS.find((o) => o.value === policy)?.label ?? policy
-}
 
 function policyHelp(): string {
   if (PLATFORM === 'windows')
@@ -108,7 +99,7 @@ export function AutoplayRows({ settings, onUpdate }: AutoplayRowsProps) {
               {entries.map(([h, p]) => (
                 <li key={h} className="kb-ua-item">
                   <span className="kb-ua-host">{h}</span>
-                  <span className="kb-ua-prof">{policyLabel(p)}</span>
+                  <span className="kb-ua-prof">{autoplayLabel(p)}</span>
                   <button
                     type="button"
                     className="kb-ua-remove"
