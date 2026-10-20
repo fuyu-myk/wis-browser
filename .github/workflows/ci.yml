@@ -3,9 +3,9 @@ name: CI
 # Compiles + tests the workspace and the frontend on every supported OS.
 on:
   push:
-    branches: [main]
+    branches: [main, preview]
   pull_request:
-    branches: [main]
+    branches: [main, preview]
   # Manual run (Actions tab or `gh workflow run`), so a branch can be compiled
   # on all three OSes without opening a PR to main.
   workflow_dispatch:
