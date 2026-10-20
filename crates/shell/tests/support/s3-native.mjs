@@ -6,7 +6,9 @@ const SRC = new URL('../../src-tauri/src/', import.meta.url)
 
 /** `file` without its raw strings, which hold the page scripts themselves. */
 function nativeSource(file) {
-  return readFileSync(new URL(file, SRC), 'utf8').replace(/r#"[\s\S]*?"#/g, '')
+  return readFileSync(new URL(file, SRC), 'utf8')
+    .replace(/\r\n/g, '\n')
+    .replace(/r#"[\s\S]*?"#/g, '')
 }
 
 /** The plain Rust string literal in `file` that contains `needle`. */

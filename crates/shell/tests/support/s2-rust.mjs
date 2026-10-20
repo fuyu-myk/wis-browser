@@ -6,14 +6,20 @@ import { readFileSync } from 'node:fs'
 const SRC = new URL('../../src-tauri/src/', import.meta.url)
 const CRATES = new URL('../../../', import.meta.url)
 
+/** Source text with LF line ends, as the parsers here expect: a Windows
+ *  checkout turns them into CRLF. */
+function lf(text) {
+  return text.replace(/\r\n/g, '\n')
+}
+
 /** A shell source file, by name under `src-tauri/src/`. */
 export function shellSource(file) {
-  return readFileSync(new URL(file, SRC), 'utf8')
+  return lf(readFileSync(new URL(file, SRC), 'utf8'))
 }
 
 /** Any file under `crates/`, e.g. `core/src/link_safety.rs`. */
 export function crateSource(path) {
-  return readFileSync(new URL(path, CRATES), 'utf8')
+  return lf(readFileSync(new URL(path, CRATES), 'utf8'))
 }
 
 /** The first `r#"..."#` literal inside `fn NAME` in `file`, verbatim. */

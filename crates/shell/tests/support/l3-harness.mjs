@@ -111,7 +111,7 @@ export function settle() {
 
 /** A source file under `crates/shell/`, as text. */
 export function readSource(path) {
-  return readFileSync(new URL(path, SHELL), 'utf8')
+  return readFileSync(new URL(path, SHELL), 'utf8').replace(/\r\n/g, '\n')
 }
 
 /** The lines inside the top-level `{ ... }` block that `opener` starts, uncommented. */

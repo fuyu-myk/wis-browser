@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 const SRC = new URL('../../src-tauri/src/', import.meta.url)
 
 function read(file) {
-  return readFileSync(new URL(file, SRC), 'utf8')
+  return readFileSync(new URL(file, SRC), 'utf8').replace(/\r\n/g, '\n')
 }
 
 /** The body of `const NAME: &str = r#"..."#;` in `file`. */
