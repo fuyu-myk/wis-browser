@@ -1,6 +1,7 @@
 //! Background filter-list fetches (EasyPrivacy, EasyList) + on-disk cache.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use crate::error::{NetworkError, NetworkResult};
@@ -193,7 +194,13 @@ async fn refresh_list(url: &str, path: &Path, cache_dir: &Path) -> NetworkResult
 
     std::fs::create_dir_all(cache_dir)
         .map_err(|e| NetworkError::FilterList(format!("create cache dir: {e}")))?;
-    std::fs::write(path, &body)
+    static PARTIALS: AtomicU64 = AtomicU64::new(0);
+    let partial = path.with_extension(format!(
+        "partial{}",
+        PARTIALS.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::write(&partial, &body)
+        .and_then(|()| std::fs::rename(&partial, path))
         .map_err(|e| NetworkError::FilterList(format!("write cache: {e}")))?;
     tracing::info!(
         "filter_lists: cached {} bytes at {}",

@@ -584,10 +584,9 @@ pub async fn open_widget_panel(
     notify_panels_changed(&app);
 
     // Same engine-level tracker blocking as tab webviews; best-effort.
-    if let Some(spec) = state.content_rule_spec(privacy_mode) {
-        if let Err(err) = crate::content_filter::attach_rule_list(&child, &spec) {
-            log::warn!("widget panel: content filter attach skipped: {err}");
-        }
+    let specs = state.content_rule_specs(privacy_mode);
+    if let Err(err) = crate::content_filter::attach_rule_lists(&child, &specs) {
+        log::warn!("widget panel: content filter attach skipped: {err}");
     }
 
     // Load the real page after the entrance slide (the panel was created at

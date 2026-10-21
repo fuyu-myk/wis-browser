@@ -89,15 +89,21 @@ pub async fn update_settings(
     let canvas_page_touched = patch.canvas_theme.is_some()
         || patch.layout.is_some()
         || patch.top_tabs_rail_side.is_some();
-    let (settings, doh_changed) = mutate_immediate(&app, &state, |s| {
+    let (settings, doh_changed, notice_list_changed) = mutate_immediate(&app, &state, |s| {
         let before = crate::state::doh_provider_of(s.settings.doh_resolver.as_deref());
+        let notice_list_before = s.settings.notice_list();
         let next = s.with_settings(patch);
         let settings = next.settings.clone();
         let changed = crate::state::doh_provider_of(settings.doh_resolver.as_deref()) != before;
+        let notice_list_changed = settings.notice_list() != notice_list_before;
 
-        Ok((next, (settings, changed)))
+        Ok((next, (settings, changed, notice_list_changed)))
     })
     .await?;
+
+    if notice_list_changed {
+        super::apply_notice_list(app.clone(), settings.notice_list());
+    }
 
     if doh_changed {
         state.resolver.set(crate::state::build_resolver(

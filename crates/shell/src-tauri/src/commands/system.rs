@@ -145,7 +145,7 @@ pub async fn refresh_filter_lists(app: AppHandle, state: State<'_, AppState>) ->
     let cache_dir = state.filter_cache_dir.clone();
     let sub_urls = {
         let browser = state.browser.lock().await;
-        browser.settings.filter_subscriptions.clone()
+        browser.settings.subscribed_lists()
     };
 
     let mut updated = 0usize;
@@ -185,14 +185,45 @@ pub async fn refresh_filter_lists(app: AppHandle, state: State<'_, AppState>) ->
         );
     }
 
-    let (text, _) = wis_network::filter_lists::load_cached_or_default(&cache_dir);
+    rebuild_filter_lists(&app, &state).await?;
+
+    Ok(if failed == 0 {
+        format!("Updated {updated} sources")
+    } else {
+        format!("Updated {updated} sources, {failed} failed")
+    })
+}
+
+/// Fetches the notice list a settings change switched to, unless cached, and
+/// rebuilds with it. Runs in the background; failures only log.
+pub(crate) fn apply_notice_list(app: AppHandle, notice_list: Option<&'static str>) {
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<AppState>();
+        let cache_dir = &state.filter_cache_dir;
+        if let Some(url) = notice_list {
+            if wis_network::filter_lists::fetch::subscription_is_stale(cache_dir, url) {
+                if let Err(err) =
+                    wis_network::filter_lists::fetch::refresh_subscription(cache_dir, url).await
+                {
+                    log::warn!("filter_lists: notice list fetch failed: {err}");
+                }
+            }
+        }
+        if let Err(err) = rebuild_filter_lists(&app, &state).await {
+            log::warn!("filter_lists: rebuild for the notice list failed: {err}");
+        }
+    });
+}
+
+/// Rebuilds from the cached lists and re-attaches the new WebKit rules to
+/// every live tab.
+pub(crate) async fn rebuild_filter_lists(app: &AppHandle, state: &AppState) -> WisResult<()> {
+    let (text, _) = wis_network::filter_lists::load_cached_or_default(&state.filter_cache_dir);
     state
         .rebuild_filter_engine(text)
         .await
         .map_err(wis_core::WisError::from)?;
 
-    // Walk every live tab webview and re-attach the new specs so the change
-    // takes effect without a navigation.
     let tabs: Vec<(wis_core::TabId, wis_core::PrivacyMode)> = {
         let browser = state.browser.lock().await;
         browser
@@ -211,17 +242,11 @@ pub async fn refresh_filter_lists(app: AppHandle, state: State<'_, AppState>) ->
         let Some(webview) = app.webviews().get(&label).cloned() else {
             continue;
         };
-        let _ = crate::content_filter::clear_rule_lists(&webview);
-        if let Some(spec) = state.content_rule_spec(mode) {
-            if let Err(err) = crate::content_filter::attach_rule_list(&webview, &spec) {
-                log::warn!("content filter: re-attach for {label} skipped: {err}");
-            }
+        let specs = state.content_rule_specs(mode);
+        if let Err(err) = crate::content_filter::replace_rule_lists(&webview, &specs) {
+            log::warn!("content filter: re-attach for {label} skipped: {err}");
         }
     }
 
-    Ok(if failed == 0 {
-        format!("Updated {updated} sources")
-    } else {
-        format!("Updated {updated} sources, {failed} failed")
-    })
+    Ok(())
 }

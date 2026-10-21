@@ -4,7 +4,7 @@
 //! are converted here into the rule format `WKContentRuleList` consumes, so
 //! the engine can filter at the path level inside HTTPS with TLS intact.
 
-use adblock::lists::{FilterSet, ParseOptions};
+use adblock::lists::{parse_filter, FilterSet, ParseOptions, ParsedFilter};
 use serde_json::Value;
 use wis_core::PrivacyMode;
 
@@ -31,6 +31,28 @@ pub fn content_blocking_json(
     serde_json::to_string(&rules)
         .map(Some)
         .map_err(|err| NetworkError::FilterList(format!("serialize content rules: {err}")))
+}
+
+/// Content-blocker JSON for lists compiled on their own, without a privacy
+/// mode's extra rules.
+pub fn list_blocking_json(filter_texts: &[&str]) -> NetworkResult<String> {
+    serde_json::to_string(&tracker_rules(filter_texts)?)
+        .map_err(|err| NetworkError::FilterList(format!("serialize content rules: {err}")))
+}
+
+/// The list without its element hiding and scriptlet rules.
+pub fn network_rules(list: &str) -> String {
+    let mut kept = String::with_capacity(list.len());
+    for line in list.lines().filter(|line| {
+        !matches!(
+            parse_filter(line, false, ParseOptions::default()),
+            Ok(ParsedFilter::Cosmetic(_))
+        )
+    }) {
+        kept.push_str(line);
+        kept.push('\n');
+    }
+    kept
 }
 
 fn tracker_rules(filter_texts: &[&str]) -> NetworkResult<Vec<Value>> {
@@ -72,6 +94,38 @@ fn third_party_script_block() -> Value {
 mod tests {
     use super::*;
     use crate::filter_lists::DEFAULT_TRACKER_LIST;
+
+    #[test]
+    fn a_list_on_its_own_gets_no_privacy_mode_extras() {
+        let json = list_blocking_json(&["||consent.test^\n@@||consent.test/ok.js\n"]).unwrap();
+        assert!(json.contains("consent"));
+        assert!(json.contains("ignore-previous-rules"));
+        let rules: Vec<Value> = serde_json::from_str(&json).unwrap();
+        assert!(!rules.contains(&third_party_script_block()));
+    }
+
+    #[test]
+    fn a_list_s_hiding_and_scriptlet_rules_stay_out_of_webkit() {
+        let list = "[Adblock Plus 2.0]\n! Title: Notices\n||consent.example^$third-party\n\
+            /cookie-banner.js$script\n@@||consent.example/allowed.js\n##.cookie-banner\n\
+            example.com##.consent\nexample.com##+js(set-cookie, consent, no)\n\
+            example.com#@#.consent\n";
+        let kept = network_rules(list);
+        for rule in [
+            "||consent.example^$third-party",
+            "/cookie-banner.js$script",
+            "@@||consent.example/allowed.js",
+        ] {
+            assert!(kept.contains(rule), "{rule}");
+        }
+        assert!(!kept.contains('#'), "{kept}");
+
+        let json = content_blocking_json(&[&kept], PrivacyMode::Balanced)
+            .unwrap()
+            .unwrap();
+        assert!(json.contains("cookie-banner"));
+        assert!(!json.contains("css-display-none"));
+    }
 
     #[test]
     fn balanced_emits_blocking_rules_for_known_tracker() {

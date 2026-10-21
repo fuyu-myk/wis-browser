@@ -199,7 +199,7 @@ pub async fn set_workspace_privacy_mode(
 
     let _ = state.update_proxy_policy(id, false).await;
 
-    let spec = state.content_rule_spec(mode);
+    let specs = state.content_rule_specs(mode);
     let tab_labels: Vec<String> = {
         let browser = state.browser.lock().await;
         browser
@@ -217,12 +217,9 @@ pub async fn set_workspace_privacy_mode(
         let Some(webview) = app.webviews().get(&label).cloned() else {
             continue;
         };
-        let _ = crate::content_filter::clear_rule_lists(&webview);
-        if let Some(spec) = &spec {
-            match crate::content_filter::attach_rule_list(&webview, spec) {
-                Ok(()) => reattached += 1,
-                Err(err) => log::warn!("content filter: re-attach for {label} skipped: {err}"),
-            }
+        match crate::content_filter::replace_rule_lists(&webview, &specs) {
+            Ok(()) => reattached += 1,
+            Err(err) => log::warn!("content filter: re-attach for {label} skipped: {err}"),
         }
     }
     log::info!("workspace {id} privacy mode now {mode:?}: re-attached {reattached}/{total} tabs");

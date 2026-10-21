@@ -30,6 +30,7 @@ pub mod link_safety;
 pub mod load_error;
 pub mod netscape;
 pub mod new_tab;
+pub mod notice_lists;
 pub mod pane;
 pub mod password_csv;
 pub mod password_offer;

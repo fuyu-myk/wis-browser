@@ -100,6 +100,7 @@ Each group maps to a `docs/architecture/` doc that carries the mechanism details
 - **Cosmetic filtering + element picker / zapper**: hides empty ad slots / nags beyond network blocking (`wisCosmetic`/`wisZap`), `:has(...)` procedural rules included; per-host user rules persist. Runs on macOS/Windows/Linux (Linux via `gtk_dispatch`).
 - **Scriptlets & user scripts**: uBO `+js` (Brave resource library) and Tampermonkey `.user.js` injected per-navigation (page world, no `GM_*`); the scriptlet/user-script swap is macOS-only for now.
 - **Filter lists**: EasyList/EasyPrivacy plus user subscriptions feed the engine (YouTube ad blocking via uBO scriptlets); managed in Settings -> Privacy.
+- **Cookie notices and annoyances**: two switches in Settings > Privacy (`wis_core::notice_lists`). Cookie notices, on by default, subscribes the EasyList Cookie List; annoyances swaps in Fanboy's Annoyance list, which contains it. The list's hiding rules run in Wis's cosmetic layer and its network rules compile into a WebKit rule list of their own beside EasyPrivacy's, so its exceptions cannot lift Strict's script block. Banners are hidden, never answered; the site panel's blocking switch undoes it for one site.
 - **Tor VPN**: built-in Arti with a simple on/off toggle; re-routes by reloading workspace tabs.
 - **Fraudulent website warning**: WebKit Safe Browsing enabled on every remote webview (Settings toggle; macOS-only, the other engines expose no equivalent and their settings row says so; navguard covers risky links everywhere).
 

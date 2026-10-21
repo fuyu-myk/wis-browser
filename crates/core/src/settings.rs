@@ -239,6 +239,11 @@ pub struct UserSettings {
     /// work.
     #[serde(default = "default_filter_subscriptions")]
     pub filter_subscriptions: Vec<String>,
+    /// See [`crate::notice_lists`].
+    #[serde(default = "default_block_cookie_notices")]
+    pub block_cookie_notices: bool,
+    #[serde(default)]
+    pub block_annoyances: bool,
     /// When true, every download asks where to save via a native save panel
     /// instead of landing in the default downloads directory.
     #[serde(default)]
@@ -442,6 +447,10 @@ where
         .collect())
 }
 
+fn default_block_cookie_notices() -> bool {
+    true
+}
+
 fn default_filter_subscriptions() -> Vec<String> {
     vec![
         "https://ublockorigin.github.io/uAssets/filters/filters.txt".to_string(),
@@ -502,6 +511,8 @@ impl Default for UserSettings {
             widget_memory_cap_enabled: true,
             widget_memory_cap_mb: 500,
             filter_subscriptions: default_filter_subscriptions(),
+            block_cookie_notices: true,
+            block_annoyances: false,
             user_cosmetic_rules: std::collections::HashMap::new(),
             userscripts: Vec::new(),
             keybindings: HashMap::new(),
@@ -635,6 +646,10 @@ pub struct UserSettingsPatch {
     /// Replaces the whole subscription list (the UI sends the full list).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter_subscriptions: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block_cookie_notices: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block_annoyances: Option<bool>,
     /// Replaces the whole map (the zapper/UI sends the full map).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_cosmetic_rules: Option<std::collections::HashMap<String, Vec<String>>>,
@@ -778,6 +793,10 @@ impl UserSettings {
             filter_subscriptions: patch
                 .filter_subscriptions
                 .unwrap_or_else(|| self.filter_subscriptions.clone()),
+            block_cookie_notices: patch
+                .block_cookie_notices
+                .unwrap_or(self.block_cookie_notices),
+            block_annoyances: patch.block_annoyances.unwrap_or(self.block_annoyances),
             user_cosmetic_rules: patch
                 .user_cosmetic_rules
                 .unwrap_or_else(|| self.user_cosmetic_rules.clone()),

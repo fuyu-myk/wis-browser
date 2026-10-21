@@ -8,7 +8,10 @@
 import { useState } from 'react'
 
 import { commands } from '@/bindings/commands'
+import type { UserSettingsPatch } from '@/bindings/types'
+import { Switch } from '@/components/controls'
 import { XIcon } from '@/lib/icons'
+import { noticeListsPatch } from '@/lib/noticeLists'
 import { DEFAULT_KEYMAP } from '@/lib/palette'
 
 // Element-picker default, host-localized (Cmd on macOS, Ctrl elsewhere).
@@ -21,6 +24,9 @@ const BUILTINS = [
 ]
 
 interface FilterListsSectionProps {
+  blockCookieNotices: boolean
+  blockAnnoyances: boolean
+  onNoticeListsChange: (patch: UserSettingsPatch) => void
   subscriptions: string[]
   onChange: (next: string[]) => void
   /** Zapped element-hiding rules keyed by host. */
@@ -29,6 +35,9 @@ interface FilterListsSectionProps {
 }
 
 export function FilterListsSection({
+  blockCookieNotices,
+  blockAnnoyances,
+  onNoticeListsChange,
   subscriptions,
   onChange,
   cosmeticRules,
@@ -71,6 +80,28 @@ export function FilterListsSection({
 
   return (
     <>
+      <div className="row">
+        <div className="l">
+          <span>Block cookie notices</span>
+          <span>Hides consent banners without answering them.</span>
+        </div>
+        <Switch
+          checked={blockCookieNotices}
+          onChange={(on) => onNoticeListsChange(noticeListsPatch('cookie_notices', on))}
+          label="Block cookie notices"
+        />
+      </div>
+      <div className="row">
+        <div className="l">
+          <span>Block annoyances</span>
+          <span>Also hides social widgets, newsletter and notification prompts, and app banners.</span>
+        </div>
+        <Switch
+          checked={blockAnnoyances}
+          onChange={(on) => onNoticeListsChange(noticeListsPatch('annoyances', on))}
+          label="Block annoyances"
+        />
+      </div>
       <div className="row">
         <div className="l">
           <span>Filter lists</span>

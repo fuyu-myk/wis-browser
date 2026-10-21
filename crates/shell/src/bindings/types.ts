@@ -688,6 +688,9 @@ export interface UserSettings {
   widget_memory_cap_mb: number
   /** User filter-list subscription URLs (https), engine-only. */
   filter_subscriptions: string[]
+  block_cookie_notices: boolean
+  /** Fanboy's Annoyance list, which contains the cookie list. */
+  block_annoyances: boolean
   /** Element-picker hide rules, keyed by host. */
   user_cosmetic_rules: Record<string, string[]>
   /** Tampermonkey-style user scripts. */
@@ -771,6 +774,8 @@ export interface UserSettingsPatch {
   widget_memory_cap_enabled?: boolean
   widget_memory_cap_mb?: number
   filter_subscriptions?: string[]
+  block_cookie_notices?: boolean
+  block_annoyances?: boolean
   user_cosmetic_rules?: Record<string, string[]>
   userscripts?: Userscript[]
   /**

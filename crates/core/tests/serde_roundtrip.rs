@@ -197,6 +197,8 @@ fn settings_patch_round_trips_when_all_fields_set() {
         widget_memory_cap_enabled: Some(false),
         widget_memory_cap_mb: Some(800),
         filter_subscriptions: Some(vec!["https://example.test/list.txt".to_string()]),
+        block_cookie_notices: Some(false),
+        block_annoyances: Some(true),
         user_cosmetic_rules: Some(std::collections::HashMap::from([(
             "example.test".to_string(),
             vec![".ad".to_string()],

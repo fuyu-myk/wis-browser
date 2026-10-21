@@ -239,6 +239,9 @@ export function PrivacySection({ settings, activeWorkspace, onUpdate }: PrivacyS
           />
         </div>
         <FilterListsSection
+          blockCookieNotices={settings.block_cookie_notices}
+          blockAnnoyances={settings.block_annoyances}
+          onNoticeListsChange={onUpdate}
           subscriptions={settings.filter_subscriptions}
           onChange={(filter_subscriptions) => onUpdate({ filter_subscriptions })}
           cosmeticRules={settings.user_cosmetic_rules}

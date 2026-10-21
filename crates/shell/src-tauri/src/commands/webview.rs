@@ -689,10 +689,9 @@ pub async fn create_tab_webview(
     };
 
     // Engine-level filtering is best-effort: a failure must not block the tab.
-    if let Some(spec) = state.content_rule_spec(privacy_mode) {
-        if let Err(err) = crate::content_filter::attach_rule_list(&child, &spec) {
-            log::warn!("content filter: attach skipped: {err}");
-        }
+    let specs = state.content_rule_specs(privacy_mode);
+    if let Err(err) = crate::content_filter::attach_rule_lists(&child, &specs) {
+        log::warn!("content filter: attach skipped: {err}");
     }
 
     // Apple-proxied Safe Browsing warning.

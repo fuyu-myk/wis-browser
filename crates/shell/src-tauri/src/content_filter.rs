@@ -19,31 +19,54 @@ pub struct RuleSpec {
     pub json: String,
 }
 
-/// Build per-mode rule specs from the given filter list text. A mode maps to
-/// `None` when it applies no engine-level filtering (Permissive). A
-/// conversion failure is logged and treated as `None` so a tab still loads.
-/// The identifier hashes the filter text, so a refreshed list gets a new one
-/// and WebKit recompiles, while the same list keeps its compiled copy.
-pub fn build_rule_specs_from(filter_text: &str) -> HashMap<PrivacyMode, Option<RuleSpec>> {
+/// The rule lists each privacy mode attaches, none with Permissive privacy.
+pub type RuleSpecs = HashMap<PrivacyMode, Vec<RuleSpec>>;
+
+/// Per-mode specs: the tracker list, then the notice list's network rules as
+/// a list of their own. A conversion failure is logged and leaves that list
+/// out so a tab still loads. Identifiers hash the input, so a refreshed list
+/// gets a new one and WebKit recompiles, while the same list keeps its
+/// compiled copy.
+pub fn build_rule_specs_from(filter_text: &str, notice_rules: Option<&str>) -> RuleSpecs {
+    let notices = notice_rules.and_then(notice_spec);
     [
         PrivacyMode::Strict,
         PrivacyMode::Balanced,
         PrivacyMode::Permissive,
     ]
     .into_iter()
-    .map(|mode| (mode, spec_for(mode, filter_text)))
+    .map(|mode| {
+        let mut specs: Vec<RuleSpec> = tracker_spec(mode, filter_text).into_iter().collect();
+        if mode != PrivacyMode::Permissive {
+            specs.extend(notices.clone());
+        }
+        (mode, specs)
+    })
     .collect()
 }
 
-fn spec_for(mode: PrivacyMode, filter_text: &str) -> Option<RuleSpec> {
+fn tracker_spec(mode: PrivacyMode, filter_text: &str) -> Option<RuleSpec> {
     match content_blocking_json(&[filter_text], mode) {
         Ok(Some(json)) => Some(RuleSpec {
-            identifier: identifier_for(mode, filter_text),
+            identifier: identifier_for(mode_slug(mode), filter_text),
             json,
         }),
         Ok(None) => None,
         Err(err) => {
             log::warn!("content filter: rule generation for {mode:?} failed: {err}");
+            None
+        }
+    }
+}
+
+fn notice_spec(rules: &str) -> Option<RuleSpec> {
+    match wis_network::content_filter::list_blocking_json(&[rules]) {
+        Ok(json) => Some(RuleSpec {
+            identifier: identifier_for("notices", rules),
+            json,
+        }),
+        Err(err) => {
+            log::warn!("content filter: rule generation for the notice list failed: {err}");
             None
         }
     }
@@ -58,15 +81,11 @@ const RULES_VERSION: u32 = 2;
 /// Hashes the input rather than the JSON: the converter emits each rule's
 /// resource types in hash order, so the same list never converts to the same
 /// text twice.
-fn identifier_for(mode: PrivacyMode, filter_text: &str) -> String {
+fn identifier_for(slug: &str, filter_text: &str) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     RULES_VERSION.hash(&mut hasher);
     filter_text.hash(&mut hasher);
-    format!(
-        "{RULE_LIST_PREFIX}{}-{:016x}",
-        mode_slug(mode),
-        hasher.finish()
-    )
+    format!("{RULE_LIST_PREFIX}{slug}-{:016x}", hasher.finish())
 }
 
 fn mode_slug(mode: PrivacyMode) -> &'static str {
@@ -96,9 +115,11 @@ pub fn attach_rule_list<R: tauri::Runtime>(
     use block2::RcBlock;
     use objc2::runtime::AnyObject;
     use objc2::{class, msg_send};
+    use tauri::Manager;
 
     let identifier = spec.identifier.clone();
     let json = spec.json.clone();
+    let app = webview.app_handle().clone();
     // Counts the top-level rule objects for the diagnostic log. Parse failure
     // here just degrades the log; the JSON itself is already known-valid.
     let rule_count = serde_json::from_str::<Vec<serde_json::Value>>(&json)
@@ -134,6 +155,9 @@ pub fn attach_rule_list<R: tauri::Runtime>(
             let json_for_compile = json.clone();
 
             let lookup_handler = RcBlock::new(move |list: *mut AnyObject, _error: *mut AnyObject| {
+                if !still_wanted(&app, &id_for_lookup) {
+                    return;
+                }
                 if !list.is_null() {
                     attach(webview_addr, list);
                     log::info!(
@@ -162,6 +186,7 @@ pub fn attach_rule_list<R: tauri::Runtime>(
                 }
 
                 let id_for_log = id_for_lookup.clone();
+                let app = app.clone();
                 let compile_handler =
                     RcBlock::new(move |list: *mut AnyObject, error: *mut AnyObject| {
                         if !error.is_null() {
@@ -177,6 +202,9 @@ pub fn attach_rule_list<R: tauri::Runtime>(
                         }
                         if list.is_null() {
                             log::error!("content filter: compile returned nil list with no error");
+                            return;
+                        }
+                        if !still_wanted(&app, &id_for_log) {
                             return;
                         }
 
@@ -209,8 +237,37 @@ pub fn attach_rule_list<R: tauri::Runtime>(
         .map_err(|err| format!("with_webview failed: {err}"))
 }
 
+/// Attaches each list; a failure skips that list only.
+pub fn attach_rule_lists<R: tauri::Runtime>(
+    webview: &tauri::webview::Webview<R>,
+    specs: &[RuleSpec],
+) -> Result<(), String> {
+    specs
+        .iter()
+        .map(|spec| attach_rule_list(webview, spec))
+        .fold(Ok(()), Result::and)
+}
+
+/// Extensions' rule lists stay attached: WebKit's removal of all lists
+/// spares those whose base URL is an extension's.
+pub fn replace_rule_lists<R: tauri::Runtime>(
+    webview: &tauri::webview::Webview<R>,
+    specs: &[RuleSpec],
+) -> Result<(), String> {
+    clear_rule_lists(webview)?;
+    attach_rule_lists(webview, specs)
+}
+
+/// A compile can finish after a later rebuild has replaced its list.
+#[cfg(target_os = "macos")]
+fn still_wanted<R: tauri::Runtime>(app: &tauri::AppHandle<R>, identifier: &str) -> bool {
+    use tauri::Manager;
+    app.try_state::<crate::state::AppState>()
+        .is_none_or(|state| state.wis_rule_list_ids().iter().any(|id| id == identifier))
+}
+
 /// Remove compiled rule lists left behind by previous filter-list versions.
-/// Every Wis identifier is `wis-cb-<mode>-<hash>`; anything with the prefix
+/// Every Wis identifier is `wis-cb-<mode or notices>-<hash>`; anything with the prefix
 /// that isn't in `keep` is stale (the hash changed with a list refresh) and
 /// would otherwise accumulate on disk forever. Call once at startup.
 #[cfg(target_os = "macos")]
@@ -322,31 +379,58 @@ mod tests {
             .collect()
     }
 
+    fn tracker_id(specs: &RuleSpecs, mode: PrivacyMode) -> Option<String> {
+        specs[&mode].first().map(|spec| spec.identifier.clone())
+    }
+
     #[test]
     fn the_same_lists_get_the_same_identifier_every_launch() {
-        let first = build_rule_specs_from(&list());
-        let second = build_rule_specs_from(&list());
-        let id = |specs: &HashMap<PrivacyMode, Option<RuleSpec>>, mode| {
-            specs[&mode].as_ref().map(|spec| spec.identifier.clone())
-        };
+        let first = build_rule_specs_from(&list(), None);
+        let second = build_rule_specs_from(&list(), None);
         assert_eq!(
-            id(&first, PrivacyMode::Strict),
-            id(&second, PrivacyMode::Strict)
+            tracker_id(&first, PrivacyMode::Strict),
+            tracker_id(&second, PrivacyMode::Strict)
         );
         assert_eq!(
-            id(&first, PrivacyMode::Balanced),
-            id(&second, PrivacyMode::Balanced)
+            tracker_id(&first, PrivacyMode::Balanced),
+            tracker_id(&second, PrivacyMode::Balanced)
         );
         assert_ne!(
-            id(&first, PrivacyMode::Strict),
-            id(&first, PrivacyMode::Balanced)
+            tracker_id(&first, PrivacyMode::Strict),
+            tracker_id(&first, PrivacyMode::Balanced)
         );
         assert_ne!(
-            id(&first, PrivacyMode::Balanced),
-            id(
-                &build_rule_specs_from("||other.test^\n"),
+            tracker_id(&first, PrivacyMode::Balanced),
+            tracker_id(
+                &build_rule_specs_from("||other.test^\n", None),
                 PrivacyMode::Balanced
             )
         );
+    }
+
+    /// WebKit applies a list's exceptions only within that list, so the
+    /// notice list's own cannot lift Strict's script block or EasyPrivacy's.
+    #[test]
+    fn a_notice_list_compiles_on_its_own_beside_the_tracker_list() {
+        let trackers = list();
+        let alone = build_rule_specs_from(&trackers, None);
+        let joined = build_rule_specs_from(
+            &trackers,
+            Some("||consent.test^\n@@||cdn.test/consent.js\n"),
+        );
+
+        for mode in [PrivacyMode::Strict, PrivacyMode::Balanced] {
+            let specs = &joined[&mode];
+            assert_eq!(specs.len(), 2);
+            assert_eq!(tracker_id(&joined, mode), tracker_id(&alone, mode));
+            assert!(!specs[0].json.contains("consent"));
+            assert!(specs[1].json.contains("consent"));
+            assert!(specs[1].identifier.starts_with("wis-cb-notices-"));
+        }
+        assert_eq!(
+            joined[&PrivacyMode::Strict][1].identifier,
+            joined[&PrivacyMode::Balanced][1].identifier
+        );
+        assert!(joined[&PrivacyMode::Permissive].is_empty());
     }
 }

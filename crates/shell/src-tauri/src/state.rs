@@ -27,7 +27,7 @@ use wis_network::{
 };
 use wis_storage::Storage;
 
-use crate::content_filter::{build_rule_specs_from, RuleSpec};
+use crate::content_filter::{RuleSpec, RuleSpecs};
 use crate::error_compat::WisShellError;
 
 /// A window's on-screen geometry in **logical** pixels (the unit the window
@@ -81,7 +81,8 @@ pub struct AppState {
     /// Swappable so a DoH provider change takes effect on the next lookup:
     /// running proxies hold this handle, not the resolver behind it.
     pub resolver: Arc<SwappableResolver>,
-    pub content_rules: RwLock<HashMap<PrivacyMode, Option<RuleSpec>>>,
+    pub content_rules: RwLock<RuleSpecs>,
+    filter_rebuild: Mutex<()>,
     /// Sync read-cache of [`UserSettings.user_cosmetic_rules`](wis_core::UserSettings::user_cosmetic_rules)
     /// (host -> hidden selectors), so the synchronous cosmetic message handler can read them
     /// without locking the async browser mutex. Refreshed on every settings
@@ -208,7 +209,7 @@ impl AppState {
         tracker_blocker: Arc<TrackerBlocker>,
         resolver: Arc<SwappableResolver>,
         filter_cache_dir: PathBuf,
-        initial_filter_text: &str,
+        content_rules: RuleSpecs,
     ) -> Self {
         let download_prefs = crate::downloads::DownloadPrefs::from_settings(&browser.settings);
         let initial_user_cosmetic_rules = browser.settings.user_cosmetic_rules.clone();
@@ -237,7 +238,8 @@ impl AppState {
             tab_session_saver: crate::tab_session::TabSessionSaver::new(),
             tracker_blocker: RwLock::new(tracker_blocker),
             resolver,
-            content_rules: RwLock::new(build_rule_specs_from(initial_filter_text)),
+            content_rules: RwLock::new(content_rules),
+            filter_rebuild: Mutex::new(()),
             user_cosmetic_rules: RwLock::new(initial_user_cosmetic_rules),
             userscripts: RwLock::new(initial_userscripts),
             filter_cache_dir,
@@ -532,15 +534,15 @@ impl AppState {
         (start, end)
     }
 
-    /// The content-filter rule spec for a privacy mode, or `None` when the
-    /// mode applies no engine-level filtering. Cloned out so the caller
-    /// doesn't hold the lock.
-    pub fn content_rule_spec(&self, mode: PrivacyMode) -> Option<RuleSpec> {
+    /// The rule lists a privacy mode attaches, none for Permissive privacy.
+    /// Cloned out so the caller doesn't hold the lock.
+    pub fn content_rule_specs(&self, mode: PrivacyMode) -> Vec<RuleSpec> {
         self.content_rules
             .read()
             .expect("content_rules poisoned")
             .get(&mode)
-            .and_then(|spec| spec.clone())
+            .cloned()
+            .unwrap_or_default()
     }
 
     fn current_tracker_blocker(&self) -> Arc<TrackerBlocker> {
@@ -770,36 +772,20 @@ impl AppState {
     /// caller is responsible for re-attaching the new specs to active tabs.
     /// Returns the number of bytes in the new filter text for diagnostics.
     pub async fn rebuild_filter_engine(&self, filter_text: String) -> Result<usize, WisShellError> {
-        // EasyList + user subscriptions feed the in-process engine only
-        // (cosmetic filtering, scriptlets, proxy-level ad blocking); the
-        // WKContentRuleList compiler keeps the smaller EasyPrivacy text
-        // since the bigger lists would exceed its rule cap.
-        let easylist = wis_network::filter_lists::load_cached_easylist(&self.filter_cache_dir);
-        let sub_urls = {
+        let _one_at_a_time = self.filter_rebuild.lock().await;
+        let subscriptions = {
             let browser = self.browser.lock().await;
-            browser.settings.filter_subscriptions.clone()
+            crate::filter_engine::Subscriptions::of(&browser.settings)
         };
-        let subs =
-            wis_network::filter_lists::load_cached_subscriptions(&self.filter_cache_dir, &sub_urls);
-        let mut texts: Vec<&str> = vec![&filter_text];
-        if let Some(t) = easylist.as_deref() {
-            texts.push(t);
-        }
-        for t in &subs {
-            texts.push(t);
-        }
-        let mut blocker =
-            TrackerBlocker::from_filter_texts_with_cache(&texts, &self.filter_cache_dir)
-                .map_err(|err| WisShellError::Other(format!("rebuild blocker: {err}")))?;
-        if let Some(json) = wis_network::filter_lists::load_cached_resources(&self.filter_cache_dir)
-        {
-            if let Err(err) = blocker.load_resources(&json) {
-                log::warn!("filter_lists: scriptlet resources load failed: {err}");
-            }
-        }
-        let rules = build_rule_specs_from(&filter_text);
-
+        let cache_dir = self.filter_cache_dir.clone();
         let size = filter_text.len();
+        let (blocker, rules) = tokio::task::spawn_blocking(move || {
+            crate::filter_engine::build(&cache_dir, &filter_text, &subscriptions)
+        })
+        .await
+        .map_err(|err| WisShellError::Other(format!("rebuild blocker: {err}")))?
+        .map_err(|err| WisShellError::Other(format!("rebuild blocker: {err}")))?;
+
         {
             let mut guard = self
                 .tracker_blocker
@@ -851,7 +837,7 @@ mod tests {
             blocker,
             resolver,
             std::env::temp_dir().join("wis-filter-test"),
-            DEFAULT_TRACKER_LIST,
+            crate::content_filter::build_rule_specs_from(DEFAULT_TRACKER_LIST, None),
         )
     }
 
@@ -961,24 +947,20 @@ mod tests {
     fn content_rule_specs_track_privacy_mode() {
         let state = app_state_for_test();
         assert!(
-            state.content_rule_spec(PrivacyMode::Strict).is_some(),
+            !state.content_rule_specs(PrivacyMode::Strict).is_empty(),
             "strict gets an engine rule list"
         );
         assert!(
-            state.content_rule_spec(PrivacyMode::Balanced).is_some(),
+            !state.content_rule_specs(PrivacyMode::Balanced).is_empty(),
             "balanced gets an engine rule list"
         );
         assert!(
-            state.content_rule_spec(PrivacyMode::Permissive).is_none(),
+            state.content_rule_specs(PrivacyMode::Permissive).is_empty(),
             "permissive applies no engine filter"
         );
         assert_ne!(
-            state
-                .content_rule_spec(PrivacyMode::Strict)
-                .map(|s| s.identifier),
-            state
-                .content_rule_spec(PrivacyMode::Balanced)
-                .map(|s| s.identifier),
+            state.content_rule_specs(PrivacyMode::Strict)[0].identifier,
+            state.content_rule_specs(PrivacyMode::Balanced)[0].identifier,
             "each mode has a distinct cache identifier"
         );
     }
@@ -986,13 +968,13 @@ mod tests {
     #[tokio::test]
     async fn rebuild_filter_engine_swaps_rules_and_blocker() {
         let state = app_state_for_test();
-        let before = state.content_rule_spec(PrivacyMode::Balanced).unwrap();
+        let before = state.content_rule_specs(PrivacyMode::Balanced).remove(0);
         let new_text = "||example.test^\n||another.test^\n";
         state
             .rebuild_filter_engine(new_text.to_string())
             .await
             .expect("rebuild succeeds");
-        let after = state.content_rule_spec(PrivacyMode::Balanced).unwrap();
+        let after = state.content_rule_specs(PrivacyMode::Balanced).remove(0);
         assert_ne!(
             before.identifier, after.identifier,
             "swap must produce a fresh identifier"

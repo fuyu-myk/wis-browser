@@ -38,6 +38,7 @@ mod external;
 mod fatal_dialog;
 mod favicons;
 mod file_io;
+mod filter_engine;
 mod find;
 mod gpc;
 #[cfg(target_os = "linux")]
@@ -212,36 +213,21 @@ pub fn run() {
             let (filter_text, _source) = filter_lists::load_cached_or_default(&filter_cache_dir);
             // Cache-aware build: a warm launch deserializes the compiled
             // engine instead of re-parsing the whole filter list.
-            // EasyList + user subscriptions (cosmetic, scriptlet and ad
-            // rules) join the engine when fresh caches exist; they never
-            // feed the WKContentRuleList compiler.
-            let easylist_text = filter_lists::load_cached_easylist(&filter_cache_dir);
-            let sub_urls = browser_state.settings.filter_subscriptions.clone();
-            let sub_texts = filter_lists::load_cached_subscriptions(&filter_cache_dir, &sub_urls);
-            let mut engine_texts: Vec<&str> = vec![&filter_text];
-            if let Some(t) = easylist_text.as_deref() {
-                engine_texts.push(t);
-            }
-            for t in &sub_texts {
-                engine_texts.push(t);
-            }
-            let tracker_blocker = match TrackerBlocker::from_filter_texts_with_cache(
-                &engine_texts,
+            let sub_urls = browser_state.settings.subscribed_lists();
+            let (tracker_blocker, content_rules) = match filter_engine::build(
                 &filter_cache_dir,
+                &filter_text,
+                &filter_engine::Subscriptions::of(&browser_state.settings),
             ) {
-                Ok(mut b) => {
-                    if let Some(json) = filter_lists::load_cached_resources(&filter_cache_dir) {
-                        if let Err(err) = b.load_resources(&json) {
-                            log::warn!("filter_lists: scriptlet resources load failed: {err}");
-                        }
-                    }
-                    Arc::new(b)
-                }
+                Ok((blocker, rules)) => (Arc::new(blocker), rules),
                 Err(err) => {
                     log::error!(
                         "failed to build tracker blocker ({err}); falling back to empty list"
                     );
-                    Arc::new(TrackerBlocker::empty())
+                    (
+                        Arc::new(TrackerBlocker::empty()),
+                        content_filter::build_rule_specs_from(&filter_text, None),
+                    )
                 }
             };
             let resolver = std::sync::Arc::new(wis_network::SwappableResolver::new(
@@ -259,7 +245,7 @@ pub fn run() {
                 tracker_blocker,
                 resolver,
                 filter_cache_dir.clone(),
-                &filter_text,
+                content_rules,
             ));
 
             // Restore persisted per-workspace window geometry into the cache
@@ -357,16 +343,7 @@ pub fn run() {
             // the WebKit store doesn't accumulate stale entries forever.
             {
                 let state = app.state::<AppState>();
-                let keep: Vec<String> = [
-                    wis_core::PrivacyMode::Strict,
-                    wis_core::PrivacyMode::Balanced,
-                    wis_core::PrivacyMode::Permissive,
-                ]
-                .into_iter()
-                .filter_map(|mode| state.content_rule_spec(mode).map(|spec| spec.identifier))
-                .collect();
-
-                content_filter::prune_stale_rule_lists(keep);
+                content_filter::prune_stale_rule_lists(state.wis_rule_list_ids());
             }
 
             // Background EasyPrivacy refresh. Runs once per launch when the
@@ -417,9 +394,8 @@ pub fn run() {
                     }
 
                     // One rebuild picks up whatever landed.
-                    let (text, _) = filter_lists::load_cached_or_default(&filter_cache_dir);
                     let state = handle.state::<AppState>();
-                    if let Err(err) = state.rebuild_filter_engine(text).await {
+                    if let Err(err) = commands::rebuild_filter_lists(&handle, &state).await {
                         log::warn!("filter_lists: rebuild after refresh failed: {err}");
                     }
                 });
