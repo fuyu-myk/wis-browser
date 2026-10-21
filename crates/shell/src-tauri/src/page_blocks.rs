@@ -99,7 +99,7 @@ pub fn install(app: tauri::AppHandle) {
             return;
         }
         // SAFETY: wry calls the hook on the main thread with a live WKWebView.
-        if let Some(label) = unsafe { imp::label_of(&*webview.cast()) } {
+        if let Some(label) = unsafe { crate::native_webview::label(webview) } {
             record(&label, url);
         }
     }));
@@ -150,7 +150,7 @@ mod imp {
     use objc2_06::rc::Retained;
     use objc2_06::runtime::{AnyObject, NSObject, NSObjectProtocol};
     use objc2_06::{define_class, msg_send, sel, MainThreadMarker, MainThreadOnly};
-    use objc2_foundation::{NSError, NSString, NSURL};
+    use objc2_foundation::{NSError, NSURL};
 
     define_class!(
         #[unsafe(super(NSObject))]
@@ -176,7 +176,11 @@ mod imp {
                 // main thread.
                 let (label, url) = unsafe {
                     let url: Option<Retained<NSURL>> = msg_send![load, originalURL];
-                    (label_of(webview), url.and_then(|u| u.absoluteString()))
+                    let webview: *const AnyObject = webview;
+                    (
+                        crate::native_webview::label(webview.cast()),
+                        url.and_then(|u| u.absoluteString()),
+                    )
                 };
                 if let (Some(label), Some(url)) = (label, url) {
                     super::record_failed_load(&label, &url.to_string());
@@ -225,14 +229,6 @@ mod imp {
         }
     }
 
-    /// # Safety
-    ///
-    /// Main thread only; `webview` is a live `WKWebView`.
-    pub unsafe fn label_of(webview: &AnyObject) -> Option<String> {
-        let ident: Option<Retained<NSString>> = msg_send![webview, accessibilityIdentifier];
-        ident.map(|ident| ident.to_string())
-    }
-
     #[cfg(test)]
     mod tests {
         use objc2_06::runtime::{AnyObject, Bool};
@@ -255,9 +251,6 @@ mod imp {
                 .unwrap();
             class!(WKWebView)
                 .verify_sel::<(*mut AnyObject,), ()>(sel!(_setResourceLoadDelegate:))
-                .unwrap();
-            class!(WKWebView)
-                .verify_sel::<(), *mut AnyObject>(sel!(accessibilityIdentifier))
                 .unwrap();
             class!(_WKResourceLoadInfo)
                 .verify_sel::<(), *mut AnyObject>(sel!(originalURL))

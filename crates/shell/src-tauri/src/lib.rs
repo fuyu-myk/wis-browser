@@ -19,6 +19,7 @@ mod canvas_health;
 mod canvas_store;
 mod canvas_webview;
 mod capture;
+mod clean_links;
 mod clipboard;
 mod commands;
 mod content_filter;
@@ -51,6 +52,8 @@ mod load_failure;
 mod load_progress;
 mod memory;
 mod menu;
+#[cfg(target_os = "macos")]
+mod native_webview;
 mod navguard;
 mod overlay;
 mod page_archive;
@@ -447,6 +450,8 @@ pub fn run() {
             page_preferences::install_hook(app.handle().clone());
             #[cfg(target_os = "macos")]
             page_blocks::install(app.handle().clone());
+            #[cfg(target_os = "macos")]
+            clean_links::install(app.handle().clone());
             signup::set_app_handle(app.handle().clone());
 
             // App handle for the AI page-text channel's native handler.
@@ -724,6 +729,7 @@ pub fn run() {
             default_browser::drain_external_urls,
             clipboard::copy_text,
             clipboard::clean_link,
+            clean_links::clean_followed_link,
             memory::list_webview_memory,
             commands::start_element_picker,
             commands::import_userscript,

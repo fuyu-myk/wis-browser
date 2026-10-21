@@ -183,6 +183,32 @@ pub(crate) fn apply_webpage_preferences(url: &str, preferences: *mut std::ffi::c
   }
 }
 
+// WIS patch: embedder hook consulted on each main-frame navigation decision
+// with the webview (as a raw object pointer), the target URL, WebKit's
+// `WKNavigationType` and the HTTP method. Returning false cancels the
+// navigation. See WIS-PATCH.md.
+type MainFrameNavigationHook =
+  Box<dyn Fn(*mut std::ffi::c_void, &str, isize, &str) -> bool + Send + Sync>;
+static MAIN_FRAME_NAVIGATION_HOOK: std::sync::OnceLock<MainFrameNavigationHook> =
+  std::sync::OnceLock::new();
+
+/// WIS patch: register the process-wide main-frame navigation hook. The first
+/// registration wins; later calls are ignored.
+pub fn set_main_frame_navigation_hook(hook: MainFrameNavigationHook) {
+  let _ = MAIN_FRAME_NAVIGATION_HOOK.set(hook);
+}
+
+pub(crate) fn main_frame_navigation_allowed(
+  webview: *mut std::ffi::c_void,
+  url: &str,
+  navigation_type: isize,
+  method: &str,
+) -> bool {
+  MAIN_FRAME_NAVIGATION_HOOK
+    .get()
+    .is_none_or(|hook| hook(webview, url, navigation_type, method))
+}
+
 // WIS patch: embedder hook told of each load a content rule list blocked, with
 // the webview (as a raw object pointer), the rule list's identifier and the
 // blocked URL. See WIS-PATCH.md.

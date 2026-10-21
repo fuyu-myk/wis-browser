@@ -21,7 +21,7 @@ use tauri::{AppHandle, Emitter};
 const OPEN_IN_TAB_EVENT: &str = "wis-open-in-tab";
 
 /// Event emitted to the chrome with a link to open as a **foreground** tab.
-pub const OPEN_TAB_FOREGROUND_EVENT: &str = "wis-open-in-tab-fg";
+const OPEN_TAB_FOREGROUND_EVENT: &str = "wis-open-in-tab-fg";
 
 /// Background script-message handler (Cmd/middle-click).
 pub(crate) const HANDLER_BACKGROUND: &str = "wisOpenInTab";
@@ -52,7 +52,10 @@ fn emit(handler: &str, href: &str) {
     }
 
     if let Some(app) = APP.get() {
-        let _ = app.emit(event_for_handler(handler), href);
+        let _ = app.emit(
+            event_for_handler(handler),
+            crate::clean_links::cleaned(app, href),
+        );
     }
 }
 

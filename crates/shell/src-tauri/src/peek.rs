@@ -128,6 +128,7 @@ pub async fn open_peek(
     width: f64,
     height: f64,
 ) -> WisResult<LinkAssessment> {
+    let url = crate::clean_links::cleaned(window.app_handle(), &url);
     let assessment = wis_core::assess_link(&url, anchor_text.as_deref());
 
     // A malformed URL is already flagged High; there's nothing to load.

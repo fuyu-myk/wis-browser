@@ -68,7 +68,7 @@ pub use ids::{
 };
 pub use keybinding::{default_keymap, effective_keymap, KeyAction};
 pub use layout::{LayoutMode, MotionLevel, RailSide, ThemeMode};
-pub use link_clean::{clean_link, CleanedLink};
+pub use link_clean::{clean_followed_link, clean_link, CleanedLink};
 pub use link_safety::{assess_link, LinkAssessment, LinkWarning, RiskLevel};
 pub use load_error::{LoadError, LoadErrorKind, TlsFault};
 pub use netscape::{parse_netscape, to_netscape, ParsedBookmark, ParsedBookmarks};

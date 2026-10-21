@@ -284,37 +284,41 @@ function useRows(
         return 'New Space'
       }
     }
-    const openInWindow = (href: string, isPrivate: boolean) =>
-      afterOnce(() =>
-        commands
+    const openInWindow = (href: string | (() => Promise<string>), isPrivate: boolean) =>
+      afterOnce(async () => {
+        const url = typeof href === 'string' ? href : await href()
+        return commands
           .openUrlInNewWindow(
-            href,
-            windowName(href),
+            url,
+            windowName(url),
             nextAccent(workspacesRef.current.map((w) => w.accent)),
             isPrivate,
           )
-          .catch(reportFailure('Opening a new window failed')),
-      )
+          .catch(reportFailure('Opening a new window failed'))
+      })
 
     const pageTab = state?.tabs.find((tab) => tab.id === target.tabId)
 
     const link = target.linkHref && isWebUrl(target.linkHref) ? target.linkHref : null
     if (link) {
+      const followed = () => commands.cleanFollowedLink(link)
       rows.push(
         {
           id: 'link-tab',
           label: 'Open link in new tab',
-          run: afterHere(() => commands.createRelatedTab(target.workspaceId, link)),
+          run: afterHere(async () => commands.createRelatedTab(target.workspaceId, await followed())),
         },
         {
           id: 'link-bg',
           label: 'Open link in background tab',
-          run: afterHere(() => commands.createBackgroundTab(target.workspaceId, link)),
+          run: afterHere(async () => commands.createBackgroundTab(target.workspaceId, await followed())),
         },
         {
           id: 'link-split',
           label: 'Open link in split view',
-          run: afterHere(() => commands.splitPane(target.workspaceId, 'horizontal', false, link)),
+          run: afterHere(async () =>
+            commands.splitPane(target.workspaceId, 'horizontal', false, await followed()),
+          ),
         },
         {
           id: 'link-peek',
@@ -334,13 +338,13 @@ function useRows(
               {
                 id: 'link-window',
                 label: 'Open link in new window',
-                run: openInWindow(link, false),
+                run: openInWindow(followed, false),
               },
             ]),
         {
           id: 'link-private',
           label: 'Open link in new private window',
-          run: openInWindow(link, true),
+          run: openInWindow(followed, true),
         },
         {
           id: 'link-copy',

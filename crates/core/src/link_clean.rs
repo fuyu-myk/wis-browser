@@ -72,6 +72,29 @@ const TRACKING_PARAMS: &[&str] = &[
     "ns_linkname",
 ];
 
+/// Listed parameters that identify the email recipient.
+const SUBSCRIBER_IDS: &[&str] = &[
+    "mkt_tok",
+    "ml_subscriber",
+    "ml_subscriber_hash",
+    "vero_id",
+    "mc_eid",
+    "oly_anon_id",
+    "oly_enc_id",
+    "_hsenc",
+    "_hsmi",
+];
+
+const SUBSCRIPTION_PATH_WORDS: &[&str] = &[
+    "unsubscribe",
+    "optout",
+    "opt-out",
+    "opt_out",
+    "preference",
+    "subscription",
+    "emailwebview",
+];
+
 /// A link with its tracking parameters removed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CleanedLink {
@@ -93,6 +116,27 @@ fn is_tracking(name: &str) -> bool {
 /// Remove tracking parameters from `href`. Anything unparseable, or not
 /// http(s), comes back exactly as it went in with nothing removed.
 pub fn clean_link(href: &str) -> CleanedLink {
+    clean_except(href, |_| false)
+}
+
+/// [`clean_link`] for a link being followed, which keeps the subscriber ids
+/// on pages that manage a subscription.
+pub fn clean_followed_link(href: &str) -> CleanedLink {
+    let manages_subscription = url::Url::parse(href).is_ok_and(|url| {
+        let path = url.path().to_ascii_lowercase();
+        SUBSCRIPTION_PATH_WORDS
+            .iter()
+            .any(|word| path.contains(word))
+    });
+    clean_except(href, |name| {
+        manages_subscription
+            && SUBSCRIBER_IDS
+                .iter()
+                .any(|id| name.eq_ignore_ascii_case(id))
+    })
+}
+
+fn clean_except(href: &str, keep: impl Fn(&str) -> bool) -> CleanedLink {
     let unchanged = || CleanedLink {
         url: href.to_string(),
         removed: Vec::new(),
@@ -120,7 +164,7 @@ pub fn clean_link(href: &str) -> CleanedLink {
     let mut removed: Vec<String> = Vec::new();
     for pair in query.split('&') {
         let name = pair.split('=').next().unwrap_or(pair);
-        if !name.is_empty() && is_tracking(name) {
+        if !name.is_empty() && is_tracking(name) && !keep(name) {
             removed.push(name.to_string());
         } else {
             kept.push(pair);
@@ -167,6 +211,33 @@ mod tests {
 
     fn clean(href: &str) -> String {
         clean_link(href).url
+    }
+
+    #[test]
+    fn a_followed_link_keeps_subscriber_ids_on_subscription_pages_only() {
+        let unsubscribe = "https://go.example.com/UnsubscribePage.html?mkt_tok=AbC&utm_source=mail";
+        assert_eq!(
+            clean_followed_link(unsubscribe).url,
+            "https://go.example.com/UnsubscribePage.html?mkt_tok=AbC"
+        );
+        for page in [
+            "https://news.example/email-preferences?_hsenc=x&_hsmi=y",
+            "https://news.example/hs/manage-preferences/unsubscribe?_hsenc=x",
+            "https://news.example/emailWebview?mkt_tok=x",
+            "https://news.example/opt-out?mc_eid=x",
+            "https://news.example/subscription/center?ml_subscriber=1&ml_subscriber_hash=h",
+        ] {
+            assert_eq!(clean_followed_link(page).url, page, "{page}");
+        }
+
+        assert_eq!(
+            clean_followed_link("https://news.example/story?mkt_tok=AbC&id=4").url,
+            "https://news.example/story?id=4"
+        );
+        assert_eq!(
+            clean_link(unsubscribe).url,
+            "https://go.example.com/UnsubscribePage.html"
+        );
     }
 
     #[test]

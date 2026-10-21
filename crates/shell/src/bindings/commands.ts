@@ -543,6 +543,11 @@ export const commands = {
     return invoke('clean_link', { url })
   },
 
+  /** `url` as Wis follows it: without tracking parameters unless its site has blocking off. */
+  async cleanFollowedLink(url: string): Promise<string> {
+    return invoke('clean_followed_link', { url })
+  },
+
   /** Per-webview WebContent process memory footprints (task manager). */
   async listWebviewMemory(): Promise<WebviewMemory[]> {
     return invoke('list_webview_memory')

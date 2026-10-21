@@ -494,3 +494,20 @@ lists block for the site panel.
   at class registration when a protocol block holds a method the protocol does
   not declare.
 - `src/lib.rs`: re-exports the setter on macOS and iOS.
+
+## Seventeenth patch: the embedder can cancel a main-frame navigation (macOS) (Wis-original)
+
+Wis strips tracking parameters from a link click and the redirects it sets
+off, which means telling them apart from typed loads and script navigations
+and cancelling them before they load. Tauri's `on_navigation` gets neither the
+navigation type nor the frame.
+
+- `src/wkwebview/mod.rs`: `wry::set_main_frame_navigation_hook(Box<dyn
+  Fn(*mut c_void, &str, isize, &str) -> bool + Send + Sync>)` (`OnceLock`,
+  first registration wins), called on the main thread with the `WKWebView` as
+  a raw pointer, the target URL, the `WKNavigationType` and the HTTP method.
+- `navigation.rs`: `navigation_policy_with_preferences` consults it for
+  main-frame navigations that are not downloads (`shouldPerformDownload`),
+  before the webpage-preferences hook; false cancels the navigation and skips
+  the rest of the decision.
+- `src/lib.rs`: re-exports the setter on macOS and iOS.

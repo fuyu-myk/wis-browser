@@ -360,6 +360,7 @@ pub async fn create_tab_webview(
             let policy_interrupted = ns_failure.as_ref().is_some_and(|(code, domain, _, _)| {
                 *code == FRAME_LOAD_INTERRUPTED && domain == "WebKitErrorDomain"
             });
+            let superseded = policy_interrupted && is_loading(&webview);
             let shown = policy_interrupted
                 .then(|| {
                     webview
@@ -394,6 +395,10 @@ pub async fn create_tab_webview(
 
             let app_for_state = app.clone();
             tauri::async_runtime::spawn(async move {
+                if superseded {
+                    return;
+                }
+
                 let state = app_for_state.state::<AppState>();
                 let result = mutate_unit(&app_for_state, &state, |s| {
                     if policy_interrupted {
@@ -559,18 +564,17 @@ pub async fn create_tab_webview(
                     .ok()
                     .is_some_and(|cur| crate::popup_chrome::same_site(&cur, &url));
                 if in_place {
-                    if let Err(err) = wv.navigate(url) {
+                    let clean = crate::clean_links::cleaned(&app, url.as_str())
+                        .parse()
+                        .unwrap_or(url);
+                    if let Err(err) = wv.navigate(clean) {
                         log::warn!("same-site new-window navigate failed: {err}");
                     }
                     return tauri::webview::NewWindowResponse::Deny;
                 }
             }
 
-            let _ = tauri::Emitter::emit(
-                &app,
-                crate::link_open::OPEN_TAB_FOREGROUND_EVENT,
-                url.to_string(),
-            );
+            crate::link_open::open_in_foreground_tab(url.as_str());
 
             tauri::webview::NewWindowResponse::Deny
         }
@@ -1090,6 +1094,31 @@ fn read_document_title<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) 
     {
         let _ = webview;
         None
+    }
+}
+
+fn is_loading<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
+
+        let (tx, rx) = std::sync::mpsc::sync_channel::<bool>(1);
+        let _ = webview.with_webview(move |w| unsafe {
+            let wk: *mut AnyObject = w.inner() as *mut AnyObject;
+            if !wk.is_null() {
+                let loading: bool = msg_send![wk, isLoading];
+                let _ = tx.send(loading);
+            }
+        });
+        rx.recv_timeout(std::time::Duration::from_millis(100))
+            .unwrap_or(false)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = webview;
+        false
     }
 }
 

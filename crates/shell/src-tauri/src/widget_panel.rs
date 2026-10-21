@@ -487,11 +487,7 @@ pub async fn open_widget_panel(
                 return tauri::webview::NewWindowResponse::Allow;
             }
 
-            let _ = tauri::Emitter::emit(
-                &app,
-                crate::link_open::OPEN_TAB_FOREGROUND_EVENT,
-                url.to_string(),
-            );
+            crate::link_open::open_in_foreground_tab(url.as_str());
 
             tauri::webview::NewWindowResponse::Deny
         }

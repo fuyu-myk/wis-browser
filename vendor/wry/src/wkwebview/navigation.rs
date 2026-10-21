@@ -264,13 +264,38 @@ pub(crate) fn navigation_policy_with_preferences(
   unsafe {
     let is_main_frame = action.targetFrame().is_some_and(|f| f.isMainFrame());
     if is_main_frame {
-      let url = action
-        .request()
+      let request = action.request();
+      let url = request
         .URL()
         .and_then(|u| u.absoluteString())
         .map(|s| s.to_string())
         .unwrap_or_default();
       let prefs_ptr: *const objc2::runtime::AnyObject = preferences;
+
+      // WIS patch: the embedder may cancel a main-frame navigation, though
+      // not a download.
+      let method = request
+        .HTTPMethod()
+        .map(|m| m.to_string())
+        .unwrap_or_default();
+      let downloads = action.respondsToSelector(objc2::sel!(shouldPerformDownload))
+        && action.shouldPerformDownload();
+      let webview_ptr: *const WKWebView = webview;
+      if !downloads
+        && !super::main_frame_navigation_allowed(
+          webview_ptr as *mut std::ffi::c_void,
+          &url,
+          action.navigationType().0,
+          &method,
+        )
+      {
+        (*handler).call((
+          WKNavigationActionPolicy::Cancel,
+          prefs_ptr as *mut objc2::runtime::AnyObject,
+        ));
+        return;
+      }
+
       super::apply_webpage_preferences(&url, prefs_ptr as *mut std::ffi::c_void);
     }
 

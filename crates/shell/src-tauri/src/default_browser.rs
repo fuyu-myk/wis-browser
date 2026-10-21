@@ -92,7 +92,7 @@ pub fn handle_external_urls(app: &AppHandle, raw: impl IntoIterator<Item = Strin
     }
 
     for url in accepted {
-        if let Err(err) = app.emit(OPEN_EXTERNAL_EVENT, url) {
+        if let Err(err) = app.emit(OPEN_EXTERNAL_EVENT, crate::clean_links::cleaned(app, &url)) {
             log::warn!("external open: emit failed: {err}");
         }
     }
@@ -102,12 +102,18 @@ pub fn handle_external_urls(app: &AppHandle, raw: impl IntoIterator<Item = Strin
 /// queued before the main window mounted and marks the pipe live, so later
 /// arrivals emit [`OPEN_EXTERNAL_EVENT`] directly.
 #[tauri::command]
-pub async fn drain_external_urls() -> WisResult<Vec<String>> {
-    let mut queue = EXTERNAL_URLS
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    queue.ready = true;
-    Ok(std::mem::take(&mut queue.pending))
+pub async fn drain_external_urls(app: AppHandle) -> WisResult<Vec<String>> {
+    let pending = {
+        let mut queue = EXTERNAL_URLS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        queue.ready = true;
+        std::mem::take(&mut queue.pending)
+    };
+    Ok(pending
+        .iter()
+        .map(|url| crate::clean_links::cleaned(&app, url))
+        .collect())
 }
 
 /// True when Wis is the OS default browser. Best-effort: unknown reads false.

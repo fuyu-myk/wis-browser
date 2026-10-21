@@ -114,7 +114,7 @@ async fn intake(app: AppHandle, tab: TabId, href: String, text: String, new_tab:
     if !should_guard(&assessment) || bypassed {
         if new_tab {
             crate::link_open::open_in_foreground_tab(url.as_str());
-        } else if let Err(err) = navigate_tab(&app, tab, url) {
+        } else if let Err(err) = navigate_tab(&app, tab, followed(&app, url)) {
             log::warn!("{err}");
         }
 
@@ -229,7 +229,13 @@ pub async fn nav_guard_proceed(
     state.nav_guard_bypass.lock().await.insert(host);
 
     let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
-    navigate_tab(&app, tab_id, parsed)
+    navigate_tab(&app, tab_id, followed(&app, parsed))
+}
+
+fn followed(app: &AppHandle, url: Url) -> Url {
+    crate::clean_links::cleaned(app, url.as_str())
+        .parse()
+        .unwrap_or(url)
 }
 
 /// Load `url` in `tab`, if its webview is still open.
