@@ -22,8 +22,8 @@ pub struct RuleSpec {
 /// Build per-mode rule specs from the given filter list text. A mode maps to
 /// `None` when it applies no engine-level filtering (Permissive). A
 /// conversion failure is logged and treated as `None` so a tab still loads.
-/// The identifier hashes the JSON so swapping in a refreshed filter list
-/// produces a different identifier and forces WebKit to recompile.
+/// The identifier hashes the filter text, so a refreshed list gets a new one
+/// and WebKit recompiles, while the same list keeps its compiled copy.
 pub fn build_rule_specs_from(filter_text: &str) -> HashMap<PrivacyMode, Option<RuleSpec>> {
     [
         PrivacyMode::Strict,
@@ -38,7 +38,7 @@ pub fn build_rule_specs_from(filter_text: &str) -> HashMap<PrivacyMode, Option<R
 fn spec_for(mode: PrivacyMode, filter_text: &str) -> Option<RuleSpec> {
     match content_blocking_json(&[filter_text], mode) {
         Ok(Some(json)) => Some(RuleSpec {
-            identifier: identifier_for(mode, &json),
+            identifier: identifier_for(mode, filter_text),
             json,
         }),
         Ok(None) => None,
@@ -51,9 +51,17 @@ fn spec_for(mode: PrivacyMode, filter_text: &str) -> Option<RuleSpec> {
 
 pub const RULE_LIST_PREFIX: &str = "wis-cb-";
 
-fn identifier_for(mode: PrivacyMode, json: &str) -> String {
+/// Bump when the conversion to WebKit rules changes, so lists compiled by the
+/// old conversion are replaced.
+const RULES_VERSION: u32 = 1;
+
+/// Hashes the input rather than the JSON: the converter emits each rule's
+/// resource types in hash order, so the same list never converts to the same
+/// text twice.
+fn identifier_for(mode: PrivacyMode, filter_text: &str) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    json.hash(&mut hasher);
+    RULES_VERSION.hash(&mut hasher);
+    filter_text.hash(&mut hasher);
     format!(
         "{RULE_LIST_PREFIX}{}-{:016x}",
         mode_slug(mode),
@@ -300,4 +308,45 @@ pub fn clear_rule_lists<R: tauri::Runtime>(
     _webview: &tauri::webview::Webview<R>,
 ) -> Result<(), String> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Rules with several resource types, which the converter emits in hash
+    /// order.
+    fn list() -> String {
+        (0..50)
+            .map(|n| format!("/beacon{n}?$script,image,font,stylesheet,media\n"))
+            .collect()
+    }
+
+    #[test]
+    fn the_same_lists_get_the_same_identifier_every_launch() {
+        let first = build_rule_specs_from(&list());
+        let second = build_rule_specs_from(&list());
+        let id = |specs: &HashMap<PrivacyMode, Option<RuleSpec>>, mode| {
+            specs[&mode].as_ref().map(|spec| spec.identifier.clone())
+        };
+        assert_eq!(
+            id(&first, PrivacyMode::Strict),
+            id(&second, PrivacyMode::Strict)
+        );
+        assert_eq!(
+            id(&first, PrivacyMode::Balanced),
+            id(&second, PrivacyMode::Balanced)
+        );
+        assert_ne!(
+            id(&first, PrivacyMode::Strict),
+            id(&first, PrivacyMode::Balanced)
+        );
+        assert_ne!(
+            id(&first, PrivacyMode::Balanced),
+            id(
+                &build_rule_specs_from("||other.test^\n"),
+                PrivacyMode::Balanced
+            )
+        );
+    }
 }
