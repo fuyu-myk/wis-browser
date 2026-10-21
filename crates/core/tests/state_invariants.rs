@@ -261,6 +261,26 @@ fn creating_a_workspace_returns_a_new_state_without_mutating_the_old() {
 }
 
 #[test]
+fn a_workspace_s_lockdown_switch_is_its_own() {
+    let s0 = BrowserState::new_with_defaults();
+    let (s1, other) = s0.with_new_workspace("Work".into(), AccentColor::Mint);
+    let first = s1.workspaces[0].id;
+    assert!(!s1.workspaces[0].lockdown);
+
+    let s2 = s1.with_workspace_lockdown(first, true).unwrap();
+    assert!(s2.workspace(first).unwrap().lockdown);
+    assert!(!s2.workspace(other.id).unwrap().lockdown);
+    assert!(!s1.workspaces[0].lockdown);
+    assert_clean(&s2);
+
+    let ghost = Workspace::new("ghost".into(), AccentColor::Primary);
+    assert!(matches!(
+        s2.with_workspace_lockdown(ghost.id, true).unwrap_err(),
+        WisError::WorkspaceNotFound { .. }
+    ));
+}
+
+#[test]
 fn new_workspaces_take_the_default_privacy_mode() {
     let state = BrowserState::new_with_defaults().with_settings(UserSettingsPatch {
         default_privacy_mode: Some(PrivacyMode::Strict),

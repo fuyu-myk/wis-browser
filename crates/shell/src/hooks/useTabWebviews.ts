@@ -29,6 +29,7 @@ const OFFSCREEN_BOUNDS: Bounds = { x: 100000, y: 100000, width: 800, height: 600
 const PLACEHOLDER_BOUNDS: Bounds = OFFSCREEN_BOUNDS
 
 const EXTENSIONS_CHANGED_EVENT = 'wis-extensions-changed'
+const REBUILD_TABS_EVENT = 'wis-rebuild-tabs'
 
 // How often the idle sweep checks for background webviews to discard.
 const SWEEP_INTERVAL_MS = 60_000
@@ -223,6 +224,10 @@ export function useTabWebviews({
   // Set once `ensureWebview` exists; lets the sleep teardown revive a tab
   // that rejoined the layout while its old webview was still closing.
   const ensureWebviewRef = useRef<((id: TabId) => void) | null>(null)
+  const creatingRef = useRef(new Set<TabId>())
+  // Asked to rebuild while still being created, which may have read the old
+  // settings: rebuilt as soon as the webview exists.
+  const rebuildWhenCreatedRef = useRef(new Set<TabId>())
 
   const sleepWebview = useCallback(
     (id: TabId, wv: Webview) => {
@@ -265,25 +270,27 @@ export function useTabWebviews({
     [recomputeDiscarded],
   )
 
-  // Extensions changed: rebuild the listed tabs through the sleep path, so
-  // they keep their session and run the current set.
+  // Rebuild the listed tabs through the sleep path, so they keep their session
+  // and come back under the new extensions or Lockdown Mode. Extensions spare
+  // audible tabs.
   useEffect(() => {
-    let unlisten: UnlistenFn | null = null
     let cancelled = false
-    void listen<TabId[]>(EXTENSIONS_CHANGED_EVENT, (event) => {
-      for (const id of event.payload) {
+    const unlistens: UnlistenFn[] = []
+    const keep = (fn: UnlistenFn) => (cancelled ? fn() : unlistens.push(fn))
+    const rebuild = (ids: TabId[], spareAudible: boolean) => {
+      for (const id of ids) {
         const wv = webviewsRef.current.get(id)
+        if (creatingRef.current.has(id)) rebuildWhenCreatedRef.current.add(id)
         if (!wv || (wv as unknown) === PENDING) continue
-        if (popoutRef.current?.isPopout(id) || audibleRef.current.has(id)) continue
+        if (popoutRef.current?.isPopout(id) || (spareAudible && audibleRef.current.has(id))) continue
         sleepWebview(id, wv)
       }
-    }).then((fn) => {
-      if (cancelled) fn()
-      else unlisten = fn
-    })
+    }
+    void listen<TabId[]>(EXTENSIONS_CHANGED_EVENT, (event) => rebuild(event.payload, true)).then(keep)
+    void listen<TabId[]>(REBUILD_TABS_EVENT, (event) => rebuild(event.payload, false)).then(keep)
     return () => {
       cancelled = true
-      unlisten?.()
+      unlistens.forEach((fn) => fn())
     }
   }, [sleepWebview])
 
@@ -333,12 +340,15 @@ export function useTabWebviews({
       if (!tab) return
 
       map.set(tabId, PENDING as unknown as Webview)
+      creatingRef.current.add(tabId)
       const rect = layoutRef.current.get(tabId) ?? null
       const restoreState = sleepStatesRef.current.get(tabId) ?? null
       sleepStatesRef.current.delete(tabId)
 
       void createWebviewFor(window, tab, wsId, rect, restoreState).then(
         (wv) => {
+          creatingRef.current.delete(tabId)
+          const rebuild = rebuildWhenCreatedRef.current.delete(tabId)
           const stillLive = allTabsRef.current.some(
             (t) => t.id === tabId && !isChromeUrl(t.url),
           )
@@ -348,6 +358,10 @@ export function useTabWebviews({
             return
           }
           map.set(tabId, wv)
+          if (rebuild) {
+            sleepWebview(tabId, wv)
+            return
+          }
           recomputeDiscarded()
           void commands
             .setWebviewCornerRadius(labelFor(tabId), currentWebviewRadius())
@@ -359,13 +373,15 @@ export function useTabWebviews({
           }
         },
         (err: unknown) => {
+          creatingRef.current.delete(tabId)
+          rebuildWhenCreatedRef.current.delete(tabId)
           map.delete(tabId)
           // eslint-disable-next-line no-console
           console.error(`create webview ${tabId}`, err)
         },
       )
     },
-    [reconcileOne, recomputeDiscarded],
+    [reconcileOne, recomputeDiscarded, sleepWebview],
   )
   ensureWebviewRef.current = ensureWebview
 

@@ -4,8 +4,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { commands } from '@/bindings/commands'
 import { cx } from '@/lib/cx'
 import type { UserSettings, Workspace } from '@/bindings/types'
-import { Segmented } from '@/components/controls'
+import { Segmented, Switch } from '@/components/controls'
 import { dohProviderFor, DOH_PROVIDERS, type DohProviderId } from '@/lib/doh'
+import { isFeatureUnavailableHere } from '@/lib/platformSupport'
 import {
   DEFAULT_SOCKS5_PORT,
   proxyHostProblem,
@@ -120,6 +121,16 @@ export function NetworkSection({ workspace, settings }: NetworkSectionProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upstreamKey])
 
+  const [lockdownError, setLockdownError] = useState<string | null>(null)
+  const setLockdown = (enabled: boolean) => {
+    if (!workspace) return
+    setLockdownError(null)
+    void commands
+      .setWorkspaceLockdown(workspace.id, enabled)
+      .catch((e: unknown) => setLockdownError(errorMessage(e)))
+      .finally(() => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY }))
+  }
+
   const apply = (next: Workspace['upstream_proxy']) => {
     if (!workspace) return
     if (JSON.stringify(next ?? null) === upstreamKey) return
@@ -194,7 +205,7 @@ export function NetworkSection({ workspace, settings }: NetworkSectionProps) {
                     mode === 'tor' ? 'through Tor' : 'directly'
                   }.`
                 : mode === 'tor'
-                  ? 'Through the built-in Tor network. The first connection bootstraps and can take a few seconds.'
+                  ? 'Through the built-in Tor network. The first connection bootstraps and can take a few seconds. Lockdown Mode below hardens it further.'
                   : mode === 'socks5'
                     ? 'Through the SOCKS5 proxy below, which resolves its own DNS.'
                     : torAvailable
@@ -275,6 +286,18 @@ export function NetworkSection({ workspace, settings }: NetworkSectionProps) {
             </span>
           </div>
           <ProbeBadge status={status} />
+        </div>
+      )}
+      {workspace && !isFeatureUnavailableHere('lockdown_mode') && (
+        <div className="row">
+          <div className="l">
+            <span>Lockdown Mode</span>
+            <span className={cx({ 'is-error': lockdownError !== null })}>
+              {lockdownError ??
+                'Turns off what attacks most often exploit: the JavaScript compiler, WebAssembly, WebGL, WebRTC, service workers, and camera and microphone access. Some sites break. Open tabs reload.'}
+            </span>
+          </div>
+          <Switch checked={workspace.lockdown} onChange={setLockdown} label="Lockdown Mode" />
         </div>
       )}
       <div className="row">

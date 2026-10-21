@@ -518,14 +518,18 @@ pub async fn open_widget_panel(
         }
     });
 
+    crate::lockdown::mark(&label, crate::lockdown::wanted(&state, workspace_id).await);
     let child = window
         .add_child(
             builder,
             tauri::LogicalPosition::new(x, y),
             tauri::LogicalSize::new(width.max(1.0), height.max(1.0)),
         )
-        .map_err(|err| WisError::InvalidInput {
-            message: format!("widget panel add_child failed: {err}"),
+        .map_err(|err| {
+            crate::lockdown::mark(&label, false);
+            WisError::InvalidInput {
+                message: format!("widget panel add_child failed: {err}"),
+            }
         })?;
 
     // Apply the grey backing while the panel stays hidden.
@@ -797,8 +801,14 @@ pub async fn close_widget_panel(window: tauri::Window, id: String) -> WisResult<
 /// dock unmount). Scoped to the window so it never reaps another window's panels.
 #[tauri::command]
 pub async fn close_all_widget_panels(window: tauri::Window) -> WisResult<()> {
-    let prefix = panel_prefix(window.label());
-    let app = window.app_handle();
+    close_window_panels(window.app_handle(), window.label());
+    crate::hover_guard::set_window_tabs_suppressed(window.label(), false);
+
+    Ok(())
+}
+
+pub(crate) fn close_window_panels(app: &AppHandle, window_label: &str) {
+    let prefix = panel_prefix(window_label);
     let panels: Vec<_> = app
         .webviews()
         .iter()
@@ -815,10 +825,6 @@ pub async fn close_all_widget_panels(window: tauri::Window) -> WisResult<()> {
     if any {
         notify_panels_changed(app);
     }
-
-    crate::hover_guard::set_window_tabs_suppressed(window.label(), false);
-
-    Ok(())
 }
 
 /// Mute or unmute widget `id`'s page (engine-level, so messaging pings stay

@@ -26,6 +26,10 @@ This guide elaborates on WIS.md. If anything here conflicts, WIS.md wins.
 
 - `TorProxy` (`crates/network/src/tor.rs:21`) runs a built-in Tor client (`arti-client`) and exposes it as a loopback SOCKS5 endpoint (`TorProxy::port`, `tor.rs:73`). It is behind the `tor` cargo feature, which is **on by default**; build `--no-default-features` to omit it. The shell holds a single lazy `tor_proxy` on `AppState`; the sidebar/top-tabs VPN toggle flips a workspace's `UpstreamProxy` to `Tor` and reloads its tabs to re-route. The toggle icon lights only when connected and shows a connecting state.
 
+## Lockdown Mode
+
+A workspace can run its pages in WebKit's Lockdown Mode (`Workspace.lockdown`, Settings > Network, macOS 14+; Windows and Linux hide the switch). It is the attack-surface half of Tor Browser's Safer level and is independent of the route and the privacy mode. WebKit only reads `WKWebpagePreferences.lockdownModeEnabled` from the configuration a webview is created with, and Tauri's `add_child` merely posts the creation to the main thread, so `lockdown::mark` records the label (or clears it) from a fresh read (`lockdown::wanted`) just before each tab, Peek, widget panel and assistant page-reading creation, and the one wry configuration hook (`webkit_features::install_configuration_hook`) reads the mark and sets it on `defaultWebpagePreferences`. Marks for reused labels stay until that label's next creation sets or clears them. One-off assistant labels are forgotten at teardown. `set_workspace_lockdown` then rebuilds the workspace's web and `file:` tabs through the sleep path (`wis-rebuild-tabs`), audible ones included, with a tab still being created rebuilt once it exists (`useTabWebviews`), and closes the workspace's Peek and widget panels. Popped-out videos keep their mode until replaced, and canvas tabs are never locked down. Measured in a harness on the installed WebKit, it removes WebGL, WebRTC, WebAssembly, speech synthesis, gamepads, service workers, `mediaDevices` and notifications, and WebKit also drops the JIT.
+
 ## Tracker blocking layers
 
 Blocking is defense in depth across three layers, each catching what the others cannot:

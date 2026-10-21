@@ -111,3 +111,11 @@ test('blocked counts are offered exactly where page_blocks.rs hears of blocks', 
   assert.deepEqual(probe('windows', ['site_block_counts']).unavailable, ['site_block_counts'])
   assert.deepEqual(probe('macos', ['site_block_counts']).unavailable, [])
 })
+
+test('Lockdown Mode is offered exactly where lockdown.rs applies it', () => {
+  const rust = readSource('src-tauri/src/lockdown.rs')
+  assert.match(rust, /#\[cfg\(target_os = "macos"\)\]\npub unsafe fn apply/)
+  assert.equal(isFeatureUnavailableHere('lockdown_mode'), true, 'Linux')
+  assert.deepEqual(probe('windows', ['lockdown_mode']).unavailable, ['lockdown_mode'])
+  assert.deepEqual(probe('macos', ['lockdown_mode']).unavailable, [])
+})

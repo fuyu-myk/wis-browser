@@ -200,6 +200,16 @@ impl BrowserState {
         })
     }
 
+    pub fn with_workspace_lockdown(&self, id: WorkspaceId, lockdown: bool) -> WisResult<Self> {
+        self.workspace(id)?;
+        let workspaces = self.map_workspace(id, |w| w.with_lockdown(lockdown));
+
+        Ok(Self {
+            workspaces,
+            ..self.clone()
+        })
+    }
+
     /// Set or clear a workspace's custom flat dot colour (validated hex).
     pub fn with_workspace_custom_accent(
         &self,

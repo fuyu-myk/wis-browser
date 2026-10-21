@@ -366,6 +366,11 @@ export const commands = {
     return invoke('set_workspace_upstream', { id, upstream })
   },
 
+  /** Switch the workspace's Lockdown Mode; its open web pages rebuild. */
+  async setWorkspaceLockdown(id: WorkspaceId, enabled: boolean): Promise<Workspace> {
+    return invoke('set_workspace_lockdown', { id, enabled })
+  },
+
   /** Probe an upstream proxy for reachability. Rejects with the failure reason. */
   async testUpstream(upstream: UpstreamProxy): Promise<void> {
     return invoke('test_upstream', { upstream })

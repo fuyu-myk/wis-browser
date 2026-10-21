@@ -11,18 +11,19 @@ use objc2_web_kit::{WKPreferences, WKWebViewConfiguration};
 pub(crate) const FRAME_RATE_CAP: &str = "PreferPageRenderingUpdatesNear60FPSEnabled";
 
 /// Wis's own surfaces draw at the display's full rate; web pages keep
-/// WebKit's 60 fps cap.
-pub fn uncap_own_surfaces() {
+/// WebKit's 60 fps cap. Pages of a Lockdown Mode workspace get it here too.
+pub fn install_configuration_hook() {
     wry::set_configuration_hook(Box::new(|label, config| {
+        // SAFETY: wry calls this on the main thread with the live
+        // WKWebViewConfiguration the webview is about to be created from.
+        let config = unsafe { &*config.cast::<WKWebViewConfiguration>() };
+        // SAFETY: the same call, on the main thread, before the webview exists.
+        unsafe { crate::lockdown::apply(label, config) };
         if !is_own_surface(label) {
             return;
         }
-        // SAFETY: wry calls this on the main thread with the live
-        // WKWebViewConfiguration the webview is about to be created from.
-        let missing = unsafe {
-            let config = &*config.cast::<WKWebViewConfiguration>();
-            disable(&config.preferences(), &[FRAME_RATE_CAP])
-        };
+        // SAFETY: as above.
+        let missing = unsafe { disable(&config.preferences(), &[FRAME_RATE_CAP]) };
         if !missing.is_empty() {
             log::warn!("WebKit feature {FRAME_RATE_CAP} is gone; {label} stays at 60 fps");
         }

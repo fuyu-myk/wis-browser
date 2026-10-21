@@ -171,6 +171,18 @@ fn workspace_background_survives_round_trip() {
 }
 
 #[test]
+fn a_workspace_s_lockdown_switch_survives_round_trip() {
+    let store = fresh_store();
+    let s0 = BrowserState::new_with_defaults();
+    let id = s0.workspaces[0].id;
+    let state = s0.with_workspace_lockdown(id, true).unwrap();
+
+    store.save_state(&state).expect("save");
+    let loaded = store.load_state().expect("load").unwrap();
+    assert!(loaded.workspaces[0].lockdown);
+}
+
+#[test]
 fn tab_folders_and_membership_survive_round_trip() {
     let store = fresh_store();
     let s0 = BrowserState::new_with_defaults();

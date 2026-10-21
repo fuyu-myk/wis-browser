@@ -158,8 +158,8 @@ fn insert_workspace(
         Some(serde_json::to_string(&workspace.background_drafts)?)
     };
     tx.execute(
-        "INSERT INTO workspaces (id, position, name, accent, icon, privacy_mode, active_tab_id, pane_tree, upstream_proxy, tab_folders, background, custom_accent, background_drafts)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        "INSERT INTO workspaces (id, position, name, accent, icon, privacy_mode, active_tab_id, pane_tree, upstream_proxy, tab_folders, background, custom_accent, background_drafts, lockdown)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             uuid_string(workspace.id.into()),
             position,
@@ -174,6 +174,7 @@ fn insert_workspace(
             background_json,
             workspace.custom_accent,
             background_drafts_json,
+            workspace.lockdown,
         ],
     )?;
 
@@ -289,7 +290,7 @@ pub fn load(conn: &Connection) -> StorageResult<Option<BrowserState>> {
 /// [`assemble_workspaces`].
 fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, accent, icon, privacy_mode, active_tab_id, pane_tree, upstream_proxy, tab_folders, background, custom_accent, background_drafts
+        "SELECT id, name, accent, icon, privacy_mode, active_tab_id, pane_tree, upstream_proxy, tab_folders, background, custom_accent, background_drafts, lockdown
          FROM workspaces ORDER BY position ASC",
     )?;
     let mut rows = stmt.query([])?;
@@ -348,6 +349,7 @@ fn load_workspaces(conn: &Connection) -> StorageResult<Vec<Workspace>> {
             background,
             custom_accent: row.get(10)?,
             background_drafts,
+            lockdown: row.get(12)?,
         });
     }
 

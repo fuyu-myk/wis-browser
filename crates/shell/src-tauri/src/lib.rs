@@ -50,6 +50,7 @@ mod link_open;
 #[cfg(any(windows, target_os = "linux"))]
 mod load_failure;
 mod load_progress;
+mod lockdown;
 mod memory;
 mod menu;
 #[cfg(target_os = "macos")]
@@ -130,7 +131,7 @@ pub fn run() {
     let _ = tracing::subscriber::set_global_default(subscriber);
     webview_prefs::keep_ipc_global_off_remote_pages();
     #[cfg(target_os = "macos")]
-    webkit_features::uncap_own_surfaces();
+    webkit_features::install_configuration_hook();
 
     let mut builder = tauri::Builder::default();
 
@@ -686,6 +687,7 @@ pub fn run() {
             commands::tab_zoom,
             commands::zoom_forget_site,
             site_protection::tab_set_site_protection,
+            lockdown::set_workspace_lockdown,
             site_protection::site_protection_session,
             page_blocks::tab_page_blocks,
             commands::reorder_tabs,

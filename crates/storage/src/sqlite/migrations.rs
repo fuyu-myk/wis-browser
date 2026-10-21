@@ -306,6 +306,11 @@ CREATE TABLE canvases (
 CREATE INDEX idx_canvases_workspace ON canvases(workspace_id, updated_at);
 "#;
 
+/// Per-workspace Lockdown Mode; existing workspaces stay off.
+const M0023_WORKSPACE_LOCKDOWN: &str = r#"
+ALTER TABLE workspaces ADD COLUMN lockdown INTEGER NOT NULL DEFAULT 0;
+"#;
+
 /// Every migration, in order. The index of the last entry is the schema
 /// version a fresh database lands on.
 const ALL: &[&str] = &[
@@ -331,6 +336,7 @@ const ALL: &[&str] = &[
     M0020_SITE_USAGE,
     M0021_SITE_USAGE_HOURS,
     M0022_CANVASES,
+    M0023_WORKSPACE_LOCKDOWN,
 ];
 
 fn all() -> Migrations<'static> {

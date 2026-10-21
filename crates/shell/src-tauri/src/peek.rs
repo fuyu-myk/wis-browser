@@ -270,6 +270,7 @@ pub async fn open_peek(
         builder = builder.data_directory(dir);
     }
 
+    crate::lockdown::mark(&label, crate::lockdown::wanted(&state, active_ws).await);
     let child = window
         .add_child(
             builder,
@@ -277,6 +278,7 @@ pub async fn open_peek(
             tauri::LogicalSize::new(width.max(1.0), height.max(1.0)),
         )
         .map_err(|err| {
+            crate::lockdown::mark(&label, false);
             log::warn!("peek add_child failed: {err}");
             WisError::InvalidInput {
                 message: format!("peek add_child failed: {err}"),
@@ -367,19 +369,23 @@ pub async fn set_peek_bounds(
 /// Destroy the preview webview.
 #[tauri::command]
 pub async fn close_peek(window: tauri::Window) -> WisResult<()> {
-    let label = peek_label(window.label());
-    if let Some(wv) = window.app_handle().webviews().get(&label).cloned() {
+    close_window_peek(window.app_handle(), window.label())?;
+    #[cfg(windows)]
+    {
+        crate::win_webview2::forget_corner_radius(&peek_label(window.label()));
+        crate::win_focus::restore_webview_focus(window.app_handle(), window.label());
+    }
+
+    Ok(())
+}
+
+pub(crate) fn close_window_peek(app: &AppHandle, window_label: &str) -> WisResult<()> {
+    if let Some(wv) = app.webviews().get(&peek_label(window_label)).cloned() {
         crate::webview_close::terminate_page(&wv);
         wv.close().map_err(|err| WisError::InvalidInput {
             message: format!("peek close: {err}"),
         })?;
     }
-    #[cfg(windows)]
-    {
-        crate::win_webview2::forget_corner_radius(&label);
-        crate::win_focus::restore_webview_focus(window.app_handle(), window.label());
-    }
-
     Ok(())
 }
 

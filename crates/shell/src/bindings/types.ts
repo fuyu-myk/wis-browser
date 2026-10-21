@@ -370,6 +370,7 @@ export interface Workspace {
   ephemeral: boolean
   /** Upstream proxy this workspace routes through (Tor/SOCKS5/HTTP); null = direct. */
   upstream_proxy: UpstreamProxy | null
+  lockdown: boolean
   /** Custom page background; null = theme default. */
   background: Background | null
   /** Custom flat dot colour overriding the accent preset; null = preset. */

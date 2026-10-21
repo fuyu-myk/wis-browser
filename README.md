@@ -69,6 +69,7 @@ Wis is an open-source, lightweight, secure, and fast browser with AI integration
 - **Clean links**: tracking parameters such as `utm_source` and `fbclid` come off links as you follow them, including links from other apps (same-tab clicks on macOS only)
 - **HTTPS-First** enforcement and encrypted DNS (DoH)
 - **Built-in Tor VPN toggle** for one-click anonymous routing
+- **Lockdown Mode per workspace**: WebKit's hardened mode for one workspace's pages, turning off the JavaScript compiler, WebAssembly, WebGL, WebRTC and more (macOS only)
 - **Per-site camera/microphone permission prompts**
 - **Encrypted profile backup and restore**
 

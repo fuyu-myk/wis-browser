@@ -73,6 +73,9 @@ pub struct Workspace {
     /// local SOCKS5). `None` = direct connection. Serde-defaults to `None`.
     #[serde(default)]
     pub upstream_proxy: Option<UpstreamProxy>,
+    /// WebKit's Lockdown Mode for the workspace's pages (macOS 14+).
+    #[serde(default)]
+    pub lockdown: bool,
     /// Custom page background (gradient or imported wallpaper). `None` uses
     /// the theme default. Serde-defaults to `None`.
     #[serde(default)]
@@ -113,6 +116,7 @@ impl Workspace {
             pane_tree: None,
             ephemeral,
             upstream_proxy: None,
+            lockdown: false,
             background: None,
             custom_accent: None,
             background_drafts: BackgroundDrafts::default(),
@@ -217,6 +221,13 @@ impl Workspace {
     pub fn with_privacy_mode(&self, mode: PrivacyMode) -> Self {
         Self {
             privacy_mode: mode,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_lockdown(&self, lockdown: bool) -> Self {
+        Self {
+            lockdown,
             ..self.clone()
         }
     }
