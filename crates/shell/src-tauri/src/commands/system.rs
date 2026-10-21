@@ -136,57 +136,88 @@ pub async fn start_element_picker(app: AppHandle, id: wis_core::TabId) -> WisRes
 // Filter list refresh
 // ---------------------------------------------------------------------------
 
+/// How far a refresh has got: `done` of `total` steps, one per source and a
+/// last one applying them.
+pub const FILTER_REFRESH_PROGRESS_EVENT: &str = "wis-filter-refresh-progress";
+
+#[derive(Clone, serde::Serialize)]
+struct RefreshProgress {
+    done: usize,
+    total: usize,
+}
+
+enum FilterSource<'a> {
+    EasyPrivacy,
+    EasyList,
+    Scriptlets,
+    Subscription(&'a str),
+}
+
+impl FilterSource<'_> {
+    async fn refresh(&self, cache_dir: &std::path::Path) -> wis_network::NetworkResult<String> {
+        use wis_network::filter_lists::fetch;
+        match self {
+            Self::EasyPrivacy => fetch::refresh_easyprivacy(cache_dir).await,
+            Self::EasyList => fetch::refresh_easylist(cache_dir).await,
+            Self::Scriptlets => fetch::refresh_resources(cache_dir).await,
+            Self::Subscription(url) => fetch::refresh_subscription(cache_dir, url).await,
+        }
+    }
+
+    fn name(&self) -> &str {
+        match self {
+            Self::EasyPrivacy => "easyprivacy",
+            Self::EasyList => "easylist",
+            Self::Scriptlets => "scriptlets",
+            Self::Subscription(url) => url,
+        }
+    }
+}
+
 /// Force-refresh every filter source (EasyPrivacy, EasyList, the scriptlet
-/// resource library, user subscriptions) regardless of cache age, rebuild
-/// the engine, and re-attach the WebKit rules to every existing tab.
+/// library, subscriptions) regardless of cache age, rebuild the engine, and
+/// re-attach the WebKit rules to every existing tab, reporting each step.
 /// Returns a short human-readable summary for the settings UI.
 #[tauri::command]
 pub async fn refresh_filter_lists(app: AppHandle, state: State<'_, AppState>) -> WisResult<String> {
+    let _one_at_a_time = state.filter_refresh.lock().await;
     let cache_dir = state.filter_cache_dir.clone();
     let sub_urls = {
         let browser = state.browser.lock().await;
         browser.settings.subscribed_lists()
     };
-
-    let mut updated = 0usize;
-    let mut failed = 0usize;
-    let mut tally = |ok: bool, what: &str| {
-        if ok {
-            updated += 1;
-        } else {
-            log::warn!("filter_lists: {what} refresh failed");
-            failed += 1;
+    let sources: Vec<FilterSource> = [
+        FilterSource::EasyPrivacy,
+        FilterSource::EasyList,
+        FilterSource::Scriptlets,
+    ]
+    .into_iter()
+    .chain(sub_urls.iter().map(|url| FilterSource::Subscription(url)))
+    .collect();
+    let total = sources.len() + 1;
+    let report = |done: usize| {
+        if let Err(err) = app.emit(
+            FILTER_REFRESH_PROGRESS_EVENT,
+            RefreshProgress { done, total },
+        ) {
+            log::warn!("filter refresh progress event failed: {err}");
         }
     };
-    tally(
-        wis_network::filter_lists::fetch::refresh_easyprivacy(&cache_dir)
-            .await
-            .is_ok(),
-        "easyprivacy",
-    );
-    tally(
-        wis_network::filter_lists::fetch::refresh_easylist(&cache_dir)
-            .await
-            .is_ok(),
-        "easylist",
-    );
-    tally(
-        wis_network::filter_lists::fetch::refresh_resources(&cache_dir)
-            .await
-            .is_ok(),
-        "resources",
-    );
-    for url in &sub_urls {
-        tally(
-            wis_network::filter_lists::fetch::refresh_subscription(&cache_dir, url)
-                .await
-                .is_ok(),
-            url,
-        );
+
+    let mut failed = 0usize;
+    for (done, source) in sources.iter().enumerate() {
+        report(done);
+        if let Err(err) = source.refresh(&cache_dir).await {
+            log::warn!("filter_lists: {} refresh failed: {err}", source.name());
+            failed += 1;
+        }
     }
+    report(sources.len());
+    let rebuilt = rebuild_filter_lists(&app, &state).await;
+    report(total);
+    rebuilt?;
 
-    rebuild_filter_lists(&app, &state).await?;
-
+    let updated = sources.len() - failed;
     Ok(if failed == 0 {
         format!("Updated {updated} sources")
     } else {

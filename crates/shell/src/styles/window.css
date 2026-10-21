@@ -6570,6 +6570,20 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .kb-dlmenu-row { animation: kb-dlrow-in var(--dur-med) var(--ease-standard) both; }
 
 /* Filter lists (Settings -> Privacy). */
+.kb-refresh-progress {
+  height: 2px;
+  margin: -6px 0 6px;
+  border-radius: 1px;
+  overflow: hidden;
+  background: var(--bg-subtle);
+}
+.kb-refresh-progress-fill {
+  height: 100%;
+  background: var(--primary-500);
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 0.2s ease-out;
+}
 .kb-filterlists-status {
   margin: 2px 0 6px;
   font-size: 12px;

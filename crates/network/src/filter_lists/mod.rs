@@ -9,6 +9,7 @@
 use std::path::Path;
 
 pub mod bundled;
+mod directives;
 pub mod fetch;
 
 pub use bundled::DEFAULT_TRACKER_LIST;

@@ -83,6 +83,7 @@ pub struct AppState {
     pub resolver: Arc<SwappableResolver>,
     pub content_rules: RwLock<RuleSpecs>,
     filter_rebuild: Mutex<()>,
+    pub filter_refresh: Mutex<()>,
     /// Sync read-cache of [`UserSettings.user_cosmetic_rules`](wis_core::UserSettings::user_cosmetic_rules)
     /// (host -> hidden selectors), so the synchronous cosmetic message handler can read them
     /// without locking the async browser mutex. Refreshed on every settings
@@ -240,6 +241,7 @@ impl AppState {
             resolver,
             content_rules: RwLock::new(content_rules),
             filter_rebuild: Mutex::new(()),
+            filter_refresh: Mutex::new(()),
             user_cosmetic_rules: RwLock::new(initial_user_cosmetic_rules),
             userscripts: RwLock::new(initial_userscripts),
             filter_cache_dir,

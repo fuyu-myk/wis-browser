@@ -14,6 +14,8 @@ import { Segmented, Switch } from '@/components/controls'
 import { currentPlatform, isMacOS } from '@/lib/platform'
 import { firstWeekday } from '@/lib/usage'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import { useFilterRefreshProgress } from '@/hooks/useFilterRefreshProgress'
+import { refreshProgressLine } from '@/lib/filterRefresh'
 import { AutoplayRows } from '@/components/AutoplayRows'
 import { FilterListsSection } from '@/components/FilterListsSection'
 import { UserscriptsSection } from '@/components/UserscriptsSection'
@@ -58,6 +60,7 @@ interface PrivacySectionProps {
 export function PrivacySection({ settings, activeWorkspace, onUpdate }: PrivacySectionProps) {
   const qc = useQueryClient()
   const [refreshStatus, setRefreshStatus] = useState<string | null>(null)
+  const refreshProgress = useFilterRefreshProgress()
   const setWorkspaceMode = useMutation({
     mutationFn: ({ id, mode }: { id: WorkspaceId; mode: PrivacyMode }) =>
       commands.setWorkspacePrivacyMode(id, mode),
@@ -267,7 +270,9 @@ export function PrivacySection({ settings, activeWorkspace, onUpdate }: PrivacyS
           <div className="l">
             <span>Refresh now</span>
             <span>
-              {refreshStatus ?? 'Download the latest filter list and apply to open tabs.'}
+              {refreshProgress
+                ? refreshProgressLine(refreshProgress)
+                : (refreshStatus ?? 'Download the latest filter list and apply to open tabs.')}
             </span>
           </div>
           <button
@@ -277,11 +282,26 @@ export function PrivacySection({ settings, activeWorkspace, onUpdate }: PrivacyS
               setRefreshStatus(null)
               refreshLists.mutate()
             }}
-            disabled={refreshLists.isPending}
+            disabled={refreshLists.isPending || refreshProgress !== null}
           >
             {refreshLists.isPending ? 'Refreshing...' : 'Refresh'}
           </button>
         </div>
+        {refreshProgress && (
+          <div
+            className="kb-refresh-progress"
+            role="progressbar"
+            aria-label="Filter list refresh"
+            aria-valuemin={0}
+            aria-valuemax={refreshProgress.total}
+            aria-valuenow={refreshProgress.done}
+          >
+            <div
+              className="kb-refresh-progress-fill"
+              style={{ transform: `scaleX(${refreshProgress.done / refreshProgress.total})` }}
+            />
+          </div>
+        )}
         <div className="row">
           <div className="l">
             <span>Clear browsing data</span>
