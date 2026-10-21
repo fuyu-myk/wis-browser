@@ -9135,6 +9135,7 @@ dependencies = [
  "adblock",
  "arti-client",
  "async-trait",
+ "base64 0.22.1",
  "bytes",
  "hickory-resolver",
  "http-body-util",

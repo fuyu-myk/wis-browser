@@ -21,12 +21,11 @@ use url::Url;
 use crate::error::{NetworkError, NetworkResult};
 use crate::filter_lists::DEFAULT_TRACKER_LIST;
 
-/// Cache file name for the serialized engine compiled from `texts`.
-fn engine_cache_file(texts: &[&str]) -> String {
+/// Cache file name for the serialized engine compiled from the lists.
+fn engine_cache_file(texts: &[&str], trusted: &[&str]) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for text in texts {
-        text.hash(&mut hasher);
-    }
+    texts.hash(&mut hasher);
+    trusted.hash(&mut hasher);
     format!("engine-{:016x}.bin", hasher.finish())
 }
 
@@ -112,28 +111,44 @@ impl TrackerBlocker {
 
     /// Build from one or more Adblock-Plus-syntax filter list texts.
     pub fn from_filter_texts(texts: &[&str]) -> NetworkResult<Self> {
+        Self::from_lists(texts, &[])
+    }
+
+    /// The `trusted` lists may also run scriptlets that need trust.
+    pub fn from_lists(texts: &[&str], trusted: &[&str]) -> NetworkResult<Self> {
         let mut set = FilterSet::new(false);
         for text in texts {
             set.add_filter_list(text, ParseOptions::default());
+        }
+        let trusted_options = ParseOptions {
+            permissions: crate::scriptlet_library::TRUSTED,
+            ..ParseOptions::default()
+        };
+        for text in trusted {
+            set.add_filter_list(text, trusted_options);
         }
 
         let engine = Engine::from_filter_set(set, true);
         Ok(Self { engine })
     }
 
-    /// Like [`Self::from_filter_texts`], but memoizing the compiled engine in
+    /// Like [`Self::from_lists`], but memoizing the compiled engine in
     /// `cache_dir`: a hit deserializes instead of re-parsing the lists, and a
     /// miss parses then writes the cache (best-effort) for the next launch.
     /// Stale `engine-*.bin` files from older list versions are pruned.
-    pub fn from_filter_texts_with_cache(texts: &[&str], cache_dir: &Path) -> NetworkResult<Self> {
-        let file_name = engine_cache_file(texts);
+    pub fn from_filter_texts_with_cache(
+        texts: &[&str],
+        trusted: &[&str],
+        cache_dir: &Path,
+    ) -> NetworkResult<Self> {
+        let file_name = engine_cache_file(texts, trusted);
         let path = cache_dir.join(&file_name);
 
         if let Some(blocker) = Self::from_engine_cache(&path) {
             return Ok(blocker);
         }
 
-        let blocker = Self::from_filter_texts(texts)?;
+        let blocker = Self::from_lists(texts, trusted)?;
         blocker.write_engine_cache(cache_dir, &file_name);
         Ok(blocker)
     }
@@ -203,12 +218,11 @@ impl TrackerBlocker {
         Self { engine }
     }
 
-    /// Load a scriptlet resource library (uBO resources JSON) into the
-    /// engine, enabling `+js(...)` scriptlet rules to expand via
+    /// Load uBO's scriptlet library (see [`crate::scriptlet_library`]) into
+    /// the engine, enabling `+js(...)` scriptlet rules to expand via
     /// [`Self::scriptlets_for_page`]. Returns the number of resources.
     pub fn load_resources(&mut self, json: &str) -> NetworkResult<usize> {
-        let resources: Vec<adblock::resources::Resource> = serde_json::from_str(json)
-            .map_err(|e| NetworkError::FilterList(format!("resources parse: {e}")))?;
+        let resources = crate::scriptlet_library::resources(json)?;
         let count = resources.len();
         self.engine.use_resources(resources);
 
@@ -219,7 +233,11 @@ impl TrackerBlocker {
     /// resource library is loaded). Must run at document start, before the
     /// page's own scripts.
     pub fn scriptlets_for_page(&self, url: &str) -> String {
-        self.engine.url_cosmetic_resources(url).injected_script
+        let scriptlets = self.engine.url_cosmetic_resources(url).injected_script;
+        if scriptlets.is_empty() {
+            return scriptlets;
+        }
+        format!("(function(){{\nconst scriptletGlobals = {{}};\n{scriptlets}\n}})();")
     }
 
     /// Host-specific cosmetic resources for a page: CSS hiding elements the
@@ -315,6 +333,59 @@ mod tests {
         dir
     }
 
+    const SCRIPTLET_RULES: &str =
+        "a.test##+js(set-constant, foo, 1)\na.test##+js(trusted-click-element, #reject)\n";
+
+    fn with_library(mut blocker: TrackerBlocker) -> TrackerBlocker {
+        blocker
+            .load_resources(crate::scriptlet_library::tests::LIBRARY)
+            .expect("library");
+        blocker
+    }
+
+    #[test]
+    fn only_trusted_lists_run_trusted_scriptlets() {
+        let untrusted =
+            with_library(TrackerBlocker::from_filter_texts(&[SCRIPTLET_RULES]).unwrap());
+        let page = untrusted.scriptlets_for_page("https://a.test/");
+        assert!(page.contains("setConstant("), "{page}");
+        assert!(page.contains("safeSelf"), "{page}");
+        assert!(!page.contains("trustedClickElement("), "{page}");
+
+        let trusted = with_library(TrackerBlocker::from_lists(&[], &[SCRIPTLET_RULES]).unwrap());
+        let page = trusted.scriptlets_for_page("https://a.test/");
+        assert!(page.contains("trustedClickElement("), "{page}");
+    }
+
+    /// uBO's helpers read a `scriptletGlobals` binding, and the page should
+    /// not see or replace the scriptlets' functions.
+    #[test]
+    fn a_page_s_scriptlets_share_one_private_scope() {
+        let blocker = with_library(TrackerBlocker::from_filter_texts(&[SCRIPTLET_RULES]).unwrap());
+        let page = blocker.scriptlets_for_page("https://a.test/");
+        assert!(
+            page.starts_with("(function(){\nconst scriptletGlobals = {};\n"),
+            "{page}"
+        );
+        assert!(page.ends_with("\n})();"), "{page}");
+        assert_eq!(blocker.scriptlets_for_page("https://elsewhere.test/"), "");
+    }
+
+    #[test]
+    fn trusting_a_list_misses_the_engine_cache() {
+        let dir = temp_cache_dir("trust");
+        let _ = TrackerBlocker::from_filter_texts_with_cache(&[SCRIPTLET_RULES], &[], &dir)
+            .expect("untrusted");
+        let trusted = with_library(
+            TrackerBlocker::from_filter_texts_with_cache(&[], &[SCRIPTLET_RULES], &dir)
+                .expect("trusted"),
+        );
+        assert!(trusted
+            .scriptlets_for_page("https://a.test/")
+            .contains("trustedClickElement("));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_tunnel_is_judged_by_its_host_alone() {
         let blocker = TrackerBlocker::from_filter_texts(&["||tracker.test^\n/ads/banner.js\n"])
@@ -362,13 +433,15 @@ mod tests {
         let list = "||tracker.test^\n";
 
         // Miss: parses and writes the cache.
-        let first = TrackerBlocker::from_filter_texts_with_cache(&[list], &dir).expect("build");
+        let first =
+            TrackerBlocker::from_filter_texts_with_cache(&[list], &[], &dir).expect("build");
         assert_blocks_tracker(&first);
-        let cached = dir.join(engine_cache_file(&[list]));
+        let cached = dir.join(engine_cache_file(&[list], &[]));
         assert!(cached.exists(), "engine cache must be written on miss");
 
         // Hit: deserializes, with identical decisions.
-        let second = TrackerBlocker::from_filter_texts_with_cache(&[list], &dir).expect("reload");
+        let second =
+            TrackerBlocker::from_filter_texts_with_cache(&[list], &[], &dir).expect("reload");
         assert_blocks_tracker(&second);
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -380,12 +453,13 @@ mod tests {
         let old_list = "||old.test^\n";
         let new_list = "||tracker.test^\n";
 
-        let _ = TrackerBlocker::from_filter_texts_with_cache(&[old_list], &dir).expect("v1");
-        let blocker = TrackerBlocker::from_filter_texts_with_cache(&[new_list], &dir).expect("v2");
+        let _ = TrackerBlocker::from_filter_texts_with_cache(&[old_list], &[], &dir).expect("v1");
+        let blocker =
+            TrackerBlocker::from_filter_texts_with_cache(&[new_list], &[], &dir).expect("v2");
         assert_blocks_tracker(&blocker);
 
-        assert!(!dir.join(engine_cache_file(&[old_list])).exists());
-        assert!(dir.join(engine_cache_file(&[new_list])).exists());
+        assert!(!dir.join(engine_cache_file(&[old_list], &[])).exists());
+        assert!(dir.join(engine_cache_file(&[new_list], &[])).exists());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -394,11 +468,11 @@ mod tests {
     fn corrupt_cache_falls_back_to_parsing() {
         let dir = temp_cache_dir("corrupt");
         let list = "||tracker.test^\n";
-        std::fs::write(dir.join(engine_cache_file(&[list])), b"not a dat file")
+        std::fs::write(dir.join(engine_cache_file(&[list], &[])), b"not a dat file")
             .expect("write garbage");
 
         let blocker =
-            TrackerBlocker::from_filter_texts_with_cache(&[list], &dir).expect("fallback");
+            TrackerBlocker::from_filter_texts_with_cache(&[list], &[], &dir).expect("fallback");
         assert_blocks_tracker(&blocker);
 
         let _ = std::fs::remove_dir_all(&dir);

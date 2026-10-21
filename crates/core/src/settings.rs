@@ -453,8 +453,8 @@ fn default_block_cookie_notices() -> bool {
 
 fn default_filter_subscriptions() -> Vec<String> {
     vec![
-        "https://ublockorigin.github.io/uAssets/filters/filters.txt".to_string(),
-        "https://ublockorigin.github.io/uAssets/filters/quick-fixes.txt".to_string(),
+        crate::trusted_lists::UBO_FILTERS.to_string(),
+        crate::trusted_lists::UBO_QUICK_FIXES.to_string(),
     ]
 }
 

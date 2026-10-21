@@ -44,6 +44,7 @@ pub mod state;
 pub mod tab;
 pub mod tab_folder;
 pub mod theme;
+pub mod trusted_lists;
 pub mod usage;
 pub mod user_agent;
 pub mod userscript;

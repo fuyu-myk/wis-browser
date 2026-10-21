@@ -21,13 +21,14 @@ pub const EASYLIST_FILENAME: &str = "easylist.txt";
 /// How long a cached list is considered fresh before we attempt a refresh.
 pub const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// Brave's prebuilt uBO scriptlet resource library (consumed by the adblock
-/// engine to expand `+js(...)` scriptlet rules into injectable JS).
+/// uBO's scriptlet library as Ghostery's adblocker publishes it (see
+/// [`crate::scriptlet_library`]), which expands `+js(...)` rules.
 pub const RESOURCES_URL: &str =
-    "https://raw.githubusercontent.com/brave/adblock-resources/master/dist/resources.json";
+    "https://raw.githubusercontent.com/ghostery/adblocker/master/packages/adblocker/assets/ublock-origin/resources.json";
 
-/// Filename inside `cache_dir` for the scriptlet resource library.
-pub const RESOURCES_FILENAME: &str = "resources.json";
+pub const RESOURCES_FILENAME: &str = "ubo-scriptlets.json";
+/// Brave's library, which held none of uBO's scriptlets.
+const BRAVE_RESOURCES_FILENAME: &str = "resources.json";
 
 /// Scriptlet resources change slower than filter lists.
 pub const RESOURCES_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
@@ -116,8 +117,7 @@ pub async fn refresh_subscription(cache_dir: &Path, url: &str) -> NetworkResult<
     refresh_list(url, &subscription_path(cache_dir, url), cache_dir).await
 }
 
-/// GET the scriptlet resource library (JSON) and cache it as
-/// `<cache_dir>/resources.json`.
+/// GET the scriptlet library and cache it as `<cache_dir>/ubo-scriptlets.json`.
 pub async fn refresh_resources(cache_dir: &Path) -> NetworkResult<String> {
     tracing::info!("filter_lists: fetching {RESOURCES_URL}");
     let client = reqwest::Client::builder()
@@ -141,18 +141,18 @@ pub async fn refresh_resources(cache_dir: &Path) -> NetworkResult<String> {
         .text()
         .await
         .map_err(|e| NetworkError::FilterList(format!("read body: {e}")))?;
-    // Validate it parses as a resource array before caching.
-    if serde_json::from_str::<Vec<adblock::resources::Resource>>(&body).is_err() {
-        return Err(NetworkError::FilterList(
-            "response did not parse as a scriptlet resource library".into(),
-        ));
-    }
+    crate::scriptlet_library::resources(&body)?;
 
     std::fs::create_dir_all(cache_dir)
         .map_err(|e| NetworkError::FilterList(format!("create cache dir: {e}")))?;
     let path = resources_path(cache_dir);
-    std::fs::write(&path, &body)
-        .map_err(|e| NetworkError::FilterList(format!("write cache: {e}")))?;
+    write_cache(&path, &body)?;
+    match std::fs::remove_file(cache_dir.join(BRAVE_RESOURCES_FILENAME)) {
+        Err(err) if err.kind() != std::io::ErrorKind::NotFound => {
+            tracing::warn!("filter_lists: removing Brave's old library failed: {err}");
+        }
+        _ => {}
+    }
     tracing::info!(
         "filter_lists: cached {} bytes at {}",
         body.len(),
@@ -160,6 +160,25 @@ pub async fn refresh_resources(cache_dir: &Path) -> NetworkResult<String> {
     );
 
     Ok(body)
+}
+
+fn write_cache(path: &Path, body: &str) -> NetworkResult<()> {
+    static PARTIALS: AtomicU64 = AtomicU64::new(0);
+    let partial = path.with_extension(format!(
+        "partial{}",
+        PARTIALS.fetch_add(1, Ordering::Relaxed)
+    ));
+    let written = std::fs::write(&partial, body).and_then(|()| std::fs::rename(&partial, path));
+    if let Err(err) = written {
+        match std::fs::remove_file(&partial) {
+            Err(left) if left.kind() != std::io::ErrorKind::NotFound => {
+                tracing::warn!("filter_lists: {} left behind: {left}", partial.display());
+            }
+            _ => {}
+        }
+        return Err(NetworkError::FilterList(format!("write cache: {err}")));
+    }
+    Ok(())
 }
 
 async fn refresh_list(url: &str, path: &Path, cache_dir: &Path) -> NetworkResult<String> {
@@ -194,14 +213,7 @@ async fn refresh_list(url: &str, path: &Path, cache_dir: &Path) -> NetworkResult
 
     std::fs::create_dir_all(cache_dir)
         .map_err(|e| NetworkError::FilterList(format!("create cache dir: {e}")))?;
-    static PARTIALS: AtomicU64 = AtomicU64::new(0);
-    let partial = path.with_extension(format!(
-        "partial{}",
-        PARTIALS.fetch_add(1, Ordering::Relaxed)
-    ));
-    std::fs::write(&partial, &body)
-        .and_then(|()| std::fs::rename(&partial, path))
-        .map_err(|e| NetworkError::FilterList(format!("write cache: {e}")))?;
+    write_cache(path, &body)?;
     tracing::info!(
         "filter_lists: cached {} bytes at {}",
         body.len(),

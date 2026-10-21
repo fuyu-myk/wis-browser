@@ -1,6 +1,6 @@
 /**
  * Settings -> Privacy: filter lists. Shows the built-in sources (EasyPrivacy,
- * EasyList, uBO scriptlet resources), lets the user subscribe to extra
+ * EasyList, uBO scriptlets), lets the user subscribe to extra
  * Adblock-Plus-syntax lists by URL (https only; engine-only, never the
  * WKContentRuleList compiler), and offers a manual update of everything.
  */
@@ -20,7 +20,7 @@ const PICKER_SHORTCUT = DEFAULT_KEYMAP.element_picker ?? 'Cmd+Shift+X'
 const BUILTINS = [
   { name: 'EasyPrivacy', detail: 'Tracker rules (also compiled for WebKit blocking)' },
   { name: 'EasyList', detail: 'Ad + element-hiding rules' },
-  { name: 'uBO scriptlet resources', detail: 'Script library expanding +js(...) rules' },
+  { name: 'uBO scriptlets', detail: "uBlock Origin's library for +js(...) rules, from Ghostery's copy" },
 ]
 
 interface FilterListsSectionProps {
