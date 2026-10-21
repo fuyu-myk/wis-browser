@@ -64,7 +64,7 @@ This guide elaborates on WIS.md. If anything here conflicts, WIS.md wins.
 
 ## Favicons
 
-- Favicon resolution (`favicons.rs`) falls back past `<origin>/favicon.ico`: when that yields no usable image (Discord, Gemini, DeepSeek, most SPAs), a hand-rolled scanner reads the page's `<link rel="icon">` declarations directly, no HTML-parser dependency. The widget-dock `WidgetFavicon` path pre-warms through `prefetch_favicon` (in-memory + on-disk cache), rendering a letter tile when nothing resolves.
+- Favicon resolution (`favicons.rs`) falls back past `<origin>/favicon.ico`: when that yields no usable image (Discord, Gemini, DeepSeek, most SPAs), a hand-rolled scanner reads the `<link rel="icon">` declarations of the site's root page, no HTML-parser dependency. It never fetches the visited URL: a second request would replay its query, spending one-time sign-in or unsubscribe tokens. Skips log the site, not the URL. The widget-dock `WidgetFavicon` path pre-warms through `prefetch_favicon` (in-memory + on-disk cache), rendering a letter tile when nothing resolves.
 
 ## Sidebar quick-launch widgets
 

@@ -208,6 +208,11 @@ async fn fetch_image(client: &reqwest::Client, url: &str) -> Result<(Vec<u8>, Fo
     Ok((bytes.to_vec(), format))
 }
 
+/// The page read for `<link rel=icon>` when `/favicon.ico` fails.
+fn icon_page(origin: &str) -> Option<Url> {
+    Url::parse(&format!("{origin}/")).ok()
+}
+
 /// Fetch the page itself and try the icons it declares via `<link rel=icon>`.
 /// Hrefs are resolved against the response's final URL (after redirects) so
 /// relative, root-relative, and protocol-relative paths all work.
@@ -352,9 +357,9 @@ pub async fn capture_favicon(
     workspace_id: WorkspaceId,
     page_url: Url,
 ) {
-    let url_for_log = page_url.to_string();
+    let site = page_url.origin().ascii_serialization();
     if let Err(err) = capture_favicon_inner(app, tab_id, workspace_id, page_url).await {
-        log::info!("favicon capture for {url_for_log} skipped: {err}");
+        log::info!("favicon capture for {site} skipped: {err}");
     }
 }
 
@@ -397,9 +402,12 @@ async fn ensure_favicon_cached(
     let favicon_url = format!("{origin}/favicon.ico");
     let (bytes, format) = match fetch_image(&client, &favicon_url).await {
         Ok(found) => found,
-        Err(root_err) => icon_from_page_html(&client, &page_url)
-            .await
-            .map_err(|html_err| format!("{root_err}; html fallback: {html_err}"))?,
+        Err(root_err) => {
+            let page = icon_page(&origin).ok_or_else(|| format!("{root_err}; no site root"))?;
+            icon_from_page_html(&client, &page)
+                .await
+                .map_err(|html_err| format!("{root_err}; html fallback: {html_err}"))?
+        }
     };
 
     let target = dir.join(format!("{hash}.{}", format.extension()));
@@ -503,6 +511,19 @@ pub async fn favicon_origin_hash(url: String) -> WisResult<Option<String>> {
 #[cfg(test)]
 mod tests {
     use super::extract_icon_hrefs;
+
+    #[test]
+    fn the_icon_fallback_reads_the_site_root_never_the_visited_page() {
+        let visited = url::Url::parse(
+            "https://www.quora.com/email_optout/qemail_unsubscribe?token=abc&email_track_id=1",
+        )
+        .unwrap();
+        let origin = super::canonical_origin(&visited).unwrap();
+        assert_eq!(
+            super::icon_page(&origin).map(String::from),
+            Some("https://quora.com/".to_string())
+        );
+    }
 
     #[test]
     fn finds_standard_icon_links() {
