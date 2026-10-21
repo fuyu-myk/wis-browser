@@ -379,7 +379,7 @@ mod imp {
             });
         }
 
-        crate::lockdown::mark(&label, crate::lockdown::wanted(&state, active_ws).await);
+        crate::hardening::mark(&label, crate::hardening::wanted(&state, active_ws).await);
         let child = window
             .add_child(
                 builder,
@@ -391,7 +391,7 @@ mod imp {
                     .lock()
                     .expect("ai_fetch pending poisoned")
                     .remove(&label);
-                crate::lockdown::forget(&label);
+                crate::hardening::forget(&label);
                 wis_core::WisError::InvalidInput {
                     message: format!("fetch webview failed: {err}"),
                 }
@@ -413,7 +413,7 @@ mod imp {
             .remove(&label);
         crate::webview_close::terminate_page(&child);
         let _ = child.close();
-        crate::lockdown::forget(&label);
+        crate::hardening::forget(&label);
 
         match outcome {
             Ok(Ok(Ok(fetched))) => Ok(fetched),

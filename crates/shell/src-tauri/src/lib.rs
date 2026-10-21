@@ -42,6 +42,7 @@ mod find;
 mod gpc;
 #[cfg(target_os = "linux")]
 mod gtk_dispatch;
+mod hardening;
 mod hover_guard;
 mod idle;
 mod interaction_state;
@@ -50,7 +51,6 @@ mod link_open;
 #[cfg(any(windows, target_os = "linux"))]
 mod load_failure;
 mod load_progress;
-mod lockdown;
 mod memory;
 mod menu;
 #[cfg(target_os = "macos")]
@@ -687,7 +687,7 @@ pub fn run() {
             commands::tab_zoom,
             commands::zoom_forget_site,
             site_protection::tab_set_site_protection,
-            lockdown::set_workspace_lockdown,
+            hardening::set_workspace_lockdown,
             site_protection::site_protection_session,
             page_blocks::tab_page_blocks,
             commands::reorder_tabs,

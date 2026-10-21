@@ -145,6 +145,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
             wis_core::SiteProtection {
                 blocking: false,
                 javascript: false,
+                fingerprinting: false,
             },
         )])),
         media_extensions_enabled: Some(false),

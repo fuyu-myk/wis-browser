@@ -518,7 +518,7 @@ pub async fn open_widget_panel(
         }
     });
 
-    crate::lockdown::mark(&label, crate::lockdown::wanted(&state, workspace_id).await);
+    crate::hardening::mark(&label, crate::hardening::wanted(&state, workspace_id).await);
     let child = window
         .add_child(
             builder,
@@ -526,7 +526,7 @@ pub async fn open_widget_panel(
             tauri::LogicalSize::new(width.max(1.0), height.max(1.0)),
         )
         .map_err(|err| {
-            crate::lockdown::mark(&label, false);
+            crate::hardening::mark(&label, crate::hardening::Hardening::default());
             WisError::InvalidInput {
                 message: format!("widget panel add_child failed: {err}"),
             }

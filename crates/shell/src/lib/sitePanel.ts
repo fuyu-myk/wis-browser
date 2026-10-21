@@ -1,6 +1,7 @@
-import type { SiteProtection, TabId } from '@/bindings/types'
+import type { PrivacyMode, SiteProtection, TabId } from '@/bindings/types'
 import type { Box } from '@/lib/extensionsMenu'
 import { normalizeHostInput } from '@/lib/host'
+import { isFeatureUnavailableHere } from '@/lib/platformSupport'
 
 export const SITE_PANEL_OPEN = 'wis-sitepanel-open'
 export const SITE_PANEL_READY = 'wis-sitepanel-ready'
@@ -20,7 +21,7 @@ export interface SitePanelPayload {
   url: string
 }
 
-const PROTECTED: SiteProtection = { blocking: true, javascript: true }
+const PROTECTED: SiteProtection = { blocking: true, javascript: true, fingerprinting: true }
 
 /** Below `anchor` with the left edges lined up, above it when there is no
  *  room below, and always inside the window. */
@@ -48,8 +49,16 @@ export function siteProtection(saved: Overrides, session: Overrides, site: strin
   return session?.[site] ?? saved?.[site] ?? PROTECTED
 }
 
+export function fingerprintingApplies(mode: PrivacyMode | undefined): boolean {
+  return mode !== 'permissive' && !isFeatureUnavailableHere('site_fingerprinting')
+}
+
+export function applicableProtection(protection: SiteProtection, fingerprinting: boolean): SiteProtection {
+  return fingerprinting ? protection : { ...protection, fingerprinting: true }
+}
+
 export function isUnprotected(protection: SiteProtection): boolean {
-  return !protection.blocking || !protection.javascript
+  return !protection.blocking || !protection.javascript || !protection.fingerprinting
 }
 
 export function blockedLine(total: number): string {
@@ -64,8 +73,12 @@ export function shownHosts(
 }
 
 export function protectionLabel(protection: SiteProtection): string {
-  if (!protection.blocking && !protection.javascript) return 'Blocking and JavaScript off'
-  if (!protection.blocking) return 'Blocking off'
-  if (!protection.javascript) return 'JavaScript off'
-  return 'Protected'
+  const off = [
+    !protection.blocking && 'Blocking',
+    !protection.javascript && 'JavaScript',
+    !protection.fingerprinting && 'fingerprinting protection',
+  ].filter((name) => name !== false)
+  if (off.length === 0) return 'Protected'
+  const named = off.length === 1 ? off.join('') : `${off.slice(0, -1).join(', ')} and ${off[off.length - 1]}`
+  return `${named.charAt(0).toUpperCase()}${named.slice(1)} off`
 }

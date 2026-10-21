@@ -270,7 +270,7 @@ pub async fn open_peek(
         builder = builder.data_directory(dir);
     }
 
-    crate::lockdown::mark(&label, crate::lockdown::wanted(&state, active_ws).await);
+    crate::hardening::mark(&label, crate::hardening::wanted(&state, active_ws).await);
     let child = window
         .add_child(
             builder,
@@ -278,7 +278,7 @@ pub async fn open_peek(
             tauri::LogicalSize::new(width.max(1.0), height.max(1.0)),
         )
         .map_err(|err| {
-            crate::lockdown::mark(&label, false);
+            crate::hardening::mark(&label, crate::hardening::Hardening::default());
             log::warn!("peek add_child failed: {err}");
             WisError::InvalidInput {
                 message: format!("peek add_child failed: {err}"),

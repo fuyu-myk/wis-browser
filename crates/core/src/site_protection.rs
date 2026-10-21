@@ -1,5 +1,5 @@
-//! Per-site protection: whether in-page filtering and the page's JavaScript
-//! run on a host.
+//! Per-site protection: whether in-page filtering, the page's JavaScript and
+//! WebKit's fingerprinting protection apply on a host.
 
 use std::collections::HashMap;
 
@@ -12,6 +12,7 @@ use crate::user_agent::normalize_host;
 pub struct SiteProtection {
     pub blocking: bool,
     pub javascript: bool,
+    pub fingerprinting: bool,
 }
 
 impl Default for SiteProtection {
@@ -19,6 +20,7 @@ impl Default for SiteProtection {
         Self {
             blocking: true,
             javascript: true,
+            fingerprinting: true,
         }
     }
 }
@@ -69,10 +71,12 @@ mod tests {
     const OFF: SiteProtection = SiteProtection {
         blocking: false,
         javascript: true,
+        fingerprinting: true,
     };
     const NO_SCRIPT: SiteProtection = SiteProtection {
         blocking: true,
         javascript: false,
+        fingerprinting: true,
     };
 
     #[test]
@@ -81,7 +85,8 @@ mod tests {
             site_protection_for_host("news.example", &HashMap::new()),
             SiteProtection {
                 blocking: true,
-                javascript: true
+                javascript: true,
+                fingerprinting: true,
             }
         );
     }
@@ -146,6 +151,19 @@ mod tests {
     fn a_saved_entry_missing_a_switch_reads_it_as_on() {
         let read: SiteProtection = serde_json::from_str(r#"{"blocking":false}"#).unwrap();
         assert_eq!(read, OFF);
+        let saved_before_fingerprinting: SiteProtection =
+            serde_json::from_str(r#"{"blocking":true,"javascript":false}"#).unwrap();
+        assert_eq!(saved_before_fingerprinting, NO_SCRIPT);
+    }
+
+    #[test]
+    fn fingerprinting_protection_off_alone_is_remembered() {
+        let off = SiteProtection {
+            fingerprinting: false,
+            ..SiteProtection::default()
+        };
+        let saved = with_site_protection(&HashMap::new(), "draw.example", off);
+        assert_eq!(site_protection_for_host("draw.example", &saved), off);
     }
 
     #[test]

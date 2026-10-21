@@ -9,11 +9,12 @@ import { useRef, type MouseEvent, type ReactNode } from 'react'
 
 import type { Tab } from '@/bindings/types'
 import { WisMark } from '@/components/WisMark'
+import { useBrowserState } from '@/hooks/useBrowserState'
 import { SITE_BUTTON_ATTR, useSitePanel } from '@/hooks/useSitePanel'
 import { useSiteProtection } from '@/hooks/useSiteProtection'
 import { cx } from '@/lib/cx'
 import { SearchIcon } from '@/lib/icons'
-import { isUnprotected, siteOf } from '@/lib/sitePanel'
+import { applicableProtection, fingerprintingApplies, isUnprotected, siteOf } from '@/lib/sitePanel'
 import { connectionKind, NEW_TAB_URL } from '@/lib/url'
 
 const CONNECTIONS: Record<'secure' | 'local' | 'insecure', { className: string; title: string; label: string; glyph: ReactNode }> = {
@@ -47,7 +48,9 @@ export function SiteButton({ activeTab }: { activeTab: Tab | null }) {
   const panel = useSitePanel(buttonRef, activeTab)
   const url = activeTab?.url ?? ''
   const site = siteOf(url)
-  const unprotected = isUnprotected(useSiteProtection(site))
+  const { data: state } = useBrowserState()
+  const mode = state?.workspaces.find((w) => w.id === activeTab?.workspace_id)?.privacy_mode
+  const unprotected = isUnprotected(applicableProtection(useSiteProtection(site), fingerprintingApplies(mode)))
 
   if (!activeTab || !url || url === NEW_TAB_URL) return <SearchIcon className="ico" />
   const kind = connectionKind(url)

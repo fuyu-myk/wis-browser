@@ -5,7 +5,9 @@ import { describe, test } from 'node:test'
 
 import {
   PANEL_WIDTH,
+  applicableProtection,
   blockedLine,
+  fingerprintingApplies,
   isUnprotected,
   panelBounds,
   protectionLabel,
@@ -16,7 +18,8 @@ import {
 
 const viewport = { width: 1200, height: 800 }
 const padlock = { x: 300, y: 20, width: 20, height: 24 }
-const off = { blocking: false, javascript: true }
+const on = { blocking: true, javascript: true, fingerprinting: true }
+const off = { ...on, blocking: false }
 
 describe('panelBounds', () => {
   test('opens below the padlock, its left edge on the padlock’s', () => {
@@ -46,8 +49,8 @@ describe('siteOf', () => {
 
 describe('siteProtection', () => {
   test('is on for sites without an override', () => {
-    assert.deepEqual(siteProtection(undefined, undefined, 'a.example'), { blocking: true, javascript: true })
-    assert.deepEqual(siteProtection({ 'b.example': off }, {}, 'a.example'), { blocking: true, javascript: true })
+    assert.deepEqual(siteProtection(undefined, undefined, 'a.example'), on)
+    assert.deepEqual(siteProtection({ 'b.example': off }, {}, 'a.example'), on)
   })
 
   test('reads the site’s saved override', () => {
@@ -55,14 +58,27 @@ describe('siteProtection', () => {
   })
 
   test('prefers a switch changed in a private workspace this session', () => {
-    const on = { blocking: true, javascript: true }
     assert.deepEqual(siteProtection({ 'a.example': off }, { 'a.example': on }, 'a.example'), on)
   })
 
   test('counts as off when either switch is', () => {
-    assert.equal(isUnprotected({ blocking: true, javascript: true }), false)
+    assert.equal(isUnprotected(on), false)
     assert.equal(isUnprotected(off), true)
-    assert.equal(isUnprotected({ blocking: true, javascript: false }), true)
+    assert.equal(isUnprotected({ ...on, javascript: false }), true)
+    assert.equal(isUnprotected({ ...on, fingerprinting: false }), true)
+  })
+})
+
+describe('applicableProtection', () => {
+  test('leaves fingerprinting protection out where it does not apply', () => {
+    const exposed = { ...on, fingerprinting: false }
+    assert.deepEqual(applicableProtection(exposed, false), on)
+    assert.deepEqual(applicableProtection(exposed, true), exposed)
+    assert.deepEqual(applicableProtection(off, false), off)
+  })
+
+  test('fingerprinting protection never applies in Permissive workspaces', () => {
+    assert.equal(fingerprintingApplies('permissive'), false)
   })
 })
 
@@ -82,9 +98,15 @@ describe('what was blocked', () => {
 
 describe('protectionLabel', () => {
   test('names what is switched off', () => {
-    assert.equal(protectionLabel({ blocking: false, javascript: true }), 'Blocking off')
-    assert.equal(protectionLabel({ blocking: true, javascript: false }), 'JavaScript off')
-    assert.equal(protectionLabel({ blocking: false, javascript: false }), 'Blocking and JavaScript off')
-    assert.equal(protectionLabel({ blocking: true, javascript: true }), 'Protected')
+    assert.equal(protectionLabel(off), 'Blocking off')
+    assert.equal(protectionLabel({ ...on, javascript: false }), 'JavaScript off')
+    assert.equal(protectionLabel({ ...on, fingerprinting: false }), 'Fingerprinting protection off')
+    assert.equal(protectionLabel({ ...off, javascript: false }), 'Blocking and JavaScript off')
+    assert.equal(protectionLabel({ ...off, fingerprinting: false }), 'Blocking and fingerprinting protection off')
+    assert.equal(
+      protectionLabel({ blocking: false, javascript: false, fingerprinting: false }),
+      'Blocking, JavaScript and fingerprinting protection off',
+    )
+    assert.equal(protectionLabel(on), 'Protected')
   })
 })

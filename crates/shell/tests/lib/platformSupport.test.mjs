@@ -112,10 +112,18 @@ test('blocked counts are offered exactly where page_blocks.rs hears of blocks', 
   assert.deepEqual(probe('macos', ['site_block_counts']).unavailable, [])
 })
 
-test('Lockdown Mode is offered exactly where lockdown.rs applies it', () => {
-  const rust = readSource('src-tauri/src/lockdown.rs')
+test('Lockdown Mode is offered exactly where hardening.rs applies it', () => {
+  const rust = readSource('src-tauri/src/hardening.rs')
   assert.match(rust, /#\[cfg\(target_os = "macos"\)\]\npub unsafe fn apply/)
   assert.equal(isFeatureUnavailableHere('lockdown_mode'), true, 'Linux')
   assert.deepEqual(probe('windows', ['lockdown_mode']).unavailable, ['lockdown_mode'])
   assert.deepEqual(probe('macos', ['lockdown_mode']).unavailable, [])
+})
+
+test('the fingerprinting switch is offered exactly where WebKit takes it per page', () => {
+  const rust = readSource('src-tauri/src/site_protection.rs')
+  assert.match(rust, /#\[cfg\(target_os = "macos"\)\]\npub mod imp \{[\s\S]*pub unsafe fn set_fingerprinting_protection/)
+  assert.equal(isFeatureUnavailableHere('site_fingerprinting'), true, 'Linux')
+  assert.deepEqual(probe('windows', ['site_fingerprinting']).unavailable, ['site_fingerprinting'])
+  assert.deepEqual(probe('macos', ['site_fingerprinting']).unavailable, [])
 })

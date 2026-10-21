@@ -41,6 +41,7 @@ const FEATURES: Readonly<Record<string, FeatureSupport>> = {
   canvases: { label: 'Canvases', unavailableOn: [] },
   // Set per page through WebKit's navigation preferences.
   site_javascript: { label: 'JavaScript switch', unavailableOn: ['windows', 'linux'] },
+  site_fingerprinting: { label: 'Fingerprinting protection switch', unavailableOn: ['windows', 'linux'] },
   // WebKit reports what its rule lists and the page's failed loads blocked.
   site_block_counts: { label: 'Blocked counts', unavailableOn: ['windows', 'linux'] },
   // WebKit's Lockdown Mode, set when a webview is created.

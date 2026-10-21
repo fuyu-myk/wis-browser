@@ -177,6 +177,8 @@ pub async fn set_active_workspace(
 /// Change the privacy mode for a specific workspace. The workspace proxy is
 /// dropped so the next navigation rebuilds it with the new policy, and the
 /// engine-level rule list on every open tab in the workspace is re-applied.
+/// Crossing Permissive rebuilds the workspace, as fingerprinting protection
+/// only takes effect in new webviews.
 #[tauri::command]
 pub async fn set_workspace_privacy_mode(
     app: AppHandle,
@@ -184,11 +186,14 @@ pub async fn set_workspace_privacy_mode(
     id: WorkspaceId,
     mode: PrivacyMode,
 ) -> WisResult<Workspace> {
-    let workspace = mutate(&app, &state, |s| {
+    let (workspace, rehardened, pages) = mutate(&app, &state, |s| {
+        let before = crate::hardening::Hardening::of(s.workspace(id)?);
         let next = s.with_workspace_privacy_mode(id, mode)?;
         let updated = next.workspace(id)?.clone();
+        let rehardened = crate::hardening::Hardening::of(&updated) != before;
+        let pages = crate::hardening::web_pages(&next, id);
 
-        Ok((next, updated))
+        Ok((next, (updated, rehardened, pages)))
     })
     .await?;
 
@@ -221,6 +226,9 @@ pub async fn set_workspace_privacy_mode(
         }
     }
     log::info!("workspace {id} privacy mode now {mode:?}: re-attached {reattached}/{total} tabs");
+    if rehardened {
+        crate::hardening::rebuild_workspace(&app, &state, id, pages);
+    }
 
     Ok(workspace)
 }

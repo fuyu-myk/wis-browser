@@ -160,6 +160,7 @@ pub async fn close_tab(
 
     crate::page_source::forget(id);
     crate::signup::forget_field(&id.as_uuid().to_string());
+    crate::hardening::forget(&format!("tab-{}", id.as_uuid()));
     crate::capture::forget(&state, id).await;
 
     // Record the tab for "reopen closed tab" before it's removed.

@@ -27,6 +27,7 @@ import {
   SITE_PANEL_READY,
   SITE_PANEL_SIZE,
   blockedLine,
+  fingerprintingApplies,
   shownHosts,
   siteOf,
   type SitePanelPayload,
@@ -87,6 +88,8 @@ export function SitePanelSurface() {
   const counted = !!blocks
   const listed = expanded && counted && blocks.total > 0
   const rules = state && site ? siteRules(state.settings, site) : []
+  const workspaceId = state?.tabs.find((t) => t.id === panel?.tabId)?.workspace_id
+  const fingerprintingSwitch = fingerprintingApplies(state?.workspaces.find((w) => w.id === workspaceId)?.privacy_mode)
 
   useLayoutEffect(() => {
     const body = bodyRef.current
@@ -96,7 +99,17 @@ export function SitePanelSurface() {
       height: Math.ceil(body.getBoundingClientRect().height) + TOP_AND_BOTTOM_BORDERS,
     }
     void emit(SITE_PANEL_SIZE, size)
-  }, [panel, protection.blocking, protection.javascript, counted, listed, shown.length, more, rules.length])
+  }, [
+    panel,
+    protection.blocking,
+    protection.javascript,
+    fingerprintingSwitch,
+    counted,
+    listed,
+    shown.length,
+    more,
+    rules.length,
+  ])
 
   if (!panel || !site) return null
 
@@ -117,7 +130,6 @@ export function SitePanelSurface() {
 
   const openSettings = () => {
     close()
-    const workspaceId = state?.tabs.find((t) => t.id === panel.tabId)?.workspace_id
     if (!workspaceId) return
     const settings = state?.tabs.find((t) => t.url === SETTINGS_URL && t.workspace_id === workspaceId)
     if (settings) void commands.setActiveTab(settings.id).catch(() => undefined)
@@ -182,6 +194,16 @@ export function SitePanelSurface() {
               checked={protection.javascript}
               onChange={(javascript) => change({ ...protection, javascript })}
               label="JavaScript"
+            />
+          </div>
+        )}
+        {fingerprintingSwitch && (
+          <div className="kb-sitepanel-row">
+            <span className="kb-sitepanel-text">Fingerprinting protection</span>
+            <Switch
+              checked={protection.fingerprinting}
+              onChange={(fingerprinting) => change({ ...protection, fingerprinting })}
+              label="Fingerprinting protection"
             />
           </div>
         )}

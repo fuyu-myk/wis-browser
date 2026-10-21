@@ -1,8 +1,9 @@
 //! Per-site protection in the page: Wis's content rule lists, element hiding
-//! and adblock scriptlets (`blocking`), and the page's own scripts
-//! (`javascript`). The workspace proxy still refuses listed servers, since it
-//! cannot tell which page a request came from. A change made in a private
-//! workspace is held in memory until Wis quits, never saved.
+//! and adblock scriptlets (`blocking`), the page's own scripts (`javascript`)
+//! and WebKit's fingerprinting protection (`fingerprinting`). The workspace
+//! proxy still refuses listed servers, since it cannot tell which page a
+//! request came from. A change made in a private workspace is held in memory
+//! until Wis quits, never saved.
 
 use std::collections::HashMap;
 
@@ -134,6 +135,9 @@ pub mod imp {
             return;
         }
         let _: () = msg_send![preferences, setAllowsContentJavaScript: protection.javascript];
+        if !protection.fingerprinting {
+            set_fingerprinting_protection(preferences, false);
+        }
         if protection.blocking {
             return;
         }
@@ -154,6 +158,21 @@ pub mod imp {
         let _: () = msg_send![preferences, _setContentRuleListsEnabled: true, exceptions: skipped];
     }
 
+    /// WebKit's Advanced Tracking and Fingerprinting Protection (macOS 13.3+).
+    ///
+    /// # Safety
+    ///
+    /// Main thread only; `preferences` is a live `WKWebpagePreferences`.
+    pub unsafe fn set_fingerprinting_protection(preferences: *mut AnyObject, enabled: bool) {
+        let supported: bool = msg_send![
+            preferences,
+            respondsToSelector: sel!(_setNetworkConnectionIntegrityEnabled:)
+        ];
+        if supported {
+            let _: () = msg_send![preferences, _setNetworkConnectionIntegrityEnabled: enabled];
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use objc2::runtime::{AnyObject, Bool};
@@ -170,6 +189,9 @@ pub mod imp {
             preferences
                 .verify_sel::<(Bool,), ()>(sel!(setAllowsContentJavaScript:))
                 .unwrap();
+            preferences
+                .verify_sel::<(Bool,), ()>(sel!(_setNetworkConnectionIntegrityEnabled:))
+                .unwrap();
         }
     }
 }
@@ -181,6 +203,7 @@ mod tests {
     const OFF: SiteProtection = SiteProtection {
         blocking: false,
         javascript: false,
+        fingerprinting: false,
     };
 
     #[test]

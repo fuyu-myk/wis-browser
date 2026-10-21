@@ -623,10 +623,12 @@ pub async fn create_tab_webview(
         .await
         .tab(tab_id)
         .map_or(workspace_id, |tab| tab.workspace_id);
-    crate::lockdown::mark(
-        &label_ident,
-        !canvas_tab && crate::lockdown::wanted(&state, tab_workspace).await,
-    );
+    let hardening = if canvas_tab {
+        crate::hardening::Hardening::default()
+    } else {
+        crate::hardening::wanted(&state, tab_workspace).await
+    };
+    crate::hardening::mark(&label_ident, hardening);
     let child = window
         .add_child(
             builder,
@@ -634,7 +636,7 @@ pub async fn create_tab_webview(
             tauri::LogicalSize::new(width, height),
         )
         .map_err(|err| {
-            crate::lockdown::mark(&label_ident, false);
+            crate::hardening::mark(&label_ident, crate::hardening::Hardening::default());
             crate::canvas::forget(&app, &label_ident);
             WisError::InvalidInput {
                 message: format!("add_child failed: {err}"),

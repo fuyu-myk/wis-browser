@@ -943,6 +943,7 @@ export type AutoplayPolicy = 'allow' | 'block_audible' | 'block'
 export interface SiteProtection {
   blocking: boolean
   javascript: boolean
+  fingerprinting: boolean
 }
 
 export interface PageBlocks {
