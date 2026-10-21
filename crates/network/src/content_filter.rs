@@ -9,6 +9,7 @@ use serde_json::Value;
 use wis_core::PrivacyMode;
 
 use crate::error::{NetworkError, NetworkResult};
+use crate::site_entities::{entities, own_script_exceptions};
 
 /// Build the content-blocker rule JSON for a privacy mode, or `None` when the
 /// mode applies no engine-level filtering.
@@ -20,10 +21,12 @@ pub fn content_blocking_json(
         return Ok(None);
     }
 
-    let mut rules = tracker_rules(filter_texts)?;
+    let mut rules = Vec::new();
     if mode == PrivacyMode::Strict {
         rules.push(third_party_script_block());
+        rules.extend(own_script_exceptions(&entities()));
     }
+    rules.extend(tracker_rules(filter_texts)?);
 
     serde_json::to_string(&rules)
         .map(Some)
@@ -52,7 +55,8 @@ fn tracker_rules(filter_texts: &[&str]) -> NetworkResult<Vec<Value>> {
 }
 
 /// Strict-only rule blocking third-party scripts (the tracking vector) while
-/// leaving first-party CDNs, fonts, and media loading.
+/// leaving fonts and media loading. A site's owner's other domains are let
+/// back in by [`own_script_exceptions`], which follow it.
 fn third_party_script_block() -> Value {
     serde_json::json!({
         "trigger": {
@@ -103,6 +107,36 @@ mod tests {
             strict.len() > balanced.len(),
             "strict layers an extra rule on top of the tracker list"
         );
+    }
+
+    #[test]
+    fn strict_lets_a_site_run_its_owner_s_scripts_before_the_lists_apply() {
+        let rules = |mode| -> Vec<Value> {
+            serde_json::from_str(
+                &content_blocking_json(&[DEFAULT_TRACKER_LIST], mode)
+                    .unwrap()
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+        let strict = rules(PrivacyMode::Strict);
+        assert_eq!(strict[0], third_party_script_block());
+        let own_quora_cdn = |rule: &Value| {
+            rule["action"]["type"] == "ignore-previous-rules"
+                && rule["trigger"]["url-filter"]
+                    .as_str()
+                    .is_some_and(|f| f.contains("quoracdn"))
+        };
+        let exception = strict
+            .iter()
+            .position(own_quora_cdn)
+            .expect("quora's cdn is its own");
+        let first_list_rule = strict
+            .iter()
+            .position(|rule| rule.to_string().contains("doubleclick"))
+            .unwrap();
+        assert!(exception < first_list_rule);
+        assert!(!rules(PrivacyMode::Balanced).iter().any(own_quora_cdn));
     }
 
     #[test]

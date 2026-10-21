@@ -53,7 +53,7 @@ pub const RULE_LIST_PREFIX: &str = "wis-cb-";
 
 /// Bump when the conversion to WebKit rules changes, so lists compiled by the
 /// old conversion are replaced.
-const RULES_VERSION: u32 = 1;
+const RULES_VERSION: u32 = 2;
 
 /// Hashes the input rather than the JSON: the converter emits each rule's
 /// resource types in hash order, so the same list never converts to the same

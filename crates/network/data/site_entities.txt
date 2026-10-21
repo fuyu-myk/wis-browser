@@ -1,0 +1,155 @@
+# Sites and the other domains their owner serves them from, one owner per line.
+# Only domains the owner alone serves: no shared CDNs or customer hosting
+# (CloudFront, Akamai, Fastly, Azure, Firebase, github.io), and no ad or
+# analytics domains, which Strict still blocks everywhere.
+
+# Search, mail and platforms
+google.com gstatic.com googleapis.com googleusercontent.com ggpht.com gvt1.com gvt2.com googlevideo.com youtube.com ytimg.com youtu.be youtube-nocookie.com withgoogle.com google.dev recaptcha.net android.com chromium.org google.co.uk google.ca google.de google.fr google.es google.it google.nl google.pl google.ch google.at google.be google.se google.dk google.no google.fi google.ie google.pt google.co.jp google.co.kr google.co.in google.com.au google.co.nz google.co.za google.com.br google.com.mx google.com.ar google.com.tr google.com.sg google.com.hk google.com.tw google.co.id
+blogger.com blogspot.com blogblog.com
+microsoft.com microsoftonline.com msauth.net msftauth.net live.com live.net office.com office.net office365.com sharepoint.com sharepointonline.com onedrive.com outlook.com bing.com bing.net msn.com windows.com xbox.com xboxlive.com skype.com skypeassets.com visualstudio.com minecraft.net microsoftstore.com s-microsoft.com aka.ms azure.com
+linkedin.com licdn.com lnkd.in
+github.com githubassets.com githubusercontent.com github.dev
+apple.com cdn-apple.com mzstatic.com icloud.com icloud-content.com apple-cloudkit.com aaplimg.com
+yahoo.com yimg.com yahooapis.com aol.com
+yandex.ru yandex.com yandex.net yastatic.net ya.ru yandex.by yandex.kz yandex.com.tr
+baidu.com bdstatic.com bdimg.com
+naver.com pstatic.net naver.net
+daum.net kakao.com kakaocdn.net daumcdn.net
+line.me line-scdn.net yahoo.co.jp yimg.jp
+duckduckgo.com duck.com
+mozilla.org mozilla.net mozilla.com firefox.com
+proton.me protonmail.com
+zoho.com zohocdn.com zohostatic.com
+
+# Social and messaging
+9gag.com 9cache.com
+dailymotion.com dmcdn.net
+bandcamp.com bcbits.com
+eventbrite.com evbuc.com
+meetup.com meetupstatic.com
+codepen.io cdpn.io
+facebook.com fbcdn.net facebook.net fbsbx.com fb.com fb.me messenger.com instagram.com cdninstagram.com whatsapp.com whatsapp.net threads.net threads.com meta.com oculus.com
+x.com twitter.com twimg.com t.co
+tiktok.com tiktokcdn.com tiktokcdn-us.com tiktokv.com ttwstatic.com byteoversea.com ibytedtos.com
+snapchat.com snap.com sc-cdn.net sc-static.net
+pinterest.com pinimg.com pin.it pinterest.co.uk pinterest.de pinterest.fr pinterest.ca pinterest.com.au
+reddit.com redditstatic.com redditmedia.com redd.it
+quora.com quoracdn.net
+discord.com discordapp.com discordapp.net discord.gg discord.media
+slack.com slack-edge.com slack-imgs.com slack-redir.net
+telegram.org t.me telegram.me
+vk.com vk.ru userapi.com vkuser.net mail.ru imgsmail.ru mycdn.me ok.ru
+weibo.com weibo.cn sinaimg.cn sina.com.cn
+xiaohongshu.com xhscdn.com
+qq.com gtimg.com qpic.cn qlogo.cn wechat.com
+zhihu.com zhimg.com
+bilibili.com hdslb.com biliimg.com
+pixiv.net pximg.net
+patreon.com patreonusercontent.com
+substack.com substackcdn.com
+wordpress.com wp.com gravatar.com tumblr.com
+stackoverflow.com stackexchange.com sstatic.net superuser.com serverfault.com askubuntu.com mathoverflow.net stackauth.com
+fandom.com wikia.com wikia.org nocookie.net
+wikipedia.org wikimedia.org wikidata.org wiktionary.org wikiquote.org wikibooks.org wikisource.org wikinews.org wikiversity.org wikivoyage.org wikimediafoundation.org mediawiki.org
+flickr.com staticflickr.com
+
+# Shopping, travel and money
+zalando.com zalando.de zalando.co.uk zalando.fr ztat.net
+asos.com asos-media.com
+homedepot.com thdstatic.com
+macys.com macysassets.com
+nordstrom.com nordstrommedia.com
+wayfair.com wfcdn.com
+newegg.com neweggimages.com
+coupang.com coupangcdn.com
+flipkart.com flixcart.com
+myntra.com myntassets.com
+mercari.com mercdn.net
+avito.ru avito.st
+agoda.com agoda.net
+skyscanner.net skyscnr.com
+kayak.com r9cdn.net
+amazon.com amazon.co.uk amazon.de amazon.fr amazon.it amazon.es amazon.nl amazon.se amazon.pl amazon.co.jp amazon.ca amazon.com.au amazon.in amazon.com.br amazon.com.mx amazon.sg amazon.ae amazon.sa amazon.com.tr media-amazon.com ssl-images-amazon.com images-amazon.com primevideo.com imdb.com audible.com goodreads.com gr-assets.com awsstatic.com aboutamazon.com
+ebay.com ebaystatic.com ebayimg.com ebay.co.uk ebay.de ebay.fr ebay.it ebay.es ebay.ca ebay.com.au
+alibaba.com aliexpress.com aliexpress.us alicdn.com taobao.com tmall.com aliyun.com
+jd.com 360buyimg.com
+rakuten.co.jp rakuten.com r10s.jp
+walmart.com walmartimages.com
+target.com targetimg1.com
+bestbuy.com bbystatic.com
+etsy.com etsystatic.com
+booking.com bstatic.com
+expedia.com hotels.com vrbo.com travel-assets.com
+airbnb.com muscache.com
+tripadvisor.com tacdn.com
+yelp.com yelpcdn.com
+zillow.com zillowstatic.com
+paypal.com paypalobjects.com venmo.com
+stripe.com stripe.network
+
+# News and reference
+forbes.com forbesimg.com
+theverge.com vox.com voxmedia.com vox-cdn.com polygon.com eater.com sbnation.com
+condenast.com condenastdigital.com wired.com newyorker.com vogue.com gq.com arstechnica.com vanityfair.com
+scribd.com scribdassets.com
+researchgate.net rgstatic.net
+sciencedirect.com elsevier.com els-cdn.com
+nytimes.com nyt.com
+theguardian.com guim.co.uk guardianapps.co.uk
+bbc.com bbc.co.uk bbci.co.uk
+foxnews.com fncstatic.com
+wsj.com wsj.net dowjones.com barrons.com marketwatch.com
+bloomberg.com bwbx.io
+espn.com espncdn.com
+khanacademy.org kastatic.org
+wolframalpha.com wolfram.com wolframcdn.com
+speedtest.net ookla.com
+archive.org
+
+# Video, music and games
+itch.io itch.zone
+gog.com gog-statics.com
+ubisoft.com ubi.com
+blizzard.com battle.net
+chess.com chesscomfiles.com
+lichess.org lichess1.org
+netflix.com nflxext.com nflximg.net nflxvideo.net nflxso.net
+disneyplus.com disney-plus.net dssott.com bamgrid.com
+hulu.com huluim.com hulustream.com
+twitch.tv jtvnw.net ttvnw.net twitchcdn.net twitchsvc.net
+vimeo.com vimeocdn.com
+spotify.com scdn.co spotifycdn.com
+soundcloud.com sndcdn.com
+deezer.com dzcdn.net
+steampowered.com steamcommunity.com steamstatic.com steamusercontent.com valvesoftware.com
+epicgames.com unrealengine.com fortnite.com
+riotgames.com leagueoflegends.com riotcdn.net
+roblox.com rbxcdn.com
+nintendo.com nintendo.net
+playstation.com playstation.net
+
+# Work, developer and AI tools
+salesforce.com force.com sfdcstatic.com
+hubspot.com hubspot.net hsappstatic.net
+zendesk.com zdassets.com
+intercom.com intercom.io intercomcdn.com
+twilio.com twiliocdn.com
+oracle.com oracleimg.com
+kaggle.com kaggleusercontent.com
+sentry.io sentry-cdn.com
+dropbox.com dropboxstatic.com dropboxusercontent.com
+box.com boxcdn.net
+atlassian.com atlassian.net atl-paas.net jira.com bitbucket.org trello.com trellocdn.com
+adobe.com adobe.io adobelogin.com adobecc.com typekit.net behance.net
+gitlab.com gitlab-static.net
+npmjs.com npmjs.org
+docker.com docker.io
+python.org pythonhosted.org pypi.org
+notion.so notion.site notion.com
+squarespace.com squarespace-cdn.com sqspcdn.com
+wix.com wixstatic.com parastorage.com wixmp.com deviantart.com deviantart.net
+webflow.com website-files.com
+udemy.com udemycdn.com
+openai.com chatgpt.com oaistatic.com oaiusercontent.com
+anthropic.com claude.ai claude.com
+huggingface.co hf.co

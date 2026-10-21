@@ -18,6 +18,7 @@ pub mod filter_lists;
 pub mod policy;
 pub mod proxy;
 pub mod resolver;
+pub mod site_entities;
 #[cfg(feature = "tor")]
 pub mod tor;
 pub mod upgrader;

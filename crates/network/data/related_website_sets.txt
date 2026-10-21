@@ -1,0 +1,73 @@
+# Derived from Google's Related Website Sets
+# (https://github.com/GoogleChrome/related-website-sets, Apache License 2.0):
+# each line is one set's primary, associated, service and ccTLD sites.
+bild.de welt.de autobild.de computerbild.de wieistmeineip.de asadcdn.com
+blackrock.com blackrockadvisorelite.it cachematrix.com efront.com etfacademy.it ishares.com
+cafemedia.com cardsayings.net nourishingpursuits.com
+caracoltv.com noticiascaracol.com bluradio.com shock.co bumbox.com hjck.com
+carcostadvisor.com carcostadvisor.be carcostadvisor.fr
+citybibleforum.org thirdspace.org.au
+cognitiveai.ru cognitive-ai.ru
+datasign.jp webtru.io bunsin.io
+drimer.io drimer.travel
+elpais.com.uy clubelpais.com.uy paula.com.uy gallito.com.uy elpais.uy
+finn.no prisjakt.no mittanbud.no pdmp-apis.no
+gliadomain.com salemoveadvisor.com salemovefinancial.com salemovetravel.com
+graziadaily.co.uk heatworld.com closeronline.co.uk yours.co.uk motherandbaby.com takeabreak.co.uk
+gridgames.app wordle.at
+hapara.com teacherdashboard.com mystudentdashboard.com
+hc1.com hc1.global hc1cas.com hc1cas.global
+hearty.me hearty.app hearty.gift hj.rs heartymail.com alice.tw jiayi.life miss.com.tw
+hindustantimes.com livemint.com livehindustan.com healthshots.com ottplay.com desimartini.com
+hookpoint.com brendanjkane.com
+html-load.com css-load.com img-load.com content-loader.com 07c225f3.online html-load.cc
+idbs-cloud.com idbs-dev.com idbs-staging.com idbs-eworkbook.com eworkbookcloud.com eworkbookrequest.com
+indiatoday.in aajtak.in businesstoday.in intoday.in gnttv.com indiatodayne.in
+interia.pl pomponik.pl deccoria.pl top.pl smaker.pl terazgotuje.pl
+jagran.com gujaratijagran.com punjabijagran.com
+johndeere.com deere.com
+journaldesfemmes.com commentcamarche.net linternaute.com journaldunet.com phonandroid.com commentcamarche.com journaldesfemmes.fr linternaute.fr journaldunet.fr
+joyreactor.cc reactor.cc cookreactor.com joyreactor.com
+kaksya.in nidhiacademyonline.com
+kompas.com tribunnews.com grid.id bolasport.com kompasiana.com kompas.tv
+lanacion.com.ar bonvivir.com
+landyrev.com landyrev.ru
+laprensagrafica.com elgrafico.com eleconomista.net ella.sv grupolpg.sv
+libero.it supereva.it iolam.it
+mavie.care mavie.me enera.at maviework.care lucyhealth.io
+max.auto firstlook.biz
+mercadolibre.com mercadolivre.com mercadopago.com mercadoshops.com portalinmobiliario.com tucarro.com mercadolibre.com.ar mercadolibre.com.mx mercadolibre.com.bo mercadolibre.cl mercadolibre.com.co mercadolibre.co.cr mercadolibre.com.do mercadolibre.com.ec mercadolibre.com.gt mercadolibre.com.hn mercadolibre.com.ni mercadolibre.com.pa mercadolibre.com.py mercadolibre.com.pe mercadolibre.com.sv mercadolibre.com.uy mercadolibre.com.ve mercadolivre.com.br mercadopago.com.ar mercadopago.com.br mercadopago.com.mx mercadopago.com.uy mercadopago.com.co mercadopago.cl mercadopago.com.pe mercadopago.com.ec mercadopago.com.ve mercadoshops.com.ar mercadoshops.com.br mercadoshops.com.mx mercadoshops.cl mercadoshops.com.co tucarro.com.co tucarro.com.ve
+mightytext.net textyserver.appspot.com mighty-app.appspot.com
+nacion.com lateja.cr elfinancierocr.com
+naukri.com ambitionbox.com infoedgeindia.com
+nien.com chennien.com nien.org nien.co
+nvidia.com geforcenow.com
+oficialfarma.com.br oficialderma.com.br oficialnutri.com mercadooficial.com.br
+onet.pl fakt.pl businessinsider.com.pl medonet.pl plejada.pl ocdn.eu
+p106.net smpn106jkt.sch.id
+p24.hu 24.hu startlap.hu nlc.hu hazipatika.com nosalty.hu
+poalim.xyz poalim.site
+repid.org reshim.org human-talk.org
+rws1nvtvt.com rws2nvtvt.com rws3nvtvt.com
+sackrace.ai socket-to-me.vip
+sapo.pt meo.pt sapo.io
+songstats.com songshare.com
+startupislandtaiwan.com startupislandtaiwan.net startupislandtaiwan.org
+stripe.com stripecdn.com stripe.network
+talkdeskqaid.com trytalkdesk.com
+talkdeskstgid.com gettalkdesk.com
+text.com livechat.com helpdesk.com chatbot.com livechatinc.com knowledgebase.com openwidget.com
+thejournal.ie the42.ie
+timesinternet.in indiatimes.com timesofindia.com economictimes.com samayam.com cricbuzz.com growthrx.in clmbtech.com tvid.in
+tolteck.com tolteck.app
+tvn.pl player.pl tvn24.pl zdrowietvn.pl
+undertale.wiki deltarune.wiki
+unotv.com clarosports.com cmxd.com.mx
+victorymedium.com standardsandpraiserepurpose.com technology-revealed.com
+vrt.be dewarmsteweek.be sporza.be een.be radio2.be radio1.be
+vwo.com wingify.com
+wildix.com wildixin.com
+wp.pl o2.pl pudelek.pl money.pl abczdrowie.pl wpext.pl
+ya.ru yandex.ru yandex.net turbopages.org auto.ru kinopoisk.ru clck.ru edadeal.ru webvisor.com yastatic.net ya.cc yandex.az yandex.by yandex.kz yandex.md yandex.tj yandex.tm yandex.uz yandex.st yandex.com yandex.com.am yandex.com.ru
+zalo.me zingmp3.vn baomoi.com smoney.vn
+zoom.us zoom.com
