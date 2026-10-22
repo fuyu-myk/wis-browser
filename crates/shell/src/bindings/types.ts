@@ -1100,6 +1100,7 @@ export interface VaultStatus {
   unlocked: boolean
   has_master_key: boolean
   supported: boolean
+  password: boolean
 }
 
 /** How a vault recovery went; `partial` when the key opens only some saved passwords. */

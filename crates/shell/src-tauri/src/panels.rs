@@ -11,11 +11,12 @@ use wis_core::{WisError, WisResult};
 
 const PANEL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
-fn dispatch<F>(app: &AppHandle, panel: F) -> WisResult<Option<PathBuf>>
+fn dispatch<T, F>(app: &AppHandle, panel: F) -> WisResult<Option<T>>
 where
-    F: FnOnce() -> Option<PathBuf> + Send + 'static,
+    T: Send + 'static,
+    F: FnOnce() -> Option<T> + Send + 'static,
 {
-    let (tx, rx) = std::sync::mpsc::channel::<Option<PathBuf>>();
+    let (tx, rx) = std::sync::mpsc::channel::<Option<T>>();
     app.run_on_main_thread(move || {
         let _ = tx.send(panel());
     })
@@ -36,6 +37,97 @@ pub fn run_save_panel(app: &AppHandle, suggested: &str) -> WisResult<Option<Path
 pub fn run_open_panel(app: &AppHandle, extensions: &[&str]) -> WisResult<Option<PathBuf>> {
     let exts: Vec<String> = extensions.iter().map(|e| e.to_string()).collect();
     dispatch(app, move || open_panel(&exts))
+}
+
+/// A system warning dialog that pages and Wis's own webviews cannot click,
+/// resolving whether the user chose `action`.
+pub fn confirm_natively(
+    app: &AppHandle,
+    title: &str,
+    message: &str,
+    action: &str,
+) -> WisResult<bool> {
+    let (title, message, action) = (title.to_string(), message.to_string(), action.to_string());
+    Ok(dispatch(app, move || Some(confirm_dialog(&title, &message, &action)))?.unwrap_or(false))
+}
+
+#[cfg(target_os = "macos")]
+fn confirm_dialog(title: &str, message: &str, action: &str) -> bool {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+
+    const CRITICAL: usize = 2;
+    const SECOND_BUTTON: isize = 1001;
+    unsafe {
+        let alert: *mut AnyObject = msg_send![class!(NSAlert), new];
+        if alert.is_null() {
+            return false;
+        }
+
+        if let Some(text) = nsstring(title) {
+            let _: () = msg_send![alert, setMessageText: text];
+        }
+        if let Some(text) = nsstring(message) {
+            let _: () = msg_send![alert, setInformativeText: text];
+        }
+        let _: () = msg_send![alert, setAlertStyle: CRITICAL];
+        let mut added = 0;
+        for label in ["Cancel", action] {
+            if let Some(text) = nsstring(label) {
+                let button: *mut AnyObject = msg_send![alert, addButtonWithTitle: text];
+                added += usize::from(!button.is_null());
+            }
+        }
+
+        let response: isize = msg_send![alert, runModal];
+        let _: () = msg_send![alert, release];
+        added == 2 && response == SECOND_BUTTON
+    }
+}
+
+#[cfg(windows)]
+fn confirm_dialog(title: &str, message: &str, action: &str) -> bool {
+    match rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Warning)
+        .set_title(title)
+        .set_description(message)
+        .set_buttons(rfd::MessageButtons::OkCancelCustom(
+            action.to_string(),
+            "Cancel".to_string(),
+        ))
+        .show()
+    {
+        rfd::MessageDialogResult::Ok => true,
+        rfd::MessageDialogResult::Custom(label) => label == action,
+        _ => false,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn confirm_dialog(title: &str, message: &str, action: &str) -> bool {
+    use gtk::prelude::*;
+
+    let dialog = gtk::MessageDialog::new(
+        None::<&gtk::Window>,
+        gtk::DialogFlags::MODAL,
+        gtk::MessageType::Warning,
+        gtk::ButtonsType::None,
+        title,
+    );
+    dialog.set_secondary_text(Some(message));
+    dialog.add_button("Cancel", gtk::ResponseType::Cancel);
+    dialog.add_button(action, gtk::ResponseType::Accept);
+    dialog.set_default_response(gtk::ResponseType::Cancel);
+
+    let response = dialog.run();
+    // SAFETY: the dialog is ours alone and nothing reads it after this.
+    unsafe { dialog.destroy() };
+    response == gtk::ResponseType::Accept
+}
+
+#[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
+fn confirm_dialog(_title: &str, _message: &str, _action: &str) -> bool {
+    false
 }
 
 #[cfg(target_os = "macos")]
@@ -168,4 +260,31 @@ fn open_panel(extensions: &[String]) -> Option<PathBuf> {
     }
 
     dialog.pick_file()
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, sel};
+
+    type Obj = *mut AnyObject;
+
+    /// A wrong message type aborts at runtime only.
+    #[test]
+    fn every_alert_send_matches_its_method() {
+        let alert = class!(NSAlert);
+        alert
+            .verify_sel::<(Obj,), ()>(sel!(setMessageText:))
+            .unwrap();
+        alert
+            .verify_sel::<(Obj,), ()>(sel!(setInformativeText:))
+            .unwrap();
+        alert
+            .verify_sel::<(usize,), ()>(sel!(setAlertStyle:))
+            .unwrap();
+        alert
+            .verify_sel::<(Obj,), Obj>(sel!(addButtonWithTitle:))
+            .unwrap();
+        alert.verify_sel::<(), isize>(sel!(runModal)).unwrap();
+    }
 }

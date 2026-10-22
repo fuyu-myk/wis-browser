@@ -81,7 +81,9 @@ pub async fn export_backup(
     state: State<'_, AppState>,
     passphrase: String,
     options: BackupOptions,
+    vault_password: Option<String>,
 ) -> WisResult<bool> {
+    let vault_password = vault_password.map(zeroize::Zeroizing::new);
     if passphrase.trim().is_empty() {
         return Err(WisError::InvalidInput {
             message: "choose a passphrase to encrypt the backup".to_string(),
@@ -104,6 +106,7 @@ pub async fn export_backup(
                 crate::vault::export_credentials(
                     &state,
                     "Include your saved passwords in this backup",
+                    vault_password.as_deref().map(String::as_str),
                 )
                 .await?,
             )
@@ -162,7 +165,9 @@ pub async fn import_backup(
     app: AppHandle,
     state: State<'_, AppState>,
     passphrase: String,
+    vault_password: Option<String>,
 ) -> WisResult<Option<ImportSummary>> {
+    let vault_password = vault_password.map(zeroize::Zeroizing::new);
     let Some(path) = run_open_panel(&app, &["wisbackup", "json"])? else {
         return Ok(None);
     };
@@ -219,8 +224,13 @@ pub async fn import_backup(
     };
 
     if let Some(creds) = payload.credentials {
-        summary.passwords_added =
-            crate::vault::import_credentials(&state, creds, "Restore your saved passwords").await?;
+        summary.passwords_added = crate::vault::import_credentials(
+            &state,
+            creds,
+            "Restore your saved passwords",
+            vault_password.as_deref().map(String::as_str),
+        )
+        .await?;
     }
 
     let imported = payload

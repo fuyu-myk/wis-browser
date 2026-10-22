@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { ChangeVaultPassword, useVaultConfirm, VaultPasswordUnlock } from '@/components/VaultPassword'
 import { RecoveryKeyRow, VaultRescue } from '@/components/VaultRecovery'
+import { useVaultStatus, VAULT_STATUS_KEY } from '@/hooks/useVaultStatus'
 import { cx } from '@/lib/cx'
 import { LockIcon, SearchIcon, XIcon } from '@/lib/icons'
 import { isMacOS } from '@/lib/platform'
@@ -11,7 +13,6 @@ import { useBrowserState, BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { Segmented } from '@/components/controls'
 import type { PasswordOffer } from '@/bindings/types'
 
-const VAULT_STATUS_KEY = ['vault-status'] as const
 const VAULT_LIST_KEY = ['vault-list'] as const
 
 // The OS biometric the vault gate uses on this platform.
@@ -87,15 +88,13 @@ export function PasswordsSection() {
   const [csvStatus, setCsvStatus] = useState<Status | null>(null)
   const [confirmExport, setConfirmExport] = useState(false)
 
-  const { data: status } = useQuery({
-    queryKey: VAULT_STATUS_KEY,
-    queryFn: () => commands.vaultStatus(),
-    staleTime: 0,
-    refetchOnMount: 'always',
-  })
+  const { data: status } = useVaultStatus()
   const supported = status?.supported ?? false
   const unlocked = status?.unlocked ?? false
   const hasKey = status?.has_master_key ?? false
+  const passwordMode = status?.password ?? false
+  const { confirm, prompt } = useVaultConfirm()
+  const [rescueOpen, setRescueOpen] = useState(false)
 
   const { data: creds = [] } = useQuery({
     queryKey: VAULT_LIST_KEY,
@@ -109,7 +108,15 @@ export function PasswordsSection() {
     qc.invalidateQueries({ queryKey: VAULT_LIST_KEY })
   }
 
-  const unlock = useMutation({ mutationFn: () => commands.vaultUnlock(), onSuccess: refreshAll })
+  const unlock = useMutation({
+    mutationFn: async (password?: string) => {
+      if (!passwordMode) return commands.vaultUnlock()
+      const typed = password ?? ''
+      await (hasKey ? commands.vaultUnlockPassword(typed) : commands.vaultCreatePassword(typed))
+      return true
+    },
+    onSuccess: refreshAll,
+  })
   const lock = useMutation({ mutationFn: () => commands.vaultLock(), onSuccess: refreshAll })
   const del = useMutation({
     mutationFn: (id: number) => commands.vaultDelete(id),
@@ -124,9 +131,11 @@ export function PasswordsSection() {
 
   const importCsv = async () => {
     setCsvStatus(null)
+    const consent = await confirm()
+    if (!consent) return
     setCsvBusy(true)
     try {
-      const stats = await commands.vaultImportCsv()
+      const stats = await commands.vaultImportCsv(consent.password)
       if (!stats) return
       refreshAll()
       const skipped =
@@ -149,9 +158,11 @@ export function PasswordsSection() {
 
   const exportCsv = async () => {
     setCsvStatus(null)
+    const consent = await confirm()
+    if (!consent) return
     setCsvBusy(true)
     try {
-      const written = await commands.vaultExportCsv()
+      const written = await commands.vaultExportCsv(consent.password)
       refreshAll()
       if (written) {
         setCsvStatus({
@@ -171,11 +182,14 @@ export function PasswordsSection() {
   const [breaches, setBreaches] = useState<Map<number, number> | null>(null)
   const [breachStatus, setBreachStatus] = useState<Status | null>(null)
   const checkBreaches = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (workspaceId === null) throw new Error('no workspace to route the check through')
-      return commands.vaultCheckBreaches(workspaceId)
+      const consent = await confirm()
+      if (!consent) return null
+      return commands.vaultCheckBreaches(workspaceId, consent.password)
     },
     onSuccess: (report) => {
+      if (!report) return
       setBreaches(new Map(report.breached.map((found) => [found.id, found.count])))
       setBreachStatus({
         kind: report.breached.length === 0 ? 'ok' : 'err',
@@ -215,29 +229,51 @@ export function PasswordsSection() {
             </span>
             <div className="kb-vault-locked-text">
               <span>{hasKey ? 'Your vault is locked' : 'Set up your password vault'}</span>
-              <span>Unlocked with {BIOMETRIC_NAME}. Passwords are encrypted on this device.</span>
+              <span>
+                {!passwordMode
+                  ? `Unlocked with ${BIOMETRIC_NAME}. Passwords are encrypted on this device.`
+                  : hasKey
+                    ? 'Unlocked with your vault password. Passwords are encrypted on this device.'
+                    : "Choose a vault password. Wis can't recover it for you, so set up a recovery key once you are in."}
+              </span>
             </div>
-            <button
-              type="button"
-              className="kb-btn"
-              onClick={() => unlock.mutate()}
-              disabled={unlock.isPending}
-            >
-              {hasKey ? 'Unlock' : 'Set up'}
-            </button>
+            {!passwordMode && (
+              <button
+                type="button"
+                className="kb-btn"
+                onClick={() => unlock.mutate(undefined)}
+                disabled={unlock.isPending}
+              >
+                {hasKey ? 'Unlock' : 'Set up'}
+              </button>
+            )}
           </div>
+          {passwordMode && (
+            <VaultPasswordUnlock
+              hasKey={hasKey}
+              busy={unlock.isPending}
+              onSubmit={(password) => unlock.mutate(password)}
+            />
+          )}
           {unlock.isError && (
-            <>
-              <p className="kb-backup-status is-error" role="alert">
-                {errorMessage(unlock.error)}
-              </p>
-              <VaultRescue
-                onDone={() => {
-                  unlock.reset()
-                  refreshAll()
-                }}
-              />
-            </>
+            <p className="kb-backup-status is-error" role="alert">
+              {errorMessage(unlock.error)}
+            </p>
+          )}
+          {passwordMode && hasKey && !rescueOpen && (
+            <button type="button" className="kb-vault-forgot" onClick={() => setRescueOpen(true)}>
+              Forgot your password?
+            </button>
+          )}
+          {(passwordMode ? rescueOpen || (!hasKey && unlock.isError) : unlock.isError) && (
+            <VaultRescue
+              passwordMode={passwordMode}
+              onDone={() => {
+                unlock.reset()
+                setRescueOpen(false)
+                refreshAll()
+              }}
+            />
           )}
         </>
       ) : (
@@ -252,6 +288,7 @@ export function PasswordsSection() {
             </button>
           </div>
           <RecoveryKeyRow />
+          {passwordMode && <ChangeVaultPassword />}
 
           <div className="row">
             <div className="l">
@@ -379,6 +416,7 @@ export function PasswordsSection() {
         }}
         onCancel={() => setConfirmExport(false)}
       />
+      {prompt}
     </section>
   )
 }

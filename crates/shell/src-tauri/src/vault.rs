@@ -22,14 +22,12 @@ use crate::state::AppState;
 pub struct VaultStatus {
     pub unlocked: bool,
     pub has_master_key: bool,
-    /// False on platforms without an OS key store + biometric gate.
     pub supported: bool,
+    pub password: bool,
 }
 
-/// Platforms with both an OS key store and a biometric gate: macOS
-/// (Keychain + Touch ID) and Windows (DPAPI + Windows Hello).
 pub(crate) fn vault_supported() -> bool {
-    cfg!(any(target_os = "macos", windows))
+    cfg!(any(target_os = "macos", windows)) || crate::vault_store::uses_password()
 }
 
 /// A credential without its password (safe to list).
@@ -45,16 +43,13 @@ pub struct CredentialSummary {
 pub async fn vault_status(state: State<'_, AppState>) -> WisResult<VaultStatus> {
     let unlocked = state.vault_key.lock().await.is_some();
     let supported = vault_supported();
-    let has_master_key = if supported {
-        wis_secrets::has_master_key().unwrap_or(true)
-    } else {
-        false
-    };
+    let has_master_key = supported && crate::vault_store::has_key();
 
     Ok(VaultStatus {
         unlocked,
         has_master_key,
         supported,
+        password: crate::vault_store::uses_password(),
     })
 }
 
@@ -66,7 +61,13 @@ pub async fn vault_unlock(_app: AppHandle, state: State<'_, AppState>) -> WisRes
     if !vault_supported() {
         return Err(unsupported());
     }
-    let authed = crate::biometrics::authenticate("Unlock your saved passwords".to_string()).await;
+    if crate::vault_store::uses_password() {
+        return Err(WisError::InvalidInput {
+            message: "Unlock with your vault password".to_string(),
+        });
+    }
+    let authed =
+        crate::vault_store::confirm_user(&state, "Unlock your saved passwords", None).await?;
     if !authed {
         return Ok(false);
     }
@@ -78,6 +79,9 @@ pub async fn vault_unlock(_app: AppHandle, state: State<'_, AppState>) -> WisRes
 
 pub(crate) async fn load_key(state: &State<'_, AppState>) -> WisResult<()> {
     let mut key = state.vault_key.lock().await;
+    if key.is_none() && crate::vault_store::uses_password() {
+        return Err(locked());
+    }
     if key.is_none() {
         let storage = state.storage.clone();
         let loaded = tokio::task::spawn_blocking(move || {
@@ -110,12 +114,16 @@ fn key_unavailable(err: wis_secrets::VaultError) -> WisError {
 /// session. **Always** prompts (even when the vault is already unlocked), since
 /// exporting or restoring saved passwords is an explicit, sensitive action the
 /// user should confirm each time. `reason` is shown in the system prompt.
-pub(crate) async fn authorize_vault(state: &State<'_, AppState>, reason: &str) -> WisResult<()> {
+pub(crate) async fn authorize_vault(
+    state: &State<'_, AppState>,
+    reason: &str,
+    password: Option<&str>,
+) -> WisResult<()> {
     if !vault_supported() {
         return Err(unsupported());
     }
 
-    let authed = crate::biometrics::authenticate(reason.to_string()).await;
+    let authed = crate::vault_store::confirm_user(state, reason, password).await?;
     if !authed {
         return Err(WisError::InvalidInput {
             message: "Authentication was cancelled".to_string(),
@@ -133,8 +141,9 @@ pub(crate) async fn authorize_vault(state: &State<'_, AppState>, reason: &str) -
 pub(crate) async fn export_credentials(
     state: &State<'_, AppState>,
     reason: &str,
+    password: Option<&str>,
 ) -> WisResult<Vec<CredentialBackup>> {
-    authorize_vault(state, reason).await?;
+    authorize_vault(state, reason, password).await?;
     let storage = state.storage.clone();
     let records = run_blocking(move || storage.list_credentials(None)).await?;
 
@@ -172,23 +181,22 @@ pub(crate) async fn import_credentials(
     state: &State<'_, AppState>,
     creds: Vec<CredentialBackup>,
     reason: &str,
+    password: Option<&str>,
 ) -> WisResult<usize> {
     if creds.is_empty() {
         return Ok(0);
     }
-    authorize_vault(state, reason).await?;
+    authorize_vault(state, reason, password).await?;
 
-    let sealed: Vec<(String, String, EncryptedBlob)> = {
-        let guard = state.vault_key.lock().await;
-        let key = guard.as_ref().ok_or_else(locked)?;
-        creds
-            .into_iter()
-            .map(|c| {
-                let blob = wis_secrets::encrypt(key, c.password.as_bytes()).map_err(vault_err)?;
-                Ok((c.host, c.username, blob))
-            })
-            .collect::<WisResult<Vec<_>>>()?
-    };
+    let sealing = state.vault_key.lock().await;
+    let key = sealing.as_ref().ok_or_else(locked)?;
+    let sealed: Vec<(String, String, EncryptedBlob)> = creds
+        .into_iter()
+        .map(|c| {
+            let blob = wis_secrets::encrypt(key, c.password.as_bytes()).map_err(vault_err)?;
+            Ok((c.host, c.username, blob))
+        })
+        .collect::<WisResult<Vec<_>>>()?;
 
     let count = sealed.len();
     let storage = state.storage.clone();
@@ -199,6 +207,7 @@ pub(crate) async fn import_credentials(
         Ok(())
     })
     .await?;
+    drop(sealing);
 
     Ok(count)
 }
@@ -217,7 +226,9 @@ pub struct CsvImportStats {
 pub async fn vault_import_csv(
     app: AppHandle,
     state: State<'_, AppState>,
+    vault_password: Option<String>,
 ) -> WisResult<Option<CsvImportStats>> {
+    let vault_password = vault_password.map(Zeroizing::new);
     if !vault_supported() {
         return Err(unsupported());
     }
@@ -246,7 +257,13 @@ pub async fn vault_import_csv(
             password: c.password,
         })
         .collect();
-    let imported = import_credentials(&state, creds, "Import passwords into your vault").await?;
+    let imported = import_credentials(
+        &state,
+        creds,
+        "Import passwords into your vault",
+        vault_password.as_deref().map(String::as_str),
+    )
+    .await?;
 
     Ok(Some(CsvImportStats { imported, skipped }))
 }
@@ -256,7 +273,12 @@ pub async fn vault_import_csv(
 /// shows an explicit plaintext warning first). Resolves `false` when the user
 /// cancels the save panel.
 #[tauri::command]
-pub async fn vault_export_csv(app: AppHandle, state: State<'_, AppState>) -> WisResult<bool> {
+pub async fn vault_export_csv(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    vault_password: Option<String>,
+) -> WisResult<bool> {
+    let vault_password = vault_password.map(Zeroizing::new);
     if !vault_supported() {
         return Err(unsupported());
     }
@@ -264,7 +286,12 @@ pub async fn vault_export_csv(app: AppHandle, state: State<'_, AppState>) -> Wis
         return Ok(false);
     };
 
-    let creds = export_credentials(&state, "Export your saved passwords to a file").await?;
+    let creds = export_credentials(
+        &state,
+        "Export your saved passwords to a file",
+        vault_password.as_deref().map(String::as_str),
+    )
+    .await?;
     let rows: Vec<wis_core::ParsedCredential> = creds
         .into_iter()
         .map(|c| wis_core::ParsedCredential {
@@ -368,19 +395,19 @@ pub async fn vault_save(
     username: String,
     password: String,
 ) -> WisResult<()> {
-    let blob = {
-        let guard = state.vault_key.lock().await;
-        let key = guard.as_ref().ok_or_else(locked)?;
-        wis_secrets::encrypt(key, password.as_bytes()).map_err(vault_err)?
-    };
+    let sealing = state.vault_key.lock().await;
+    let key = sealing.as_ref().ok_or_else(locked)?;
+    let blob = wis_secrets::encrypt(key, password.as_bytes()).map_err(vault_err)?;
     let storage = state.storage.clone();
 
-    run_blocking(move || {
+    let saved = run_blocking(move || {
         storage
             .save_credential(&host, &username, &blob.ciphertext, &blob.nonce)
             .map(|_| ())
     })
-    .await
+    .await;
+    drop(sealing);
+    saved
 }
 
 /// Decrypt and return one stored password. Requires the vault to be unlocked.
@@ -445,8 +472,15 @@ const BREACH_TOTAL_BUDGET: std::time::Duration = std::time::Duration::from_secs(
 pub async fn vault_check_breaches(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
+    vault_password: Option<String>,
 ) -> WisResult<BreachReport> {
-    authorize_vault(&state, "Check your saved passwords against known breaches").await?;
+    let vault_password = vault_password.map(Zeroizing::new);
+    authorize_vault(
+        &state,
+        "Check your saved passwords against known breaches",
+        vault_password.as_deref().map(String::as_str),
+    )
+    .await?;
 
     let storage = state.storage.clone();
     let records = run_blocking(move || storage.list_credentials(None)).await?;

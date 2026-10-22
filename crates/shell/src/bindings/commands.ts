@@ -113,8 +113,11 @@ export const commands = {
    * are sent; the match is decided locally. Requests go through the
    * workspace's proxy. Requires the vault unlocked.
    */
-  async vaultCheckBreaches(workspaceId: WorkspaceId): Promise<BreachReport> {
-    return invoke('vault_check_breaches', { workspaceId })
+  async vaultCheckBreaches(
+    workspaceId: WorkspaceId,
+    vaultPassword: string | null,
+  ): Promise<BreachReport> {
+    return invoke('vault_check_breaches', { workspaceId, vaultPassword })
   },
 
   /** Recently closed tabs, newest first, for the palette's browsable list. */
@@ -194,24 +197,43 @@ export const commands = {
   },
 
   /** Seal the vault key to an age or SSH public key (biometric prompt). */
-  async vaultSetRecoveryKey(publicKey: string): Promise<string> {
-    return invoke('vault_set_recovery_key', { publicKey })
+  async vaultSetRecoveryKey(publicKey: string, vaultPassword: string | null): Promise<string> {
+    return invoke('vault_set_recovery_key', { publicKey, vaultPassword })
   },
 
   /** Delete the recovery copy (biometric prompt); false if cancelled. */
-  async vaultRemoveRecoveryKey(): Promise<boolean> {
-    return invoke('vault_remove_recovery_key')
+  async vaultRemoveRecoveryKey(vaultPassword: string | null): Promise<boolean> {
+    return invoke('vault_remove_recovery_key', { vaultPassword })
   },
 
   /** Restore the vault key with a private key the user picks; with `force`
-   *  even when it opens only some saved passwords. */
-  async vaultRecover(passphrase: string | null, force: boolean): Promise<RecoverOutcome> {
-    return invoke('vault_recover', { passphrase, force })
+   *  even when it opens only some saved passwords. `newPassword` seals it
+   *  again where a vault password is used. */
+  async vaultRecover(
+    passphrase: string | null,
+    force: boolean,
+    newPassword: string | null,
+  ): Promise<RecoverOutcome> {
+    return invoke('vault_recover', { passphrase, force, newPassword })
   },
 
-  /** Erase every saved password and start a new vault; false if cancelled. */
-  async vaultReset(): Promise<boolean> {
-    return invoke('vault_reset')
+  /** Erase every saved password and start a new vault, sealed with
+   *  `newPassword` where a vault password is used; false if cancelled. */
+  async vaultReset(newPassword: string | null): Promise<boolean> {
+    return invoke('vault_reset', { newPassword })
+  },
+
+  /** Set up a vault sealed with a vault password. */
+  async vaultCreatePassword(password: string): Promise<void> {
+    return invoke('vault_create_password', { password })
+  },
+
+  async vaultUnlockPassword(password: string): Promise<void> {
+    return invoke('vault_unlock_password', { password })
+  },
+
+  async vaultChangePassword(current: string, next: string): Promise<void> {
+    return invoke('vault_change_password', { current, new: next })
   },
 
   /** List saved credentials (no passwords), optionally filtered to one host. */
@@ -257,16 +279,16 @@ export const commands = {
    * vault after a biometric confirm; upserts by site + username. Null on
    * cancel.
    */
-  async vaultImportCsv(): Promise<CsvImportStats | null> {
-    return invoke('vault_import_csv')
+  async vaultImportCsv(vaultPassword: string | null): Promise<CsvImportStats | null> {
+    return invoke('vault_import_csv', { vaultPassword })
   },
 
   /**
    * Write every saved login to a plaintext CSV at a chosen path, after a
    * biometric confirm. Resolves false on cancel.
    */
-  async vaultExportCsv(): Promise<boolean> {
-    return invoke('vault_export_csv')
+  async vaultExportCsv(vaultPassword: string | null): Promise<boolean> {
+    return invoke('vault_export_csv', { vaultPassword })
   },
 
   /** Saved logins for `host` (id + username only, no unlock) for the picker. */
@@ -1115,15 +1137,19 @@ export const commands = {
 
   /** Export the selected categories to a passphrase-encrypted `.wisbackup`
    *  file via a save panel. Resolves false on cancel. */
-  async exportBackup(passphrase: string, options: BackupOptions): Promise<boolean> {
-    return invoke('export_backup', { passphrase, options })
+  async exportBackup(
+    passphrase: string,
+    options: BackupOptions,
+    vaultPassword: string | null,
+  ): Promise<boolean> {
+    return invoke('export_backup', { passphrase, options, vaultPassword })
   },
 
   /** Open a `.wisbackup` file, decrypt it with `passphrase`, apply the profile
    *  graph natively, and return a summary (incl. the settings to apply). Null
    *  on cancel; throws on a wrong passphrase or a corrupted file. */
-  async importBackup(passphrase: string): Promise<ImportSummary | null> {
-    return invoke('import_backup', { passphrase })
+  async importBackup(passphrase: string, vaultPassword: string | null): Promise<ImportSummary | null> {
+    return invoke('import_backup', { passphrase, vaultPassword })
   },
 
   // -- AI (BYOK) ------------------------------------------------------------

@@ -3,6 +3,7 @@
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -13,13 +14,14 @@ use wis_secrets::EncryptedBlob;
 use zeroize::Zeroizing;
 
 use crate::state::AppState;
-use crate::vault::{load_key, locked, unsupported, vault_err, vault_supported};
+use crate::vault::{load_key, locked, unsupported, vault_supported};
 
 const RECOVERY_FILE: &str = "vault-recovery.json";
 const MAX_RECOVERY_FILE_BYTES: u64 = 32 * 1024;
 const MAX_SSH_FILES: usize = 200;
 
 static COPY_WRITES: Mutex<()> = Mutex::new(());
+static ERASE_DIALOG_OPEN: AtomicBool = AtomicBool::new(false);
 
 #[derive(Serialize, Deserialize)]
 struct RecoveryCopy {
@@ -71,7 +73,9 @@ pub async fn vault_set_recovery_key(
     app: AppHandle,
     state: State<'_, AppState>,
     public_key: String,
+    vault_password: Option<String>,
 ) -> WisResult<String> {
+    let vault_password = vault_password.map(Zeroizing::new);
     let recipient = recovery::recipient(&public_key).map_err(recovery_err)?;
     if recipient.is_ssh() {
         let ssh_dir = app
@@ -82,18 +86,32 @@ pub async fn vault_set_recovery_key(
         let key = recipient.to_string();
         blocking(move || refuse_unprotected_local_key(&ssh_dir, &key)).await?;
     }
-    crate::vault::authorize_vault(&state, "Set up recovery for your saved passwords").await?;
+    crate::vault::authorize_vault(
+        &state,
+        "Set up recovery for your saved passwords",
+        vault_password.as_deref().map(String::as_str),
+    )
+    .await?;
     seal_to(&app, &state, &recipient).await?;
     Ok(recipient.to_string())
 }
 
-/// Delete the recovery copy after a biometric check. Resolves `false` when
-/// the check is cancelled.
+/// Delete the recovery copy once the user confirms it is them. Resolves
+/// `false` when they do not.
 #[tauri::command]
-pub async fn vault_remove_recovery_key(app: AppHandle) -> WisResult<bool> {
-    if !crate::biometrics::authenticate("Remove recovery for your saved passwords".to_string())
-        .await
-    {
+pub async fn vault_remove_recovery_key(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    vault_password: Option<String>,
+) -> WisResult<bool> {
+    let vault_password = vault_password.map(Zeroizing::new);
+    let confirmed = crate::vault_store::confirm_user(
+        &state,
+        "Remove recovery for your saved passwords",
+        vault_password.as_deref().map(String::as_str),
+    )
+    .await?;
+    if !confirmed {
         return Ok(false);
     }
     let path = copy_path(&app)?;
@@ -101,19 +119,25 @@ pub async fn vault_remove_recovery_key(app: AppHandle) -> WisResult<bool> {
     Ok(true)
 }
 
-/// After a biometric check, open the recovery copy with a private key the
-/// user picks and put it back in the key store when it opens every saved
-/// password, or with `force` when it opens some.
+/// Open the recovery copy with a private key the user picks and put it back
+/// where the key is kept when it opens every saved password, or with `force`
+/// when it opens some. A biometric check comes first; with a vault password,
+/// the private key alone is the proof and `new_password` seals the key again.
 #[tauri::command]
 pub async fn vault_recover(
     app: AppHandle,
     state: State<'_, AppState>,
     passphrase: Option<String>,
     force: bool,
+    new_password: Option<String>,
 ) -> WisResult<RecoverOutcome> {
     if !vault_supported() {
         return Err(unsupported());
     }
+
+    let new_password = new_password.map(Zeroizing::new);
+    let uses_password = crate::vault_store::uses_password();
+    crate::vault_store::check_password_for_mode(new_password.as_deref().map(String::as_str))?;
     let path = copy_path(&app)?;
     let Some(copy) = blocking(move || read_copy(&path)).await? else {
         return Err(invalid("No recovery key is set up on this device"));
@@ -122,7 +146,9 @@ pub async fn vault_recover(
     if !blocking(move || storage.has_credentials().map_err(persist_err)).await? {
         return Err(invalid("There are no saved passwords to recover"));
     }
-    if !crate::biometrics::authenticate("Recover your saved passwords".to_string()).await {
+    if !uses_password
+        && !crate::vault_store::confirm_user(&state, "Recover your saved passwords", None).await?
+    {
         return Ok(RecoverOutcome::Cancelled);
     }
     let Some(private_path) = crate::panels::run_open_panel(&app, &[])? else {
@@ -168,7 +194,7 @@ pub async fn vault_recover(
         if !storage.has_credentials().map_err(persist_err)? {
             return Err(invalid("There are no saved passwords to recover"));
         }
-        wis_secrets::restore_master_key(&key).map_err(vault_err)?;
+        crate::vault_store::restore_key(&key, new_password.as_deref().map(String::as_str))?;
         Ok(key)
     })
     .await?;
@@ -177,16 +203,30 @@ pub async fn vault_recover(
     Ok(RecoverOutcome::Recovered)
 }
 
-/// Erase the vault key, every saved password and the recovery copy after a
-/// biometric check, then start a new vault. The key goes first, so a key
-/// store that refuses leaves everything as it was. Resolves `false` when the
-/// check is cancelled.
+/// Erase the vault key, every saved password and the recovery copy, then
+/// start a new vault, sealed with `new_password` where a vault password is
+/// used. A biometric check comes first; a vault password is not asked for.
+/// The key goes first, so a key store that refuses leaves everything as it
+/// was. Resolves `false` when the check is cancelled.
 #[tauri::command]
-pub async fn vault_reset(app: AppHandle, state: State<'_, AppState>) -> WisResult<bool> {
+pub async fn vault_reset(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    new_password: Option<String>,
+) -> WisResult<bool> {
     if !vault_supported() {
         return Err(unsupported());
     }
-    if !crate::biometrics::authenticate("Erase your saved passwords".to_string()).await {
+
+    let new_password = new_password.map(Zeroizing::new);
+    let uses_password = crate::vault_store::uses_password();
+    crate::vault_store::check_password_for_mode(new_password.as_deref().map(String::as_str))?;
+    let confirmed = if uses_password {
+        confirm_erase_natively(&app).await?
+    } else {
+        crate::vault_store::confirm_user(&state, "Erase your saved passwords", None).await?
+    };
+    if !confirmed {
         return Ok(false);
     }
 
@@ -195,20 +235,51 @@ pub async fn vault_reset(app: AppHandle, state: State<'_, AppState>) -> WisResul
         *slot = None;
         let storage = state.storage.clone();
         let path = copy_path(&app)?;
-        blocking(move || {
-            wis_secrets::keychain_delete().map_err(|err| {
+        let fresh = blocking(move || {
+            crate::vault_store::delete_key().map_err(|err| {
                 invalid(&format!(
                     "Wis couldn't remove the vault's key, so nothing was erased ({err})"
                 ))
             })?;
             storage.clear_credentials().map_err(persist_err)?;
-            remove_copy(&path)
+            remove_copy(&path)?;
+
+            let Some(password) = new_password else {
+                return Ok(None);
+            };
+            let key = wis_secrets::generate_master_key();
+            crate::vault_store::seal_and_store(&key, &password)?;
+            Ok(Some(key))
         })
         .await?;
+
+        if let Some(key) = fresh {
+            *slot = Some(key);
+        }
     }
-    load_key(&state).await?;
+    if !uses_password {
+        load_key(&state).await?;
+    }
 
     Ok(true)
+}
+
+async fn confirm_erase_natively(app: &AppHandle) -> WisResult<bool> {
+    if ERASE_DIALOG_OPEN.swap(true, Ordering::AcqRel) {
+        return Ok(false);
+    }
+    let app = app.clone();
+    let answered = tokio::task::spawn_blocking(move || {
+        crate::panels::confirm_natively(
+            &app,
+            "Erase every saved password?",
+            "Wis deletes your saved passwords, the vault's key and its recovery copy, then sets up a new vault with the password you chose. This can't be undone.",
+            "Erase",
+        )
+    })
+    .await;
+    ERASE_DIALOG_OPEN.store(false, Ordering::Release);
+    answered.map_err(|err| persist_err(format!("vault task panicked: {err}")))?
 }
 
 fn refuse_unprotected_local_key(ssh_dir: &Path, key: &str) -> WisResult<()> {

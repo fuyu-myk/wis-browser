@@ -17,6 +17,7 @@ import type {
   UserSettingsPatch,
 } from '@/bindings/types'
 import { Switch } from '@/components/controls'
+import { useVaultConfirm } from '@/components/VaultPassword'
 import { cx } from '@/lib/cx'
 import { withImportedRoutes } from '@/lib/linkRoutes'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
@@ -51,6 +52,7 @@ function sameTheme(a: CustomTheme, b: CustomTheme): boolean {
 
 export function BackupSection({ settings }: BackupSectionProps) {
   const qc = useQueryClient()
+  const { confirm, prompt } = useVaultConfirm()
   const [includeSettings, setIncludeSettings] = useState(true)
   const [includeProfile, setIncludeProfile] = useState(false)
   const [includeHistory, setIncludeHistory] = useState(false)
@@ -71,15 +73,18 @@ export function BackupSection({ settings }: BackupSectionProps) {
       setStatus({ kind: 'err', text: 'Select at least one category to back up.' })
       return
     }
+    const consent = includeVault ? await confirm() : { password: null }
+    if (!consent) return
     setBusy(true)
     try {
-      const saved = await commands.exportBackup(exportPass, {
+      const options = {
         settings: includeSettings,
         profile: includeProfile,
         history: includeProfile && includeHistory,
         canvases: includeProfile && includeCanvases,
         vault: includeVault,
-      })
+      }
+      const saved = await commands.exportBackup(exportPass, options, consent.password)
       if (saved) {
         setExportPass('')
         setStatus({
@@ -100,9 +105,11 @@ export function BackupSection({ settings }: BackupSectionProps) {
       setStatus({ kind: 'err', text: "Enter the backup's passphrase." })
       return
     }
+    const consent = await confirm()
+    if (!consent) return
     setBusy(true)
     try {
-      const summary: ImportSummary | null = await commands.importBackup(importPass)
+      const summary: ImportSummary | null = await commands.importBackup(importPass, consent.password)
       if (!summary) return // cancelled
       const applied: string[] = []
       if (summary.settings) {
@@ -274,6 +281,7 @@ export function BackupSection({ settings }: BackupSectionProps) {
           {status.text}
         </p>
       )}
+      {prompt}
     </section>
   )
 }

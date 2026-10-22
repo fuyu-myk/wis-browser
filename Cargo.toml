@@ -73,11 +73,12 @@ base64 = "0.22"
 chacha20poly1305 = "0.10"
 age = { version = "0.12.1", default-features = false, features = ["ssh", "armor"] }
 blake2 = "0.10"
+icu_normalizer = { version = "2.2", default-features = false, features = ["compiled_data"] }
 rand = "0.8"
 zeroize = { version = "1", features = ["derive"] }
 security-framework = "2.11"
 # Passphrase key derivation for portable encrypted backups.
-argon2 = "0.5"
+argon2 = { version = "0.5", features = ["zeroize"] }
 
 # Internal crates
 wis-core = { path = "crates/core" }

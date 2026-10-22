@@ -93,6 +93,7 @@ mod uncloak;
 mod usage;
 mod vault;
 mod vault_recovery;
+mod vault_store;
 mod video_popout;
 mod wake;
 mod wallpapers;
@@ -187,6 +188,7 @@ pub fn run() {
                 .app_data_dir()
                 .expect("could not resolve app data directory");
             std::fs::create_dir_all(&data_dir)?;
+            vault_store::keep_sealed_key_in(&data_dir);
             let db_path = data_dir.join("wis.db");
 
             log::info!("opening database at {}", db_path.display());
@@ -625,6 +627,9 @@ pub fn run() {
             vault_recovery::vault_remove_recovery_key,
             vault_recovery::vault_recover,
             vault_recovery::vault_reset,
+            vault_store::vault_create_password,
+            vault_store::vault_unlock_password,
+            vault_store::vault_change_password,
             vault::vault_list,
             vault::vault_save,
             vault::vault_reveal,

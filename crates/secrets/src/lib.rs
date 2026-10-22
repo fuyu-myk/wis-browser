@@ -23,6 +23,7 @@
 pub mod breach;
 pub mod password;
 pub mod password_rules;
+pub mod password_vault;
 pub mod recovery;
 
 pub use breach::{count_in_range, range_split, RANGE_PREFIX_LEN};
@@ -63,6 +64,10 @@ pub enum VaultError {
     Unsupported,
     #[error("the key your saved data was sealed with is missing")]
     Missing,
+    #[error("wrong vault password")]
+    WrongPassword,
+    #[error("vault file: {0}")]
+    Io(String),
 }
 
 /// Generate a fresh master key from the OS CSPRNG.

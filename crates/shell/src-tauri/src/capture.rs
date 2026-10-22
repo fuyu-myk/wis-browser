@@ -187,15 +187,13 @@ pub async fn capture_save(state: State<'_, AppState>, tab_id: TabId) -> WisResul
         None => return Ok(()),
     };
 
-    let blob = {
-        let guard = state.vault_key.lock().await;
-        let key = guard.as_ref().ok_or_else(locked)?;
-        wis_secrets::encrypt(key, pending.password.as_bytes()).map_err(|err| {
-            WisError::InvalidInput {
-                message: format!("vault: {err}"),
-            }
-        })?
-    };
+    let sealing = state.vault_key.lock().await;
+    let key = sealing.as_ref().ok_or_else(locked)?;
+    let blob = wis_secrets::encrypt(key, pending.password.as_bytes()).map_err(|err| {
+        WisError::InvalidInput {
+            message: format!("vault: {err}"),
+        }
+    })?;
 
     crate::signup::forget_generated(&pending.host);
 
@@ -203,7 +201,7 @@ pub async fn capture_save(state: State<'_, AppState>, tab_id: TabId) -> WisResul
     let host = pending.host.clone();
     let username = pending.username.clone();
 
-    tokio::task::spawn_blocking(move || {
+    let saved = tokio::task::spawn_blocking(move || {
         storage
             .save_credential(&host, &username, &blob.ciphertext, &blob.nonce)
             .map(|_| ())
@@ -214,7 +212,9 @@ pub async fn capture_save(state: State<'_, AppState>, tab_id: TabId) -> WisResul
     })?
     .map_err(|err| WisError::PersistenceFailed {
         reason: err.to_string(),
-    })
+    });
+    drop(sealing);
+    saved
 }
 
 /// Discard `tab_id`'s pending captured login (user clicked "Not now").

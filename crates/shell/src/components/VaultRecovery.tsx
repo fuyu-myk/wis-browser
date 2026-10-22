@@ -3,6 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import {
+  NewPasswordFields,
+  newPasswordReady,
+  NO_NEW_PASSWORD,
+  useVaultConfirm,
+} from '@/components/VaultPassword'
 import { errorMessage } from '@/lib/errors'
 import { shortKey } from '@/lib/vaultRecovery'
 
@@ -26,17 +32,21 @@ function Failure({ error }: { error: unknown }) {
 }
 
 interface VaultRescueProps {
+  passwordMode: boolean
   onDone: () => void
 }
 
-/** Ways back in when the vault's key cannot be loaded. */
-export function VaultRescue({ onDone }: VaultRescueProps) {
+/** Ways back in when the vault's key cannot be loaded or its password is lost. */
+export function VaultRescue({ passwordMode, onDone }: VaultRescueProps) {
   const { data: recoveryKey, error: copyError } = useRecoveryKey()
+  const [chosen, setChosen] = useState(NO_NEW_PASSWORD)
+  const ready = !passwordMode || newPasswordReady(chosen)
+  const newPassword = passwordMode ? chosen.password : null
   const [passphrase, setPassphrase] = useState('')
   const [confirmReset, setConfirmReset] = useState(false)
   const [partial, setPartial] = useState<{ opened: number; total: number } | null>(null)
   const recover = useMutation({
-    mutationFn: (force: boolean) => commands.vaultRecover(passphrase || null, force),
+    mutationFn: (force: boolean) => commands.vaultRecover(passphrase || null, force, newPassword),
     onMutate: () => setPartial(null),
     onSettled: (outcome) => {
       if (outcome?.kind !== 'partial') setPassphrase('')
@@ -47,7 +57,7 @@ export function VaultRescue({ onDone }: VaultRescueProps) {
     },
   })
   const reset = useMutation({
-    mutationFn: () => commands.vaultReset(),
+    mutationFn: () => commands.vaultReset(newPassword),
     onSuccess: (done) => {
       if (done) onDone()
     },
@@ -55,6 +65,17 @@ export function VaultRescue({ onDone }: VaultRescueProps) {
 
   return (
     <>
+      {passwordMode && (
+        <>
+          <div className="row">
+            <div className="l">
+              <span>Choose a new vault password</span>
+              <span>Recovering or starting over seals your vault with it.</span>
+            </div>
+          </div>
+          <NewPasswordFields value={chosen} onChange={setChosen} />
+        </>
+      )}
       {recoveryKey && (
         <>
           <div className="row">
@@ -77,7 +98,7 @@ export function VaultRescue({ onDone }: VaultRescueProps) {
               type="button"
               className="kb-btn"
               onClick={() => recover.mutate(false)}
-              disabled={recover.isPending}
+              disabled={recover.isPending || !ready}
             >
               Choose key…
             </button>
@@ -97,7 +118,7 @@ export function VaultRescue({ onDone }: VaultRescueProps) {
                 type="button"
                 className="kb-btn"
                 onClick={() => recover.mutate(true)}
-                disabled={recover.isPending}
+                disabled={recover.isPending || !ready}
               >
                 Restore anyway…
               </button>
@@ -113,8 +134,8 @@ export function VaultRescue({ onDone }: VaultRescueProps) {
         <button
           type="button"
           className="kb-btn is-danger"
-          onClick={() => setConfirmReset(true)}
-          disabled={reset.isPending}
+          onClick={() => (passwordMode ? reset.mutate() : setConfirmReset(true))}
+          disabled={reset.isPending || !ready}
         >
           Erase…
         </button>
@@ -142,16 +163,24 @@ export function RecoveryKeyRow() {
   const { data: recoveryKey, error: copyError } = useRecoveryKey()
   const [input, setInput] = useState('')
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const { confirm, prompt } = useVaultConfirm()
   const refresh = () => qc.invalidateQueries({ queryKey: VAULT_RECOVERY_KEY })
   const save = useMutation({
-    mutationFn: () => commands.vaultSetRecoveryKey(input),
-    onSuccess: () => {
+    mutationFn: async () => {
+      const consent = await confirm()
+      return consent ? commands.vaultSetRecoveryKey(input, consent.password) : null
+    },
+    onSuccess: (saved) => {
+      if (saved === null) return
       setInput('')
       void refresh()
     },
   })
   const remove = useMutation({
-    mutationFn: () => commands.vaultRemoveRecoveryKey(),
+    mutationFn: async () => {
+      const consent = await confirm()
+      return consent ? commands.vaultRemoveRecoveryKey(consent.password) : false
+    },
     onSuccess: () => void refresh(),
   })
   const canSave = input.trim() !== '' && !save.isPending
@@ -211,6 +240,7 @@ export function RecoveryKeyRow() {
         }}
         onCancel={() => setConfirmRemove(false)}
       />
+      {prompt}
     </>
   )
 }
