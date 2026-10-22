@@ -305,6 +305,29 @@ impl TrackerBlocker {
         }
     }
 
+    /// A list blocks the host and an `@@` rule then lets it through.
+    pub fn excepts_tunnel(&self, host: &str) -> bool {
+        tunnel_url(host)
+            .and_then(|url| Request::new(url.as_str(), url.as_str(), "document").ok())
+            .is_some_and(|request| {
+                self.engine
+                    .check_network_request(&request)
+                    .exception
+                    .is_some()
+            })
+    }
+
+    /// Judged from the host it hides behind, so `$third-party` rules apply.
+    pub fn blocks_alias(&self, alias: &str, host: &str) -> bool {
+        let (Some(alias), Some(host)) = (tunnel_url(alias), tunnel_url(host)) else {
+            return false;
+        };
+        matches!(
+            self.check_request(&alias, &host, RequestType::Document),
+            Ok(BlockerVerdict::Block { .. })
+        )
+    }
+
     pub fn blocks_tunnel(&self, host: &str) -> bool {
         tunnel_url(host).is_some_and(|url| {
             matches!(

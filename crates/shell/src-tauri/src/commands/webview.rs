@@ -232,6 +232,8 @@ pub async fn create_tab_webview(
                 crate::app_launch::intake_from_tab(&app_for_nav, tab_id, url.clone());
                 return false;
             }
+            #[cfg(windows)]
+            crate::uncloak::opening_page(&app_for_nav.state(), &label_for_nav, url.as_str());
 
             if scriptlets {
                 crate::cosmetic::swap_scriptlets(&app_for_nav, &label_for_nav, url.as_str());
@@ -629,6 +631,8 @@ pub async fn create_tab_webview(
         crate::hardening::wanted(&state, tab_workspace).await
     };
     crate::hardening::mark(&label_ident, hardening);
+    crate::uncloak::register(&state, &label_ident, workspace_id);
+    crate::uncloak::opening_page(&state, &label_ident, &url);
     let child = window
         .add_child(
             builder,

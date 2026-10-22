@@ -160,7 +160,9 @@ pub async fn close_tab(
 
     crate::page_source::forget(id);
     crate::signup::forget_field(&id.as_uuid().to_string());
-    crate::hardening::forget(&format!("tab-{}", id.as_uuid()));
+    let label = format!("tab-{}", id.as_uuid());
+    crate::hardening::forget(&label);
+    crate::uncloak::forget(&state, &label);
     crate::capture::forget(&state, id).await;
 
     // Record the tab for "reopen closed tab" before it's removed.
@@ -855,6 +857,7 @@ pub async fn navigate_tab(
     let label = format!("tab-{}", id.as_uuid());
     if let Some(webview) = app.webviews().get(&label).cloned() {
         let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
+        crate::uncloak::opening_page(&state, &label, parsed.as_str());
         webview
             .navigate(crate::canvas::engine_url(parsed))
             .map_err(|err| WisError::InvalidInput {

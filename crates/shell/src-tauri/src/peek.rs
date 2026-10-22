@@ -209,6 +209,8 @@ pub async fn open_peek(
                 );
                 return false;
             }
+            #[cfg(windows)]
+            crate::uncloak::opening_page(&app_for_nav.state(), &label_for_nav, url.as_str());
             true
         });
     }
@@ -271,6 +273,8 @@ pub async fn open_peek(
     }
 
     crate::hardening::mark(&label, crate::hardening::wanted(&state, active_ws).await);
+    crate::uncloak::register(&state, &label, active_ws);
+    crate::uncloak::opening_page(&state, &label, &url);
     let child = window
         .add_child(
             builder,

@@ -65,6 +65,7 @@ pub async fn delete_workspace(
 
     mutate_unit_immediate(&app, &state, |s| s.with_workspace_removed(id)).await?;
     crate::private_store::release(&app, id);
+    crate::uncloak::forget_workspace(&state, id);
 
     #[cfg(target_os = "macos")]
     {

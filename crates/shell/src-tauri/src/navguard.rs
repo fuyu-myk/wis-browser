@@ -242,6 +242,7 @@ fn followed(app: &AppHandle, url: Url) -> Url {
 fn navigate_tab(app: &AppHandle, tab: TabId, url: Url) -> WisResult<()> {
     let label = format!("tab-{}", tab.as_uuid());
     if let Some(wv) = app.webviews().get(&label).cloned() {
+        crate::uncloak::opening_page(&app.state(), &label, url.as_str());
         wv.navigate(url).map_err(|err| WisError::InvalidInput {
             message: format!("nav guard navigate failed: {err}"),
         })?;

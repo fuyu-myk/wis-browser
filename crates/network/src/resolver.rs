@@ -62,6 +62,20 @@ pub fn doh_provider_for(doh_url: &str) -> DohProvider {
 #[async_trait]
 pub trait Resolver: Send + Sync {
     async fn resolve(&self, hostname: &str) -> NetworkResult<Vec<IpAddr>>;
+
+    /// The addresses with the CNAME chain they were reached through, empty
+    /// where the resolver cannot see it.
+    async fn resolve_with_aliases(&self, hostname: &str) -> NetworkResult<Resolved> {
+        Ok(Resolved {
+            ips: self.resolve(hostname).await?,
+            aliases: Vec::new(),
+        })
+    }
+}
+
+pub struct Resolved {
+    pub ips: Vec<IpAddr>,
+    pub aliases: Vec<String>,
 }
 
 /// DNS-over-HTTPS resolver. Wraps `hickory-resolver`.
@@ -137,6 +151,11 @@ impl Resolver for SwappableResolver {
         let current = self.current();
         current.resolve(hostname).await
     }
+
+    async fn resolve_with_aliases(&self, hostname: &str) -> NetworkResult<Resolved> {
+        let current = self.current();
+        current.resolve_with_aliases(hostname).await
+    }
 }
 
 #[async_trait]
@@ -149,12 +168,41 @@ impl Resolver for DohResolver {
             .map_err(|e| NetworkError::Resolver(e.to_string()))?;
         Ok(lookup.iter().collect())
     }
+
+    async fn resolve_with_aliases(&self, hostname: &str) -> NetworkResult<Resolved> {
+        let lookup = self
+            .resolver
+            .lookup_ip(hostname)
+            .await
+            .map_err(|e| NetworkError::Resolver(e.to_string()))?;
+        Ok(Resolved {
+            ips: lookup.iter().collect(),
+            aliases: cname_targets(lookup.as_lookup()),
+        })
+    }
+}
+
+fn cname_targets(lookup: &hickory_resolver::lookup::Lookup) -> Vec<String> {
+    lookup
+        .record_iter()
+        .filter_map(|record| match record.data() {
+            hickory_resolver::proto::rr::RData::CNAME(target) => Some(
+                target
+                    .0
+                    .to_utf8()
+                    .trim_end_matches('.')
+                    .to_ascii_lowercase(),
+            ),
+            _ => None,
+        })
+        .collect()
 }
 
 /// In-memory stub resolver for tests. Maps hostnames to IPs without I/O.
 #[derive(Default, Clone)]
 pub struct StubResolver {
     entries: HashMap<String, Vec<IpAddr>>,
+    aliases: HashMap<String, Vec<String>>,
 }
 
 impl StubResolver {
@@ -166,6 +214,14 @@ impl StubResolver {
         self.entries.insert(hostname.into(), ips);
         self
     }
+
+    pub fn with_aliases(mut self, hostname: impl Into<String>, aliases: &[&str]) -> Self {
+        self.aliases.insert(
+            hostname.into(),
+            aliases.iter().map(|alias| alias.to_string()).collect(),
+        );
+        self
+    }
 }
 
 #[async_trait]
@@ -175,5 +231,46 @@ impl Resolver for StubResolver {
             .get(hostname)
             .cloned()
             .ok_or_else(|| NetworkError::Resolver(format!("no stub entry for {hostname}")))
+    }
+
+    async fn resolve_with_aliases(&self, hostname: &str) -> NetworkResult<Resolved> {
+        Ok(Resolved {
+            ips: self.resolve(hostname).await?,
+            aliases: self.aliases.get(hostname).cloned().unwrap_or_default(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::Ipv4Addr;
+    use std::str::FromStr;
+
+    use hickory_resolver::lookup::Lookup;
+    use hickory_resolver::proto::op::Query;
+    use hickory_resolver::proto::rr::rdata::{A, CNAME};
+    use hickory_resolver::proto::rr::{Name, RData, Record, RecordType};
+
+    use super::*;
+
+    #[test]
+    fn a_lookup_s_chain_reads_as_plain_lowercase_hosts() {
+        let name = |host: &str| Name::from_str(host).unwrap();
+        let records: Arc<[Record]> = Arc::from(vec![
+            Record::from_rdata(
+                name("a.site.test."),
+                60,
+                RData::CNAME(CNAME(name("A-Site.Tracker.test."))),
+            ),
+            Record::from_rdata(
+                name("a-site.tracker.test."),
+                60,
+                RData::A(A(Ipv4Addr::LOCALHOST)),
+            ),
+        ]);
+        let lookup =
+            Lookup::new_with_max_ttl(Query::query(name("a.site.test."), RecordType::A), records);
+
+        assert_eq!(cname_targets(&lookup), ["a-site.tracker.test"]);
     }
 }

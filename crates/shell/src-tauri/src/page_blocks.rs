@@ -1,6 +1,7 @@
 //! What was blocked on each tab's page, for the site panel (macOS). WebKit
 //! reports the loads Wis's rule lists block; a load the workspace proxy
-//! refused shows up as a failed load whose host the filter engine blocks.
+//! refused shows up as a failed load whose host the filter engine blocks or
+//! whose aliases it uncloaked.
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
@@ -132,13 +133,13 @@ fn record_failed_load(label: &str, url: &str) {
     let (Some(app), Some(host)) = (APP.get(), host_of(url)) else {
         return;
     };
-    let blocker = app
-        .state::<crate::state::AppState>()
+    let state = app.state::<crate::state::AppState>();
+    let blocker = state
         .tracker_blocker
         .read()
         .unwrap_or_else(PoisonError::into_inner)
         .clone();
-    if blocker.blocks_tunnel(&host) {
+    if blocker.blocks_tunnel(&host) || crate::uncloak::was_uncloaked(&state, label, &host) {
         record_host(label, &host);
     }
 }

@@ -2,6 +2,7 @@
 //! outbound request. Composes the tracker blocker, the HTTPS upgrader, and
 //! any per-site overrides into one decision.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -9,6 +10,7 @@ use url::Url;
 use wis_core::{PerSitePolicy, PrivacyMode, UpstreamProxy};
 
 use crate::blocker::{BlockerVerdict, RequestType, TrackerBlocker};
+use crate::cloaking::Cloaking;
 use crate::error::NetworkResult;
 use crate::upgrader::{HttpsUpgrader, UpgradeAction};
 
@@ -41,6 +43,9 @@ pub struct RequestPolicy {
     upstream: Option<UpstreamProxy>,
     global_privacy_control: bool,
     refuse_all: bool,
+    cloaking: Option<Arc<Cloaking>>,
+    /// Registrable domains whose blocking is off in the site panel.
+    unblocked_sites: Arc<HashSet<String>>,
 }
 
 impl RequestPolicy {
@@ -53,6 +58,8 @@ impl RequestPolicy {
             upstream: None,
             global_privacy_control: false,
             refuse_all: false,
+            cloaking: None,
+            unblocked_sites: Arc::default(),
         }
     }
 
@@ -150,6 +157,44 @@ impl RequestPolicy {
                 }
             }
             BlockerVerdict::Block { reason } => Ok(Decision::Block { reason }),
+        }
+    }
+
+    pub fn with_cloaking(
+        mut self,
+        cloaking: Arc<Cloaking>,
+        unblocked_sites: Arc<HashSet<String>>,
+    ) -> Self {
+        self.cloaking = Some(cloaking);
+        self.unblocked_sites = unblocked_sites;
+        self
+    }
+
+    pub fn uncloaks(&self) -> bool {
+        self.cloaking.is_some()
+            && self.privacy_mode != PrivacyMode::Permissive
+            && self.upstream.is_none()
+    }
+
+    /// The alias that hides a listed tracker behind `host`. Every alias in the
+    /// chain counts. Like uBO, an alias on the host's own site, a page being
+    /// opened and a host a list excepts are left alone.
+    pub fn cloaking_alias<'a>(&self, host: &str, aliases: &'a [String]) -> Option<&'a str> {
+        let cloaking = self.cloaking.as_ref()?;
+        let site = wis_core::site::registrable_domain(host);
+        let alias = aliases.iter().map(String::as_str).find(|alias| {
+            wis_core::site::registrable_domain(alias) != site
+                && self.blocker.blocks_alias(alias, host)
+        })?;
+        let spared = cloaking.is_page(host)
+            || self.unblocked_sites.contains(&site)
+            || self.blocker.excepts_tunnel(host);
+        (!spared).then_some(alias)
+    }
+
+    pub fn record_uncloaked(&self, host: &str) {
+        if let Some(cloaking) = &self.cloaking {
+            cloaking.record_uncloaked(host);
         }
     }
 

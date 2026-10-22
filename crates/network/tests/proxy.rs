@@ -18,8 +18,11 @@ use hyper::body::{Bytes, Incoming};
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response};
 use hyper_util::rt::TokioIo;
+use std::collections::HashSet;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+
+use wis_network::cloaking::Cloaking;
 use wis_network::{
     policy::Decision, ProxyServer, RequestPolicy, Resolver, StubResolver, SwappableResolver,
     TrackerBlocker,
@@ -858,4 +861,159 @@ async fn a_route_change_cuts_a_plain_http_response_still_streaming() {
         !matches!(rest, Some(Ok(_))),
         "the response must not carry on, got {rest:?}"
     );
+}
+
+/// CONNECTs to `authority` through `proxy`; the body only for a refusal.
+async fn connect_answer(proxy: &ProxyServer, authority: &str) -> (u16, String) {
+    let stream = TcpStream::connect(("127.0.0.1", proxy.port()))
+        .await
+        .expect("connect");
+    let (mut sender, conn) =
+        hyper::client::conn::http1::handshake::<_, Empty<Bytes>>(TokioIo::new(stream))
+            .await
+            .expect("handshake");
+    tokio::spawn(async move {
+        conn.await.ok();
+    });
+
+    let req = Request::builder()
+        .method(Method::CONNECT)
+        .uri(authority)
+        .body(Empty::<Bytes>::new())
+        .expect("request build");
+    let resp = sender.send_request(req).await.expect("send");
+    let status = resp.status().as_u16();
+    if status == 200 {
+        return (status, String::new());
+    }
+
+    let body = resp.into_body().collect().await.expect("body").to_bytes();
+    (status, String::from_utf8_lossy(&body).into_owned())
+}
+
+/// EasyPrivacy lists most cloaking vendors for third parties only.
+fn cloaking_policy(mode: wis_core::PrivacyMode, cloaking: Arc<Cloaking>) -> RequestPolicy {
+    let blocker = TrackerBlocker::from_filter_texts(&[
+        "||tracker.test^$third-party\n||stats.site.test^\n||api.site.test^\n@@||api.site.test^\n",
+    ])
+    .expect("list");
+    RequestPolicy::new(mode, Arc::new(blocker)).with_cloaking(
+        cloaking,
+        Arc::new(HashSet::from(["unblocked.test".to_owned()])),
+    )
+}
+
+/// Each host resolves to loopback through the aliases given.
+fn aliased(hosts: &[(&str, &[&str])]) -> Arc<dyn Resolver> {
+    let resolver = hosts
+        .iter()
+        .fold(StubResolver::new(), |resolver, (host, aliases)| {
+            resolver
+                .with(*host, vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])
+                .with_aliases(*host, aliases)
+        });
+    Arc::new(resolver)
+}
+
+async fn status(proxy: &ProxyServer, host: &str, port: u16) -> u16 {
+    connect_answer(proxy, &format!("{host}:{port}")).await.0
+}
+
+#[tokio::test]
+async fn a_host_aliasing_a_listed_tracker_is_refused() {
+    let port = start_stub_upstream("ok").await;
+    let resolver = aliased(&[
+        ("metrics.site.test", &["metrics-site.tracker.test"]),
+        ("cdn.site.test", &["cdn-site.edge.test", "e1.cdn.test"]),
+    ]);
+    let cloaking = Arc::new(Cloaking::default());
+    let policy = cloaking_policy(wis_core::PrivacyMode::Balanced, cloaking.clone());
+    let proxy = start_proxy_with(policy, resolver).await;
+
+    let (status_code, body) = connect_answer(&proxy, &format!("metrics.site.test:{port}")).await;
+    assert_eq!(status_code, 502);
+    assert!(body.contains("metrics-site.tracker.test"), "{body}");
+    assert!(cloaking.was_uncloaked("metrics.site.test"));
+    assert_eq!(status(&proxy, "cdn.site.test", port).await, 200);
+}
+
+#[tokio::test]
+async fn a_page_being_opened_is_spared_in_its_own_workspace_only() {
+    let port = start_stub_upstream("ok").await;
+    let resolver = aliased(&[("go.shop.test", &["go-shop.tracker.test"])]);
+    let opening = Arc::new(Cloaking::default());
+    let elsewhere = Arc::new(Cloaking::default());
+    let proxy = start_proxy_with(
+        cloaking_policy(wis_core::PrivacyMode::Balanced, opening.clone()),
+        resolver.clone(),
+    )
+    .await;
+    let other = start_proxy_with(
+        cloaking_policy(wis_core::PrivacyMode::Balanced, elsewhere),
+        resolver,
+    )
+    .await;
+
+    assert_eq!(status(&proxy, "go.shop.test", port).await, 502);
+    opening.opening_page("https://go.shop.test/offer?id=1");
+    assert_eq!(status(&proxy, "go.shop.test", port).await, 200);
+    assert_eq!(status(&other, "go.shop.test", port).await, 502);
+}
+
+/// As uBO: an alias on the host's own site, or a host a list blocks and then
+/// excepts. A site with blocking off in the site panel is spared too.
+#[tokio::test]
+async fn same_site_aliases_excepted_hosts_and_unblocked_sites_are_spared() {
+    let port = start_stub_upstream("ok").await;
+    let resolver = aliased(&[
+        ("www2.site.test", &["stats.site.test"]),
+        ("api.site.test", &["api-site.tracker.test"]),
+        ("go.unblocked.test", &["go-unblocked.tracker.test"]),
+    ]);
+    let policy = cloaking_policy(wis_core::PrivacyMode::Balanced, Arc::default());
+    let proxy = start_proxy_with(policy, resolver).await;
+
+    assert_eq!(status(&proxy, "www2.site.test", port).await, 200);
+    assert_eq!(status(&proxy, "api.site.test", port).await, 200);
+    assert_eq!(status(&proxy, "go.unblocked.test", port).await, 200);
+}
+
+#[tokio::test]
+async fn permissive_workspaces_do_not_uncloak() {
+    let port = start_stub_upstream("ok").await;
+    let resolver = aliased(&[("pixel.site.test", &["pixel-site.tracker.test"])]);
+    let policy = cloaking_policy(wis_core::PrivacyMode::Permissive, Arc::default());
+    let proxy = start_proxy_with(policy, resolver).await;
+
+    assert_eq!(status(&proxy, "pixel.site.test", port).await, 200);
+}
+
+/// Tor and SOCKS upstreams resolve names themselves; Wis must not.
+#[tokio::test]
+async fn an_upstream_route_never_looks_names_up() {
+    struct Watching(std::sync::atomic::AtomicBool);
+    #[async_trait::async_trait]
+    impl Resolver for Watching {
+        async fn resolve(&self, _: &str) -> wis_network::NetworkResult<Vec<IpAddr>> {
+            self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])
+        }
+    }
+    let watching = Arc::new(Watching(std::sync::atomic::AtomicBool::new(false)));
+    let closed = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+        .await
+        .expect("bind")
+        .local_addr()
+        .expect("addr")
+        .port();
+    let policy = cloaking_policy(wis_core::PrivacyMode::Balanced, Arc::default()).with_upstream(
+        wis_core::UpstreamProxy::Socks5 {
+            host: "127.0.0.1".into(),
+            port: closed,
+        },
+    );
+    let proxy = start_proxy_with(policy, watching.clone()).await;
+
+    assert_eq!(status(&proxy, "metrics.site.test", 443).await, 502);
+    assert!(!watching.0.load(std::sync::atomic::Ordering::SeqCst));
 }

@@ -64,17 +64,17 @@ pub fn clean_followed_link(app: AppHandle, url: String) -> String {
 #[cfg(target_os = "macos")]
 pub fn install(app: AppHandle) {
     wry::set_main_frame_navigation_hook(Box::new(move |webview, url, navigation_type, method| {
+        // SAFETY: wry calls the hook on the main thread with a live WKWebView.
+        let label = unsafe { crate::native_webview::label(webview) };
+        if let Some(label) = &label {
+            crate::uncloak::opening_page(&app.state::<AppState>(), label, url);
+        }
         if navigation_type != LINK_ACTIVATED || method != "GET" {
             return true;
         }
 
-        // SAFETY: wry calls the hook on the main thread with a live WKWebView.
-        let (label, current) = unsafe {
-            (
-                crate::native_webview::label(webview),
-                crate::native_webview::committed_url(webview),
-            )
-        };
+        // SAFETY: as above.
+        let current = unsafe { crate::native_webview::committed_url(webview) };
         let Some(clean) = replacement(navigation_type, method, url, current.as_deref()) else {
             return true;
         };

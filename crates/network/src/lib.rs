@@ -11,6 +11,7 @@
 //! crate and will be wired in at the shell layer in future.
 
 pub mod blocker;
+pub mod cloaking;
 pub mod content_filter;
 pub mod context;
 pub mod error;

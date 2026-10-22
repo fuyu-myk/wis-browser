@@ -12,6 +12,7 @@ mod live;
 mod request_type;
 mod signals;
 mod tunnel;
+mod uncloak;
 mod upstream;
 
 pub use connect::probe_upstream;

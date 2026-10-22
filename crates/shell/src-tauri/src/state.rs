@@ -84,6 +84,9 @@ pub struct AppState {
     pub content_rules: RwLock<RuleSpecs>,
     filter_rebuild: Mutex<()>,
     pub filter_refresh: Mutex<()>,
+    /// See [`crate::uncloak`].
+    pub cloaking: std::sync::Mutex<HashMap<WorkspaceId, Arc<wis_network::cloaking::Cloaking>>>,
+    pub webview_workspaces: std::sync::RwLock<HashMap<String, WorkspaceId>>,
     /// Sync read-cache of [`UserSettings.user_cosmetic_rules`](wis_core::UserSettings::user_cosmetic_rules)
     /// (host -> hidden selectors), so the synchronous cosmetic message handler can read them
     /// without locking the async browser mutex. Refreshed on every settings
@@ -242,6 +245,8 @@ impl AppState {
             content_rules: RwLock::new(content_rules),
             filter_rebuild: Mutex::new(()),
             filter_refresh: Mutex::new(()),
+            cloaking: std::sync::Mutex::new(HashMap::new()),
+            webview_workspaces: std::sync::RwLock::new(HashMap::new()),
             user_cosmetic_rules: RwLock::new(initial_user_cosmetic_rules),
             userscripts: RwLock::new(initial_userscripts),
             filter_cache_dir,
@@ -600,8 +605,12 @@ impl AppState {
             return Ok(port);
         }
 
-        let policy =
-            Arc::new(self.build_request_policy(privacy_mode, upstream, global_privacy_control));
+        let policy = Arc::new(self.build_request_policy(
+            workspace_id,
+            privacy_mode,
+            upstream,
+            global_privacy_control,
+        ));
         let bind: SocketAddr = ([127, 0, 0, 1], 0).into();
         let server = ProxyServer::start(policy, self.resolver.clone(), bind)
             .await
@@ -632,12 +641,19 @@ impl AppState {
     /// current tracker blocker, routed through `upstream` when set.
     fn build_request_policy(
         &self,
+        workspace_id: WorkspaceId,
         privacy_mode: PrivacyMode,
         upstream: Option<wis_core::UpstreamProxy>,
         global_privacy_control: bool,
     ) -> RequestPolicy {
-        let policy = RequestPolicy::new(privacy_mode, self.current_tracker_blocker())
+        let mut policy = RequestPolicy::new(privacy_mode, self.current_tracker_blocker())
             .with_global_privacy_control(global_privacy_control);
+        if crate::uncloak::SUPPORTED {
+            policy = policy.with_cloaking(
+                crate::uncloak::cloaking_for(self, workspace_id),
+                crate::uncloak::unblocked_sites(self),
+            );
+        }
         match upstream {
             Some(up) => policy.with_upstream(up),
             None => policy,
@@ -678,8 +694,13 @@ impl AppState {
             Err(err) => {
                 if let Some(server) = self.proxies.lock().await.get(&workspace_id) {
                     server.update_policy(Arc::new(
-                        self.build_request_policy(privacy_mode, None, global_privacy_control)
-                            .refusing_all(),
+                        self.build_request_policy(
+                            workspace_id,
+                            privacy_mode,
+                            None,
+                            global_privacy_control,
+                        )
+                        .refusing_all(),
                     ));
                     server.sever_open_connections();
                 }
@@ -702,8 +723,12 @@ impl AppState {
 
         let proxies = self.proxies.lock().await;
         if let Some(server) = proxies.get(&workspace_id) {
-            let policy =
-                Arc::new(self.build_request_policy(privacy_mode, upstream, global_privacy_control));
+            let policy = Arc::new(self.build_request_policy(
+                workspace_id,
+                privacy_mode,
+                upstream,
+                global_privacy_control,
+            ));
             server.update_policy(policy);
             if sever {
                 server.sever_open_connections();
@@ -981,6 +1006,48 @@ mod tests {
             before.identifier, after.identifier,
             "swap must produce a fresh identifier"
         );
+    }
+
+    #[test]
+    fn sites_with_blocking_off_count_by_registrable_domain_and_session_wins() {
+        let state = app_state_for_test();
+        let off = wis_core::SiteProtection {
+            blocking: false,
+            ..Default::default()
+        };
+        {
+            let mut saved = state.site_protection.write().unwrap();
+            saved.insert("news.example.com".into(), off);
+            saved.insert("on.test".into(), wis_core::SiteProtection::default());
+        }
+        {
+            let mut session = state.site_protection_session.write().unwrap();
+            session.insert("shop.example.org".into(), off);
+            session.insert(
+                "news.example.com".into(),
+                wis_core::SiteProtection::default(),
+            );
+        }
+
+        let sites = crate::uncloak::unblocked_sites(&state);
+        assert_eq!(
+            *sites,
+            std::collections::HashSet::from(["example.org".to_owned()])
+        );
+    }
+
+    #[test]
+    fn each_workspace_keeps_its_own_pages_until_it_is_deleted() {
+        let state = app_state_for_test();
+        let (opening, other) = (WorkspaceId::new(), WorkspaceId::new());
+        crate::uncloak::register(&state, "tab-opening", opening);
+        crate::uncloak::opening_page(&state, "tab-opening", "https://go.shop.test/offer");
+        crate::uncloak::opening_page(&state, "tab-unknown", "https://elsewhere.test/");
+
+        assert!(crate::uncloak::cloaking_for(&state, opening).is_page("go.shop.test"));
+        assert!(!crate::uncloak::cloaking_for(&state, other).is_page("go.shop.test"));
+        crate::uncloak::forget_workspace(&state, opening);
+        assert!(!crate::uncloak::cloaking_for(&state, opening).is_page("go.shop.test"));
     }
 
     #[test]

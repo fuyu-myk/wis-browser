@@ -138,6 +138,7 @@ pub async fn spawn_window(
                             .clear_window_workspace(&label_for_event);
                         if let Some(id) = shown {
                             crate::private_store::release(&app_for_event, id);
+                            crate::uncloak::clear(&app_for_event.state(), id);
                             #[cfg(target_os = "macos")]
                             crate::extensions::release(&app_for_event, id);
                         }

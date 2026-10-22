@@ -65,6 +65,7 @@ pub async fn tab_set_site_protection(
         });
     }
 
+    let unblocked = crate::uncloak::unblocked_sites(&state);
     let session = {
         let mut session = state
             .site_protection_session
@@ -94,6 +95,9 @@ pub async fn tab_set_site_protection(
         })
         .await?;
         state.refresh_site_protection_cache().await;
+    }
+    if crate::uncloak::unblocked_sites(&state) != unblocked {
+        state.refresh_all_proxy_policies().await;
     }
 
     if live.is_some() {

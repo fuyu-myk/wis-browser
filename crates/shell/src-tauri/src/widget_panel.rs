@@ -436,6 +436,8 @@ pub async fn open_widget_panel(
 
                 return false;
             }
+            #[cfg(windows)]
+            crate::uncloak::opening_page(&app_for_nav.state(), &label_for_nav, url.as_str());
 
             true
         });
@@ -519,6 +521,8 @@ pub async fn open_widget_panel(
     });
 
     crate::hardening::mark(&label, crate::hardening::wanted(&state, workspace_id).await);
+    crate::uncloak::register(&state, &label, workspace_id);
+    crate::uncloak::opening_page(&state, &label, parsed.as_str());
     let child = window
         .add_child(
             builder,
@@ -652,6 +656,7 @@ pub async fn navigate_widget_panel(
     let Some(wv) = window.app_handle().webviews().get(&label).cloned() else {
         return Ok(());
     };
+    crate::uncloak::opening_page(&window.state(), &label, parsed.as_str());
     wv.navigate(parsed).map_err(|err| WisError::InvalidInput {
         message: format!("widget panel navigate: {err}"),
     })?;

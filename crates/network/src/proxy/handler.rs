@@ -13,6 +13,7 @@ use crate::{policy::Decision, OutboundRequest, RequestPolicy, Resolver};
 use super::request_type::classify;
 use super::signals::Signals;
 use super::tunnel::tunnel;
+use super::uncloak::Uncloaking;
 use super::upstream::{bad_gateway, empty, forward, full};
 
 /// Entry point for every request the proxy accepts.
@@ -118,6 +119,11 @@ async fn handle_connect(
                 host = %synthetic.host_str().unwrap_or(""),
                 "CONNECT tunnel"
             );
+            let resolver: Arc<dyn Resolver> = if policy.uncloaks() {
+                Arc::new(Uncloaking::new(resolver, policy.clone()))
+            } else {
+                resolver
+            };
             tunnel(req, resolver, policy.upstream().cloned(), signals).await
         }
         Decision::Block { reason } => {

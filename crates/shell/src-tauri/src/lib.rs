@@ -88,6 +88,7 @@ mod swipe_nav;
 mod tab_preview;
 mod tab_session;
 mod themes;
+mod uncloak;
 mod usage;
 mod vault;
 mod video_popout;
@@ -877,6 +878,7 @@ pub fn run() {
                     video_popout::close_popout_window(app_handle);
                     if let Some(id) = app_handle.state::<AppState>().window_workspace("main") {
                         private_store::release(app_handle, id);
+                        uncloak::clear(&app_handle.state(), id);
                         #[cfg(target_os = "macos")]
                         extensions::release(app_handle, id);
                     }
