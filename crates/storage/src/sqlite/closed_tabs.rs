@@ -14,8 +14,8 @@ pub fn record(conn: &Connection, entry: &ClosedTabRecord) -> StorageResult<i64> 
     conn.execute(
         r#"
         INSERT INTO closed_tabs
-            (workspace_id, url, title, folder_id, position, pinned, closed_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            (workspace_id, url, title, folder_id, position, pinned, closed_at, archived)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
         "#,
         params![
             entry.workspace_id.as_uuid().to_string(),
@@ -25,6 +25,7 @@ pub fn record(conn: &Connection, entry: &ClosedTabRecord) -> StorageResult<i64> 
             entry.position,
             entry.pinned,
             entry.closed_at,
+            entry.archived,
         ],
     )?;
 
@@ -46,7 +47,7 @@ pub fn record_all(conn: &Connection, entries: &[ClosedTabRecord]) -> StorageResu
 pub fn list(conn: &Connection, limit: u32) -> StorageResult<Vec<ClosedTabRecord>> {
     let mut stmt = conn.prepare(
         r#"
-        SELECT id, workspace_id, url, title, folder_id, position, pinned, closed_at
+        SELECT id, workspace_id, url, title, folder_id, position, pinned, closed_at, archived
         FROM closed_tabs
         ORDER BY closed_at DESC, id DESC
         LIMIT ?1
@@ -66,7 +67,7 @@ pub fn list(conn: &Connection, limit: u32) -> StorageResult<Vec<ClosedTabRecord>
 pub fn take(conn: &Connection, id: i64) -> StorageResult<Option<ClosedTabRecord>> {
     let mut stmt = conn.prepare(
         r#"
-        SELECT id, workspace_id, url, title, folder_id, position, pinned, closed_at
+        SELECT id, workspace_id, url, title, folder_id, position, pinned, closed_at, archived
         FROM closed_tabs
         WHERE id = ?1
         "#,
@@ -177,6 +178,7 @@ fn read_row(row: &Row<'_>) -> rusqlite::Result<ClosedTabRecord> {
         position: row.get(5)?,
         pinned: row.get(6)?,
         closed_at: row.get(7)?,
+        archived: row.get(8)?,
     })
 }
 

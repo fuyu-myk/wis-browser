@@ -129,6 +129,16 @@ export const commands = {
     return invoke('reopen_closed_tab', { id })
   },
 
+  /** Drop one entry from Recently closed. */
+  async forgetClosedTab(id: number): Promise<void> {
+    return invoke('forget_closed_tab', { id })
+  },
+
+  /** Empty Recently closed, for one workspace when given. */
+  async clearClosedTabs(workspaceId?: WorkspaceId): Promise<void> {
+    return invoke('clear_closed_tabs', { workspaceId: workspaceId ?? null })
+  },
+
   /**
    * Remove browsing history; `workspaceId` scopes the wipe (omit = all) and
    * `sinceUnix` (seconds) keeps visits older than that instant (null = all time).

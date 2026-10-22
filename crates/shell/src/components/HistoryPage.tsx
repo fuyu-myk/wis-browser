@@ -1,14 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { HistoryEntry, Tab, WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
+import { visibleClosedTabs } from '@/lib/closedTabs'
+import { formatTime, groupByDay, hostOf } from '@/lib/dayGroups'
 import { SearchIcon, XIcon } from '@/lib/icons'
 import { useBrowserState } from '@/hooks/useBrowserState'
+import { useClosedTabs } from '@/hooks/useClosedTabs'
 import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
+import { ClosedTabsList } from '@/components/ClosedTabsList'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 const HISTORY_KEY = ['history'] as const
@@ -16,6 +20,7 @@ const SEARCH_DEBOUNCE_MS = 250
 const PAGE_LIMIT = 500
 
 type Scope = 'workspace' | 'all'
+type View = 'history' | 'closed'
 
 interface HistoryPageProps {
   /** The tab currently showing this page (navigated in place on click). */
@@ -27,6 +32,7 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
   const qc = useQueryClient()
   const activeWorkspaceId = state?.active_workspace_id ?? null
 
+  const [view, setView] = useState<View>('history')
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, SEARCH_DEBOUNCE_MS)
   const [scope, setScope] = useState<Scope>('workspace')
@@ -36,7 +42,9 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
   const [confirmClear, setConfirmClear] = useState(false)
 
   const navigate = useNavigateOrCreateTab(activeWorkspaceId, activeTab)
-  const attachScroll = useScrollMemory(activeTab?.id ?? 'history')
+  const scrollKey = activeTab?.id ?? 'history'
+  const attachHistoryScroll = useScrollMemory(`${scrollKey}:history`)
+  const attachClosedScroll = useScrollMemory(`${scrollKey}:closed`)
 
   const queryWorkspaceId: WorkspaceId | null =
     scope === 'workspace' ? activeWorkspaceId : null
@@ -51,7 +59,19 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
       }),
     staleTime: 0,
     refetchOnMount: 'always',
+    enabled: view === 'history',
   })
+  const privateWorkspace =
+    state?.workspaces.find((w) => w.id === activeWorkspaceId)?.ephemeral ?? false
+  const closed = useClosedTabs(view === 'closed' && !privateWorkspace)
+  const closedInScope = useMemo(
+    () => visibleClosedTabs(closed.entries, queryWorkspaceId, ''),
+    [closed.entries, queryWorkspaceId],
+  )
+  const closedEntries = useMemo(
+    () => visibleClosedTabs(closedInScope, null, search),
+    [closedInScope, search],
+  )
 
   // Live updates while the page is open: the backend emits `history-changed`
   // after each recorded visit.
@@ -83,19 +103,27 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
     onSuccess: refresh,
   })
   const clearScope = useMutation({
-    mutationFn: () =>
-      commands.clearHistory(scope === 'workspace' ? activeWorkspaceId ?? undefined : undefined),
+    mutationFn: () => {
+      const workspace = scope === 'workspace' ? activeWorkspaceId ?? undefined : undefined
+      return view === 'history'
+        ? commands.clearHistory(workspace)
+        : commands.clearClosedTabs(workspace)
+    },
     onSuccess: refresh,
   })
 
-  // A scope change can hide selected rows; drop the selection to avoid acting
-  // on entries no longer visible.
+  // A scope change can hide selected rows; drop the selection to avoid
+  // acting on entries no longer visible.
   useEffect(() => {
     setSelected(new Set())
     setSelectMode(false)
   }, [scope])
 
-  const groups = useMemo(() => groupByDay(entries), [entries])
+  const groups = useMemo(() => groupByDay(entries, (entry) => entry.visited_at), [entries])
+  const closedGroups = useMemo(
+    () => groupByDay(closedEntries, (entry) => entry.closed_at),
+    [closedEntries],
+  )
 
   const exitSelect = () => {
     setSelectMode(false)
@@ -132,14 +160,31 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
     exitSelect()
   }
 
+  const ids = useId()
+  const showView = (next: View) => {
+    if (next === view) return
+    exitSelect()
+    setView(next)
+  }
+
   const clearLabel = scope === 'workspace' ? 'this workspace' : 'all workspaces'
+  const offeredClosed = privateWorkspace ? [] : closedEntries
+  const shown = view === 'history' ? entries.length : privateWorkspace ? 0 : closedInScope.length
 
   return (
     <div className="kb-history-page">
       <div className="inner">
         <header className="kb-history-head">
+          <h1 className="kb-sr-only">History</h1>
           <div className="kb-history-head-row">
-            <h1>History</h1>
+            <div className="kb-history-views" role="tablist" aria-label="History view">
+              <ViewTab ids={ids} view="history" current={view} onSelect={showView}>
+                History
+              </ViewTab>
+              <ViewTab ids={ids} view="closed" current={view} onSelect={showView}>
+                Recently closed
+              </ViewTab>
+            </div>
             {selectMode ? (
               <div className="kb-history-actions">
                 <span className="kb-history-count">{selected.size} selected</span>
@@ -165,19 +210,21 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
               </div>
             ) : (
               <div className="kb-history-actions">
-                <button
-                  type="button"
-                  className="kb-history-btn"
-                  onClick={() => setSelectMode(true)}
-                  disabled={entries.length === 0}
-                >
-                  Select
-                </button>
+                {view === 'history' ? (
+                  <button
+                    type="button"
+                    className="kb-history-btn"
+                    onClick={() => setSelectMode(true)}
+                    disabled={entries.length === 0}
+                  >
+                    Select
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="kb-history-btn is-danger"
                   onClick={() => setConfirmClear(true)}
-                  disabled={entries.length === 0 || clearScope.isPending}
+                  disabled={shown === 0 || clearScope.isPending}
                 >
                   Clear all
                 </button>
@@ -209,7 +256,7 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
               <SearchIcon />
               <input
                 type="text"
-                placeholder="Search history"
+                placeholder={view === 'history' ? 'Search history' : 'Search recently closed'}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus
@@ -219,50 +266,83 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
           </div>
         </header>
 
-        {isLoading ? null : entries.length === 0 ? (
-          <p className="kb-history-empty">
-            {debouncedSearch ? 'No matching history.' : 'No history yet.'}
-          </p>
-        ) : (
-          <div className="kb-history-groups" ref={attachScroll}>
-            {groups.map((group) => (
-              <section key={group.key} className="kb-history-group">
-                <h2 className="kb-history-day">{group.label}</h2>
-                <ul>
-                  {group.entries.map((entry) => (
-                    <HistoryRow
-                      key={entry.id}
-                      entry={entry}
-                      selectMode={selectMode}
-                      selected={selected.has(entry.id)}
-                      workspaceLabel={
-                        scope === 'all' ? workspaceName.get(entry.workspace_id) : undefined
-                      }
-                      onOpen={() => navigate(entry.url)}
-                      onAuxOpen={() => {
-                        if (activeWorkspaceId) {
-                          void commands
-                            .createBackgroundTab(activeWorkspaceId, entry.url)
-                            .catch(() => undefined)
+        <div
+          className="kb-history-panel"
+          role="tabpanel"
+          id={`${ids}-panel-${view}`}
+          aria-labelledby={`${ids}-tab-${view}`}
+        >
+          {view === 'closed' ? (
+            closed.isLoading ? null : offeredClosed.length === 0 ? (
+              <p className="kb-history-empty">
+                {privateWorkspace
+                  ? "Private workspaces don't reopen closed tabs."
+                  : search.trim()
+                    ? 'No matching tabs.'
+                    : 'No closed tabs yet.'}
+              </p>
+            ) : (
+              <ClosedTabsList
+                groups={closedGroups}
+                workspaceNames={scope === 'all' ? workspaceName : undefined}
+                onReopen={(id) => void commands.reopenClosedTab(id).catch(() => undefined)}
+                onForget={(id) => void commands.forgetClosedTab(id).catch(() => undefined)}
+                attachScroll={attachClosedScroll}
+              />
+            )
+          ) : isLoading ? null : entries.length === 0 ? (
+            <p className="kb-history-empty">
+              {debouncedSearch ? 'No matching history.' : 'No history yet.'}
+            </p>
+          ) : (
+            <div className="kb-history-groups" ref={attachHistoryScroll}>
+              {groups.map((group) => (
+                <section key={group.key} className="kb-history-group">
+                  <h2 className="kb-history-day">{group.label}</h2>
+                  <ul>
+                    {group.entries.map((entry) => (
+                      <HistoryRow
+                        key={entry.id}
+                        entry={entry}
+                        selectMode={selectMode}
+                        selected={selected.has(entry.id)}
+                        workspaceLabel={
+                          scope === 'all' ? workspaceName.get(entry.workspace_id) : undefined
                         }
-                      }}
-                      onToggle={() => toggle(entry.id)}
-                      onDelete={() => deleteEntries.mutate([entry.id])}
-                    />
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
-        )}
+                        onOpen={() => navigate(entry.url)}
+                        onAuxOpen={() => {
+                          if (activeWorkspaceId) {
+                            void commands
+                              .createBackgroundTab(activeWorkspaceId, entry.url)
+                              .catch(() => undefined)
+                          }
+                        }}
+                        onToggle={() => toggle(entry.id)}
+                        onDelete={() => deleteEntries.mutate([entry.id])}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <ConfirmDialog
         open={confirmClear}
-        title={`Clear history in ${clearLabel}?`}
-        message={`This permanently removes ${entries.length} ${
-          entries.length === 1 ? 'entry' : 'entries'
-        } from ${clearLabel} and can't be undone.`}
+        title={
+          view === 'history'
+            ? `Clear history in ${clearLabel}?`
+            : `Clear recently closed tabs in ${clearLabel}?`
+        }
+        message={
+          view === 'history'
+            ? `This permanently removes ${shown} ${
+                shown === 1 ? 'entry' : 'entries'
+              } from ${clearLabel} and can't be undone.`
+            : `${shown} ${shown === 1 ? 'tab' : 'tabs'} in ${clearLabel} can no longer be reopened afterwards.`
+        }
         confirmLabel="Clear all"
         danger
         onConfirm={() => {
@@ -272,6 +352,31 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
         onCancel={() => setConfirmClear(false)}
       />
     </div>
+  )
+}
+
+interface ViewTabProps {
+  /** This page's id prefix. */
+  ids: string
+  view: View
+  current: View
+  onSelect: (view: View) => void
+  children: React.ReactNode
+}
+
+function ViewTab({ ids, view, current, onSelect, children }: ViewTabProps) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      id={`${ids}-tab-${view}`}
+      aria-controls={view === current ? `${ids}-panel-${view}` : undefined}
+      aria-selected={view === current}
+      className={cx('kb-history-view', { 'is-on': view === current })}
+      onClick={() => onSelect(view)}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -341,60 +446,6 @@ function HistoryRow({
       )}
     </li>
   )
-}
-
-// -- helpers ----------------------------------------------------------------
-
-interface DayGroup {
-  key: string
-  label: string
-  entries: HistoryEntry[]
-}
-
-/** Group already-sorted (newest-first) entries by local calendar day. */
-function groupByDay(entries: HistoryEntry[]): DayGroup[] {
-  const groups: DayGroup[] = []
-  let current: DayGroup | null = null
-  for (const entry of entries) {
-    const date = new Date(entry.visited_at)
-    const key = dayKey(date)
-    if (!current || current.key !== key) {
-      current = { key, label: dayLabel(date), entries: [] }
-      groups.push(current)
-    }
-    current.entries.push(entry)
-  }
-  return groups
-}
-
-function dayKey(date: Date): string {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
-}
-
-function dayLabel(date: Date): string {
-  const today = new Date()
-  const yesterday = new Date()
-  yesterday.setDate(today.getDate() - 1)
-  if (dayKey(date) === dayKey(today)) return 'Today'
-  if (dayKey(date) === dayKey(yesterday)) return 'Yesterday'
-  return date.toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: date.getFullYear() === today.getFullYear() ? undefined : 'numeric',
-  })
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host.replace(/^www\./, '')
-  } catch {
-    return url
-  }
 }
 
 function useDebounce<T>(value: T, delay: number): T {

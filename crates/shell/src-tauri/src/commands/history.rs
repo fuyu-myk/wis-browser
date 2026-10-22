@@ -10,14 +10,20 @@ pub async fn get_history(
 }
 
 #[tauri::command]
-pub async fn delete_history(state: State<'_, AppState>, ids: Vec<i64>) -> WisResult<()> {
+pub async fn delete_history(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+) -> WisResult<()> {
     let storage = state.storage.clone();
     run_history(move || {
         let urls = storage.history_urls(&ids)?;
         storage.delete_history_entries(&ids)?;
         storage.delete_closed_tabs_by_urls(&urls)
     })
-    .await
+    .await?;
+    super::closed_tabs_changed(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -35,6 +41,7 @@ pub async fn clear_history(
         storage.clear_closed_tabs(workspace_id, since)
     })
     .await?;
+    super::closed_tabs_changed(&app);
     let usage_from = since.map(|instant| {
         let local = instant.with_timezone(&chrono::Local);
         (local.date_naive(), chrono::Timelike::hour(&local) as u8)

@@ -90,6 +90,7 @@ pub async fn delete_workspace(
     {
         log::warn!("clearing closed tabs for a deleted workspace panicked: {err}");
     }
+    super::closed_tabs_changed(&app);
     if let Err(err) = crate::usage::clear(&app, Some(id), None).await {
         log::warn!("clearing a deleted workspace's usage: {err:?}");
     }

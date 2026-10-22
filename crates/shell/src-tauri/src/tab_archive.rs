@@ -51,7 +51,7 @@ async fn sweep(app: &AppHandle) {
             return;
         }
     };
-    crate::commands::record_archived(&state, &archived).await;
+    crate::commands::record_archived(app, &state, &archived).await;
 
     for tab in &archived {
         crate::commands::forget_tab_state(app, &state, tab.tab.id).await;

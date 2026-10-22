@@ -20,6 +20,7 @@ fn entry(workspace: WorkspaceId, url: &str, minutes_ago: i64) -> ClosedTabRecord
         position: 3,
         pinned: false,
         closed_at: Utc::now() - Duration::minutes(minutes_ago),
+        archived: false,
     }
 }
 
@@ -154,6 +155,32 @@ fn pruning_keeps_the_last_recorded_however_long_ago_they_were_used() {
             "https://1.example/",
             "https://2.example/",
             "https://archived.example/"
+        ]
+    );
+}
+
+#[test]
+fn an_archived_tab_is_told_apart_from_a_closed_one() {
+    let s = store();
+    let ws = WorkspaceId::new();
+    let archived = ClosedTabRecord {
+        archived: true,
+        ..entry(ws, "https://archived.example/", 60)
+    };
+    s.record_closed_tabs(&[archived, entry(ws, "https://closed.example/", 1)])
+        .unwrap();
+
+    let flags: Vec<(String, bool)> = s
+        .list_closed_tabs(10)
+        .unwrap()
+        .into_iter()
+        .map(|e| (e.url, e.archived))
+        .collect();
+    assert_eq!(
+        flags,
+        vec![
+            ("https://closed.example/".to_owned(), false),
+            ("https://archived.example/".to_owned(), true)
         ]
     );
 }

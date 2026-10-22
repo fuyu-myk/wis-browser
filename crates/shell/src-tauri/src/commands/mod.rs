@@ -34,6 +34,7 @@ pub(crate) use wis_network::{Decision, OutboundRequest, RequestType};
 
 pub(crate) use crate::state::AppState;
 
+mod closed_tabs;
 mod history;
 mod settings;
 mod system;
@@ -41,6 +42,7 @@ mod tab;
 mod webview;
 mod workspace;
 
+pub use closed_tabs::*;
 pub use history::*;
 pub use settings::*;
 pub use system::*;

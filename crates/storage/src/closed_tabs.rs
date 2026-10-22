@@ -28,5 +28,9 @@ pub struct ClosedTabRecord {
     /// by the caller if the workspace has since shrunk.
     pub position: i64,
     pub pinned: bool,
+    /// When the tab was archived for being idle, the last time it was used.
     pub closed_at: DateTime<Utc>,
+    /// Closed by archiving rather than by the user.
+    #[serde(default)]
+    pub archived: bool,
 }

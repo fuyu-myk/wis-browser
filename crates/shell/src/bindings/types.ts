@@ -945,7 +945,10 @@ export interface ClosedTabRecord {
   /** Slot in the workspace's tab order at close; -1 means append. */
   position: number
   pinned: boolean
+  /** For an archived tab, when it was last used. */
   closed_at: string
+  /** Closed by archiving rather than by the user. */
+  archived: boolean
 }
 
 /** What media may start without a gesture; mirrors `wis_core::AutoplayPolicy`. */

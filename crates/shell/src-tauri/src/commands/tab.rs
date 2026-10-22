@@ -183,6 +183,7 @@ pub async fn close_tab(
                         position,
                         pinned: tab.pinned,
                         closed_at: chrono::Utc::now(),
+                        archived: false,
                     },
                     tab.load_error.is_some(),
                 ))
@@ -204,7 +205,7 @@ pub async fn close_tab(
                 .await
             };
 
-            match record_closed(&state, vec![record]).await {
+            match record_closed(&app, &state, vec![record]).await {
                 Ok(rows) => {
                     if let (Some(&row), Some(blob)) = (rows.first(), interaction_state) {
                         state.closed_tab_sessions.lock().await.insert(row, blob);
@@ -263,6 +264,7 @@ pub(crate) async fn forget_tab_state(app: &AppHandle, state: &AppState, id: TabI
 /// Records closed tabs, prunes to [`CLOSED_TAB_CAP`] and drops the live
 /// sessions of all but the newest few. Returns the new rows' ids.
 async fn record_closed(
+    app: &AppHandle,
     state: &AppState,
     records: Vec<wis_storage::ClosedTabRecord>,
 ) -> WisResult<Vec<i64>> {
@@ -283,12 +285,14 @@ async fn record_closed(
         .lock()
         .await
         .retain(|row, _| kept.contains(row));
+    super::closed_tabs_changed(app);
     Ok(rows)
 }
 
 /// Archived tabs sort by when they were last used, behind tabs closed since,
 /// so a reopen brings back what was just closed first.
 pub(crate) async fn record_archived(
+    app: &AppHandle,
     state: &AppState,
     archived: &[wis_core::tab_archive::Archived],
 ) {
@@ -306,9 +310,10 @@ pub(crate) async fn record_archived(
                 .unwrap_or(APPEND_POSITION),
             pinned: archived.tab.pinned,
             closed_at: archived.tab.last_active_at,
+            archived: true,
         })
         .collect();
-    if let Err(err) = record_closed(state, records).await {
+    if let Err(err) = record_closed(app, state, records).await {
         log::warn!("recording archived tabs failed: {err}");
     }
 }
@@ -332,6 +337,7 @@ pub async fn restore_closed_tab(app: AppHandle, state: State<'_, AppState>) -> W
         let Some(entry) = entry else {
             return Ok(());
         };
+        super::closed_tabs_changed(&app);
         if reopen_entry(&app, &state, entry).await? {
             return Ok(());
         }
@@ -352,6 +358,7 @@ pub async fn reopen_closed_tab(
 
     let storage = state.storage.clone();
     let entry = run_storage(move || storage.take_closed_tab(id)).await?;
+    super::closed_tabs_changed(&app);
     if let Some(entry) = entry {
         reopen_entry(&app, &state, entry).await?;
     }
@@ -376,7 +383,7 @@ async fn active_workspace_is_private(state: &State<'_, AppState>) -> bool {
 
 /// Run a blocking storage call off the async runtime, mapping both the join
 /// failure and the storage error onto [`WisError::PersistenceFailed`].
-async fn run_storage<T, F>(op: F) -> WisResult<T>
+pub(super) async fn run_storage<T, F>(op: F) -> WisResult<T>
 where
     T: Send + 'static,
     F: FnOnce() -> wis_storage::StorageResult<T> + Send + 'static,

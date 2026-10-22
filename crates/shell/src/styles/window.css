@@ -3255,8 +3255,9 @@ body.glass-chrome .kb-content {
 .glass-on .kb-history-head { border-bottom-color: rgba(255, 255, 255, 0.12); }
 .kb-history-head-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   min-width: 0;
 }
 .kb-history-head-row .kb-history-search {
@@ -3268,6 +3269,41 @@ body.glass-chrome .kb-content {
   font-weight: 650;
   color: var(--text-primary);
   margin-right: auto;
+}
+.kb-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.kb-history-views {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  margin-right: auto;
+  min-width: 0;
+}
+.kb-history-view {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color var(--dur-fast);
+}
+.kb-history-view:hover { color: var(--text-secondary); }
+.kb-history-view.is-on { color: var(--text-primary); cursor: default; }
+.kb-history-view:focus-visible {
+  outline: 2px solid var(--primary-400);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
 }
 .kb-history-search {
   display: flex;
@@ -3364,6 +3400,20 @@ body.glass-chrome .kb-content {
   white-space: nowrap;
 }
 .kb-history-actions { display: flex; align-items: center; gap: 8px; }
+.kb-closed-archived {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 550;
+  color: var(--primary-600);
+  background: color-mix(in oklab, var(--primary-400) 14%, transparent);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+[data-mode='dark'] .kb-closed-archived {
+  color: var(--primary-300);
+  background: color-mix(in oklab, var(--primary-400) 20%, transparent);
+}
 .kb-history-count {
   font-size: 12.5px;
   color: var(--text-secondary);
@@ -3395,6 +3445,12 @@ body.glass-chrome .kb-content {
 }
 .kb-history-btn:disabled { opacity: 0.4; cursor: default; }
 .kb-history-empty { color: var(--text-tertiary); font-size: 14px; padding: 24px 4px; }
+.kb-history-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .kb-history-groups {
   flex: 1;
   min-height: 0;

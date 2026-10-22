@@ -311,6 +311,10 @@ const M0023_WORKSPACE_LOCKDOWN: &str = r#"
 ALTER TABLE workspaces ADD COLUMN lockdown INTEGER NOT NULL DEFAULT 0;
 "#;
 
+const M0024_CLOSED_TAB_ARCHIVED: &str = r#"
+ALTER TABLE closed_tabs ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+"#;
+
 /// Every migration, in order. The index of the last entry is the schema
 /// version a fresh database lands on.
 const ALL: &[&str] = &[
@@ -337,6 +341,7 @@ const ALL: &[&str] = &[
     M0021_SITE_USAGE_HOURS,
     M0022_CANVASES,
     M0023_WORKSPACE_LOCKDOWN,
+    M0024_CLOSED_TAB_ARCHIVED,
 ];
 
 fn all() -> Migrations<'static> {
@@ -413,6 +418,27 @@ mod tests {
             )
             .expect("migrated row");
         assert_eq!((hour, seconds), (0, 42));
+    }
+
+    #[test]
+    fn closed_tabs_from_before_archiving_read_as_closed() {
+        let mut conn = Connection::open_in_memory().expect("open in-memory db");
+        Migrations::new(ALL[..23].iter().copied().map(M::up).collect())
+            .to_latest(&mut conn)
+            .expect("migrate to version 23");
+        conn.execute(
+            "INSERT INTO closed_tabs (workspace_id, url, title, folder_id, position, pinned, closed_at)
+             VALUES ('ws', 'https://a.example/', 'A', NULL, 0, 0, '2026-10-20T10:00:00Z')",
+            [],
+        )
+        .expect("closed row");
+
+        run(&mut conn).expect("migrate to latest");
+
+        let archived: bool = conn
+            .query_row("SELECT archived FROM closed_tabs", [], |row| row.get(0))
+            .expect("migrated row");
+        assert!(!archived);
     }
 
     #[test]
