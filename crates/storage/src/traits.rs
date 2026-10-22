@@ -277,6 +277,9 @@ pub trait Storage: Send + Sync {
     /// (ephemeral) workspaces; `record.id` is ignored.
     fn record_closed_tab(&self, record: &ClosedTabRecord) -> StorageResult<i64>;
 
+    /// [`Storage::record_closed_tab`] for several, in one transaction.
+    fn record_closed_tabs(&self, records: &[ClosedTabRecord]) -> StorageResult<Vec<i64>>;
+
     /// Closed tabs, newest first, capped at `limit`.
     fn list_closed_tabs(&self, limit: u32) -> StorageResult<Vec<ClosedTabRecord>>;
 
@@ -289,7 +292,7 @@ pub trait Storage: Send + Sync {
     /// Remove closed tabs whose URL is one of `urls`.
     fn delete_closed_tabs_by_urls(&self, urls: &[String]) -> StorageResult<()>;
 
-    /// Drop all but the newest `keep` closed tabs.
+    /// Drop all but the last `keep` closed tabs recorded.
     fn prune_closed_tabs(&self, keep: u32) -> StorageResult<()>;
 
     /// Remove closed tabs, scoped like [`Storage::clear_history`]: to one

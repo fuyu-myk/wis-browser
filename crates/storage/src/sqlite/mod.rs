@@ -286,6 +286,14 @@ impl Storage for SqliteStorage {
         closed_tabs::record(&conn, record)
     }
 
+    fn record_closed_tabs(
+        &self,
+        records: &[crate::closed_tabs::ClosedTabRecord],
+    ) -> StorageResult<Vec<i64>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        closed_tabs::record_all(&conn, records)
+    }
+
     fn list_closed_tabs(
         &self,
         limit: u32,

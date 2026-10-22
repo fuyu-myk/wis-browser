@@ -83,6 +83,7 @@ Wis is an open-source, lightweight, secure, and fast browser with AI integration
 - **Video popout**: floats a playing video into an always-on-top mini player while you browse elsewhere
 - **Per-tab audio indicator and mute**
 - **Smart tab sleep**: inactive tabs unload to save memory and restore instantly, scroll position and all, on return
+- **Archive idle tabs**: optionally close tabs you haven't opened in 12 hours to 30 days into Recently closed; pinned tabs and folders stay untouched
 
 ### Productivity
 

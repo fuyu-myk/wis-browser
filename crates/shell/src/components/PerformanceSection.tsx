@@ -3,9 +3,17 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
-import type { UserSettings, UserSettingsPatch, Widget } from '@/bindings/types'
-import { Switch } from '@/components/controls'
+import type { TabArchiveAfter, UserSettings, UserSettingsPatch, Widget } from '@/bindings/types'
+import { Segmented, Switch } from '@/components/controls'
 import { TaskManagerSection } from '@/components/TaskManagerSection'
+
+const ARCHIVE_OPTIONS = [
+  { value: 'off' as const, label: 'Off' },
+  { value: 'twelve_hours' as const, label: '12 hours' },
+  { value: 'one_day' as const, label: '1 day' },
+  { value: 'seven_days' as const, label: '7 days' },
+  { value: 'thirty_days' as const, label: '30 days' },
+] satisfies ReadonlyArray<{ value: TabArchiveAfter; label: string }>
 
 interface PerformanceSectionProps {
   settings: UserSettings
@@ -49,6 +57,21 @@ export function PerformanceSection({ settings, onUpdate }: PerformanceSectionPro
               onUpdate({ tab_sleep_minutes: Math.min(1440, Math.max(1, n)) })
             }}
             aria-label="Sleep after minutes"
+          />
+        </div>
+        <div className="row">
+          <div className="l">
+            <span>Archive idle tabs</span>
+            <span>
+              Close tabs you haven't opened in this long into Recently closed.
+              Pinned tabs, tabs in folders and private workspaces' tabs are unaffected.
+            </span>
+          </div>
+          <Segmented
+            value={settings.tab_archive_after}
+            onChange={(tab_archive_after) => onUpdate({ tab_archive_after })}
+            options={ARCHIVE_OPTIONS}
+            ariaLabel="Archive idle tabs after"
           />
         </div>
         <div className="row">

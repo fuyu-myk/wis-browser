@@ -29,6 +29,7 @@ import { commands } from '@/bindings/commands'
 import type { KeyAction, Tab, UserSettingsPatch } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import {
+  CLOSED_TAB_LIMIT,
   effectiveKeymap,
   historyKey,
   makeActionsSource,
@@ -56,8 +57,6 @@ const HISTORY_MIN_QUERY = 2
 const HISTORY_SETTLE_MS = 120
 /** Time before bookmarks are considered stale. */
 const BOOKMARKS_STALE_MS = 30_000
-/** How many closed tabs to pull. */
-const CLOSED_TAB_LIMIT = 25
 /** Matched by prefix. */
 const CLOSED_TABS_KEY = ['palette-closed-tabs']
 

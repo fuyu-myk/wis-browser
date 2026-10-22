@@ -87,6 +87,9 @@ export interface ChromeDesign {
 
 export type PrivacyMode = 'strict' | 'balanced' | 'permissive'
 
+/** Mirrors `wis_core::TabArchiveAfter`. */
+export type TabArchiveAfter = 'off' | 'twelve_hours' | 'one_day' | 'seven_days' | 'thirty_days'
+
 export type SplitDir = 'horizontal' | 'vertical'
 
 /** Mirror of `wis_core::UpstreamProxy` (serde-tagged by `kind`). */
@@ -635,6 +638,8 @@ export interface UserSettings {
   tab_sleep_enabled: boolean
   /** Idle minutes before a hidden tab's webview is discarded. */
   tab_sleep_minutes: number
+  /** Closes tabs left idle this long into Recently closed. */
+  tab_archive_after: TabArchiveAfter
   /** Count active time per site (never in private workspaces). */
   usage_tracking: boolean
   /** Seconds without input before usage stops counting. */
@@ -743,6 +748,7 @@ export interface UserSettingsPatch {
   always_private?: boolean
   tab_sleep_enabled?: boolean
   tab_sleep_minutes?: number
+  tab_archive_after?: TabArchiveAfter
   usage_tracking?: boolean
   usage_idle_timeout_secs?: number
   week_start?: WeekStart

@@ -298,7 +298,7 @@ pub fn merge_profile(
         let ws_id = ws.id;
         state.workspaces.push(ws.clone());
         for tab in profile.tabs.iter().filter(|t| t.workspace_id == ws_id) {
-            state.tabs.push(tab.clone());
+            state.tabs.push(tab.touched());
         }
 
         added.push(ws_id);
@@ -537,5 +537,29 @@ mod tests {
         );
         assert_eq!(added.len(), 1);
         assert_eq!(merged.workspaces.len(), 2);
+    }
+
+    #[test]
+    fn merging_counts_as_using_the_imported_tabs() {
+        let state = BrowserState::new_with_defaults();
+        let mut workspace = state.workspaces[0].clone();
+        workspace.id = WorkspaceId::new();
+        workspace.name = "Imported".to_string();
+        let long_ago = chrono::Utc::now() - chrono::Duration::days(30);
+        let tab = crate::tab::Tab {
+            workspace_id: workspace.id,
+            last_active_at: long_ago,
+            ..crate::tab::Tab::new(workspace.id, "https://saved.test/".parse().unwrap())
+        };
+
+        let (merged, _) = merge_profile(
+            state,
+            &ProfileBackup {
+                workspaces: vec![workspace],
+                tabs: vec![tab.clone()],
+                ..Default::default()
+            },
+        );
+        assert!(merged.tab(tab.id).unwrap().last_active_at > long_ago);
     }
 }

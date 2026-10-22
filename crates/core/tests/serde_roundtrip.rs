@@ -126,6 +126,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
         always_private: Some(true),
         tab_sleep_enabled: Some(false),
         tab_sleep_minutes: Some(30),
+        tab_archive_after: Some(wis_core::TabArchiveAfter::SevenDays),
         usage_tracking: Some(false),
         usage_idle_timeout_secs: Some(300),
         week_start: Some(wis_core::usage::WeekStart::Sunday),

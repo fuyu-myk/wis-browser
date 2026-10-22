@@ -98,6 +98,7 @@ where
     let mut guard = state.browser.lock().await;
     let previous = guard.clone();
     let (next, value) = transition(&guard)?;
+    let next = next.with_hidden_tabs_touched(&previous);
     *guard = next.clone();
 
     match persist {

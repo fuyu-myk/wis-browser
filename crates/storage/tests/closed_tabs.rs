@@ -127,6 +127,52 @@ fn pruning_keeps_only_the_newest() {
     assert_eq!(urls, vec!["https://1.example/", "https://2.example/"]);
 }
 
+/// An archived tab is stamped with when it was last used, so the cap must
+/// follow recording order or it would be dropped on arrival.
+#[test]
+fn pruning_keeps_the_last_recorded_however_long_ago_they_were_used() {
+    let s = store();
+    let ws = WorkspaceId::new();
+    for minutes in (1..=3).rev() {
+        s.record_closed_tab(&entry(ws, &format!("https://{minutes}.example/"), minutes))
+            .unwrap();
+    }
+    s.record_closed_tabs(&[entry(ws, "https://archived.example/", 8 * 24 * 60)])
+        .unwrap();
+
+    s.prune_closed_tabs(3).unwrap();
+
+    let urls: Vec<String> = s
+        .list_closed_tabs(10)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.url)
+        .collect();
+    assert_eq!(
+        urls,
+        vec![
+            "https://1.example/",
+            "https://2.example/",
+            "https://archived.example/"
+        ]
+    );
+}
+
+#[test]
+fn several_closed_tabs_record_together() {
+    let s = store();
+    let ws = WorkspaceId::new();
+    let ids = s
+        .record_closed_tabs(&[
+            entry(ws, "https://a.example/", 2),
+            entry(ws, "https://b.example/", 1),
+        ])
+        .unwrap();
+
+    assert_eq!(ids.len(), 2);
+    assert_eq!(s.list_closed_tabs(10).unwrap().len(), 2);
+}
+
 #[test]
 fn clearing_scopes_to_a_workspace() {
     let s = store();

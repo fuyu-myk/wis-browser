@@ -92,6 +92,8 @@ pub struct UserSettings {
     /// discarded. Only consulted when [`Self::tab_sleep_enabled`].
     #[serde(default = "default_tab_sleep_minutes")]
     pub tab_sleep_minutes: u32,
+    #[serde(default)]
+    pub tab_archive_after: crate::TabArchiveAfter,
     /// Count active time per site (never in private workspaces).
     #[serde(default = "default_usage_tracking")]
     pub usage_tracking: bool,
@@ -482,6 +484,7 @@ impl Default for UserSettings {
             always_private: false,
             tab_sleep_enabled: true,
             tab_sleep_minutes: 15,
+            tab_archive_after: crate::TabArchiveAfter::Off,
             usage_tracking: true,
             usage_idle_timeout_secs: default_usage_idle_timeout_secs(),
             week_start: WeekStart::default(),
@@ -582,6 +585,8 @@ pub struct UserSettingsPatch {
     pub tab_sleep_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tab_sleep_minutes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab_archive_after: Option<crate::TabArchiveAfter>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage_tracking: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -724,6 +729,7 @@ impl UserSettings {
             always_private: patch.always_private.unwrap_or(self.always_private),
             tab_sleep_enabled: patch.tab_sleep_enabled.unwrap_or(self.tab_sleep_enabled),
             tab_sleep_minutes: patch.tab_sleep_minutes.unwrap_or(self.tab_sleep_minutes),
+            tab_archive_after: patch.tab_archive_after.unwrap_or(self.tab_archive_after),
             usage_tracking: patch.usage_tracking.unwrap_or(self.usage_tracking),
             usage_idle_timeout_secs: patch
                 .usage_idle_timeout_secs

@@ -85,6 +85,7 @@ mod site_protection;
 mod state;
 mod suggest;
 mod swipe_nav;
+mod tab_archive;
 mod tab_preview;
 mod tab_session;
 mod themes;
@@ -489,6 +490,7 @@ pub fn run() {
 
             // Per-tab audibility poll (tab audio icons + click-to-mute).
             audio::start_poll(app.handle().clone());
+            tab_archive::start(app.handle().clone());
             usage::start(app.handle().clone());
             canvas::start(app.handle().clone());
             #[cfg(target_os = "macos")]

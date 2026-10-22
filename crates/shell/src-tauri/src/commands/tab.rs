@@ -147,8 +147,6 @@ pub async fn close_tab(
     return_to: Option<TabId>,
     recent: Option<Vec<TabId>>,
 ) -> WisResult<()> {
-    /// How many closed tabs stay reopenable.
-    const CLOSED_TAB_CAP: u32 = 25;
     /// Far past the window's own history.
     const RECENT_CAP: usize = 64;
 
@@ -158,12 +156,7 @@ pub async fn close_tab(
         .take(RECENT_CAP)
         .collect();
 
-    crate::page_source::forget(id);
-    crate::signup::forget_field(&id.as_uuid().to_string());
-    let label = format!("tab-{}", id.as_uuid());
-    crate::hardening::forget(&label);
-    crate::uncloak::forget(&state, &label);
-    crate::capture::forget(&state, id).await;
+    forget_tab_state(&app, &state, id).await;
 
     // Record the tab for "reopen closed tab" before it's removed.
     {
@@ -211,38 +204,16 @@ pub async fn close_tab(
                 .await
             };
 
-            let storage = state.storage.clone();
-            let recorded_row = tokio::task::spawn_blocking(move || {
-                let row = storage.record_closed_tab(&record)?;
-                storage.prune_closed_tabs(CLOSED_TAB_CAP)?;
-                let live: Vec<i64> = storage
-                    .list_closed_tabs(CLOSED_TAB_CAP)?
-                    .into_iter()
-                    .map(|entry| entry.id)
-                    .collect();
-
-                wis_storage::StorageResult::Ok((row, live))
-            })
-            .await;
-
-            match recorded_row {
-                Ok(Ok((row, live))) => {
-                    let mut sessions = state.closed_tab_sessions.lock().await;
-                    if let Some(blob) = interaction_state {
-                        sessions.insert(row, blob);
+            match record_closed(&state, vec![record]).await {
+                Ok(rows) => {
+                    if let (Some(&row), Some(blob)) = (rows.first(), interaction_state) {
+                        state.closed_tab_sessions.lock().await.insert(row, blob);
                     }
-                    // Prune the oldest rows.
-                    let live: std::collections::HashSet<i64> = live.into_iter().collect();
-                    sessions.retain(|id, _| live.contains(id));
                 }
-                Ok(Err(err)) => log::warn!("recording a closed tab failed: {err}"),
-                Err(err) => log::warn!("recording a closed tab panicked: {err}"),
+                Err(err) => log::warn!("recording a closed tab failed: {err}"),
             }
         }
     }
-
-    crate::audio::forget_tab(&app, id);
-    crate::tab_preview::forget(&app, &state, id);
 
     mutate_unit_immediate(&app, &state, move |s| {
         let workspace_id = s.tab(id)?.workspace_id;
@@ -270,6 +241,76 @@ pub async fn close_tab(
         next.with_active_tab(target)
     })
     .await
+}
+
+/// How many closed tabs stay reopenable, archived ones included.
+pub const CLOSED_TAB_CAP: u32 = 200;
+/// Of those, how many keep their live session in memory for a reopen.
+const KEPT_SESSIONS: u32 = 25;
+
+/// Everything Wis holds for a tab outside `BrowserState`, dropped as it closes.
+pub(crate) async fn forget_tab_state(app: &AppHandle, state: &AppState, id: TabId) {
+    crate::page_source::forget(id);
+    crate::signup::forget_field(&id.as_uuid().to_string());
+    let label = format!("tab-{}", id.as_uuid());
+    crate::hardening::forget(&label);
+    crate::uncloak::forget(state, &label);
+    crate::capture::forget(state, id).await;
+    crate::audio::forget_tab(app, id);
+    crate::tab_preview::forget(app, state, id);
+}
+
+/// Records closed tabs, prunes to [`CLOSED_TAB_CAP`] and drops the live
+/// sessions of all but the newest few. Returns the new rows' ids.
+async fn record_closed(
+    state: &AppState,
+    records: Vec<wis_storage::ClosedTabRecord>,
+) -> WisResult<Vec<i64>> {
+    let storage = state.storage.clone();
+    let (rows, kept) = run_storage(move || {
+        let rows = storage.record_closed_tabs(&records)?;
+        storage.prune_closed_tabs(CLOSED_TAB_CAP)?;
+        let kept: std::collections::HashSet<i64> = storage
+            .list_closed_tabs(KEPT_SESSIONS)?
+            .into_iter()
+            .map(|entry| entry.id)
+            .collect();
+        Ok((rows, kept))
+    })
+    .await?;
+    state
+        .closed_tab_sessions
+        .lock()
+        .await
+        .retain(|row, _| kept.contains(row));
+    Ok(rows)
+}
+
+/// Archived tabs sort by when they were last used, behind tabs closed since,
+/// so a reopen brings back what was just closed first.
+pub(crate) async fn record_archived(
+    state: &AppState,
+    archived: &[wis_core::tab_archive::Archived],
+) {
+    let records = archived
+        .iter()
+        .map(|archived| wis_storage::ClosedTabRecord {
+            id: 0,
+            workspace_id: archived.tab.workspace_id,
+            url: archived.tab.url.to_string(),
+            title: archived.tab.title.clone(),
+            folder_id: archived.tab.folder_id,
+            position: archived
+                .position
+                .and_then(|slot| i64::try_from(slot).ok())
+                .unwrap_or(APPEND_POSITION),
+            pinned: archived.tab.pinned,
+            closed_at: archived.tab.last_active_at,
+        })
+        .collect();
+    if let Err(err) = record_closed(state, records).await {
+        log::warn!("recording archived tabs failed: {err}");
+    }
 }
 
 /// Position recorded for a tab whose slot could not be determined; a reopen

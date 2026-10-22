@@ -544,6 +544,9 @@ interface ClosedTabsSourceArgs {
   onReopen: (id: number) => void | Promise<void>
 }
 
+/** Every closed tab the backend keeps, archived ones included. */
+export const CLOSED_TAB_LIMIT = 200
+
 /**
  * Tabs closed recently, newest first. The palette shows the last few closed tabs
  * when no query is present. A typed query filters and ranks the whole list instead.

@@ -31,6 +31,17 @@ pub fn record(conn: &Connection, entry: &ClosedTabRecord) -> StorageResult<i64> 
     Ok(conn.last_insert_rowid())
 }
 
+/// In one transaction.
+pub fn record_all(conn: &Connection, entries: &[ClosedTabRecord]) -> StorageResult<Vec<i64>> {
+    let tx = conn.unchecked_transaction()?;
+    let ids = entries
+        .iter()
+        .map(|entry| record(&tx, entry))
+        .collect::<StorageResult<Vec<i64>>>()?;
+    tx.commit()?;
+    Ok(ids)
+}
+
 /// Closed tabs, newest first, capped at `limit`.
 pub fn list(conn: &Connection, limit: u32) -> StorageResult<Vec<ClosedTabRecord>> {
     let mut stmt = conn.prepare(
@@ -81,13 +92,14 @@ pub fn take_latest(conn: &Connection) -> StorageResult<Option<ClosedTabRecord>> 
     }
 }
 
-/// Drop all but the newest `keep` entries.
+/// Drop all but the last `keep` entries recorded. Not the newest closed: an
+/// archived tab carries when it was last used.
 pub fn prune(conn: &Connection, keep: u32) -> StorageResult<()> {
     conn.execute(
         r#"
         DELETE FROM closed_tabs
         WHERE id NOT IN (
-            SELECT id FROM closed_tabs ORDER BY closed_at DESC, id DESC LIMIT ?1
+            SELECT id FROM closed_tabs ORDER BY id DESC LIMIT ?1
         )
         "#,
         params![keep],
