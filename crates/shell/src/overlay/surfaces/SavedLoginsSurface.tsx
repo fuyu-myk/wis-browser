@@ -24,6 +24,7 @@ import { cx } from '@/lib/cx'
 import { menusGlass } from '@/lib/glass'
 import { GlobeIcon } from '@/lib/icons'
 import { showRemoteToast } from '@/lib/toast'
+import { VAULTMENU_FILL_EVENT, type VaultMenuFill } from '@/lib/vaultMenu'
 import { unlockProblem } from '@/lib/vaultRecovery'
 
 const EARLY_CLICK_MS = 500
@@ -61,6 +62,14 @@ export function SavedLoginsSurface() {
     setBusy(true)
     try {
       const status = await commands.vaultStatus().catch(() => null)
+      if (status && !status.unlocked && status.password) {
+        const label = getCurrentWindow().label
+        const request: VaultMenuFill = { window: label, tab: pick.tabId, credentialId }
+        void emit(VAULTMENU_FILL_EVENT, request)
+        setPick(null)
+        void emit(LOGINS_CLOSE_EVENT, label)
+        return
+      }
       if (status && !status.unlocked && !(await commands.vaultUnlock().catch(toastProblem))) return
       await commands.autofillFill(pick.tabId, credentialId)
       setPick(null)

@@ -16,7 +16,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { commands } from '@/bindings/commands'
-import type { CredentialSummary, SignupFieldInfo } from '@/bindings/types'
+import type { CredentialSummary, SignupFieldInfo, TabId } from '@/bindings/types'
 import { LockIcon } from '@/lib/icons'
 import { cx } from '@/lib/cx'
 import { SETTINGS_URL } from '@/lib/url'
@@ -30,6 +30,7 @@ import {
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { errorMessage } from '@/lib/errors'
 import { menusGlass } from '@/lib/glass'
 import { showRemoteToast } from '@/lib/toast'
 import { unlockProblem } from '@/lib/vaultRecovery'
@@ -40,6 +41,11 @@ function hostOf(url: string): string {
   } catch {
     return ''
   }
+}
+
+interface PendingUnlock {
+  promise: Promise<boolean>
+  resolve: (ok: boolean) => void
 }
 
 export function VaultMenuSurface() {
@@ -62,6 +68,12 @@ export function VaultMenuSurface() {
   const [passwordField, setPasswordField] = useState<SignupFieldInfo | null>(null)
   const [busy, setBusy] = useState(false)
   const [anchor, setAnchor] = useState<VaultMenuAnchor | null>(null)
+  const [unlocking, setUnlocking] = useState(false)
+  const unlockRef = useRef<PendingUnlock | null>(null)
+  const refocusRef = useRef<TabId | null>(null)
+  const fillRef = useRef<(credentialId: number, forTab: TabId | null) => Promise<void>>(
+    async () => undefined,
+  )
 
   const load = useCallback(async () => {
     const [cands, pend, field] = await Promise.all([
@@ -87,6 +99,7 @@ export function VaultMenuSurface() {
     void listen<VaultMenuAnchor>(VAULTMENU_OPEN_EVENT, (e) => {
       setAnchor(e.payload)
       void load()
+      if (e.payload.fill) void fillRef.current(e.payload.fill.credentialId, e.payload.fill.tab)
     }).then((fn) => (cancelled ? fn() : (unOpen = fn)))
     void listen<CaptureInfo>(CAPTURE_LOGIN_EVENT, () => void load()).then((fn) =>
       cancelled ? fn() : (unCapture = fn),
@@ -99,38 +112,69 @@ export function VaultMenuSurface() {
   }, [load])
 
   const close = useCallback(() => {
+    const asking = unlockRef.current
+    unlockRef.current = null
+    setUnlocking(false)
+    asking?.resolve(false)
     setAnchor(null)
     void commands.hideOverlay('vaultmenu').catch(() => undefined)
     void emit(VAULTMENU_CLOSE_EVENT).catch(() => undefined)
+    const page = refocusRef.current
+    refocusRef.current = null
+    if (page) void commands.focusWebview(`tab-${page}`).catch(() => undefined)
   }, [])
 
-  const ensureUnlocked = async (): Promise<boolean> => {
+  const ensureUnlocked = async (forTab: TabId): Promise<boolean> => {
     const status = await commands.vaultStatus().catch(() => null)
-    if (status && !status.unlocked) {
+    const waiting = unlockRef.current
+    if (waiting) return waiting.promise
+    if (!status || status.unlocked) return true
+    if (!status.password) {
       return commands.vaultUnlock().catch((error: unknown) => {
         void showRemoteToast(getCurrentWindow().label, unlockProblem(error))
         return false
       })
     }
-    return true
+    let resolve: (ok: boolean) => void = () => undefined
+    const promise = new Promise<boolean>((done) => {
+      resolve = done
+    })
+    unlockRef.current = { promise, resolve }
+    refocusRef.current = forTab
+    await commands.focusSelf().catch(() => undefined)
+    if (unlockRef.current?.promise === promise) setUnlocking(true)
+    return promise
   }
 
-  const fill = async (credentialId: number) => {
-    if (!tabId) return
+  const finishUnlock = (ok: boolean) => {
+    if (!ok) {
+      close()
+      return
+    }
+    const asking = unlockRef.current
+    unlockRef.current = null
+    setUnlocking(false)
+    asking?.resolve(true)
+  }
+
+  const fill = async (credentialId: number, forTab: TabId | null = tabId) => {
+    if (!forTab) return
     setBusy(true)
     try {
-      if (!(await ensureUnlocked())) return
-      await commands.autofillFill(tabId, credentialId).catch(() => undefined)
+      if (!(await ensureUnlocked(forTab))) return
+      await commands.autofillFill(forTab, credentialId).catch(() => undefined)
+      refocusRef.current = forTab
       close()
     } finally {
       setBusy(false)
     }
   }
+  fillRef.current = fill
 
   const onSave = async () => {
     setBusy(true)
     try {
-      if (!tabId || !(await ensureUnlocked())) return
+      if (!tabId || !(await ensureUnlocked(tabId))) return
       await commands.captureSave(tabId).catch(() => undefined)
       close()
     } finally {
@@ -177,17 +221,23 @@ export function VaultMenuSurface() {
 
   if (!anchor) return null
 
-  const hasContent = !!pending || (!!host && candidates.length > 0) || !!passwordField
+  const hasContent =
+    !!unlocking || !!pending || (!!host && candidates.length > 0) || !!passwordField
 
   return (
     <div className="kb-vaultmenu-backdrop" onMouseDown={close}>
       {hasContent && (
         <div
           className={cx('kb-vaultmenu', { 'glass-menus': glassMenus })}
-          role="menu"
+          role={unlocking ? 'dialog' : 'menu'}
+          aria-label={unlocking ? 'Unlock your vault' : undefined}
           style={{ left: anchor.x, top: anchor.y, width: anchor.width }}
           onMouseDown={(e) => e.stopPropagation()}
         >
+          {unlocking ? (
+            <VaultMenuUnlock onDone={finishUnlock} />
+          ) : (
+            <>
           {pending && (
             <>
           <div className="kb-vaultmenu-save">
@@ -264,8 +314,78 @@ export function VaultMenuSurface() {
           <button type="button" className="kb-vaultmenu-manage" role="menuitem" onClick={onManage}>
             Manage passwords
           </button>
+            </>
+          )}
         </div>
       )}
+    </div>
+  )
+}
+
+function VaultMenuUnlock({ onDone }: { onDone: (ok: boolean) => void }) {
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<unknown>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onDone(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onDone])
+
+  const submit = async () => {
+    if (!password || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await commands.vaultUnlockPassword(password)
+      onDone(true)
+    } catch (err) {
+      setError(err)
+      setPassword('')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="kb-vaultmenu-save">
+      <div className="kb-vaultmenu-save-text">
+        <div className="kb-vaultmenu-save-title">Unlock your vault</div>
+        <div className="kb-vaultmenu-save-sub">Enter your vault password</div>
+      </div>
+      <input
+        type="password"
+        className="kb-vaultmenu-input"
+        aria-label="Vault password"
+        autoComplete="off"
+        autoFocus
+        value={password}
+        onChange={(e) => setPassword(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') void submit()
+        }}
+      />
+      {error ? (
+        <div className="kb-vaultmenu-save-warn" role="alert">
+          {errorMessage(error)}
+        </div>
+      ) : null}
+      <div className="kb-vaultmenu-save-actions">
+        <button type="button" className="kb-vaultmenu-btn" onClick={() => onDone(false)}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="kb-vaultmenu-btn kb-vaultmenu-btn-primary"
+          onClick={() => void submit()}
+          disabled={!password || busy}
+        >
+          Unlock
+        </button>
+      </div>
     </div>
   )
 }

@@ -12,6 +12,7 @@ import {
 } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { commands } from '@/bindings/commands'
 import { ExtensionsButton } from '@/components/ExtensionsButton'
@@ -27,8 +28,10 @@ import { BMPICKER_OPEN_EVENT, BOOKMARK_PAGE_EVENT, lastFolderKey, PIN_CAP } from
 import {
   CAPTURE_LOGIN_EVENT,
   VAULTMENU_CLOSE_EVENT,
+  VAULTMENU_FILL_EVENT,
   VAULTMENU_OPEN_EVENT,
   type CaptureEvent,
+  type VaultMenuFill,
 } from '@/lib/vaultMenu'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { FOCUS_URLBAR_EVENT } from '@/hooks/useKeyActions'
@@ -100,26 +103,42 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
   const visible = hasPending || (host != null && hasCreds === true) || passwordField != null
 
   const anchorRect = useCallback(() => {
-    const el = btnRef.current
-    if (!el) return null
-    const r = el.getBoundingClientRect()
     const width = 300
-    return {
-      x: Math.round(Math.max(8, r.right - width)),
-      y: Math.round(r.bottom + 6),
-      width,
+    const el = btnRef.current
+    if (el) {
+      const r = el.getBoundingClientRect()
+      return { x: Math.round(Math.max(8, r.right - width)), y: Math.round(r.bottom + 6), width }
     }
+    const page = document.querySelector('.kb-content-host')?.getBoundingClientRect()
+    if (!page) return null
+    return { x: Math.round(Math.max(8, page.right - width - 8)), y: Math.round(page.top + 8), width }
   }, [])
 
-  const open = useCallback(async () => {
-    const a = anchorRect()
-    if (!a) return
-    await overlay
-      .show({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight })
-      .catch(() => undefined)
-    openRef.current = true
-    await emit(VAULTMENU_OPEN_EVENT, a).catch(() => undefined)
-  }, [anchorRect, overlay])
+  const open = useCallback(
+    async (fill?: { tab: TabId; credentialId: number }) => {
+      const a = anchorRect()
+      if (!a) return
+      await overlay
+        .show({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight })
+        .catch(() => undefined)
+      openRef.current = true
+      await emit(VAULTMENU_OPEN_EVENT, { ...a, fill }).catch(() => undefined)
+    },
+    [anchorRect, overlay],
+  )
+
+  useEffect(() => {
+    let un: UnlistenFn | null = null
+    let cancelled = false
+    void listen<VaultMenuFill>(VAULTMENU_FILL_EVENT, (e) => {
+      if (e.payload.window !== getCurrentWindow().label || e.payload.tab !== tabIdRef.current) return
+      void open({ tab: e.payload.tab, credentialId: e.payload.credentialId })
+    }).then((fn) => (cancelled ? fn() : (un = fn)))
+    return () => {
+      cancelled = true
+      un?.()
+    }
+  }, [open])
 
   const close = useCallback(async () => {
     if (openRef.current) {

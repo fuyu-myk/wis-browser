@@ -1079,6 +1079,23 @@ body.is-overlay-surface:not(.glass-on) {
 .kb-vaultmenu-btn:hover { background: rgba(0, 0, 0, 0.05); }
 [data-mode="dark"] .kb-vaultmenu-btn:hover { background: rgba(255, 255, 255, 0.08); }
 .kb-vaultmenu-btn:disabled { opacity: 0.5; cursor: default; }
+.kb-vaultmenu-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.kb-vaultmenu-input:focus { border-color: var(--primary-500); }
+[data-mode="dark"] .kb-vaultmenu-input {
+  color: rgba(255, 255, 255, 0.92);
+  border-color: rgba(255, 255, 255, 0.14);
+}
 .kb-vaultmenu-btn-primary {
   border-color: transparent;
   background: var(--primary-500);

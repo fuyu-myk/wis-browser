@@ -31,9 +31,21 @@ export interface CaptureEvent extends CaptureInfo {
   tab: TabId
 }
 
+/** Saved-logins card. */
+export const VAULTMENU_FILL_EVENT = 'wis-vaultmenu-fill'
+
 /** Where to place the card within the full-window overlay (window coords). */
 export interface VaultMenuAnchor {
   x: number
   y: number
   width: number
+  /** A saved login to fill in `tab` once the menu has unlocked the vault. */
+  fill?: { tab: TabId; credentialId: number }
+}
+
+/** A login picked on the saved-logins card while the vault needs its password. */
+export interface VaultMenuFill {
+  window: string
+  tab: TabId
+  credentialId: number
 }
