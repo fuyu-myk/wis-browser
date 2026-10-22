@@ -1044,7 +1044,10 @@ mod tests {
         crate::uncloak::opening_page(&state, "tab-opening", "https://go.shop.test/offer");
         crate::uncloak::opening_page(&state, "tab-unknown", "https://elsewhere.test/");
 
-        assert!(crate::uncloak::cloaking_for(&state, opening).is_page("go.shop.test"));
+        assert_eq!(
+            crate::uncloak::cloaking_for(&state, opening).is_page("go.shop.test"),
+            crate::uncloak::SUPPORTED
+        );
         assert!(!crate::uncloak::cloaking_for(&state, other).is_page("go.shop.test"));
         crate::uncloak::forget_workspace(&state, opening);
         assert!(!crate::uncloak::cloaking_for(&state, opening).is_page("go.shop.test"));
