@@ -29,6 +29,6 @@ export function formatTemplate(file, fnName, values) {
   const open = source.indexOf('r#"', at) + 3
   const body = source.slice(open, source.indexOf('"#', open))
   let text = body.replace(/\{\{/g, '{').replace(/\}\}/g, '}')
-  for (const [key, value] of Object.entries(values)) text = text.replace(`{${key}}`, value)
+  for (const [key, value] of Object.entries(values)) text = text.replaceAll(`{${key}}`, () => value)
   return text
 }

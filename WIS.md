@@ -106,7 +106,7 @@ Each group maps to a `docs/architecture/` doc that carries the mechanism details
 
 ### Security & data protection (`docs/architecture/security-vault-and-permissions.md`)
 
-- **Password vault**: ChaCha20-Poly1305 at rest, master key in the OS key store gated by a biometric (Touch ID / Windows Hello); save-capture, saved-account picker (key button, and a card at the focused sign-in field), origin-matched autofill (app -> page eval only); CSV import/export (`wis_core::password_csv`, biometric-confirmed both ways, plaintext-export warning).
+- **Password vault**: ChaCha20-Poly1305 at rest, master key in the OS key store gated by a biometric (Touch ID / Windows Hello); save-capture, saved-account picker (key button, and a card at the focused sign-in field), origin-matched autofill (app -> page eval only, the host checked again by the fill script as it runs); an unreadable stored key is reported, never replaced; CSV import/export (`wis_core::password_csv`, biometric-confirmed both ways, plaintext-export warning).
 - **Stay logged in across restarts**: encrypted session-cookie snapshot restored before first load, fixed 14-day TTL, gated by the `persist_sessions` setting; never for ephemeral workspaces.
 - **Camera & microphone consent**: app-side `getUserMedia` gate + in-browser prompt with remembered decisions (macOS/Windows/Linux; the Linux prompt is wired but not yet exercised in the VM).
 - **Navigation safety interstitial**: `navguard` re-assesses risky links (click-time and page-load fallback) and interrupts High/Medium threats; shares `link_safety` heuristics with Peek.

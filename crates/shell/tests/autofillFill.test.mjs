@@ -6,12 +6,13 @@ import { test } from 'node:test'
 import { formatTemplate } from './support/rustSource.mjs'
 
 const SCRIPT = formatTemplate('vault.rs', 'fill_script', {
+  host: JSON.stringify('example.com'),
   user: JSON.stringify('alice'),
   pass: JSON.stringify('secret'),
 })
 
 /** Run the fill over inputs in document order, `active` focused; returns their values. */
-function fill(spec, active) {
+function fill(spec, active, hostname = 'example.com') {
   const els = spec.map((s) => ({
     tagName: 'INPUT',
     type: 'text',
@@ -42,7 +43,7 @@ function fill(spec, active) {
       this.type = type
     }
   }
-  new Function('document', 'Event', SCRIPT)(doc, Event)
+  new Function('document', 'Event', 'location', SCRIPT)(doc, Event, { hostname })
   return els.map((e) => e.value)
 }
 
@@ -88,4 +89,26 @@ test('a focused search box is not taken for the username', () => {
 
 test('no login fields: nothing is written', () => {
   assert.deepEqual(fill([{ type: 'search' }], 0), [''])
+})
+
+test('a page that has moved to another site by the time the fill runs gets nothing', () => {
+  const form = {}
+  const login = [{ autocomplete: 'username', form }, { type: 'password', form }]
+  assert.deepEqual(fill(login, 0, 'evil.test'), ['', ''])
+  assert.deepEqual(fill(login, 0, 'example.com.evil.test'), ['', ''])
+  assert.deepEqual(fill(login, 0, 'www.example.com'), ['alice', 'secret'])
+})
+
+test('a page that patches string methods still cannot pass the site check', () => {
+  const { replace, startsWith, endsWith, slice } = String.prototype
+  try {
+    String.prototype.replace = () => 'example.com'
+    String.prototype.startsWith = () => true
+    String.prototype.endsWith = () => true
+    String.prototype.slice = () => 'example.com'
+    const form = {}
+    assert.deepEqual(fill([{ autocomplete: 'username', form }, { type: 'password', form }], 0, 'evil.test'), ['', ''])
+  } finally {
+    Object.assign(String.prototype, { replace, startsWith, endsWith, slice })
+  }
 })

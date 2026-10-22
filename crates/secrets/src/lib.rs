@@ -69,6 +69,22 @@ pub fn generate_master_key() -> MasterKey {
     key
 }
 
+/// The stored master key, or a new one stored when there is none.
+pub fn master_key_or_new() -> Result<MasterKey, VaultError> {
+    stored_or_new(keychain_load(), || {
+        let key = generate_master_key();
+        keychain_store(&key)?;
+        Ok(key)
+    })
+}
+
+fn stored_or_new(
+    loaded: Result<Option<MasterKey>, VaultError>,
+    create: impl FnOnce() -> Result<MasterKey, VaultError>,
+) -> Result<MasterKey, VaultError> {
+    loaded?.map_or_else(create, Ok)
+}
+
 /// A fresh random salt for passphrase key derivation.
 pub fn random_salt() -> [u8; BACKUP_SALT_LEN] {
     let mut salt = [0u8; BACKUP_SALT_LEN];
@@ -154,7 +170,7 @@ const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
 
 /// Persist the master key in the Keychain (this-device login keychain).
 #[cfg(target_os = "macos")]
-pub fn keychain_store(key: &MasterKey) -> Result<(), VaultError> {
+fn keychain_store(key: &MasterKey) -> Result<(), VaultError> {
     use security_framework::passwords::{delete_generic_password, set_generic_password};
 
     let _ = delete_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
@@ -390,7 +406,7 @@ pub fn keychain_load() -> Result<Option<MasterKey>, VaultError> {
 }
 
 #[cfg(windows)]
-pub fn keychain_store(key: &MasterKey) -> Result<(), VaultError> {
+fn keychain_store(key: &MasterKey) -> Result<(), VaultError> {
     let sealed = dpapi_protect(key.as_ref())?;
     let path = secrets_dir()?.join(MASTER_KEY_FILE);
     std::fs::write(&path, &sealed)
@@ -478,7 +494,7 @@ pub fn keychain_load() -> Result<Option<MasterKey>, VaultError> {
     Err(VaultError::Unsupported)
 }
 #[cfg(not(any(target_os = "macos", windows)))]
-pub fn keychain_store(_key: &MasterKey) -> Result<(), VaultError> {
+fn keychain_store(_key: &MasterKey) -> Result<(), VaultError> {
     Err(VaultError::Unsupported)
 }
 #[cfg(not(any(target_os = "macos", windows)))]
@@ -501,6 +517,31 @@ mod tests {
         assert_ne!(blob.ciphertext, b"hunter2");
         assert_eq!(blob.nonce.len(), 12);
         assert_eq!(decrypt(&key, &blob).unwrap(), b"hunter2");
+    }
+
+    #[test]
+    fn an_unreadable_key_is_an_error_and_only_a_missing_one_is_made() {
+        let never = || -> Result<MasterKey, VaultError> { panic!("must not make a key") };
+        assert!(matches!(
+            stored_or_new(Err(VaultError::Malformed), never),
+            Err(VaultError::Malformed)
+        ));
+        assert!(matches!(
+            stored_or_new(Err(VaultError::Keychain("denied".into())), never),
+            Err(VaultError::Keychain(_))
+        ));
+
+        let stored = generate_master_key();
+        assert_eq!(
+            *stored_or_new(Ok(Some(stored.clone())), never).unwrap(),
+            *stored
+        );
+
+        let made = generate_master_key();
+        assert_eq!(
+            *stored_or_new(Ok(None), || Ok(made.clone())).unwrap(),
+            *made
+        );
     }
 
     #[test]

@@ -46,10 +46,7 @@ pub async fn vault_status(state: State<'_, AppState>) -> WisResult<VaultStatus> 
     let unlocked = state.vault_key.lock().await.is_some();
     let supported = vault_supported();
     let has_master_key = if supported {
-        // No biometric prompt: this only checks for the item's existence.
-        wis_secrets::keychain_load()
-            .map(|k| k.is_some())
-            .unwrap_or(false)
+        wis_secrets::keychain_load().map_or(true, |key| key.is_some())
     } else {
         false
     };
@@ -74,24 +71,30 @@ pub async fn vault_unlock(_app: AppHandle, state: State<'_, AppState>) -> WisRes
         return Ok(false);
     }
 
-    let key = match wis_secrets::keychain_load() {
-        Ok(Some(key)) => key,
-        Ok(None) => create_master_key()?,
-        Err(err) => {
-            log::warn!("vault: stored key unreadable ({err}); recreating master key");
-            create_master_key()?
-        }
-    };
-    *state.vault_key.lock().await = Some(key);
+    load_key(&state).await?;
 
     Ok(true)
 }
 
-/// Generate a fresh master key and persist it to the Keychain.
-fn create_master_key() -> WisResult<wis_secrets::MasterKey> {
-    let key = wis_secrets::generate_master_key();
-    wis_secrets::keychain_store(&key).map_err(vault_err)?;
-    Ok(key)
+async fn load_key(state: &State<'_, AppState>) -> WisResult<()> {
+    let mut key = state.vault_key.lock().await;
+    if key.is_none() {
+        let loaded = tokio::task::spawn_blocking(wis_secrets::master_key_or_new)
+            .await
+            .map_err(|err| WisError::PersistenceFailed {
+                reason: format!("vault task panicked: {err}"),
+            })?
+            .map_err(key_unavailable)?;
+        *key = Some(loaded);
+    }
+    Ok(())
+}
+
+fn key_unavailable(err: wis_secrets::VaultError) -> WisError {
+    log::warn!("vault: master key unavailable: {err}");
+    WisError::InvalidInput {
+        message: format!("Your vault's key couldn't be loaded, so nothing was changed ({err})"),
+    }
 }
 
 /// Touch-ID-authorize a vault backup operation and load the master key for the
@@ -110,19 +113,7 @@ pub(crate) async fn authorize_vault(state: &State<'_, AppState>, reason: &str) -
         });
     }
 
-    if state.vault_key.lock().await.is_none() {
-        let key = match wis_secrets::keychain_load() {
-            Ok(Some(key)) => key,
-            Ok(None) => create_master_key()?,
-            Err(err) => {
-                log::warn!("vault: stored key unreadable ({err}); recreating master key");
-                create_master_key()?
-            }
-        };
-        *state.vault_key.lock().await = Some(key);
-    }
-
-    Ok(())
+    load_key(state).await
 }
 
 /// Decrypt every saved login for an export, unlocking the vault first
@@ -652,9 +643,10 @@ pub async fn autofill_fill(
         })?
     };
 
-    let user_js = serde_json::to_string(&username).unwrap_or_else(|_| "\"\"".to_string());
-    let pass_js = serde_json::to_string(&password).unwrap_or_else(|_| "\"\"".to_string());
-    let script = fill_script(&user_js, &pass_js);
+    let host_js = serde_json::to_string(strip_www(&record.host)).map_err(json_err)?;
+    let user_js = serde_json::to_string(&username).map_err(json_err)?;
+    let pass_js = serde_json::to_string(&password).map_err(json_err)?;
+    let script = fill_script(&host_js, &user_js, &pass_js);
 
     webview.eval(&script).map_err(|err| WisError::InvalidInput {
         message: format!("autofill eval failed: {err}"),
@@ -669,11 +661,14 @@ fn strip_www(host: &str) -> &str {
 /// dispatching input/change so frameworks notice. It starts from the focused
 /// field when that is for a sign-in, so a username-first page gets its
 /// username and a page with two forms fills the one in use; otherwise the
-/// page's first password field. `user`/`pass` are already JSON string literals.
-fn fill_script(user: &str, pass: &str) -> String {
+/// page's first password field. `host`/`user`/`pass` are already JSON string
+/// literals; the page fills nothing unless it is still on `host`.
+fn fill_script(host: &str, user: &str, pass: &str) -> String {
     format!(
         r#"(function(){{
   try {{
+    var here = location.hostname;
+    if (here !== {host} && here !== 'www.' + {host}) return;
     var PW = 'input[type=password]:not([disabled]):not([readonly])';
     function kind(el) {{
       if (!el || el.tagName !== 'INPUT' || el.disabled || el.readOnly) return '';
@@ -712,9 +707,16 @@ fn fill_script(user: &str, pass: &str) -> String {
     if (pw) setVal(pw, {pass});
   }} catch (e) {{}}
 }})();"#,
+        host = host,
         user = user,
         pass = pass,
     )
+}
+
+fn json_err(err: serde_json::Error) -> WisError {
+    WisError::InvalidInput {
+        message: format!("autofill: {err}"),
+    }
 }
 
 // -- helpers ----------------------------------------------------------------

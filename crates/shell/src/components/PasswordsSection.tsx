@@ -207,23 +207,30 @@ export function PasswordsSection() {
           The password vault is not available on this platform.
         </p>
       ) : !unlocked ? (
-        <div className="kb-vault-locked">
-          <span className="kb-vault-lock-icon">
-            <LockIcon />
-          </span>
-          <div className="kb-vault-locked-text">
-            <span>{hasKey ? 'Your vault is locked' : 'Set up your password vault'}</span>
-            <span>Unlocked with {BIOMETRIC_NAME}. Passwords are encrypted on this device.</span>
+        <>
+          <div className="kb-vault-locked">
+            <span className="kb-vault-lock-icon">
+              <LockIcon />
+            </span>
+            <div className="kb-vault-locked-text">
+              <span>{hasKey ? 'Your vault is locked' : 'Set up your password vault'}</span>
+              <span>Unlocked with {BIOMETRIC_NAME}. Passwords are encrypted on this device.</span>
+            </div>
+            <button
+              type="button"
+              className="kb-btn"
+              onClick={() => unlock.mutate()}
+              disabled={unlock.isPending}
+            >
+              {hasKey ? 'Unlock' : 'Set up'}
+            </button>
           </div>
-          <button
-            type="button"
-            className="kb-btn"
-            onClick={() => unlock.mutate()}
-            disabled={unlock.isPending}
-          >
-            {hasKey ? 'Unlock' : 'Set up'}
-          </button>
-        </div>
+          {unlock.isError && (
+            <p className="kb-backup-status is-error" role="alert">
+              {errorMessage(unlock.error)}
+            </p>
+          )}
+        </>
       ) : (
         <>
           <div className="row">
