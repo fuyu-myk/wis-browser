@@ -1102,6 +1102,12 @@ export interface VaultStatus {
   supported: boolean
 }
 
+/** How a vault recovery went; `partial` when the key opens only some saved passwords. */
+export type RecoverOutcome =
+  | { kind: 'cancelled' }
+  | { kind: 'recovered' }
+  | { kind: 'partial'; opened: number; total: number }
+
 /** A saved credential without its password (safe to list). */
 /** Outcome of a password CSV import (mirror of `CsvImportStats`). */
 export interface CsvImportStats {

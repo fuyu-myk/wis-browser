@@ -23,6 +23,7 @@
 pub mod breach;
 pub mod password;
 pub mod password_rules;
+pub mod recovery;
 
 pub use breach::{count_in_range, range_split, RANGE_PREFIX_LEN};
 pub use password::{
@@ -60,6 +61,8 @@ pub enum VaultError {
     Keychain(String),
     #[error("vault is unavailable on this platform")]
     Unsupported,
+    #[error("the key your saved data was sealed with is missing")]
+    Missing,
 }
 
 /// Generate a fresh master key from the OS CSPRNG.
@@ -69,9 +72,10 @@ pub fn generate_master_key() -> MasterKey {
     key
 }
 
-/// The stored master key, or a new one stored when there is none.
-pub fn master_key_or_new() -> Result<MasterKey, VaultError> {
-    stored_or_new(keychain_load(), || {
+/// The stored master key, or a new one stored when there is none and
+/// `may_create`.
+pub fn master_key_or_new(may_create: bool) -> Result<MasterKey, VaultError> {
+    stored_or_new(keychain_load(), may_create, || {
         let key = generate_master_key();
         keychain_store(&key)?;
         Ok(key)
@@ -80,9 +84,19 @@ pub fn master_key_or_new() -> Result<MasterKey, VaultError> {
 
 fn stored_or_new(
     loaded: Result<Option<MasterKey>, VaultError>,
+    may_create: bool,
     create: impl FnOnce() -> Result<MasterKey, VaultError>,
 ) -> Result<MasterKey, VaultError> {
-    loaded?.map_or_else(create, Ok)
+    match loaded? {
+        Some(key) => Ok(key),
+        None if may_create => create(),
+        None => Err(VaultError::Missing),
+    }
+}
+
+/// Put a recovered master key in the key store, replacing what is there.
+pub fn restore_master_key(key: &MasterKey) -> Result<(), VaultError> {
+    keychain_store(key)
 }
 
 /// A fresh random salt for passphrase key derivation.
@@ -168,12 +182,29 @@ pub fn keychain_load() -> Result<Option<MasterKey>, VaultError> {
 #[cfg(target_os = "macos")]
 const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
 
+/// Whether a master key is stored, without reading it.
+#[cfg(target_os = "macos")]
+pub fn has_master_key() -> Result<bool, VaultError> {
+    use security_framework::item::{ItemClass, ItemSearchOptions};
+    match ItemSearchOptions::new()
+        .class(ItemClass::generic_password())
+        .service(KEYCHAIN_SERVICE)
+        .account(KEYCHAIN_ACCOUNT)
+        .load_attributes(true)
+        .search()
+    {
+        Ok(found) => Ok(!found.is_empty()),
+        Err(err) if err.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(false),
+        Err(err) => Err(VaultError::Keychain(err.to_string())),
+    }
+}
+
 /// Persist the master key in the Keychain (this-device login keychain).
 #[cfg(target_os = "macos")]
 fn keychain_store(key: &MasterKey) -> Result<(), VaultError> {
-    use security_framework::passwords::{delete_generic_password, set_generic_password};
+    use security_framework::passwords::set_generic_password;
 
-    let _ = delete_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
+    keychain_delete()?;
     set_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, key.as_ref())
         .map_err(|err| VaultError::Keychain(err.to_string()))
 }
@@ -406,10 +437,22 @@ pub fn keychain_load() -> Result<Option<MasterKey>, VaultError> {
 }
 
 #[cfg(windows)]
+pub fn has_master_key() -> Result<bool, VaultError> {
+    Ok(secrets_dir()?.join(MASTER_KEY_FILE).exists())
+}
+
+#[cfg(windows)]
 fn keychain_store(key: &MasterKey) -> Result<(), VaultError> {
     let sealed = dpapi_protect(key.as_ref())?;
     let path = secrets_dir()?.join(MASTER_KEY_FILE);
-    std::fs::write(&path, &sealed)
+    let staged = path.with_extension("key.tmp");
+    std::fs::File::create(&staged)
+        .and_then(|mut file| {
+            use std::io::Write;
+            file.write_all(&sealed)?;
+            file.sync_all()
+        })
+        .and_then(|()| std::fs::rename(&staged, &path))
         .map_err(|err| VaultError::Keychain(format!("write master key: {err}")))
 }
 
@@ -494,6 +537,10 @@ pub fn keychain_load() -> Result<Option<MasterKey>, VaultError> {
     Err(VaultError::Unsupported)
 }
 #[cfg(not(any(target_os = "macos", windows)))]
+pub fn has_master_key() -> Result<bool, VaultError> {
+    Ok(false)
+}
+#[cfg(not(any(target_os = "macos", windows)))]
 fn keychain_store(_key: &MasterKey) -> Result<(), VaultError> {
     Err(VaultError::Unsupported)
 }
@@ -523,25 +570,29 @@ mod tests {
     fn an_unreadable_key_is_an_error_and_only_a_missing_one_is_made() {
         let never = || -> Result<MasterKey, VaultError> { panic!("must not make a key") };
         assert!(matches!(
-            stored_or_new(Err(VaultError::Malformed), never),
+            stored_or_new(Err(VaultError::Malformed), true, never),
             Err(VaultError::Malformed)
         ));
         assert!(matches!(
-            stored_or_new(Err(VaultError::Keychain("denied".into())), never),
+            stored_or_new(Err(VaultError::Keychain("denied".into())), true, never),
             Err(VaultError::Keychain(_))
         ));
 
         let stored = generate_master_key();
         assert_eq!(
-            *stored_or_new(Ok(Some(stored.clone())), never).unwrap(),
+            *stored_or_new(Ok(Some(stored.clone())), false, never).unwrap(),
             *stored
         );
 
         let made = generate_master_key();
         assert_eq!(
-            *stored_or_new(Ok(None), || Ok(made.clone())).unwrap(),
+            *stored_or_new(Ok(None), true, || Ok(made.clone())).unwrap(),
             *made
         );
+        assert!(matches!(
+            stored_or_new(Ok(None), false, never),
+            Err(VaultError::Missing)
+        ));
     }
 
     #[test]
@@ -572,12 +623,12 @@ mod tests {
         let salt = random_salt();
         let a = derive_passphrase_key("correct horse", &salt).unwrap();
         let b = derive_passphrase_key("correct horse", &salt).unwrap();
-        assert_eq!(a.as_ref(), b.as_ref());
+        assert_eq!(*a, *b);
         // A different passphrase or salt diverges.
         let other_pass = derive_passphrase_key("wrong horse", &salt).unwrap();
-        assert_ne!(a.as_ref(), other_pass.as_ref());
+        assert_ne!(*a, *other_pass);
         let other_salt = derive_passphrase_key("correct horse", &random_salt()).unwrap();
-        assert_ne!(a.as_ref(), other_salt.as_ref());
+        assert_ne!(*a, *other_salt);
     }
 
     #[test]

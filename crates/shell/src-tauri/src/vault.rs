@@ -28,7 +28,7 @@ pub struct VaultStatus {
 
 /// Platforms with both an OS key store and a biometric gate: macOS
 /// (Keychain + Touch ID) and Windows (DPAPI + Windows Hello).
-fn vault_supported() -> bool {
+pub(crate) fn vault_supported() -> bool {
     cfg!(any(target_os = "macos", windows))
 }
 
@@ -46,7 +46,7 @@ pub async fn vault_status(state: State<'_, AppState>) -> WisResult<VaultStatus> 
     let unlocked = state.vault_key.lock().await.is_some();
     let supported = vault_supported();
     let has_master_key = if supported {
-        wis_secrets::keychain_load().map_or(true, |key| key.is_some())
+        wis_secrets::has_master_key().unwrap_or(true)
     } else {
         false
     };
@@ -76,15 +76,22 @@ pub async fn vault_unlock(_app: AppHandle, state: State<'_, AppState>) -> WisRes
     Ok(true)
 }
 
-async fn load_key(state: &State<'_, AppState>) -> WisResult<()> {
+pub(crate) async fn load_key(state: &State<'_, AppState>) -> WisResult<()> {
     let mut key = state.vault_key.lock().await;
     if key.is_none() {
-        let loaded = tokio::task::spawn_blocking(wis_secrets::master_key_or_new)
-            .await
-            .map_err(|err| WisError::PersistenceFailed {
-                reason: format!("vault task panicked: {err}"),
-            })?
-            .map_err(key_unavailable)?;
+        let storage = state.storage.clone();
+        let loaded = tokio::task::spawn_blocking(move || {
+            let saved = storage.has_credentials().unwrap_or_else(|err| {
+                log::warn!("vault: could not tell whether passwords are saved: {err}");
+                true
+            });
+            wis_secrets::master_key_or_new(!saved)
+        })
+        .await
+        .map_err(|err| WisError::PersistenceFailed {
+            reason: format!("vault task panicked: {err}"),
+        })?
+        .map_err(key_unavailable)?;
         *key = Some(loaded);
     }
     Ok(())
@@ -92,9 +99,11 @@ async fn load_key(state: &State<'_, AppState>) -> WisResult<()> {
 
 fn key_unavailable(err: wis_secrets::VaultError) -> WisError {
     log::warn!("vault: master key unavailable: {err}");
-    WisError::InvalidInput {
-        message: format!("Your vault's key couldn't be loaded, so nothing was changed ({err})"),
-    }
+    let message = match err {
+        wis_secrets::VaultError::Missing => "The key your saved passwords were sealed with is missing from this device, so nothing was changed".to_string(),
+        err => format!("Your vault's key couldn't be loaded, so nothing was changed ({err})"),
+    };
+    WisError::InvalidInput { message }
 }
 
 /// Touch-ID-authorize a vault backup operation and load the master key for the
@@ -729,19 +738,19 @@ async fn require_unlocked(state: &State<'_, AppState>) -> WisResult<()> {
     }
 }
 
-fn locked() -> WisError {
+pub(crate) fn locked() -> WisError {
     WisError::InvalidInput {
         message: "vault is locked".to_string(),
     }
 }
 
-fn unsupported() -> WisError {
+pub(crate) fn unsupported() -> WisError {
     WisError::InvalidInput {
         message: "the password vault is not available on this platform".to_string(),
     }
 }
 
-fn vault_err(err: wis_secrets::VaultError) -> WisError {
+pub(crate) fn vault_err(err: wis_secrets::VaultError) -> WisError {
     WisError::InvalidInput {
         message: format!("vault: {err}"),
     }

@@ -179,6 +179,11 @@ pub trait Storage: Send + Sync {
     /// Delete one credential by id.
     fn delete_credential(&self, id: i64) -> StorageResult<()>;
 
+    /// Delete every credential.
+    fn clear_credentials(&self) -> StorageResult<()>;
+
+    fn has_credentials(&self) -> StorageResult<bool>;
+
     // -- URL-bar suggestions ------------------------------------------------
 
     /// Record an address-bar search query (deduped by text; bumps its count).

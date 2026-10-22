@@ -8,6 +8,7 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 import type { CaptureInfo } from '@/lib/vaultMenu'
 import type {
+  RecoverOutcome,
   AiBookmarkHit,
   AiFetchResponse,
   AiGrouped,
@@ -185,6 +186,32 @@ export const commands = {
   /** Drop the in-memory master key (re-lock). */
   async vaultLock(): Promise<void> {
     return invoke('vault_lock')
+  },
+
+  /** The public key the vault key is sealed to for recovery, if one is set. */
+  async vaultRecoveryKey(): Promise<string | null> {
+    return invoke('vault_recovery_key')
+  },
+
+  /** Seal the vault key to an age or SSH public key (biometric prompt). */
+  async vaultSetRecoveryKey(publicKey: string): Promise<string> {
+    return invoke('vault_set_recovery_key', { publicKey })
+  },
+
+  /** Delete the recovery copy (biometric prompt); false if cancelled. */
+  async vaultRemoveRecoveryKey(): Promise<boolean> {
+    return invoke('vault_remove_recovery_key')
+  },
+
+  /** Restore the vault key with a private key the user picks; with `force`
+   *  even when it opens only some saved passwords. */
+  async vaultRecover(passphrase: string | null, force: boolean): Promise<RecoverOutcome> {
+    return invoke('vault_recover', { passphrase, force })
+  },
+
+  /** Erase every saved password and start a new vault; false if cancelled. */
+  async vaultReset(): Promise<boolean> {
+    return invoke('vault_reset')
   },
 
   /** List saved credentials (no passwords), optionally filtered to one host. */

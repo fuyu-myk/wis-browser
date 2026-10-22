@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { commands } from '@/bindings/commands'
 import type { CredentialSummary, SignupFieldInfo } from '@/bindings/types'
@@ -30,6 +31,8 @@ import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
 import { menusGlass } from '@/lib/glass'
+import { showRemoteToast } from '@/lib/toast'
+import { unlockProblem } from '@/lib/vaultRecovery'
 
 function hostOf(url: string): string {
   try {
@@ -104,7 +107,10 @@ export function VaultMenuSurface() {
   const ensureUnlocked = async (): Promise<boolean> => {
     const status = await commands.vaultStatus().catch(() => null)
     if (status && !status.unlocked) {
-      return commands.vaultUnlock().catch(() => false)
+      return commands.vaultUnlock().catch((error: unknown) => {
+        void showRemoteToast(getCurrentWindow().label, unlockProblem(error))
+        return false
+      })
     }
     return true
   }

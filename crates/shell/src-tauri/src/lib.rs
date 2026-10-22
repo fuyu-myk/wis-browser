@@ -92,6 +92,7 @@ mod themes;
 mod uncloak;
 mod usage;
 mod vault;
+mod vault_recovery;
 mod video_popout;
 mod wake;
 mod wallpapers;
@@ -619,6 +620,11 @@ pub fn run() {
             vault::vault_status,
             vault::vault_unlock,
             vault::vault_lock,
+            vault_recovery::vault_recovery_key,
+            vault_recovery::vault_set_recovery_key,
+            vault_recovery::vault_remove_recovery_key,
+            vault_recovery::vault_recover,
+            vault_recovery::vault_reset,
             vault::vault_list,
             vault::vault_save,
             vault::vault_reveal,

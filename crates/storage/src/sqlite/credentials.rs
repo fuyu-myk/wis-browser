@@ -70,6 +70,18 @@ pub fn delete(conn: &Connection, id: i64) -> StorageResult<()> {
     Ok(())
 }
 
+pub fn clear(conn: &Connection) -> StorageResult<()> {
+    conn.execute("DELETE FROM credentials", [])?;
+    Ok(())
+}
+
+pub fn any(conn: &Connection) -> StorageResult<bool> {
+    conn.query_row("SELECT EXISTS(SELECT 1 FROM credentials)", [], |row| {
+        row.get(0)
+    })
+    .map_err(Into::into)
+}
+
 fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<CredentialRecord> {
     Ok(CredentialRecord {
         id: row.get(0)?,

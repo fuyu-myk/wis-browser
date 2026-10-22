@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { RecoveryKeyRow, VaultRescue } from '@/components/VaultRecovery'
 import { cx } from '@/lib/cx'
 import { LockIcon, SearchIcon, XIcon } from '@/lib/icons'
 import { isMacOS } from '@/lib/platform'
@@ -226,9 +227,17 @@ export function PasswordsSection() {
             </button>
           </div>
           {unlock.isError && (
-            <p className="kb-backup-status is-error" role="alert">
-              {errorMessage(unlock.error)}
-            </p>
+            <>
+              <p className="kb-backup-status is-error" role="alert">
+                {errorMessage(unlock.error)}
+              </p>
+              <VaultRescue
+                onDone={() => {
+                  unlock.reset()
+                  refreshAll()
+                }}
+              />
+            </>
           )}
         </>
       ) : (
@@ -242,6 +251,7 @@ export function PasswordsSection() {
               Lock
             </button>
           </div>
+          <RecoveryKeyRow />
 
           <div className="row">
             <div className="l">

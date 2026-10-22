@@ -23,6 +23,8 @@ import { useThemeApply } from '@/hooks/useThemeApply'
 import { cx } from '@/lib/cx'
 import { menusGlass } from '@/lib/glass'
 import { GlobeIcon } from '@/lib/icons'
+import { showRemoteToast } from '@/lib/toast'
+import { unlockProblem } from '@/lib/vaultRecovery'
 
 const EARLY_CLICK_MS = 500
 
@@ -59,7 +61,7 @@ export function SavedLoginsSurface() {
     setBusy(true)
     try {
       const status = await commands.vaultStatus().catch(() => null)
-      if (status && !status.unlocked && !(await commands.vaultUnlock().catch(() => false))) return
+      if (status && !status.unlocked && !(await commands.vaultUnlock().catch(toastProblem))) return
       await commands.autofillFill(pick.tabId, credentialId)
       setPick(null)
       void emit(LOGINS_CLOSE_EVENT, getCurrentWindow().label)
@@ -95,4 +97,9 @@ export function SavedLoginsSurface() {
       </div>
     </div>
   )
+}
+
+function toastProblem(error: unknown): false {
+  void showRemoteToast(getCurrentWindow().label, unlockProblem(error))
+  return false
 }

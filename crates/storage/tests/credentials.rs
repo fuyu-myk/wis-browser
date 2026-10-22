@@ -69,3 +69,20 @@ fn delete_removes_the_row() {
     assert!(s.get_credential(id).unwrap().is_none());
     assert!(s.list_credentials(None).unwrap().is_empty());
 }
+
+#[test]
+fn clearing_removes_every_row() {
+    let s = store();
+    s.save_credential("x.com", "u", b"c", b"n").unwrap();
+    s.save_credential("y.com", "v", b"c", b"n").unwrap();
+    s.clear_credentials().unwrap();
+    assert!(s.list_credentials(None).unwrap().is_empty());
+}
+
+#[test]
+fn has_credentials_reports_whether_any_are_saved() {
+    let s = store();
+    assert!(!s.has_credentials().unwrap());
+    s.save_credential("x.com", "u", b"c", b"n").unwrap();
+    assert!(s.has_credentials().unwrap());
+}

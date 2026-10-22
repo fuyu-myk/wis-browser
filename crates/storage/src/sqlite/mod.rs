@@ -389,6 +389,16 @@ impl Storage for SqliteStorage {
         credentials::delete(&conn, id)
     }
 
+    fn clear_credentials(&self) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        credentials::clear(&conn)
+    }
+
+    fn has_credentials(&self) -> StorageResult<bool> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        credentials::any(&conn)
+    }
+
     fn record_search(&self, query: &str) -> StorageResult<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         searches::record(&conn, query)
