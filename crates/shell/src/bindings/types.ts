@@ -87,6 +87,12 @@ export interface ChromeDesign {
 
 export type PrivacyMode = 'strict' | 'balanced' | 'permissive'
 
+/** Mirrors `wis_core::link_routing::LinkRoute`: a site with an optional path. */
+export interface LinkRoute {
+  pattern: string
+  workspace_id: WorkspaceId
+}
+
 /** Mirrors `wis_core::TabArchiveAfter`. */
 export type TabArchiveAfter = 'off' | 'twelve_hours' | 'one_day' | 'seven_days' | 'thirty_days'
 
@@ -693,6 +699,8 @@ export interface UserSettings {
   widget_memory_cap_mb: number
   /** User filter-list subscription URLs (https), engine-only. */
   filter_subscriptions: string[]
+  /** Links from other apps go to these workspaces, by site. */
+  link_routes: LinkRoute[]
   block_cookie_notices: boolean
   /** Fanboy's Annoyance list, which contains the cookie list. */
   block_annoyances: boolean
@@ -780,6 +788,7 @@ export interface UserSettingsPatch {
   widget_memory_cap_enabled?: boolean
   widget_memory_cap_mb?: number
   filter_subscriptions?: string[]
+  link_routes?: LinkRoute[]
   block_cookie_notices?: boolean
   block_annoyances?: boolean
   user_cosmetic_rules?: Record<string, string[]>

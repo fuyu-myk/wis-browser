@@ -710,6 +710,7 @@ pub fn run() {
             default_browser::default_browser_status,
             default_browser::set_default_browser,
             default_browser::drain_external_urls,
+            default_browser::route_external_link,
             clipboard::copy_text,
             clipboard::clean_link,
             clean_links::clean_followed_link,

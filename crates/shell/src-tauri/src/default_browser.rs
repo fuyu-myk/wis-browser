@@ -116,6 +116,18 @@ pub async fn drain_external_urls(app: AppHandle) -> WisResult<Vec<String>> {
         .collect())
 }
 
+/// The workspace a link from another app goes to by the user's rules, if any.
+#[tauri::command]
+pub async fn route_external_link(
+    state: tauri::State<'_, crate::state::AppState>,
+    url: String,
+) -> WisResult<Option<wis_core::WorkspaceId>> {
+    let Ok(url) = url::Url::parse(&url) else {
+        return Ok(None);
+    };
+    Ok(state.browser.lock().await.workspace_for_link(&url))
+}
+
 /// True when Wis is the OS default browser. Best-effort: unknown reads false.
 #[tauri::command]
 pub async fn default_browser_status() -> WisResult<bool> {

@@ -4157,6 +4157,41 @@ body.has-custom-img .kb-launch-mark {
   padding: 2px 4px;
 }
 .kb-ua-remove:hover { color: var(--text-primary); }
+.kb-select {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.kb-select select {
+  -webkit-appearance: none;
+  appearance: none;
+  max-width: 200px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 7px 30px 7px 10px;
+  outline: none;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  transition: border-color var(--transition-speed) ease;
+}
+.kb-select select:focus { border-color: var(--primary-500); }
+.kb-select::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--text-tertiary);
+  border-bottom: 1.5px solid var(--text-tertiary);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
 /* Compact inline keyword box in engine rows. */
 .kb-kw-input {
   flex: 0 0 auto;

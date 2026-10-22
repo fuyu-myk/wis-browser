@@ -198,6 +198,10 @@ fn settings_patch_round_trips_when_all_fields_set() {
         widget_memory_cap_enabled: Some(false),
         widget_memory_cap_mb: Some(800),
         filter_subscriptions: Some(vec!["https://example.test/list.txt".to_string()]),
+        link_routes: Some(vec![wis_core::link_routing::LinkRoute {
+            pattern: "github.com/acme".to_string(),
+            workspace_id: wis_core::WorkspaceId::new(),
+        }]),
         block_cookie_notices: Some(false),
         block_annoyances: Some(true),
         user_cosmetic_rules: Some(std::collections::HashMap::from([(

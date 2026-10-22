@@ -223,11 +223,24 @@ pub async fn import_backup(
             crate::vault::import_credentials(&state, creds, "Restore your saved passwords").await?;
     }
 
+    let imported = payload
+        .profile
+        .as_ref()
+        .map(|profile| profile.workspaces.clone())
+        .unwrap_or_default();
     if let Some(profile) = payload.profile {
         let (bm, hist, canvases) = apply_profile(&app, &state, profile, &mut summary).await?;
         summary.bookmarks_added = bm;
         summary.history_added = hist;
         summary.canvases_added = canvases;
+    }
+    if let Some(settings) = summary.settings.as_mut() {
+        let live = state.browser.lock().await;
+        settings.link_routes = wis_core::backup::link_routes_onto(
+            std::mem::take(&mut settings.link_routes),
+            &imported,
+            &live.workspaces,
+        );
     }
 
     Ok(Some(summary))

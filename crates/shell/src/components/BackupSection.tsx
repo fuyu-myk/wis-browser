@@ -18,6 +18,7 @@ import type {
 } from '@/bindings/types'
 import { Switch } from '@/components/controls'
 import { cx } from '@/lib/cx'
+import { withImportedRoutes } from '@/lib/linkRoutes'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 
 interface BackupSectionProps {
@@ -118,7 +119,11 @@ export function BackupSection({ settings }: BackupSectionProps) {
           const dup = imported.custom_themes.find((t) => t.id === active)
           active = (dup && settings.custom_themes.find((cur) => sameTheme(cur, dup))?.id) ?? null
         }
-        const patch = { ...imported, custom_themes: mergedThemes } as UserSettingsPatch
+        const patch = {
+          ...imported,
+          custom_themes: mergedThemes,
+          link_routes: withImportedRoutes(settings.link_routes, imported.link_routes),
+        } as UserSettingsPatch
         await commands.updateSettings(patch)
         if (active) await commands.setActiveTheme(active)
         applied.push('settings & themes')

@@ -162,11 +162,16 @@ impl BrowserState {
             self.active_workspace_id
         };
 
+        let mut settings = self.settings.clone();
+        settings
+            .link_routes
+            .retain(|route| route.workspace_id != id);
+
         Ok(Self {
             workspaces,
             tabs,
             active_workspace_id,
-            settings: self.settings.clone(),
+            settings,
         })
     }
 

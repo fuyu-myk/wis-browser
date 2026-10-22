@@ -925,6 +925,11 @@ export const commands = {
     return invoke('drain_external_urls')
   },
 
+  /** The workspace a link from another app goes to by the user's rules. */
+  async routeExternalLink(url: string): Promise<WorkspaceId | null> {
+    return invoke('route_external_link', { url })
+  },
+
   /**
    * Open widget `id`'s quick-launch panel: a floating webview above the tab
    * webviews, sharing the active workspace's data store and proxy. Reveals

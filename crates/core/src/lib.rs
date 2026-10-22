@@ -26,6 +26,7 @@ pub mod ids;
 pub mod keybinding;
 pub mod layout;
 pub mod link_clean;
+pub mod link_routing;
 pub mod link_safety;
 pub mod load_error;
 pub mod netscape;

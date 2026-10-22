@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { commands } from '@/bindings/commands'
 import type { UaProfile, UserSettingsPatch } from '@/bindings/types'
 import { Segmented } from '@/components/controls'
+import { LinkRoutes } from '@/components/LinkRoutes'
 import { normalizeHostInput } from '@/lib/host'
 import { currentPlatform } from '@/lib/platform'
 import { uaProfileLabel } from '@/lib/siteRules'
@@ -92,6 +93,7 @@ export function CompatibilitySection({ profile, overrides, onUpdate }: Compatibi
           {isDefault === true ? 'Default' : 'Set as default'}
         </button>
       </div>
+      <LinkRoutes onUpdate={onUpdate} />
       <div className="row">
         <div className="l">
           <span>Browser identity</span>

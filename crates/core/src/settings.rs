@@ -241,6 +241,9 @@ pub struct UserSettings {
     /// work.
     #[serde(default = "default_filter_subscriptions")]
     pub filter_subscriptions: Vec<String>,
+    /// Links from other apps, by site; see [`crate::link_routing`].
+    #[serde(default)]
+    pub link_routes: Vec<crate::link_routing::LinkRoute>,
     /// See [`crate::notice_lists`].
     #[serde(default = "default_block_cookie_notices")]
     pub block_cookie_notices: bool,
@@ -516,6 +519,7 @@ impl Default for UserSettings {
             filter_subscriptions: default_filter_subscriptions(),
             block_cookie_notices: true,
             block_annoyances: false,
+            link_routes: Vec::new(),
             user_cosmetic_rules: std::collections::HashMap::new(),
             userscripts: Vec::new(),
             keybindings: HashMap::new(),
@@ -651,6 +655,8 @@ pub struct UserSettingsPatch {
     /// Replaces the whole subscription list (the UI sends the full list).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter_subscriptions: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link_routes: Option<Vec<crate::link_routing::LinkRoute>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub block_cookie_notices: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -799,6 +805,9 @@ impl UserSettings {
             filter_subscriptions: patch
                 .filter_subscriptions
                 .unwrap_or_else(|| self.filter_subscriptions.clone()),
+            link_routes: patch
+                .link_routes
+                .unwrap_or_else(|| self.link_routes.clone()),
             block_cookie_notices: patch
                 .block_cookie_notices
                 .unwrap_or(self.block_cookie_notices),

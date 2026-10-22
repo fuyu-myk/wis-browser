@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::canvas::{canvas_in_url, canvas_name, canvas_url, check_doc};
 use crate::ids::{CanvasId, TabFolderId, TabId, ThemeId, WorkspaceId};
+use crate::link_routing::{sanitized_link_routes, LinkRoute};
 use crate::pane::PaneNode;
 use crate::settings::UserSettings;
 use crate::state::BrowserState;
@@ -160,12 +161,18 @@ impl BackupPayload {
     }
 
     /// Regenerate imported IDs so a merge never collides with what's already on
-    /// the device. Custom theme ids and `active_theme` are remapped; the whole
+    /// the device. Custom theme ids, `active_theme` and link rules are remapped; the whole
     /// workspace graph (workspace / tab / folder ids, plus the references in
     /// `tab_order`, `pinned_tab_ids`, `active_tab_id`, the pane tree, and
     /// bookmark/history workspace keys) is remapped consistently.
     #[must_use]
     pub fn reminted(mut self) -> Self {
+        let ws_map = self
+            .profile
+            .as_mut()
+            .map(remint_profile)
+            .unwrap_or_default();
+
         if let Some(settings) = self.settings.as_mut() {
             let mut remap: HashMap<ThemeId, ThemeId> = HashMap::new();
             for theme in settings.custom_themes.iter_mut() {
@@ -177,18 +184,50 @@ impl BackupPayload {
             settings.active_theme = settings
                 .active_theme
                 .and_then(|old| remap.get(&old).copied());
-        }
 
-        if let Some(profile) = self.profile.as_mut() {
-            remint_profile(profile);
+            for route in settings.link_routes.iter_mut() {
+                if let Some(fresh) = ws_map.get(&route.workspace_id) {
+                    route.workspace_id = *fresh;
+                }
+            }
         }
 
         self
     }
 }
 
-/// Re-mint every id in a profile graph and remap all references to it.
-fn remint_profile(profile: &mut ProfileBackup) {
+/// Imported link rules pointed at the live workspace standing for each
+/// backup workspace: itself when it was added, the lasting one of the same
+/// name when [`merge_profile`] skipped it. Rules left without a lasting
+/// workspace here are dropped.
+#[must_use]
+pub fn link_routes_onto(
+    routes: Vec<LinkRoute>,
+    imported: &[Workspace],
+    live: &[Workspace],
+) -> Vec<LinkRoute> {
+    let landed = routes
+        .into_iter()
+        .map(|route| {
+            if live.iter().any(|w| w.id == route.workspace_id) {
+                return route;
+            }
+            let namesake = imported
+                .iter()
+                .find(|w| w.id == route.workspace_id)
+                .and_then(|skipped| live.iter().find(|w| w.name == skipped.name && !w.ephemeral));
+            LinkRoute {
+                workspace_id: namesake.map_or(route.workspace_id, |w| w.id),
+                ..route
+            }
+        })
+        .collect();
+    sanitized_link_routes(landed, live)
+}
+
+/// Re-mint every id in a profile graph and remap all references to it,
+/// returning the workspace id map.
+fn remint_profile(profile: &mut ProfileBackup) -> HashMap<WorkspaceId, WorkspaceId> {
     let mut ws_map: HashMap<WorkspaceId, WorkspaceId> = HashMap::new();
     let mut tab_map: HashMap<TabId, TabId> = HashMap::new();
     let mut folder_map: HashMap<TabFolderId, TabFolderId> = HashMap::new();
@@ -257,6 +296,8 @@ fn remint_profile(profile: &mut ProfileBackup) {
             tab.url = canvas_url(*fresh);
         }
     }
+
+    ws_map
 }
 
 /// Remap every tab id in a pane tree through `tab_map`.
@@ -311,6 +352,7 @@ pub fn merge_profile(
 mod tests {
     use super::*;
     use crate::theme::{ModeTokens, ThemeTokens};
+    use crate::workspace::AccentColor;
 
     fn mode() -> ModeTokens {
         let c = || "#000000".to_string();
@@ -503,6 +545,98 @@ mod tests {
         let ws = &payload.profile.unwrap().workspaces[0];
         assert_ne!(ws.tab_folders[0].id, folder.id);
         assert_eq!(ws.selected_folder_id, Some(ws.tab_folders[0].id));
+    }
+
+    fn route(pattern: &str, workspace_id: WorkspaceId) -> LinkRoute {
+        LinkRoute {
+            pattern: pattern.to_string(),
+            workspace_id,
+        }
+    }
+
+    #[test]
+    fn remint_points_link_routes_at_the_fresh_workspaces() {
+        let state = BrowserState::new_with_defaults();
+        let old = state.workspaces[0].id;
+        let elsewhere = WorkspaceId::new();
+        let settings = UserSettings {
+            link_routes: vec![route("figma.com", old), route("github.com", elsewhere)],
+            ..Default::default()
+        };
+
+        let payload = BackupPayload {
+            settings: Some(settings),
+            profile: Some(ProfileBackup {
+                workspaces: state.workspaces.clone(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+        .reminted();
+
+        let fresh = payload.profile.unwrap().workspaces[0].id;
+        assert_eq!(
+            payload.settings.unwrap().link_routes,
+            vec![route("figma.com", fresh), route("github.com", elsewhere)]
+        );
+    }
+
+    #[test]
+    fn imported_link_routes_land_on_a_lasting_live_workspace_or_are_dropped() {
+        let live = BrowserState::new_with_defaults();
+        let (live, _) = live.with_new_private_workspace("Secret".into(), AccentColor::Primary);
+        let mut namesake = live.workspaces[0].clone();
+        namesake.id = WorkspaceId::new();
+        let mut secret = namesake.clone();
+        secret.id = WorkspaceId::new();
+        secret.name = "Secret".to_string();
+        let mut added = namesake.clone();
+        added.id = WorkspaceId::new();
+        added.name = "Imported".to_string();
+        let imported = vec![namesake.clone(), secret.clone(), added.clone()];
+        let (live, _) = merge_profile(
+            live,
+            &ProfileBackup {
+                workspaces: imported.clone(),
+                ..Default::default()
+            },
+        );
+
+        let routes = link_routes_onto(
+            vec![
+                route("figma.com", namesake.id),
+                route("github.com", added.id),
+                route("secret.com", secret.id),
+                route("gone.com", WorkspaceId::new()),
+            ],
+            &imported,
+            &live.workspaces,
+        );
+
+        assert_eq!(
+            routes,
+            vec![
+                route("figma.com", live.workspaces[0].id),
+                route("github.com", added.id)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_settings_only_restore_keeps_only_rules_for_workspaces_here() {
+        let live = BrowserState::new_with_defaults();
+        let here = live.workspaces[0].id;
+
+        let routes = link_routes_onto(
+            vec![
+                route("figma.com", WorkspaceId::new()),
+                route("github.com", here),
+            ],
+            &[],
+            &live.workspaces,
+        );
+
+        assert_eq!(routes, vec![route("github.com", here)]);
     }
 
     #[test]

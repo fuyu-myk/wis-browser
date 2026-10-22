@@ -71,6 +71,18 @@ pub async fn update_settings(
         patch.site_protection_overrides =
             Some(wis_core::site_protection::sanitized_site_protection(map));
     }
+    if patch
+        .link_routes
+        .as_ref()
+        .is_some_and(|routes| routes.len() > wis_core::link_routing::MAX_LINK_ROUTES)
+    {
+        return Err(WisError::InvalidInput {
+            message: format!(
+                "at most {} link rules",
+                wis_core::link_routing::MAX_LINK_ROUTES
+            ),
+        });
+    }
 
     let keybindings_touched = patch.keybindings.is_some();
     let userscripts_touched = patch.userscripts.is_some();
@@ -93,6 +105,13 @@ pub async fn update_settings(
     let (settings, doh_changed, notice_list_changed) = mutate_immediate(&app, &state, |s| {
         let before = crate::state::doh_provider_of(s.settings.doh_resolver.as_deref());
         let notice_list_before = s.settings.notice_list();
+        let mut patch = patch;
+        if let Some(routes) = patch.link_routes.take() {
+            patch.link_routes = Some(wis_core::link_routing::sanitized_link_routes(
+                routes,
+                &s.workspaces,
+            ));
+        }
         let next = s.with_settings(patch);
         let settings = next.settings.clone();
         let changed = crate::state::doh_provider_of(settings.doh_resolver.as_deref()) != before;

@@ -95,6 +95,7 @@ Wis is an open-source, lightweight, secure, and fast browser with AI integration
 - **Bookmarks** with folders, pinning, drag-to-reorder, HTML import/export, and import of bookmarks and recent history from Chrome, Edge, Brave, Arc, Firefox, Zen and other Chromium or Firefox browsers
 - **Downloads manager** with history, search, and an optional "ask where to save" prompt
 - **Default browser integration**: set Wis as your system default; links from other apps open in Wis
+- **Link routing**: send links from other apps to a chosen workspace by site
 - **Two-finger swipe gestures** for back/forward navigation
 - **Screenshot capture**: visible page, drag-select region, or full window, copy or save (region/window compositing is macOS only; Windows covers the visible tab)
 - **Extensions** (macOS 15.4+, early): install a WebExtension from the Chrome Web Store, its folder or a `.zip` after a review of what it can do (those existing in the store update themselves, asking first when an update requires more); it runs in your workspaces, switchable per workspace, and in private ones only if you allow it. The puzzle button in the address bar runs them and opens their popups and options, and pinned ones get their own button with a live badge. When one asks for more access while running, Wis asks you first and remembers your answer, and each can run on every site or only on the sites you allow
