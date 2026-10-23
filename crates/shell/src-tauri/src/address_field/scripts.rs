@@ -329,20 +329,36 @@ function shownField(el, anchor) {
   return true;
 }
 
+function untouched(select) {
+  var picked = select.options[select.selectedIndex];
+  if (!select.value || !picked || picked.defaultSelected) return true;
+  for (var i = 0; i < select.options.length; i++) {
+    if (select.options[i].defaultSelected) return false;
+  }
+  return select.selectedIndex === 0;
+}
+
 // The kinds of fields a fill from `el` would reach, or null when `el` is not a
-// shown address field or its section is not worth an address.
+// shown address field or its section is not worth an address. After a
+// country not yet chosen, hidden address fields count too.
 function offerKinds(el) {
   if (!addressField(el) && !(guessable(el) && maybeAddress(el))) return null;
   if (!shownField(el, el)) return null;
   var section = addressSection(el);
   if (!section) return null;
+  var country = -1;
+  section.forEach(function (field, i) {
+    if (country >= 0 || field.kind !== 'country') return;
+    if (field.el.tagName === 'SELECT' ? untouched(field.el) : !field.el.value) country = i;
+  });
   var shown = [];
   var kinds = [];
-  section.forEach(function (field) {
+  section.forEach(function (field, i) {
     var list = field.el.tagName === 'SELECT' && (field.kind === 'country' || field.kind === 'region');
+    var later = country >= 0 && i > country && PLACE_KINDS.indexOf(field.kind) >= 0;
     var visible = shownField(field.el, el);
     if (visible && shown.indexOf(field.kind) < 0) shown.push(field.kind);
-    if ((visible || list) && kinds.indexOf(field.kind) < 0) kinds.push(field.kind);
+    if ((visible || list || later) && kinds.indexOf(field.kind) < 0) kinds.push(field.kind);
   });
   return worthOffering(shown, section[0].guessed) ? kinds : null;
 }
@@ -351,13 +367,14 @@ function offerKinds(el) {
 /// Fills the section of the field the card was shown for (`__wisAddressAnchor`)
 /// with the values `V`, once the page is still on `ORIGIN`, still in that
 /// field and still on the report `TOKEN` came with. A list still on the page's
-/// own default counts as empty.
+/// own default counts as empty, as does a field still holding an earlier
+/// fill's value. The country goes first, and a form that changes afterwards
+/// is filled again as it settles.
 pub(super) const FILL_JS: &str = r#"
 try {
   if (location.origin !== ORIGIN || window.__wisAddressToken !== TOKEN) return;
   var anchor = window.__wisAddressAnchor;
   if (!anchor || !anchor.isConnected || anchor !== docProp('activeElement')) return;
-  var fields = addressSection(anchor) || [];
   var lines = V.street ? V.street.split('\n') : [];
 
   var valueFor = function (kind, el) {
@@ -395,11 +412,14 @@ try {
     return String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
   };
 
+  var written = window.__wisAddressWritten || (window.__wisAddressWritten = new WeakMap());
+
   var setValue = function (el, value) {
     var held = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value');
     if (held && held.set) held.set.call(el, value); else el.value = value;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
+    written.set(el, { fill: mine, value: el.value });
   };
 
   var choose = function (select, wanted) {
@@ -413,21 +433,14 @@ try {
     return null;
   };
 
-  var untouched = function (select) {
-    var picked = select.options[select.selectedIndex];
-    if (!select.value || !picked || picked.defaultSelected) return true;
-    for (var i = 0; i < select.options.length; i++) {
-      if (select.options[i].defaultSelected) return false;
-    }
-    return select.selectedIndex === 0;
-  };
-
-  fields.forEach(function (field) {
+  var fillField = function (field, again) {
     var el = field.el;
     var list = el.tagName === 'SELECT';
     var place = field.kind === 'country' || field.kind === 'region';
     if (!(list && place) && !shownField(el, anchor)) return;
-    if (el !== anchor && !(list ? untouched(el) : !el.value)) return;
+    var mark = written.get(el);
+    var earlier = mark && mark.fill !== mine && mark.value === el.value;
+    if ((again || el !== anchor) && !earlier && !(list ? untouched(el) : !el.value)) return;
     if (list) {
       var wanted = field.kind === 'country'
         ? (V.country ? countryNames() : [])
@@ -441,7 +454,59 @@ try {
       : valueFor(field.kind, el);
     if (!text || (el.maxLength > 0 && text.length > el.maxLength)) return;
     setValue(el, text);
+  };
+
+  var pass = function (again) {
+    (addressSection(anchor) || []).forEach(function (field) {
+      if (field.kind === 'country') fillField(field, again);
+    });
+    if (!anchor.isConnected) return;
+    (addressSection(anchor) || []).forEach(function (field) {
+      if (field.kind !== 'country') fillField(field, again);
+    });
+  };
+
+  var mine = window.__wisAddressFill = (window.__wisAddressFill || 0) + 1;
+  pass(false);
+  if (!anchor.isConnected || typeof MutationObserver !== 'function') return;
+
+  var group = groupOf(anchor);
+  var target = group === document ? docProp('documentElement') : group;
+  var watching = { childList: true, subtree: true, attributes: true };
+  var quiet = null;
+  var changed = false;
+  var over = false;
+  var watcher = null;
+  var stop = function () {
+    over = true;
+    watcher.disconnect();
+    clearTimeout(quiet);
+    clearTimeout(cap);
+  };
+  var lull = function () {
+    clearTimeout(quiet);
+    if (over || !changed) return;
+    changed = false;
+    if (window.__wisAddressFill !== mine || location.origin !== ORIGIN || !anchor.isConnected) {
+      stop();
+      return;
+    }
+    watcher.disconnect();
+    try {
+      pass(true);
+    } catch (e) {}
+    watcher.observe(target, watching);
+  };
+  watcher = new MutationObserver(function () {
+    changed = true;
+    clearTimeout(quiet);
+    quiet = setTimeout(lull, 200);
   });
+  watcher.observe(target, watching);
+  var cap = setTimeout(function () {
+    lull();
+    stop();
+  }, 2000);
 } catch (e) {}
 "#;
 

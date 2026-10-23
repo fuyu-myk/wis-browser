@@ -387,6 +387,69 @@ test('only shown fields make a section worth an address, and the focused one mus
   ])
 })
 
+test('beside a country, hidden address fields are offered too, as pages reveal them for it', () => {
+  const form = {}
+  const name = field('name', { form })
+  const street = field('street-address', {
+    form,
+    box: { left: 10, top: 60, right: 210, bottom: 90, width: 200, height: 30 },
+  })
+  const country = field('country', {
+    form,
+    tagName: 'SELECT',
+    box: { left: 10, top: 100, right: 210, bottom: 130, width: 200, height: 30 },
+  })
+  const postal = field('postal-code', { form, style: { display: 'none' } })
+  const phone = field('tel', { form, style: { display: 'none' } })
+  assert.deepEqual(classify(page([name, street, country, postal, phone])).offerKinds(name), [
+    'name',
+    'street',
+    'country',
+    'postal',
+  ])
+
+  const honeypot = field('street-address', { form: {}, style: { display: 'none' } })
+  const beforeCountry = [
+    honeypot,
+    field('name', { form: honeypot.form, box: { left: 10, top: 60, right: 210, bottom: 90, width: 200, height: 30 } }),
+    field('country', {
+      form: honeypot.form,
+      tagName: 'SELECT',
+      box: { left: 10, top: 100, right: 210, bottom: 130, width: 200, height: 30 },
+    }),
+    field('postal-code', { form: honeypot.form, box: { left: 10, top: 140, right: 210, bottom: 170, width: 200, height: 30 } }),
+  ]
+  assert.deepEqual(classify(page(beforeCountry, { anchor: beforeCountry[1] })).offerKinds(beforeCountry[1]), [
+    'name',
+    'country',
+    'postal',
+  ], 'not a hidden field before the country')
+
+  const chosen = field('country', {
+    form: {},
+    tagName: 'SELECT',
+    value: 'GB',
+    selectedIndex: 1,
+    options: [{ value: '', text: 'Choose' }, { value: 'GB', text: 'United Kingdom' }],
+  })
+  const afterChoice = [
+    field('name', { form: chosen.form, box: { left: 10, top: 60, right: 210, bottom: 90, width: 200, height: 30 } }),
+    field('street-address', { form: chosen.form, box: { left: 10, top: 100, right: 210, bottom: 130, width: 200, height: 30 } }),
+    chosen,
+    field('postal-code', { form: chosen.form, style: { display: 'none' } }),
+  ]
+  assert.deepEqual(classify(page(afterChoice)).offerKinds(afterChoice[0]), [
+    'name',
+    'street',
+    'country',
+  ], 'not once a country is chosen')
+
+  const noCountry = [field('name', { form: {} }), field('postal-code', { style: { display: 'none' } })]
+  noCountry[1].form = noCountry[0].form
+  noCountry.push(field('email', { form: noCountry[0].form, box: { left: 10, top: 60, right: 210, bottom: 90, width: 200, height: 30 } }))
+  assert.deepEqual(classify(page(noCountry)).offerKinds(noCountry[0]), null)
+})
+
 test('the anchored section is filled, street lines shaped to each field', () => {
   const form = {}
   const controls = [
