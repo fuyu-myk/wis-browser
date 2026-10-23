@@ -67,6 +67,13 @@ pub async fn address_save(
     saved
 }
 
+/// Whether any address is saved, requiring no unlock.
+#[tauri::command]
+pub async fn address_any(state: State<'_, AppState>) -> WisResult<bool> {
+    let storage = state.storage.clone();
+    blocking(move || storage.has_addresses().map_err(persist_err)).await
+}
+
 #[tauri::command]
 pub async fn address_delete(state: State<'_, AppState>, id: i64) -> WisResult<()> {
     let guard = state.vault_key.lock().await;
@@ -120,6 +127,19 @@ pub(crate) async fn import_addresses(
     .await;
     drop(guard);
     saved.map(|()| added)
+}
+
+/// Saved address `id` in the clear, for a fill the user chose.
+pub(crate) async fn opened(state: &State<'_, AppState>, id: i64) -> WisResult<Address> {
+    let guard = state.vault_key.lock().await;
+    let key = guard.as_ref().ok_or_else(locked)?;
+    let storage = state.storage.clone();
+    let rows = blocking(move || storage.list_addresses().map_err(persist_err)).await?;
+    let row = rows
+        .into_iter()
+        .find(|row| row.id == id)
+        .ok_or_else(|| invalid("This address was removed"))?;
+    open(key, row.ciphertext, row.nonce)
 }
 
 /// Whether `row` opens with `key`.

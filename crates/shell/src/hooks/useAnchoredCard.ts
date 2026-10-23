@@ -24,6 +24,27 @@ const FIELD_SCROLL_EVENT = 'wis-signup-scroll'
 export const FIELD_LEAVE_EVENT = 'wis-signup-leave'
 export const FIELD_GONE_EVENT = 'wis-signup-gone'
 const CARD_WHEEL_EVENT = 'wis-card-wheel'
+export const CARD_PLACED_EVENT = 'wis-card-placed'
+
+export interface CardPlaced {
+  name: string
+  window: string
+}
+
+/** The events that move and close a card, and how it lets its field go. */
+export interface CardChannel {
+  move: string
+  scroll: string
+  leave: string
+  release: (tabId: TabId) => Promise<void>
+}
+
+export const SIGNUP_CHANNEL: CardChannel = {
+  move: FIELD_MOVE_EVENT,
+  scroll: FIELD_SCROLL_EVENT,
+  leave: FIELD_LEAVE_EVENT,
+  release: (tabId) => commands.releaseSignupField(tabId),
+}
 
 const GAP = 6
 /** A wheel over the card that does not scroll the page puts it back after this. */
@@ -75,6 +96,7 @@ export function useAnchoredCard(
   state: BrowserState,
   suspended: boolean,
   onClose: () => void,
+  channel: CardChannel = SIGNUP_CHANNEL,
 ): AnchoredCard {
   const { show, hide } = useOverlay(name)
   const openRef = useRef<TabId | null>(null)
@@ -95,13 +117,22 @@ export function useAnchoredCard(
     return placeOffer(fieldInWindow(field, field.viewWidth, pane), pane, size, GAP)
   }, [])
 
+  const reveal = useCallback(
+    async (rect: Rect) => {
+      await show(rect)
+      const placed: CardPlaced = { name, window: getCurrentWindow().label }
+      void emit(CARD_PLACED_EVENT, placed).catch(() => undefined)
+    },
+    [show, name],
+  )
+
   const place = useCallback(
     async (tabId: TabId, rect: Rect) => {
       placedRef.current = rect
       paneRef.current = paneOf(tabId)
-      if (!suspendedRef.current) await show(rect)
+      if (!suspendedRef.current) await reveal(rect)
     },
-    [show],
+    [reveal],
   )
 
   const close = useCallback(
@@ -113,10 +144,10 @@ export function useAnchoredCard(
       openRef.current = null
       placedRef.current = null
       void hide().catch(() => undefined)
-      if (release) void commands.releaseSignupField(tabId).catch(() => undefined)
+      if (release) void channel.release(tabId).catch(() => undefined)
       onCloseRef.current()
     },
-    [hide],
+    [hide, channel],
   )
 
   const open = useCallback(
@@ -125,13 +156,13 @@ export function useAnchoredCard(
       window.clearTimeout(leaveRef.current)
       const previous = openRef.current
       if (previous && previous !== tabId) {
-        void commands.releaseSignupField(previous).catch(() => undefined)
+        void channel.release(previous).catch(() => undefined)
       }
       openRef.current = tabId
       sizeRef.current = size
       await place(tabId, rect)
     },
-    [place],
+    [place, channel],
   )
 
   useEffect(() => {
@@ -141,7 +172,7 @@ export function useAnchoredCard(
       void pending.then((fn) => (cancelled ? fn() : unlistens.push(fn)))
 
     track(
-      listen<MovePayload>(FIELD_MOVE_EVENT, (event) => {
+      listen<MovePayload>(channel.move, (event) => {
         const tabId = event.payload.tabId as TabId
         const size = sizeRef.current
         if (openRef.current !== tabId || !size) return
@@ -153,7 +184,7 @@ export function useAnchoredCard(
     )
 
     track(
-      listen<TabPayload>(FIELD_SCROLL_EVENT, (event) => {
+      listen<TabPayload>(channel.scroll, (event) => {
         if (openRef.current !== event.payload.tabId) return
         window.clearTimeout(restoreRef.current)
         void hide().catch(() => undefined)
@@ -170,14 +201,14 @@ export function useAnchoredCard(
         restoreRef.current = window.setTimeout(() => {
           const placed = placedRef.current
           if (openRef.current && placed && !suspendedRef.current) {
-            void show(placed).catch(() => undefined)
+            void reveal(placed).catch(() => undefined)
           }
         }, WHEEL_RESTORE_MS)
       }),
     )
 
     track(
-      listen<TabPayload>(FIELD_LEAVE_EVENT, (event) => {
+      listen<TabPayload>(channel.leave, (event) => {
         if (openRef.current !== event.payload.tabId) return
         window.clearTimeout(leaveRef.current)
         leaveRef.current = window.setTimeout(() => close(false), LEAVE_GRACE_MS)
@@ -196,7 +227,7 @@ export function useAnchoredCard(
       window.clearTimeout(leaveRef.current)
       unlistens.forEach((fn) => fn())
     }
-  }, [name, placeAt, place, show, hide, close])
+  }, [name, placeAt, place, reveal, hide, close, channel])
 
   useEffect(() => {
     suspendedRef.current = suspended

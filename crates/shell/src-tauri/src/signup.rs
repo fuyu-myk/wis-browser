@@ -95,7 +95,7 @@ pub(crate) struct FieldRect {
 /// trusted to keep them sane.
 const MAX_COORD: f64 = 1_000_000.0;
 
-fn field_rect(
+pub(crate) fn field_rect(
     x: Option<f64>,
     y: Option<f64>,
     width: Option<f64>,
@@ -250,6 +250,7 @@ pub(crate) fn forget_field(tab_id: &str) {
     if let Some(fields) = FIELDS.lock().expect("signup fields poisoned").as_mut() {
         fields.remove(tab_id);
     }
+    crate::address_field::forget(tab_id);
 
     if let Some(app) = APP.get() {
         let payload = SignupGoneEvent {
@@ -465,14 +466,14 @@ const SIGNUP_JS: &str = r#"(function () {
 
 /// Where a report came from: the app, the tab id, its window and the page's
 /// host, all read from the webview.
-struct Source<'a> {
-    app: &'static AppHandle,
-    tab_id: &'a str,
-    window: String,
-    host: String,
+pub(crate) struct Source<'a> {
+    pub(crate) app: &'static AppHandle,
+    pub(crate) tab_id: &'a str,
+    pub(crate) window: String,
+    pub(crate) host: String,
 }
 
-fn source(label: &str) -> Option<Source<'_>> {
+pub(crate) fn source(label: &str) -> Option<Source<'_>> {
     let app = APP.get()?;
     let tab_id = label.strip_prefix("tab-")?;
     let webview = app.webviews().get(label).cloned()?;

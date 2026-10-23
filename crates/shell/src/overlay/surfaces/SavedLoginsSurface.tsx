@@ -11,7 +11,7 @@ import { emit, listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { commands } from '@/bindings/commands'
-import { useWheelStepsAside } from '@/hooks/useAnchoredCard'
+import { CARD_PLACED_EVENT, useWheelStepsAside, type CardPlaced } from '@/hooks/useAnchoredCard'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import {
   LOGINS_CLOSE_EVENT,
@@ -37,6 +37,16 @@ export function SavedLoginsSurface() {
   const [pick, setPick] = useState<SavedLogins | null>(null)
   const [busy, setBusy] = useState(false)
   const shownAt = useRef(0)
+
+  useEffect(() => {
+    const label = getCurrentWindow().label
+    const placed = listen<CardPlaced>(CARD_PLACED_EVENT, (event) => {
+      if (event.payload.name === 'logins' && event.payload.window === label) {
+        shownAt.current = performance.now()
+      }
+    })
+    return () => void placed.then((unlisten) => unlisten())
+  }, [])
 
   useEffect(() => {
     let unlisten: (() => void) | null = null

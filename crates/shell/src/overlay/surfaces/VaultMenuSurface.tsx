@@ -74,6 +74,7 @@ export function VaultMenuSurface() {
   const fillRef = useRef<(credentialId: number, forTab: TabId | null) => Promise<void>>(
     async () => undefined,
   )
+  const unlockOnlyRef = useRef<(forTab: TabId) => Promise<void>>(async () => undefined)
 
   const load = useCallback(async () => {
     const [cands, pend, field] = await Promise.all([
@@ -99,7 +100,9 @@ export function VaultMenuSurface() {
     void listen<VaultMenuAnchor>(VAULTMENU_OPEN_EVENT, (e) => {
       setAnchor(e.payload)
       void load()
-      if (e.payload.fill) void fillRef.current(e.payload.fill.credentialId, e.payload.fill.tab)
+      const fill = e.payload.fill
+      if (fill?.credentialId != null) void fillRef.current(fill.credentialId, fill.tab)
+      else if (fill) void unlockOnlyRef.current(fill.tab)
     }).then((fn) => (cancelled ? fn() : (unOpen = fn)))
     void listen<CaptureInfo>(CAPTURE_LOGIN_EVENT, () => void load()).then((fn) =>
       cancelled ? fn() : (unCapture = fn),
@@ -170,6 +173,11 @@ export function VaultMenuSurface() {
     }
   }
   fillRef.current = fill
+
+  const unlockOnly = async (forTab: TabId) => {
+    if (await ensureUnlocked(forTab)) close()
+  }
+  unlockOnlyRef.current = unlockOnly
 
   const onSave = async () => {
     setBusy(true)

@@ -23,6 +23,7 @@ import { TabPreviewSurface } from '@/overlay/surfaces/TabPreviewSurface'
 import { PeekSurface } from '@/overlay/surfaces/PeekSurface'
 import { AppLaunchSurface } from '@/overlay/surfaces/AppLaunchSurface'
 import { SavedLoginsSurface } from '@/overlay/surfaces/SavedLoginsSurface'
+import { AddressCardSurface } from '@/overlay/surfaces/AddressCardSurface'
 import { SignupOfferSurface } from '@/overlay/surfaces/SignupOfferSurface'
 import { SitePanelSurface } from '@/overlay/surfaces/SitePanelSurface'
 import { PermissionSurface } from '@/overlay/surfaces/PermissionSurface'
@@ -60,6 +61,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'permission') return <PermissionSurface />
   if (surface === 'signup') return <SignupOfferSurface />
   if (surface === 'logins') return <SavedLoginsSurface />
+  if (surface === 'addresses') return <AddressCardSurface />
   if (surface === 'applaunch') return <AppLaunchSurface />
   if (surface === 'bookmarks') return <BookmarksMenuSurface />
   if (surface === 'downloads') return <DownloadsMenuSurface />

@@ -39,13 +39,14 @@ export interface VaultMenuAnchor {
   x: number
   y: number
   width: number
-  /** A saved login to fill in `tab` once the menu has unlocked the vault. */
-  fill?: { tab: TabId; credentialId: number }
+  /** Unlock the vault for `tab`, then fill the saved login, if one is named. */
+  fill?: { tab: TabId; credentialId?: number }
 }
 
-/** A login picked on the saved-logins card while the vault needs its password. */
+/** A card at a field asking the menu to unlock with the vault password, then
+ *  fill the login it names, if any. */
 export interface VaultMenuFill {
   window: string
   tab: TabId
-  credentialId: number
+  credentialId?: number
 }

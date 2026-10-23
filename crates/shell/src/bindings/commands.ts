@@ -248,6 +248,20 @@ export const commands = {
     return invoke('address_delete', { id })
   },
 
+  /** Whether any address is saved; needs no unlock. */
+  async addressAny(): Promise<boolean> {
+    return invoke('address_any')
+  },
+
+  /** Fill saved address `id` into the address field report `token` names. */
+  async addressFill(tabId: TabId, id: number, token: string): Promise<void> {
+    return invoke('address_fill', { tabId, id, token })
+  },
+
+  async releaseAddressField(tabId: TabId): Promise<void> {
+    return invoke('release_address_field', { tabId })
+  },
+
   async vaultChangePassword(current: string, next: string): Promise<void> {
     return invoke('vault_change_password', { current, new: next })
   },

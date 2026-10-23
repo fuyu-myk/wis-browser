@@ -11,6 +11,7 @@ import { useAppLaunchOverlay } from '@/hooks/useAppLaunchOverlay'
 import { useOverlay } from '@/hooks/useOverlay'
 import { usePermissionOverlay } from '@/hooks/usePermissionOverlay'
 import { useSavedLogins } from '@/hooks/useSavedLogins'
+import { useSavedAddresses } from '@/hooks/useSavedAddresses'
 import { useSignupOffer } from '@/hooks/useSignupOffer'
 import { useTabAudio } from '@/hooks/useTabAudio'
 import { currentWebviewRadius, useTabWebviews, type Bounds, type WebviewLayout } from '@/hooks/useTabWebviews'
@@ -255,6 +256,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
   const webviewsHidden = resizing || draggingTab != null || paneAnim
   useSignupOffer(hostRef, state, webviewsHidden)
   useSavedLogins(state, webviewsHidden)
+  useSavedAddresses(state, webviewsHidden)
 
   const handlePaneDrop = useCallback(
     (targetTabId: TabId, movedTabId: TabId, side: PaneSide) => {

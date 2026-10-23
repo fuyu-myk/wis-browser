@@ -64,6 +64,7 @@ pub fn install<R: tauri::Runtime>(
             ("wisPeek", crate::peek::page_script()),
             ("wisKeybind", &keybind_script),
             ("wisSignup", crate::signup::page_script()),
+            ("wisAddress", crate::address_field::page_script()),
             ("wisPageMenu", &page_menu),
         ];
         if !ephemeral {
@@ -223,6 +224,11 @@ fn route(name: &str, label: &str, body: &serde_json::Value) {
         "wisSignup" => {
             if let Some(parsed) = crate::page_message::json_body(body) {
                 crate::signup::dispatch_message(label, &parsed);
+            }
+        }
+        "wisAddress" => {
+            if let Some(parsed) = crate::page_message::json_body(body) {
+                crate::address_field::dispatch_message(label, &parsed);
             }
         }
         "wisPageSource" => {

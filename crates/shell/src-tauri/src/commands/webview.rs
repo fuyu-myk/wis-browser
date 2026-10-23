@@ -126,7 +126,8 @@ pub async fn create_tab_webview(
             .initialization_script(private(crate::peek::page_script()))
             .initialization_script(private(crate::link_open::page_script()))
             .initialization_script(private(&crate::page_menu::page_script()))
-            .initialization_script(private(crate::signup::page_script()));
+            .initialization_script(private(crate::signup::page_script()))
+            .initialization_script(private(crate::address_field::page_script()));
     }
 
     // The scroll-phase monitor.
@@ -755,6 +756,7 @@ pub async fn create_tab_webview(
     crate::page_text::install(&child);
     crate::page_source::install(&child);
     crate::signup::install(&child);
+    crate::address_field::install(&child);
 
     // Right-click: report the target so the chrome can draw its own menu.
     crate::page_menu::install(&child);

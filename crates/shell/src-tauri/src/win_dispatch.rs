@@ -38,6 +38,7 @@ const ACTING: &[&str] = &[
     "wisKeybind",
     "wisPageMenu",
     "wisSignup",
+    "wisAddress",
 ];
 
 /// Each webview's token, by label.
@@ -444,6 +445,11 @@ fn dispatch(
         "wisSignup" if top_frame => {
             if let Some(parsed) = crate::page_message::json_body(&env.body) {
                 crate::signup::dispatch_message(label, &parsed);
+            }
+        }
+        "wisAddress" if top_frame => {
+            if let Some(parsed) = crate::page_message::json_body(&env.body) {
+                crate::address_field::dispatch_message(label, &parsed);
             }
         }
         "wisPageSource" if top_frame => {

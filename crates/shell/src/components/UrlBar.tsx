@@ -115,7 +115,7 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
   }, [])
 
   const open = useCallback(
-    async (fill?: { tab: TabId; credentialId: number }) => {
+    async (fill?: { tab: TabId; credentialId?: number }) => {
       const a = anchorRect()
       if (!a) return
       await overlay

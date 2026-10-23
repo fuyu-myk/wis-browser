@@ -248,6 +248,7 @@ test('every channel the wrapped scripts post to is one the private sender carrie
     ['peek.rs', 'PEEK_JS'],
     ['page_menu.rs', 'PAGE_MENU_JS'],
     ['signup.rs', 'SIGNUP_JS'],
+    ['address_field/scripts.rs', 'FOCUS_JS'],
     ['capture.rs', 'CAPTURE_JS'],
     ['navguard.rs', 'NAVGUARD_JS'],
     ['keybind.rs', 'KEYBIND_JS'],

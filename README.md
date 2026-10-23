@@ -60,6 +60,7 @@ Wis is an open-source, lightweight, secure, and fast browser with AI integration
 
 - **Isolated workspaces**: color-coded profiles, each with its own cookies, proxy, and privacy mode
 - **Private browsing**: fully ephemeral windows; nothing is saved, everything is wiped on close
+- **Address autofill**: saved addresses, encrypted in your vault, offered at checkout and sign-up forms
 - **Password vault**: encrypted storage unlocked by Touch ID, Windows Hello or a vault password on Linux, with save prompts, autofill, CSV import/export, and recovery through your own age or SSH key
 - **Stay logged in across restarts**: session logins survive quitting the app, encrypted at rest and auto-expiring after 14 days (macOS only)
 - **Phishing/malware warnings** and a navigation safety interstitial that flags risky links before they load
