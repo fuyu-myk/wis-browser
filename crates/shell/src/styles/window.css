@@ -1076,8 +1076,8 @@ body.is-overlay-surface:not(.glass-on) {
   color: rgba(255, 255, 255, 0.92);
   border-color: rgba(255, 255, 255, 0.14);
 }
-.kb-vaultmenu-btn:hover { background: rgba(0, 0, 0, 0.05); }
-[data-mode="dark"] .kb-vaultmenu-btn:hover { background: rgba(255, 255, 255, 0.08); }
+.kb-vaultmenu-btn:not(.kb-vaultmenu-btn-primary):hover { background: rgba(0, 0, 0, 0.05); }
+[data-mode="dark"] .kb-vaultmenu-btn:not(.kb-vaultmenu-btn-primary):hover { background: rgba(255, 255, 255, 0.08); }
 .kb-vaultmenu-btn:disabled { opacity: 0.5; cursor: default; }
 .kb-vaultmenu-input {
   width: 100%;
