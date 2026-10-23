@@ -94,7 +94,7 @@ pub struct AppState {
     pub user_cosmetic_rules: RwLock<HashMap<String, Vec<String>>>,
     /// Sync read-cache of `UserSettings.userscripts`, so the synchronous
     /// navigation hook can pick matching scripts without the async mutex.
-    pub userscripts: RwLock<Vec<wis_core::userscript::Userscript>>,
+    pub userscripts: RwLock<Vec<wis_core::extensions::userscript::Userscript>>,
     pub filter_cache_dir: PathBuf,
     pub proxies: Mutex<HashMap<WorkspaceId, ProxyServer>>,
     /// Password-vault master key, present only while the vault is unlocked.
@@ -141,7 +141,7 @@ pub struct AppState {
     /// Label of the focused Wis window, from window focus events.
     pub focused_window: std::sync::Mutex<Option<String>>,
     /// Site usage being metered and not yet stored (see [`crate::usage`]).
-    pub usage: std::sync::Mutex<wis_core::usage::UsageLedger>,
+    pub usage: std::sync::Mutex<wis_core::library::usage::UsageLedger>,
     /// Serialises usage flushes with clears.
     pub usage_io: tokio::sync::Mutex<()>,
     /// Tab uuids the user muted (session-scoped; re-applied when a slept
@@ -267,7 +267,7 @@ impl AppState {
             video_popout: std::sync::Mutex::new(Default::default()),
             audible_tabs: std::sync::Mutex::new(HashSet::new()),
             focused_window: std::sync::Mutex::new(None),
-            usage: std::sync::Mutex::new(wis_core::usage::UsageLedger::new(
+            usage: std::sync::Mutex::new(wis_core::library::usage::UsageLedger::new(
                 std::time::Duration::from_secs(
                     wis_core::UserSettings::default()
                         .usage_idle_timeout_secs
@@ -518,7 +518,10 @@ impl AppState {
     }
 
     /// Replace the user-script read-cache (after a settings change).
-    pub fn refresh_userscripts_cache(&self, scripts: Vec<wis_core::userscript::Userscript>) {
+    pub fn refresh_userscripts_cache(
+        &self,
+        scripts: Vec<wis_core::extensions::userscript::Userscript>,
+    ) {
         let mut guard = self.userscripts.write().expect("userscripts poisoned");
         *guard = scripts;
     }
@@ -526,7 +529,7 @@ impl AppState {
     /// Enabled user scripts matching `url`, split by run-at into
     /// `(document_start_sources, document_end_sources)`.
     pub fn matching_userscripts(&self, url: &str) -> (Vec<String>, Vec<String>) {
-        use wis_core::userscript::RunAt;
+        use wis_core::extensions::userscript::RunAt;
         let guard = self.userscripts.read().expect("userscripts poisoned");
         let mut start = Vec::new();
         let mut end = Vec::new();

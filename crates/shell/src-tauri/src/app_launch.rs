@@ -51,7 +51,7 @@ struct AppLaunchRequest {
 /// True when `url` should be cancelled in the engine and offered as an app
 /// handoff instead.
 pub fn should_intercept(url: &Url) -> bool {
-    wis_core::app_launch::is_app_scheme(url.scheme())
+    wis_core::navigation::app_launch::is_app_scheme(url.scheme())
 }
 
 /// Intake for tab-originated navigations: resolves the initiating site from
@@ -106,13 +106,15 @@ pub fn intake_global(initiator_host: Option<String>, url: Url) {
 /// unknown); one prompt per remember-key is in flight at a time.
 pub fn intake(app: &AppHandle, initiator_host: Option<String>, url: Url) {
     let scheme = url.scheme().to_string();
-    if !wis_core::app_launch::is_app_scheme(&scheme) {
+    if !wis_core::navigation::app_launch::is_app_scheme(&scheme) {
         return;
     }
 
     let state = app.state::<AppState>();
-    let key =
-        wis_core::app_launch::permission_key(&scheme, initiator_host.as_deref().unwrap_or(""));
+    let key = wis_core::navigation::app_launch::permission_key(
+        &scheme,
+        initiator_host.as_deref().unwrap_or(""),
+    );
 
     let remembered = state
         .app_launch_permissions

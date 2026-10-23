@@ -6,7 +6,7 @@
 use tauri::AppHandle;
 use wis_core::{WisError, WisResult};
 
-/// Strip a link's tracking parameters. See [`wis_core::link_clean`] for
+/// Strip a link's tracking parameters. See [`wis_core::navigation::link_clean`] for
 /// what it will and will not take out.
 #[tauri::command]
 pub async fn clean_link(url: String) -> wis_core::CleanedLink {

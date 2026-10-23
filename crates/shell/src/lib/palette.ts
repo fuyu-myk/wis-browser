@@ -107,7 +107,7 @@ export function effectiveKeymap(
 }
 
 // Canonical (macOS) default bindings, mirroring `default_keymap_for(true)` in
-// crates/core/src/keybinding.rs. Localized to the host platform just below.
+// crates/core/src/settings/keybinding.rs. Localized to the host platform just below.
 const DEFAULT_KEYMAP_MAC: Partial<Record<KeyAction, string>> = {
   new_tab: 'Cmd+T',
   new_window: 'Cmd+N',

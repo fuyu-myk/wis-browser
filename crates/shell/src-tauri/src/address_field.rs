@@ -316,7 +316,7 @@ pub fn release_address_field(app: AppHandle, tab_id: TabId) {
 
 /// The fill for `offered`: its origin and token, and only the values its
 /// kinds reach.
-fn fill_script(offered: &Offered, address: &wis_core::address::Address) -> String {
+fn fill_script(offered: &Offered, address: &wis_core::vault::address::Address) -> String {
     let reaches = |kinds: &[&str]| kinds.iter().any(|kind| offered.kinds.contains(kind));
     fn keep(reached: bool, value: &str) -> &str {
         if reached {
@@ -478,8 +478,8 @@ mod tests {
     const TOKEN: &str = "0123456789abcdef0123456789abcdef";
     const OTHER: &str = "fedcba9876543210fedcba9876543210";
 
-    fn home() -> wis_core::address::Address {
-        wis_core::address::Address {
+    fn home() -> wis_core::vault::address::Address {
+        wis_core::vault::address::Address {
             given_name: "Ada".into(),
             family_name: "Lovelace".into(),
             street_address: "12 St James's Square\nFlat \"3\"".into(),

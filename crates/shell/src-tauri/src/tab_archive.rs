@@ -1,5 +1,5 @@
 //! Closes tabs left idle past `UserSettings::tab_archive_after` into Recently
-//! closed ([`wis_core::tab_archive`]), sparing tabs playing audio or popped out.
+//! closed ([`wis_core::tabs::archive`]), sparing tabs playing audio or popped out.
 
 use std::collections::HashSet;
 use std::time::Duration;

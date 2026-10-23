@@ -297,7 +297,7 @@ async fn record_closed(
 pub(crate) async fn record_archived(
     app: &AppHandle,
     state: &AppState,
-    archived: &[wis_core::tab_archive::Archived],
+    archived: &[wis_core::tabs::archive::Archived],
 ) {
     let records = archived
         .iter()
@@ -659,7 +659,7 @@ pub async fn tab_zoom(
             Some(url) => url,
             None => state.browser.lock().await.tab(id)?.url.clone(),
         };
-        wis_core::user_agent::normalize_host(url.host_str().unwrap_or_default())
+        wis_core::sites::user_agent::normalize_host(url.host_str().unwrap_or_default())
     };
     if host.is_empty() {
         return Ok(());
@@ -703,7 +703,7 @@ pub async fn zoom_forget_site(
     state: State<'_, AppState>,
     host: String,
 ) -> WisResult<()> {
-    let host = wis_core::user_agent::normalize_host(&host);
+    let host = wis_core::sites::user_agent::normalize_host(&host);
     mutate_unit(&app, &state, move |s| {
         let mut overrides = s.settings.zoom_site_overrides.clone();
         overrides.remove(&host);

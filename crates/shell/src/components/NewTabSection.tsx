@@ -8,7 +8,7 @@ import { isSearchQuery, normaliseUrl } from '@/lib/url'
 import { usePointerReorder } from '@/hooks/usePointerReorder'
 import { reorderByKeys } from '@/lib/shortcuts'
 
-/** Mirrors `wis_core::new_tab::MAX_SHORTCUTS`. */
+/** Mirrors `wis_core::tabs::new_tab::MAX_SHORTCUTS`. */
 const MAX_SHORTCUTS = 8
 
 const TARGET_OPTIONS = [

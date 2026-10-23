@@ -1,4 +1,4 @@
-//! Download manager: the imperative shell around [`wis_core::download`].
+//! Download manager: the imperative shell around [`wis_core::library::download`].
 //!
 //! Routes wry download events from remote webviews (tabs, Peek, widget
 //! panels) into tracked state. Engine-created popups (`window.open` allowed

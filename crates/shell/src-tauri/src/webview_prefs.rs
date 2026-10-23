@@ -3,7 +3,7 @@
 
 /// Enable/disable WebKit's fraudulent-website warning (Apple-proxied Safe
 /// Browsing) on one webview: a full-page warning before suspected
-/// phishing/malware sites, complementing [`wis_core::link_safety`]'s structural
+/// phishing/malware sites, complementing [`wis_core::navigation::link_safety`]'s structural
 /// heuristics with a real threat database. WKWebView defaults to off; Wis
 /// turns it on unless the user opts out (the check performs network lookups).
 pub fn apply_fraud_warning<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, enabled: bool) {

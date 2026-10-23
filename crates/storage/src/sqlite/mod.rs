@@ -149,7 +149,7 @@ impl Storage for SqliteStorage {
         history::record_visit(&conn, workspace_id, url, title)
     }
 
-    fn add_usage(&self, credits: &[wis_core::usage::Credit]) -> StorageResult<()> {
+    fn add_usage(&self, credits: &[wis_core::library::usage::Credit]) -> StorageResult<()> {
         let mut conn = self.conn.lock().expect("storage mutex poisoned");
         usage::add(&mut conn, credits)
     }
@@ -159,7 +159,7 @@ impl Storage for SqliteStorage {
         workspace_id: Option<wis_core::WorkspaceId>,
         from: chrono::NaiveDate,
         to: chrono::NaiveDate,
-    ) -> StorageResult<Vec<wis_core::usage::UsageRow>> {
+    ) -> StorageResult<Vec<wis_core::library::usage::UsageRow>> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         usage::query(&conn, workspace_id, from, to)
     }
@@ -176,7 +176,7 @@ impl Storage for SqliteStorage {
     fn list_canvases(
         &self,
         workspace_id: wis_core::WorkspaceId,
-    ) -> StorageResult<Vec<wis_core::canvas::CanvasSummary>> {
+    ) -> StorageResult<Vec<wis_core::canvas::board::CanvasSummary>> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         canvases::list(&conn, workspace_id)
     }
@@ -185,12 +185,12 @@ impl Storage for SqliteStorage {
         &self,
         workspace_id: wis_core::WorkspaceId,
         id: wis_core::CanvasId,
-    ) -> StorageResult<Option<wis_core::canvas::CanvasRecord>> {
+    ) -> StorageResult<Option<wis_core::canvas::board::CanvasRecord>> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         canvases::load(&conn, workspace_id, id)
     }
 
-    fn insert_canvas(&self, canvas: &wis_core::canvas::CanvasRecord) -> StorageResult<()> {
+    fn insert_canvas(&self, canvas: &wis_core::canvas::board::CanvasRecord) -> StorageResult<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         canvases::insert(&conn, canvas)
     }
@@ -208,7 +208,7 @@ impl Storage for SqliteStorage {
 
     fn save_canvas_docs(
         &self,
-        docs: &[wis_core::canvas::CanvasDocUpdate],
+        docs: &[wis_core::canvas::board::CanvasDocUpdate],
     ) -> StorageResult<Vec<wis_core::CanvasId>> {
         let mut conn = self.conn.lock().expect("storage mutex poisoned");
         canvases::save_docs(&mut conn, docs)

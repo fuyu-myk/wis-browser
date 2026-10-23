@@ -130,8 +130,8 @@ fn settings_patch_round_trips_when_all_fields_set() {
         tab_archive_after: Some(wis_core::TabArchiveAfter::SevenDays),
         usage_tracking: Some(false),
         usage_idle_timeout_secs: Some(300),
-        week_start: Some(wis_core::usage::WeekStart::Sunday),
-        canvas_theme: Some(wis_core::canvas::CanvasTheme::Light),
+        week_start: Some(wis_core::library::usage::WeekStart::Sunday),
+        canvas_theme: Some(wis_core::canvas::board::CanvasTheme::Light),
         persist_sessions: Some(false),
         fraud_warning_enabled: Some(false),
         global_privacy_control: Some(false),
@@ -199,7 +199,7 @@ fn settings_patch_round_trips_when_all_fields_set() {
         widget_memory_cap_enabled: Some(false),
         widget_memory_cap_mb: Some(800),
         filter_subscriptions: Some(vec!["https://example.test/list.txt".to_string()]),
-        link_routes: Some(vec![wis_core::link_routing::LinkRoute {
+        link_routes: Some(vec![wis_core::workspaces::link_routing::LinkRoute {
             pattern: "github.com/acme".to_string(),
             workspace_id: wis_core::WorkspaceId::new(),
         }]),
@@ -209,10 +209,12 @@ fn settings_patch_round_trips_when_all_fields_set() {
             "example.test".to_string(),
             vec![".ad".to_string()],
         )])),
-        userscripts: Some(vec![wis_core::userscript::Userscript::from_source(
-            "// ==UserScript==\n// @name T\n// @match *\n// ==/UserScript==\n",
-        )
-        .unwrap()]),
+        userscripts: Some(vec![
+            wis_core::extensions::userscript::Userscript::from_source(
+                "// ==UserScript==\n// @name T\n// @match *\n// ==/UserScript==\n",
+            )
+            .unwrap(),
+        ]),
         keybindings: Some(HashMap::from([
             (KeyAction::NewTab, "Ctrl+T".into()),
             (KeyAction::CloseTab, "Ctrl+W".into()),
@@ -324,7 +326,7 @@ fn user_settings_without_week_start_deserialises_to_auto() {
         "homepage": null
     }"#;
     let parsed: UserSettings = serde_json::from_str(json).unwrap();
-    assert_eq!(parsed.week_start, wis_core::usage::WeekStart::Auto);
+    assert_eq!(parsed.week_start, wis_core::library::usage::WeekStart::Auto);
 }
 
 #[test]
@@ -340,7 +342,7 @@ fn ai_settings_without_local_data_keep_it_off() {
 
 #[test]
 fn week_start_roundtrips_as_snake_case() {
-    use wis_core::usage::WeekStart;
+    use wis_core::library::usage::WeekStart;
     for (start, json) in [
         (WeekStart::Auto, "\"auto\""),
         (WeekStart::Monday, "\"monday\""),

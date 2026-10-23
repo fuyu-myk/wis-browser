@@ -19,8 +19,8 @@ use objc2_web_kit::{
     WKWebExtensionContextNotificationUserInfoKeyPermissions, WKWebExtensionContextPermissionStatus,
     WKWebExtensionMatchPattern,
 };
-use wis_core::extension_access::{plain_host, site_pattern, SiteAccess};
-use wis_core::extensions::{is_site_pattern, InstalledExtension};
+use wis_core::extensions::access::{plain_host, site_pattern, SiteAccess};
+use wis_core::extensions::installed::{is_site_pattern, InstalledExtension};
 
 use super::host;
 

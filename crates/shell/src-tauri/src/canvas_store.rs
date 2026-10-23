@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use wis_core::canvas::{
+use wis_core::canvas::board::{
     canvas_name, check_doc, CanvasDocUpdate, CanvasRecord, CanvasSummary, DEFAULT_CANVAS_NAME,
     EMPTY_DOC,
 };

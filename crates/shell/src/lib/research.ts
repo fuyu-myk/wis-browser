@@ -96,7 +96,7 @@ export function parseQueries(reply: string): string[] {
   return queries
 }
 
-/** The registrable site, approximated as `wis_core::site::registrable_domain` does. */
+/** The registrable site, approximated as `wis_core::sites::domain::registrable_domain` does. */
 function siteOf(url: URL): string {
   const host = url.hostname.replace(/\.$/, '')
   if (/^[\d.]+$/.test(host) || host.startsWith('[')) return host

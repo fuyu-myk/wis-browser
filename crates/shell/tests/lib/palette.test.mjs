@@ -38,7 +38,7 @@ const ids = (items) => items.map((it) => it.id)
 
 describe('keymap', () => {
   test('the defaults mirror default_keymap_for in the Rust core', () => {
-    const rust = readFileSync(new URL('../../../core/src/keybinding.rs', import.meta.url), 'utf8')
+    const rust = readFileSync(new URL('../../../core/src/settings/keybinding.rs', import.meta.url), 'utf8')
     const body = rust.slice(rust.indexOf('pub fn default_keymap_for'), rust.indexOf('pub fn effective_keymap'))
     const pairs = [...body.matchAll(/\(KeyAction::(\w+), "([^"]+)"\)/g)].map(([, variant, accel]) => [
       variant.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase(),

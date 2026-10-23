@@ -25,7 +25,7 @@ pub mod updates;
 
 use serde::Serialize;
 use tauri::{AppHandle, State};
-use wis_core::extensions::ExtensionReview;
+use wis_core::extensions::installed::ExtensionReview;
 use wis_core::{WisError, WisResult};
 
 use crate::state::AppState;
@@ -156,7 +156,7 @@ pub async fn extension_set_workspace(
 ) -> WisResult<()> {
     #[cfg(target_os = "macos")]
     return install::change(app, state, move |list| {
-        wis_core::extensions::with_workspace_switch(list, &id, workspace_id, enabled)
+        wis_core::extensions::installed::with_workspace_switch(list, &id, workspace_id, enabled)
     })
     .await;
     #[cfg(not(target_os = "macos"))]
@@ -175,7 +175,7 @@ pub async fn extension_set_pinned(
 ) -> WisResult<()> {
     #[cfg(target_os = "macos")]
     return install::change(app, state, move |list| {
-        wis_core::extensions::with_pinned(list, &id, pinned)
+        wis_core::extensions::installed::with_pinned(list, &id, pinned)
     })
     .await;
     #[cfg(not(target_os = "macos"))]
@@ -194,7 +194,7 @@ pub async fn extension_set_private(
 ) -> WisResult<()> {
     #[cfg(target_os = "macos")]
     return install::change(app, state, move |list| {
-        wis_core::extensions::with_private_allowed(list, &id, allowed)
+        wis_core::extensions::installed::with_private_allowed(list, &id, allowed)
     })
     .await;
     #[cfg(not(target_os = "macos"))]
@@ -223,7 +223,9 @@ pub async fn extension_actions(
         let ids: Vec<String> = {
             let browser = state.browser.lock().await;
             match browser.workspaces.iter().find(|w| w.id == workspace) {
-                Some(w) => wis_core::extensions::wanted_in(&browser.settings.extensions, w),
+                Some(w) => {
+                    wis_core::extensions::installed::wanted_in(&browser.settings.extensions, w)
+                }
                 None => Vec::new(),
             }
         };
@@ -260,7 +262,7 @@ pub async fn extension_run(
     #[cfg(target_os = "macos")]
     {
         require_support()?;
-        if !wis_core::extensions::is_extension_id(&id)
+        if !wis_core::extensions::installed::is_extension_id(&id)
             || ![x, y, width, height].iter().all(|n| n.is_finite())
         {
             return Err(WisError::InvalidInput {
@@ -377,7 +379,7 @@ fn wanted_by_workspace(
         .map(|w| {
             (
                 w.id,
-                wis_core::extensions::wanted_in(&state.settings.extensions, w),
+                wis_core::extensions::installed::wanted_in(&state.settings.extensions, w),
             )
         })
         .collect()
@@ -395,10 +397,10 @@ pub const EXTENSIONS_CHANGED_EVENT: &str = "wis-extensions-changed";
 /// the workspaces whose set of running extensions changed.
 #[cfg(any(target_os = "macos", test))]
 fn rebuild_targets(
-    before: &[wis_core::extensions::InstalledExtension],
+    before: &[wis_core::extensions::installed::InstalledExtension],
     state: &wis_core::state::BrowserState,
 ) -> Vec<wis_core::TabId> {
-    use wis_core::extensions::wanted_in;
+    use wis_core::extensions::installed::wanted_in;
     let changed: std::collections::HashSet<_> = state
         .workspaces
         .iter()
@@ -440,7 +442,7 @@ async fn ensure_host(
             .find(|w| w.id == workspace)
             .map(|w| {
                 (
-                    wis_core::extensions::wanted_in(&browser.settings.extensions, w),
+                    wis_core::extensions::installed::wanted_in(&browser.settings.extensions, w),
                     w.ephemeral,
                     w.active_tab_id.map(tab_label),
                     access::access_by_extension(&browser.settings.extensions),
@@ -659,9 +661,9 @@ pub(crate) fn sync_active(app: &AppHandle, actives: Vec<(wis_core::WorkspaceId, 
 
 #[cfg(test)]
 mod tests {
-    use wis_core::extensions::InstalledExtension;
+    use wis_core::extensions::installed::InstalledExtension;
     use wis_core::state::BrowserState;
-    use wis_core::workspace::AccentColor;
+    use wis_core::workspaces::workspace::AccentColor;
 
     use super::{active_tab_changes, rebuild_targets};
 

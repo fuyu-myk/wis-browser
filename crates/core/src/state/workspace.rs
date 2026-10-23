@@ -56,7 +56,7 @@ impl BrowserState {
     pub fn with_recoloured_workspace(
         &self,
         id: WorkspaceId,
-        accent: crate::workspace::AccentColor,
+        accent: crate::workspaces::workspace::AccentColor,
     ) -> WisResult<Self> {
         if !self.workspaces.iter().any(|w| w.id == id) {
             return Err(WisError::WorkspaceNotFound { id });
@@ -83,7 +83,7 @@ impl BrowserState {
     pub fn with_workspace_privacy_mode(
         &self,
         id: WorkspaceId,
-        mode: crate::privacy::PrivacyMode,
+        mode: crate::privacy::policy::PrivacyMode,
     ) -> WisResult<Self> {
         if !self.workspaces.iter().any(|w| w.id == id) {
             return Err(WisError::WorkspaceNotFound { id });
@@ -110,7 +110,7 @@ impl BrowserState {
     pub fn with_workspace_upstream_proxy(
         &self,
         id: WorkspaceId,
-        upstream: Option<crate::proxy::UpstreamProxy>,
+        upstream: Option<crate::workspaces::proxy::UpstreamProxy>,
     ) -> WisResult<Self> {
         if !self.workspaces.iter().any(|w| w.id == id) {
             return Err(WisError::WorkspaceNotFound { id });
@@ -191,7 +191,7 @@ impl BrowserState {
     pub fn with_workspace_background(
         &self,
         id: WorkspaceId,
-        background: Option<crate::background::Background>,
+        background: Option<crate::appearance::background::Background>,
     ) -> WisResult<Self> {
         self.workspace(id)?;
         if let Some(bg) = &background {
@@ -223,7 +223,7 @@ impl BrowserState {
     ) -> WisResult<Self> {
         self.workspace(id)?;
         if let Some(c) = &color {
-            if !crate::background::is_valid_hex_color(c) {
+            if !crate::appearance::background::is_valid_hex_color(c) {
                 return Err(WisError::InvalidInput {
                     message: "custom accent must be #rrggbb hex".to_string(),
                 });
@@ -248,7 +248,7 @@ impl BrowserState {
                 });
             }
         }
-        let settings = crate::settings::UserSettings {
+        let settings = crate::settings::user_settings::UserSettings {
             active_theme: id,
             ..self.settings.clone()
         };

@@ -70,7 +70,7 @@ async fn load_image(
     let client = reqwest::Client::builder()
         .timeout(IMAGE_TIMEOUT)
         .redirect(redirects)
-        .user_agent(wis_core::user_agent::compatibility_user_agent(
+        .user_agent(wis_core::sites::user_agent::compatibility_user_agent(
             wis_core::UaPlatform::host(),
         ))
         .proxy(proxy)

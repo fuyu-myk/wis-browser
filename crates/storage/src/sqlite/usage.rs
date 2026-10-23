@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 use rusqlite::{params, Connection};
-use wis_core::usage::{Credit, UsageRow};
+use wis_core::library::usage::{Credit, UsageRow};
 use wis_core::WorkspaceId;
 
 use crate::error::StorageResult;

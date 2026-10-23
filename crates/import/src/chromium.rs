@@ -3,8 +3,10 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
-use wis_core::bookmark_tree::BookmarkNode;
-use wis_core::netscape::{MAX_BOOKMARKS_FILE_BYTES, MAX_IMPORT_BOOKMARKS, MAX_IMPORT_FOLDERS};
+use wis_core::library::bookmark_tree::BookmarkNode;
+use wis_core::library::netscape::{
+    MAX_BOOKMARKS_FILE_BYTES, MAX_IMPORT_BOOKMARKS, MAX_IMPORT_FOLDERS,
+};
 
 use crate::fs::read_capped;
 #[cfg(windows)]

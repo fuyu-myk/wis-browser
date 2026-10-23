@@ -6,8 +6,10 @@ use std::path::{Component, Path, PathBuf};
 use chrono::{DateTime, Utc};
 use rusqlite::types::ValueRef;
 use rusqlite::{params, Connection};
-use wis_core::bookmark_tree::BookmarkNode;
-use wis_core::netscape::{MAX_IMPORT_BOOKMARKS, MAX_IMPORT_FOLDERS, MAX_URL_BYTES, NAME_CAP};
+use wis_core::library::bookmark_tree::BookmarkNode;
+use wis_core::library::netscape::{
+    MAX_IMPORT_BOOKMARKS, MAX_IMPORT_FOLDERS, MAX_URL_BYTES, NAME_CAP,
+};
 
 use crate::fs::read_capped;
 #[cfg(windows)]
@@ -455,8 +457,8 @@ fn data_dirs(_roots: &Roots) -> Vec<(Browser, &'static str, PathBuf)> {
 mod tests {
     use chrono::Duration;
     use rusqlite::{params, Connection};
-    use wis_core::bookmark_tree::flatten;
-    use wis_core::netscape::MAX_URL_BYTES;
+    use wis_core::library::bookmark_tree::flatten;
+    use wis_core::library::netscape::MAX_URL_BYTES;
 
     use super::*;
     use crate::test_support::{write, TempDir};

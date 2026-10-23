@@ -5,7 +5,7 @@
 use serde::Serialize;
 use tauri::{AppHandle, State};
 #[cfg(target_os = "macos")]
-use wis_core::extensions;
+use wis_core::extensions::installed;
 #[cfg(target_os = "macos")]
 use wis_core::WisError;
 use wis_core::WisResult;
@@ -73,7 +73,7 @@ pub async fn extension_store_offer(
         else {
             return Ok(None);
         };
-        let Some(store_id) = extensions::store_id_from_url(tab.url.as_str()) else {
+        let Some(store_id) = installed::store_id_from_url(tab.url.as_str()) else {
             return Ok(None);
         };
         let list = &browser.settings.extensions;
@@ -82,7 +82,7 @@ pub async fn extension_store_offer(
         }
 
         let Some(installed) =
-            extensions::duplicate_of(list, extensions::store_page_name(&tab.title), None)
+            installed::duplicate_of(list, installed::store_page_name(&tab.title), None)
         else {
             return Ok(Some(StoreOffer::Add { store_id }));
         };
@@ -114,14 +114,14 @@ pub async fn extension_stage_from_store(
     {
         super::require_support()?;
         let refuse = |message: String| WisError::InvalidInput { message };
-        if !extensions::is_store_id(&store_id) {
+        if !installed::is_store_id(&store_id) {
             return Err(refuse("not a Chrome Web Store id".into()));
         }
 
         let workspace = state
             .window_workspace(window.label())
             .ok_or_else(|| refuse("this window has no workspace".into()))?;
-        if let Some(installed) = extensions::duplicate_of(
+        if let Some(installed) = installed::duplicate_of(
             &state.browser.lock().await.settings.extensions,
             None,
             Some(&store_id),

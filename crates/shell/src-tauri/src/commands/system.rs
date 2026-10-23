@@ -98,7 +98,7 @@ pub async fn set_dock_icon(app: AppHandle, variant: String) -> WisResult<()> {
 #[tauri::command]
 pub async fn import_userscript(
     app: AppHandle,
-) -> WisResult<Option<wis_core::userscript::Userscript>> {
+) -> WisResult<Option<wis_core::extensions::userscript::Userscript>> {
     let Some(path) = crate::panels::run_open_panel(&app, &["js"])? else {
         return Ok(None);
     };
@@ -106,7 +106,7 @@ pub async fn import_userscript(
     let size = std::fs::metadata(&path)
         .map(|m| m.len())
         .unwrap_or(u64::MAX);
-    if size > wis_core::userscript::MAX_SOURCE_BYTES as u64 {
+    if size > wis_core::extensions::userscript::MAX_SOURCE_BYTES as u64 {
         return Err(WisError::InvalidInput {
             message: "user script file is too large".to_string(),
         });
@@ -115,7 +115,7 @@ pub async fn import_userscript(
     let source = std::fs::read_to_string(&path).map_err(|err| WisError::InvalidInput {
         message: format!("read user script: {err}"),
     })?;
-    let script = wis_core::userscript::Userscript::from_source(&source)?;
+    let script = wis_core::extensions::userscript::Userscript::from_source(&source)?;
 
     Ok(Some(script))
 }

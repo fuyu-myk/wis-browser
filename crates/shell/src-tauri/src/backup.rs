@@ -1,6 +1,6 @@
 //! Encrypted profile backup: export selected categories to a passphrase-
 //! encrypted `.wisbackup` file, and import one back. The payload shape,
-//! boundary validation, and re-mint discipline live in [`wis_core::backup`];
+//! boundary validation, and re-mint discipline live in [`wis_core::library::backup`];
 //! this module adds the passphrase KDF + AEAD envelope (wis-secrets) and the
 //! native file panels. Import returns the validated, re-minted payload and the
 //! frontend applies it through the existing settings commands, so a merge
@@ -12,11 +12,11 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
-use wis_core::backup::{
+use wis_core::canvas::board::{canvas_name, CanvasRecord};
+use wis_core::library::backup::{
     merge_profile, BackupPayload, BookmarkBackup, CanvasBackup, HistoryBackup, ProfileBackup,
     WorkspaceBookmarks, WorkspaceCanvases, WorkspaceHistory, BACKUP_VERSION,
 };
-use wis_core::canvas::{canvas_name, CanvasRecord};
 use wis_core::{Tab, UserSettings, WisError, WisResult, Workspace, WorkspaceId};
 
 use crate::commands::mutate_immediate;
@@ -262,7 +262,7 @@ pub async fn import_backup(
     }
     if let Some(settings) = summary.settings.as_mut() {
         let live = state.browser.lock().await;
-        settings.link_routes = wis_core::backup::link_routes_onto(
+        settings.link_routes = wis_core::library::backup::link_routes_onto(
             std::mem::take(&mut settings.link_routes),
             &imported,
             &live.workspaces,
@@ -551,7 +551,7 @@ mod tests {
     #[test]
     fn the_backup_json_fills_one_buffer_of_exactly_its_size() {
         let payload = BackupPayload {
-            addresses: Some(vec![wis_core::address::Address {
+            addresses: Some(vec![wis_core::vault::address::Address {
                 city: "London".into(),
                 ..Default::default()
             }]),

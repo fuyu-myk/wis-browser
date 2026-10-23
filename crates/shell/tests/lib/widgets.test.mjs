@@ -53,7 +53,7 @@ describe('catalog', () => {
   })
 
   test('the custom widget caps mirror core', () => {
-    const core = readFileSync(new URL('../../../core/src/widget.rs', import.meta.url), 'utf8')
+    const core = readFileSync(new URL('../../../core/src/appearance/widget.rs', import.meta.url), 'utf8')
     const constant = (name) => Number(core.match(new RegExp(`const ${name}: usize = (\\d+);`))[1])
     assert.equal(MAX_CUSTOM_WIDGET_LABEL_CHARS, constant('MAX_WIDGET_LABEL_CHARS'))
     assert.equal(MAX_CUSTOM_WIDGET_URL_BYTES, constant('MAX_WIDGET_URL_BYTES'))

@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 use tauri::{AppHandle, State};
-use wis_core::backup::CredentialBackup;
+use wis_core::library::backup::CredentialBackup;
 use wis_core::{WisError, WisResult};
 use zeroize::Zeroizing;
 
@@ -36,8 +36,10 @@ pub async fn vault_import_csv(
 
     // Bounded read + parse off the async runtime; the file is untrusted.
     let parsed = tokio::task::spawn_blocking(move || -> WisResult<wis_core::ParsedCredentials> {
-        let source =
-            crate::file_io::read_capped(&path, wis_core::password_csv::MAX_PASSWORD_CSV_BYTES)?;
+        let source = crate::file_io::read_capped(
+            &path,
+            wis_core::vault::password_csv::MAX_PASSWORD_CSV_BYTES,
+        )?;
         wis_core::parse_password_csv(&source)
     })
     .await

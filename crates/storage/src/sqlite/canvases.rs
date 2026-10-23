@@ -1,8 +1,8 @@
-//! SQLite queries backing canvases (see `wis_core::canvas`).
+//! SQLite queries backing canvases (see `wis_core::canvas::board`).
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use uuid::Uuid;
-use wis_core::canvas::{CanvasDocUpdate, CanvasRecord, CanvasSummary};
+use wis_core::canvas::board::{CanvasDocUpdate, CanvasRecord, CanvasSummary};
 use wis_core::{CanvasId, WorkspaceId};
 
 use crate::error::{StorageError, StorageResult};

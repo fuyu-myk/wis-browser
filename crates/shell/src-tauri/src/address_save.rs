@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
-use wis_core::address::Address;
+use wis_core::vault::address::Address;
 use wis_core::{TabId, WisError, WisResult};
 
 use crate::state::AppState;
@@ -259,7 +259,7 @@ fn captured(values: Option<&serde_json::Value>) -> Option<Captured> {
     }
 
     let short = |text: String| {
-        if text.chars().count() <= wis_core::address::MAX_FIELD_CHARS {
+        if text.chars().count() <= wis_core::vault::address::MAX_FIELD_CHARS {
             text
         } else {
             String::new()

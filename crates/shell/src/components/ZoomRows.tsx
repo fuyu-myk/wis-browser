@@ -8,7 +8,7 @@ import type { UserSettings, UserSettingsPatch } from '@/bindings/types'
 import { Segmented } from '@/components/controls'
 
 /**
- * The rungs offered as a default. A subset of `wis_core::zoom::ZOOM_LADDER`,
+ * The rungs offered as a default. A subset of `wis_core::sites::zoom::ZOOM_LADDER`,
  * which runs 20% to 500%; a default outside these five still applies, but
  * leaves the control unset.
  */

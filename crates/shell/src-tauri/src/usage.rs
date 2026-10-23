@@ -1,4 +1,4 @@
-//! Site usage: a once-a-second ticker that feeds [`wis_core::usage::UsageLedger`]
+//! Site usage: a once-a-second ticker that feeds [`wis_core::library::usage::UsageLedger`]
 //! and flushes its credits to storage.
 
 use std::collections::HashSet;
@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use chrono::{Local, NaiveDate, Timelike};
 use tauri::{AppHandle, Emitter, Manager};
-use wis_core::usage::{site_of, summarize, Focus, Observation, UsageSummary, PRESENT};
+use wis_core::library::usage::{site_of, summarize, Focus, Observation, UsageSummary, PRESENT};
 use wis_core::{BrowserState, WisError, WisResult, WorkspaceId};
 
 use crate::state::AppState;

@@ -6,6 +6,21 @@ This guide elaborates on WIS.md. If anything here conflicts, WIS.md wins.
 
 The pure data model has no I/O and no Tauri dependency, so it stays trivially testable.
 
+| Folder | Holds |
+| --- | --- |
+| `tabs/` | a tab, folders, split panes, archiving, where a new tab lands |
+| `workspaces/` | the workspace, its upstream proxy and link routes |
+| `navigation/` | search, link cleaning and safety, load errors, external app launches |
+| `sites/` | per-site overrides: user agent, autoplay, zoom, protection, registrable domains |
+| `privacy/` | privacy modes and per-site policy, filter-list choices, clearing data |
+| `vault/` | addresses, password CSV import and export, the generated-password offer |
+| `extensions/` | installed extensions, site access, listings, updates, user scripts |
+| `library/` | bookmarks and their file formats, downloads, usage, backups |
+| `canvas/` | canvas boards and the canvas agent's tools |
+| `ai/` | AI providers, requests, the stream parser, model lists |
+| `appearance/` | themes, design, layout, backgrounds, icons, widgets |
+| `settings/` | `UserSettings` and the keymap |
+
 - `BrowserState` (`crates/core/src/state/mod.rs`) is the root aggregate: `workspaces`, a flat `tabs` list, `active_workspace_id`, `settings`. A `Workspace` references tabs by ordered `TabId` (`tab_order`, `pinned_tab_ids`, `active_tab_id`), so the graph is normalized in memory, not nested.
 - Every transition is a pure `with_*` builder returning a new value (`with_new_tab`, `with_tab_closed`, ...). Nothing mutates in place, which is why a mutation can snapshot the whole state cheaply for rollback and coalesced writes.
 - Typed IDs (`WorkspaceId`, `TabId`, `TabFolderId`, `WidgetId` in `crates/core/src/ids.rs`) are newtype UUIDs, so a tab id can never be passed where a workspace id belongs. `Tab` is `Clone + PartialEq` but not `Eq`: it carries an `f64` zoom.
@@ -53,7 +68,7 @@ Every mutation snapshots the full state, so a naive design would fsync on every 
 
 A profile is portable across machines through a passphrase-encrypted file, local-first with no server, and the passphrase key is deliberately separate from the device-bound vault key so a bundle is not tied to one machine.
 
-- The payload shape, boundary validation, and re-mint discipline live in `wis_core::backup` (`crates/core/src/backup.rs`): `BackupPayload` carries each category as an `Option` (`settings`, `profile`, `credentials`). `validate` runs before anything is applied because a backup file is untrusted input.
+- The payload shape, boundary validation, and re-mint discipline live in `wis_core::library::backup` (`crates/core/src/library/backup.rs`): `BackupPayload` carries each category as an `Option` (`settings`, `profile`, `credentials`). `validate` runs before anything is applied because a backup file is untrusted input.
 - The on-disk `.wisbackup` is a versioned envelope (`crates/shell/src-tauri/src/backup.rs`): `version`, public `salt` and `nonce`, `ciphertext`. The payload is sealed with ChaCha20-Poly1305 under an Argon2id passphrase-derived key (`wis_secrets::derive_passphrase_key` + `random_salt`), distinct from the device-bound vault key so a bundle is portable. A wrong passphrase or tampered file fails to AEAD-open; a `version` above `BACKUP_VERSION` is rejected rather than misread.
 - Import re-mints ids so a merge never collides with existing data. `BackupPayload::reminted` regenerates theme ids and, via `remint_profile`, regenerates every workspace/tab/folder id and remaps all references (`tab_order`, `pinned_tab_ids`, `active_tab_id`, the pane tree, bookmark/history workspace keys). Canvases get fresh ids too, and canvas tabs' `?canvas=` addresses follow them; export writes pending canvas documents first. `merge_profile` then splices only non-clashing workspaces into the live `BrowserState`, and only those workspaces' bookmarks, history and canvases are written.
 - Import is merge, not replace: a custom theme appends only when absent by name and content, and a workspace whose name already exists is skipped (a re-import is a graph no-op). Private/ephemeral workspaces are never exported.

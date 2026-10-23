@@ -8,11 +8,11 @@ use serde::Serialize;
 use tauri::Manager;
 use tauri::{AppHandle, State};
 #[cfg(target_os = "macos")]
-use wis_core::extension_updates::{
+use wis_core::extensions::installed::{self, InstalledExtension};
+#[cfg(target_os = "macos")]
+use wis_core::extensions::updates::{
     added_abilities, is_newer, wants_more, with_pending_update, PendingUpdate, Reach,
 };
-#[cfg(target_os = "macos")]
-use wis_core::extensions::{self, InstalledExtension};
 #[cfg(target_os = "macos")]
 use wis_core::WisError;
 use wis_core::WisResult;
@@ -261,7 +261,7 @@ pub(super) async fn proxy_for(app: &AppHandle, ext: &InstalledExtension) -> WisR
         let browser = state.browser.lock().await;
         let regular = || browser.workspaces.iter().filter(|w| !w.ephemeral);
         regular()
-            .find(|w| extensions::runs_in(ext, w))
+            .find(|w| installed::runs_in(ext, w))
             .or_else(|| regular().next())
             .map(|w| w.id)
     };
@@ -384,7 +384,7 @@ pub(super) async fn update(
 async fn settle(app: &AppHandle, ext: &InstalledExtension, version: &str) -> WisResult<()> {
     let (id, name, version) = (ext.id.clone(), ext.name.clone(), version.to_string());
     install::change(app.clone(), app.state::<AppState>(), move |list| {
-        wis_core::extension_updates::with_update(list, &id, &name, &version)
+        wis_core::extensions::updates::with_update(list, &id, &name, &version)
     })
     .await
 }

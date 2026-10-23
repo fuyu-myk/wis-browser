@@ -287,8 +287,10 @@ pub async fn import_bookmarks_html(
 
     // Bounded read + parse off the async runtime; the file is untrusted.
     let parsed = tokio::task::spawn_blocking(move || -> WisResult<wis_core::ParsedBookmarks> {
-        let source =
-            crate::file_io::read_capped(&path, wis_core::netscape::MAX_BOOKMARKS_FILE_BYTES)?;
+        let source = crate::file_io::read_capped(
+            &path,
+            wis_core::library::netscape::MAX_BOOKMARKS_FILE_BYTES,
+        )?;
         wis_core::parse_netscape(&source)
     })
     .await

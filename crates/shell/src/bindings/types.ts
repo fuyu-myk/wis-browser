@@ -71,7 +71,7 @@ export interface GlassScopes {
   tabs: boolean
 }
 
-/** Chrome geometry and material (mirror of `wis_core::design::ChromeDesign`). */
+/** Chrome geometry and material (mirror of `wis_core::appearance::design::ChromeDesign`). */
 export interface ChromeDesign {
   corners: CornerStyle
   tab_shape: TabShape
@@ -87,7 +87,7 @@ export interface ChromeDesign {
 
 export type PrivacyMode = 'strict' | 'balanced' | 'permissive'
 
-/** Mirrors `wis_core::link_routing::LinkRoute`: a site with an optional path. */
+/** Mirrors `wis_core::workspaces::link_routing::LinkRoute`: a site with an optional path. */
 export interface LinkRoute {
   pattern: string
   workspace_id: WorkspaceId
@@ -433,7 +433,7 @@ export interface ImportSummary {
   vault_skipped: boolean
 }
 
-/** A postal address with contact details (mirror of `wis_core::address::Address`). */
+/** A postal address with contact details (mirror of `wis_core::vault::address::Address`). */
 export interface Address {
   given_name: string
   family_name: string
@@ -480,7 +480,7 @@ export interface AiSettings {
   canvas_model?: string | null
 }
 
-/** One tool call requested by the model (mirror of `wis_core::ai::ToolCall`). */
+/** One tool call requested by the model (mirror of `wis_core::ai::chat::ToolCall`). */
 export interface AiToolCall {
   id: string
   name: string
@@ -488,7 +488,7 @@ export interface AiToolCall {
   arguments: string
 }
 
-/** A model the provider lists (mirror of `wis_core::ai_models::ModelInfo`). */
+/** A model the provider lists (mirror of `wis_core::ai::models::ModelInfo`). */
 export interface AiModel {
   id: string
   name: string
@@ -557,7 +557,7 @@ export type StreamEvent =
   | { type: 'done' }
   | { type: 'error'; message: string }
 
-/** An installed browser extension (mirror of `wis_core::extensions::InstalledExtension`). */
+/** An installed browser extension (mirror of `wis_core::extensions::installed::InstalledExtension`). */
 export interface InstalledExtension {
   id: string
   name: string
@@ -839,7 +839,7 @@ export interface UserSettingsPatch {
 }
 
 // ---------------------------------------------------------------------------
-// Peek link-safety (mirror of `wis_core::link_safety`).
+// Peek link-safety (mirror of `wis_core::navigation::link_safety`).
 // ---------------------------------------------------------------------------
 
 export type RiskLevel = 'low' | 'medium' | 'high'
@@ -1101,13 +1101,13 @@ export interface HistoryImportStats {
   merged: number
 }
 
-/** Mirror of `wis_core::usage::WeekStart`; `auto` follows the region. */
+/** Mirror of `wis_core::library::usage::WeekStart`; `auto` follows the region. */
 export type WeekStart = 'auto' | 'monday' | 'sunday'
 
 /** How canvases look, independent of the browser's theme. */
 export type CanvasTheme = 'dark' | 'light'
 
-/** Active time over a range of local days (mirror of `wis_core::usage::UsageSummary`). */
+/** Active time over a range of local days (mirror of `wis_core::library::usage::UsageSummary`). */
 export interface UsageSummary {
   total_seconds: number
   /** Busiest first. */

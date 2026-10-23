@@ -12,7 +12,7 @@ mod visits;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
-use wis_core::bookmark_tree::BookmarkNode;
+use wis_core::library::bookmark_tree::BookmarkNode;
 
 pub const MAX_IMPORT_HISTORY: usize = 20_000;
 

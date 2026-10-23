@@ -233,7 +233,7 @@ pub(crate) fn declared_permissions(manifest: &serde_json::Value) -> Vec<String> 
 
 /// Blocking rules the extension turns on by default.
 pub(crate) fn default_rules(root: &Path, manifest: &serde_json::Value) -> usize {
-    wis_core::extensions::default_rule_count(manifest, |inside| {
+    wis_core::extensions::installed::default_rule_count(manifest, |inside| {
         let path = root.join(inside);
         let stays_inside = Path::new(inside)
             .components()

@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 use tauri::State;
-use wis_core::address::{Address, MAX_ADDRESSES};
+use wis_core::vault::address::{Address, MAX_ADDRESSES};
 use wis_core::{WisError, WisResult};
 use wis_secrets::{EncryptedBlob, MasterKey};
 use wis_storage::AddressRecord;

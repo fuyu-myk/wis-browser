@@ -256,7 +256,7 @@ fn navigate_tab(app: &AppHandle, tab: TabId, url: Url) -> WisResult<()> {
 fn navguard_js() -> &'static str {
     static JS: OnceLock<String> = OnceLock::new();
     JS.get_or_init(|| {
-        let tlds = serde_json::to_string(wis_core::link_safety::TEXT_DOMAIN_TLDS)
+        let tlds = serde_json::to_string(wis_core::navigation::link_safety::TEXT_DOMAIN_TLDS)
             .unwrap_or_else(|_| "[]".to_string());
         NAVGUARD_JS.replace("__WIS_TEXT_TLDS__", &tlds)
     })

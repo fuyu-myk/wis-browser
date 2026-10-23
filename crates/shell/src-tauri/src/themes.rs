@@ -1,7 +1,7 @@
 //! Custom-theme commands: activation, `.wistheme` import/export, and portable
-//! share codes (base64 of the same versioned [`wis_core::theme::ThemeFile`]).
+//! share codes (base64 of the same versioned [`wis_core::appearance::theme::ThemeFile`]).
 //!
-//! Theme files are versioned JSON ([`wis_core::theme::ThemeFile`]) moved via
+//! Theme files are versioned JSON ([`wis_core::appearance::theme::ThemeFile`]) moved via
 //! native save/open panels (user gesture only). Import validates the whole
 //! structure at the boundary and re-mints the id, so a shared file can never
 //! collide with (or overwrite) an existing theme. Share codes follow the same

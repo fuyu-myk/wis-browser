@@ -3,7 +3,7 @@ import type { LinkRoute, WorkspaceId } from '@/bindings/types'
 export const MAX_LINK_ROUTES = 200
 const SITE = /^(?:[\p{L}\p{N}_-]+\.)*[\p{L}\p{N}_-]+\.?$/u
 
-/** Wis checks the site again when it saves (`wis_core::link_routing`). */
+/** Wis checks the site again when it saves (`wis_core::workspaces::link_routing`). */
 function tidied(input: string): string {
   return input
     .trim()

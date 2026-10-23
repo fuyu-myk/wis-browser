@@ -40,8 +40,8 @@ pub fn same_site(a: &tauri::Url, b: &tauri::Url) -> bool {
 /// [`same_site`] for bare hosts.
 pub(crate) fn same_site_hosts(a: &str, b: &str) -> bool {
     let (ra, rb) = (
-        wis_core::site::registrable_domain(a),
-        wis_core::site::registrable_domain(b),
+        wis_core::sites::domain::registrable_domain(a),
+        wis_core::sites::domain::registrable_domain(b),
     );
     !ra.is_empty() && ra == rb
 }

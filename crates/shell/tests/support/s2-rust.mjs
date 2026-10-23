@@ -17,7 +17,7 @@ export function shellSource(file) {
   return lf(readFileSync(new URL(file, SRC), 'utf8'))
 }
 
-/** Any file under `crates/`, e.g. `core/src/link_safety.rs`. */
+/** Any file under `crates/`, e.g. `core/src/navigation/link_safety.rs`. */
 export function crateSource(path) {
   return lf(readFileSync(new URL(path, CRATES), 'utf8'))
 }

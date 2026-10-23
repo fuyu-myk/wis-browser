@@ -117,7 +117,7 @@ pub(super) fn ask(workspace: WorkspaceId, context: &WKWebExtensionContext, asked
             context
                 .webExtension()
                 .displayName()
-                .map(|n| wis_core::extensions::tidy_name(&n.to_string()))
+                .map(|n| wis_core::extensions::installed::tidy_name(&n.to_string()))
                 .unwrap_or_default(),
         )
     };
@@ -176,8 +176,8 @@ fn show(request: u64) {
 
     let (patterns, permissions): (Vec<String>, Vec<String>) = items
         .into_iter()
-        .partition(|i| wis_core::extensions::is_site_pattern(i));
-    let abilities = wis_core::extension_access::request_abilities(&permissions, &patterns);
+        .partition(|i| wis_core::extensions::installed::is_site_pattern(i));
+    let abilities = wis_core::extensions::access::request_abilities(&permissions, &patterns);
     if abilities.is_empty() {
         answer(request, workspace, true);
         return;

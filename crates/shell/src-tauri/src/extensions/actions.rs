@@ -105,7 +105,7 @@ fn site_state(context: &WKWebExtensionContext, id: &str, url: &NSURL) -> Option<
     if grants::access_of(id)?.all_sites {
         return None;
     }
-    let host = wis_core::extension_access::plain_host(&url.host()?.to_string())?;
+    let host = wis_core::extensions::access::plain_host(&url.host()?.to_string())?;
     // SAFETY: property reads on the main thread.
     let (wants, status) = unsafe {
         let wants = context.hasInjectedContentForURL(url)

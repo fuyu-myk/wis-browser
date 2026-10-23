@@ -53,7 +53,7 @@ pub async fn import_browser_bookmarks(
     let parsed = blocking(move || {
         let tree =
             wis_import::read_bookmarks(&find(&roots, &source_id)?, &scratch).map_err(user_error)?;
-        wis_core::bookmark_tree::flatten(&tree)
+        wis_core::library::bookmark_tree::flatten(&tree)
     })
     .await?;
 

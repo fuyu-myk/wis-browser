@@ -8,8 +8,8 @@
 use std::collections::HashMap;
 
 use tauri::{AppHandle, Emitter, Manager, State};
-use wis_core::site_protection::with_site_protection;
-use wis_core::user_agent::normalize_host;
+use wis_core::sites::protection::with_site_protection;
+use wis_core::sites::user_agent::normalize_host;
 use wis_core::{site_protection_for_host, SiteProtection, TabId, WisError, WisResult};
 
 use crate::state::AppState;

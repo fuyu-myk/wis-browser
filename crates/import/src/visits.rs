@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};
-use wis_core::netscape::{accept_web_url, clamp, MAX_URL_BYTES, NAME_CAP};
+use wis_core::library::netscape::{accept_web_url, clamp, MAX_URL_BYTES, NAME_CAP};
 
 use crate::{HistoryItem, MAX_IMPORT_HISTORY};
 

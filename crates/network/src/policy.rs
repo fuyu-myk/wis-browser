@@ -181,9 +181,9 @@ impl RequestPolicy {
     /// opened and a host a list excepts are left alone.
     pub fn cloaking_alias<'a>(&self, host: &str, aliases: &'a [String]) -> Option<&'a str> {
         let cloaking = self.cloaking.as_ref()?;
-        let site = wis_core::site::registrable_domain(host);
+        let site = wis_core::sites::domain::registrable_domain(host);
         let alias = aliases.iter().map(String::as_str).find(|alias| {
-            wis_core::site::registrable_domain(alias) != site
+            wis_core::sites::domain::registrable_domain(alias) != site
                 && self.blocker.blocks_alias(alias, host)
         })?;
         let spared = cloaking.is_page(host)

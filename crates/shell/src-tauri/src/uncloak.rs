@@ -107,7 +107,7 @@ pub fn unblocked_sites(state: &AppState) -> Arc<HashSet<String>> {
         .filter(|(site, _)| !session.contains_key(*site))
         .chain(session.iter())
         .filter(|(_, protection)| !protection.blocking)
-        .map(|(site, _)| wis_core::site::registrable_domain(site))
+        .map(|(site, _)| wis_core::sites::domain::registrable_domain(site))
         .collect();
     Arc::new(sites)
 }

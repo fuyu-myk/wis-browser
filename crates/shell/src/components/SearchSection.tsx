@@ -7,7 +7,7 @@ import type {
 } from '@/bindings/types'
 import { SEARCH_ENGINES } from '@/lib/url'
 
-/** Mirrors `wis_core::search::MAX_CUSTOM_ENGINES`. */
+/** Mirrors `wis_core::navigation::search::MAX_CUSTOM_ENGINES`. */
 const MAX_CUSTOM_ENGINES = 16
 
 const BUILTINS: readonly SearchEngine[] = ['duckduckgo', 'google', 'bing']

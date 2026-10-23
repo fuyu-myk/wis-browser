@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use tauri::State;
-use wis_core::ai_models::{parse_models, ModelInfo};
+use wis_core::ai::models::{parse_models, ModelInfo};
 use wis_core::{WisError, WisResult, WorkspaceId};
 
 use crate::ai::{self, Endpoint, Route};

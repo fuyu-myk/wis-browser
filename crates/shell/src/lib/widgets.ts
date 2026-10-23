@@ -1,6 +1,6 @@
 // Curated catalog of built-in sidebar widgets (social apps, AI providers,
 // productivity sites) plus user-defined custom-URL widgets. The enum of kinds
-// lives in Rust (`wis_core::widget::WidgetKind`); the labels, URLs, and
+// lives in Rust (`wis_core::appearance::widget::WidgetKind`); the labels, URLs, and
 // grouping are presentation data and live here so adding a site is a one-line
 // change with no IPC.
 

@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use wis_core::trusted_lists::is_trusted_list;
+use wis_core::privacy::trusted_lists::is_trusted_list;
 use wis_core::UserSettings;
 use wis_network::filter_lists::{
     load_cached_easylist, load_cached_resources, load_cached_subscriptions,
@@ -76,7 +76,7 @@ pub fn build(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wis_core::trusted_lists::{UBO_FILTERS, UBO_QUICK_FIXES};
+    use wis_core::privacy::trusted_lists::{UBO_FILTERS, UBO_QUICK_FIXES};
     use wis_core::UserSettingsPatch;
 
     #[test]

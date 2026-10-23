@@ -2,7 +2,7 @@
  * Settings -> Privacy: user scripts (Tampermonkey-style). Import a `.user.js`
  * file (native open panel), toggle each on/off, and remove. Scripts run in
  * the page world on URLs matching their `@match`/`@include` patterns; GM_*
- * APIs are not provided (see `wis_core::userscript`).
+ * APIs are not provided (see `wis_core::extensions::userscript`).
  */
 
 import { useState } from 'react'

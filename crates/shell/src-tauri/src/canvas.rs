@@ -17,9 +17,9 @@ use crate::canvas_health::{CardHealth, Pulse};
 use crate::canvas_store::{CanvasMemory, CanvasTab};
 use crate::state::AppState;
 
-pub use wis_core::canvas::SCHEME;
+pub use wis_core::canvas::board::SCHEME;
 const FLUSH_EVERY: Duration = Duration::from_secs(120);
-const MAX_MESSAGE_BYTES: usize = wis_core::canvas::MAX_DOC_BYTES + 64 * 1024;
+const MAX_MESSAGE_BYTES: usize = wis_core::canvas::board::MAX_DOC_BYTES + 64 * 1024;
 
 /// Where the canvas page's card frames load from, as the engine names it.
 #[cfg(not(windows))]
@@ -145,10 +145,10 @@ pub fn page_script(settings: &wis_core::UserSettings) -> String {
 }
 
 /// The native appearance a canvas tab takes.
-pub fn appearance(theme: wis_core::canvas::CanvasTheme) -> wis_core::ThemeMode {
+pub fn appearance(theme: wis_core::canvas::board::CanvasTheme) -> wis_core::ThemeMode {
     match theme {
-        wis_core::canvas::CanvasTheme::Dark => wis_core::ThemeMode::Dark,
-        wis_core::canvas::CanvasTheme::Light => wis_core::ThemeMode::Light,
+        wis_core::canvas::board::CanvasTheme::Dark => wis_core::ThemeMode::Dark,
+        wis_core::canvas::board::CanvasTheme::Light => wis_core::ThemeMode::Light,
     }
 }
 
@@ -176,13 +176,14 @@ pub fn push_page(app: &AppHandle, settings: &wis_core::UserSettings) {
 }
 
 pub fn is_canvas_url(url: &Url) -> bool {
-    url.scheme() == SCHEME || (cfg!(windows) && wis_core::canvas::from_engine_url(url).is_some())
+    url.scheme() == SCHEME
+        || (cfg!(windows) && wis_core::canvas::board::from_engine_url(url).is_some())
 }
 
 /// A URL as Wis stores it.
 pub fn stored_url(url: Url) -> Url {
     if cfg!(windows) {
-        wis_core::canvas::from_engine_url(&url).unwrap_or(url)
+        wis_core::canvas::board::from_engine_url(&url).unwrap_or(url)
     } else {
         url
     }
@@ -191,7 +192,7 @@ pub fn stored_url(url: Url) -> Url {
 /// A URL as the engine loads it.
 pub fn engine_url(url: Url) -> Url {
     if cfg!(windows) {
-        wis_core::canvas::to_engine_url(&url).unwrap_or(url)
+        wis_core::canvas::board::to_engine_url(&url).unwrap_or(url)
     } else {
         url
     }
@@ -1162,7 +1163,7 @@ mod tests {
 
     #[test]
     fn a_canvas_tab_looks_like_its_canvas_theme_not_the_browser() {
-        use wis_core::canvas::CanvasTheme;
+        use wis_core::canvas::board::CanvasTheme;
         assert_eq!(appearance(CanvasTheme::Dark), wis_core::ThemeMode::Dark);
         assert_eq!(appearance(CanvasTheme::Light), wis_core::ThemeMode::Light);
         let label = "tab-appearance-test";
@@ -1193,7 +1194,7 @@ mod tests {
 
     #[test]
     fn the_page_script_sets_the_theme_and_the_side_away_from_the_sidebar() {
-        use wis_core::canvas::CanvasTheme;
+        use wis_core::canvas::board::CanvasTheme;
         use wis_core::{LayoutMode, RailSide, UserSettings};
         let mut settings = UserSettings {
             canvas_theme: CanvasTheme::Light,

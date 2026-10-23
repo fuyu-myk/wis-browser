@@ -11,7 +11,7 @@ const RAW = rawStringConst('navguard.rs', 'NAVGUARD_JS')
 
 // `navguard_js()` fills the placeholder with the core crate's TEXT_DOMAIN_TLDS
 // as a JSON array; read the list from the same source.
-const TLD_SOURCE = crateSource('core/src/link_safety.rs')
+const TLD_SOURCE = crateSource('core/src/navigation/link_safety.rs')
 const TLD_ARRAY = TLD_SOURCE.slice(TLD_SOURCE.indexOf('pub const TEXT_DOMAIN_TLDS'))
 const TLDS = [...TLD_ARRAY.slice(TLD_ARRAY.indexOf('['), TLD_ARRAY.indexOf('];')).matchAll(/"([^"]+)"/g)].map(
   (m) => m[1],

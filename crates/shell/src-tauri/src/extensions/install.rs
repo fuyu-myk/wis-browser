@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::oneshot;
-use wis_core::extensions::{self, InstalledExtension, ReviewInput};
+use wis_core::extensions::installed::{self, InstalledExtension, ReviewInput};
 use wis_core::{WisError, WisResult};
 
 use super::{host, stage, StagedExtension};
@@ -206,7 +206,7 @@ pub(super) async fn stage_from(app: &AppHandle, source: Source) -> WisResult<Sta
         }
     };
 
-    let review = extensions::review(&ReviewInput {
+    let review = installed::review(&ReviewInput {
         name: &facts.name,
         version: &facts.version,
         description: &facts.description,
@@ -218,7 +218,7 @@ pub(super) async fn stage_from(app: &AppHandle, source: Source) -> WisResult<Sta
     let installed = {
         let state = app.state::<AppState>();
         let browser = state.browser.lock().await;
-        extensions::duplicate_of(
+        installed::duplicate_of(
             &browser.settings.extensions,
             Some(&review.name),
             store_id.as_deref(),
@@ -255,7 +255,7 @@ pub(super) async fn discard_dir(dir: PathBuf) {
 }
 
 fn take_staged(token: &str) -> WisResult<Staged> {
-    if !extensions::is_extension_id(token) {
+    if !installed::is_extension_id(token) {
         return Err(refused("not a staged extension"));
     }
     staged(|map| map.remove(token))
@@ -299,10 +299,7 @@ pub(super) async fn install(
         store_id: staged.store_id,
         ..Default::default()
     };
-    let added = change(app, state, move |list| {
-        extensions::with_extension(list, ext)
-    })
-    .await;
+    let added = change(app, state, move |list| installed::with_extension(list, ext)).await;
     if added.is_err() {
         discard_dir(target).await;
     }
@@ -338,7 +335,7 @@ pub(super) async fn replace(
         Ok(()) => {
             let (id, name, version) = (id.to_string(), name.to_string(), version.to_string());
             change_held(app.clone(), app.state::<AppState>(), move |list| {
-                wis_core::extension_updates::with_update(list, &id, &name, &version)
+                wis_core::extensions::updates::with_update(list, &id, &name, &version)
             })
             .await
         }
@@ -396,13 +393,13 @@ pub(super) async fn remove(
     state: State<'_, AppState>,
     id: String,
 ) -> WisResult<()> {
-    if !extensions::is_extension_id(&id) {
+    if !installed::is_extension_id(&id) {
         return Err(refused("not an extension id"));
     }
 
     let dir = extensions_dir(&app)?.join(&id);
     change(app.clone(), state.clone(), move |list| {
-        Ok(extensions::without_extension(list, &id))
+        Ok(installed::without_extension(list, &id))
     })
     .await?;
     clear_removed_data(&app, &state).await;
@@ -493,7 +490,7 @@ async fn clear_removed_data(app: &AppHandle, state: &State<'_, AppState>) {
 fn orphans(names: &[String], installed: &HashSet<String>) -> Vec<String> {
     names
         .iter()
-        .filter(|name| extensions::is_extension_id(name) && !installed.contains(*name))
+        .filter(|name| installed::is_extension_id(name) && !installed.contains(*name))
         .cloned()
         .collect()
 }

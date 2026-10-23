@@ -9,11 +9,11 @@
 
 pub(crate) use crate::error::{WisError, WisResult};
 pub(crate) use crate::ids::{TabFolderId, TabId, WorkspaceId};
-pub(crate) use crate::pane::{PaneBranch, SplitDir};
-pub(crate) use crate::settings::{UserSettings, UserSettingsPatch};
-pub(crate) use crate::tab::Tab;
-pub(crate) use crate::tab_folder::TabFolder;
-pub(crate) use crate::workspace::{AccentColor, Workspace};
+pub(crate) use crate::settings::user_settings::{UserSettings, UserSettingsPatch};
+pub(crate) use crate::tabs::folder::TabFolder;
+pub(crate) use crate::tabs::pane::{PaneBranch, SplitDir};
+pub(crate) use crate::tabs::tab::Tab;
+pub(crate) use crate::workspaces::workspace::{AccentColor, Workspace};
 pub(crate) use serde::{Deserialize, Serialize};
 pub(crate) use std::collections::HashSet;
 pub(crate) use url::Url;
@@ -115,7 +115,7 @@ impl BrowserState {
 
     fn validate_icon(icon: &Option<String>) -> WisResult<()> {
         if let Some(raw) = icon {
-            crate::icon::parse_icon_ref(raw)?;
+            crate::appearance::icon::parse_icon_ref(raw)?;
         }
 
         Ok(())
@@ -128,7 +128,10 @@ impl BrowserState {
         }
     }
 
-    pub fn with_extensions(&self, extensions: Vec<crate::extensions::InstalledExtension>) -> Self {
+    pub fn with_extensions(
+        &self,
+        extensions: Vec<crate::extensions::installed::InstalledExtension>,
+    ) -> Self {
         Self {
             settings: UserSettings {
                 extensions,
@@ -248,7 +251,7 @@ mod tests {
     #[test]
     fn extensions_change_only_through_their_own_transition() {
         let state = BrowserState::new_first_run();
-        let installed = vec![crate::extensions::InstalledExtension {
+        let installed = vec![crate::extensions::installed::InstalledExtension {
             id: "0123456789abcdef0123456789abcdef".into(),
             name: "Dark Reader".into(),
             version: "4.9".into(),

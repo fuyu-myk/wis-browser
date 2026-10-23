@@ -51,7 +51,7 @@ pub async fn update_settings(
             map.into_iter()
                 .map(|(host, percent)| {
                     (
-                        wis_core::user_agent::normalize_host(&host),
+                        wis_core::sites::user_agent::normalize_host(&host),
                         wis_core::sane_zoom_percent(percent),
                     )
                 })
@@ -62,24 +62,24 @@ pub async fn update_settings(
     if let Some(map) = patch.autoplay_site_overrides.take() {
         patch.autoplay_site_overrides = Some(
             map.into_iter()
-                .map(|(host, policy)| (wis_core::user_agent::normalize_host(&host), policy))
+                .map(|(host, policy)| (wis_core::sites::user_agent::normalize_host(&host), policy))
                 .collect(),
         );
     }
 
     if let Some(map) = patch.site_protection_overrides.take() {
         patch.site_protection_overrides =
-            Some(wis_core::site_protection::sanitized_site_protection(map));
+            Some(wis_core::sites::protection::sanitized_site_protection(map));
     }
     if patch
         .link_routes
         .as_ref()
-        .is_some_and(|routes| routes.len() > wis_core::link_routing::MAX_LINK_ROUTES)
+        .is_some_and(|routes| routes.len() > wis_core::workspaces::link_routing::MAX_LINK_ROUTES)
     {
         return Err(WisError::InvalidInput {
             message: format!(
                 "at most {} link rules",
-                wis_core::link_routing::MAX_LINK_ROUTES
+                wis_core::workspaces::link_routing::MAX_LINK_ROUTES
             ),
         });
     }
@@ -107,7 +107,7 @@ pub async fn update_settings(
         let notice_list_before = s.settings.notice_list();
         let mut patch = patch;
         if let Some(routes) = patch.link_routes.take() {
-            patch.link_routes = Some(wis_core::link_routing::sanitized_link_routes(
+            patch.link_routes = Some(wis_core::workspaces::link_routing::sanitized_link_routes(
                 routes,
                 &s.workspaces,
             ));

@@ -1,6 +1,6 @@
 //! BYOK AI foundation, imperative shell: API-key storage commands and the
 //! streaming chat command. Pure request-shaping and SSE parsing live in
-//! [`wis_core::ai`].
+//! [`wis_core::ai::chat`].
 //!
 //! Key hygiene: the API key is loaded from the OS keystore per request,
 //! kept in `Zeroizing` bytes, and used only as an auth header. It is never
@@ -16,7 +16,7 @@ use futures_util::StreamExt;
 use serde::Deserialize;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
-use wis_core::ai::chat_body;
+use wis_core::ai::chat::chat_body;
 use wis_core::{
     AiProvider, AiSettings, ChatMessage, ChatRequest, Role, SseParser, StreamEvent, ThinkingMode,
     WisError, WisResult, WorkspaceId,
@@ -126,7 +126,7 @@ pub struct AiMessage {
     pub role: Role,
     pub content: String,
     #[serde(default)]
-    pub tool_calls: Vec<wis_core::ai::ToolCall>,
+    pub tool_calls: Vec<wis_core::ai::chat::ToolCall>,
     #[serde(default)]
     pub tool_call_id: Option<String>,
     /// An Anthropic tool-use turn as streamed, echoed back verbatim.
@@ -187,8 +187,8 @@ impl Drop for CancelGuard<'_> {
 pub async fn ai_assess_link(
     url: String,
     anchor_text: Option<String>,
-) -> wis_core::link_safety::LinkAssessment {
-    wis_core::link_safety::assess_link(&url, anchor_text.as_deref())
+) -> wis_core::navigation::link_safety::LinkAssessment {
+    wis_core::navigation::link_safety::assess_link(&url, anchor_text.as_deref())
 }
 
 /// Stop an in-flight completion, closing the upstream connection rather than

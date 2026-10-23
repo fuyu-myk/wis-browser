@@ -1,5 +1,5 @@
 /**
- * The canvas agent's side of its tools (declared in `wis_core::canvas_tools`):
+ * The canvas agent's side of its tools (declared in `wis_core::canvas::tools`):
  * each call reads or changes the document and answers with text the model
  * reads. Card text is the user's material, so it travels fenced as data.
  */

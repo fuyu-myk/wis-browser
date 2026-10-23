@@ -1,6 +1,6 @@
 /**
  * The chrome's read-only view of page zoom, mirroring
- * `wis_core::zoom::zoom_percent_for_host`. Both writers (the zoom command and
+ * `wis_core::sites::zoom::zoom_percent_for_host`. Both writers (the zoom command and
  * the settings boundary) snap to the ladder before storing.
  */
 

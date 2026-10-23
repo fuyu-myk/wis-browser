@@ -390,7 +390,7 @@ async fn ensure_favicon_cached(
     let proxy = reqwest::Proxy::all(&proxy_url).map_err(|err| format!("proxy: {err}"))?;
     let client = reqwest::Client::builder()
         .timeout(FAVICON_TIMEOUT)
-        .user_agent(wis_core::user_agent::compatibility_user_agent(
+        .user_agent(wis_core::sites::user_agent::compatibility_user_agent(
             wis_core::UaPlatform::host(),
         ))
         .proxy(proxy)

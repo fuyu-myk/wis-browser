@@ -2,9 +2,9 @@
 //! commands that change it, and saving what the main thread decided.
 
 use tauri::{AppHandle, State};
-use wis_core::extension_access::SiteAccess;
+use wis_core::extensions::access::SiteAccess;
 #[cfg(target_os = "macos")]
-use wis_core::extensions::InstalledExtension;
+use wis_core::extensions::installed::InstalledExtension;
 #[cfg(target_os = "macos")]
 use wis_core::WisError;
 use wis_core::WisResult;
@@ -25,7 +25,7 @@ pub async fn extension_set_site_access(
 ) -> WisResult<()> {
     #[cfg(target_os = "macos")]
     return install::change(app, state, move |list| {
-        wis_core::extension_access::with_site_access(list, &id, access)
+        wis_core::extensions::access::with_site_access(list, &id, access)
     })
     .await;
     #[cfg(not(target_os = "macos"))]
@@ -46,7 +46,7 @@ pub async fn extension_set_site(
 ) -> WisResult<()> {
     #[cfg(target_os = "macos")]
     return install::change(app, state, move |list| {
-        wis_core::extension_access::with_site(list, &id, &host, allowed)
+        wis_core::extensions::access::with_site(list, &id, &host, allowed)
     })
     .await;
     #[cfg(not(target_os = "macos"))]
@@ -75,7 +75,7 @@ pub async fn extension_set_site_here(
                 .ok_or_else(|| WisError::InvalidInput {
                     message: "this window has no workspace".into(),
                 })?;
-        let host = wis_core::extension_access::plain_host(&host).ok_or_else(|| {
+        let host = wis_core::extensions::access::plain_host(&host).ok_or_else(|| {
             WisError::InvalidInput {
                 message: "not a site".into(),
             }
@@ -148,7 +148,7 @@ pub async fn extension_granted_abilities(
         .extensions
         .iter()
         .find(|e| e.id == id)
-        .map(wis_core::extension_access::granted_abilities)
+        .map(wis_core::extensions::access::granted_abilities)
         .unwrap_or_default())
 }
 
@@ -166,7 +166,7 @@ pub async fn extension_revoke_granted(
             .find(|e| e.id == id)
             .map(|e| e.granted.clone())
             .unwrap_or_default();
-        wis_core::extension_access::without_granted(list, &id, &all)
+        wis_core::extensions::access::without_granted(list, &id, &all)
     })
     .await;
     #[cfg(not(target_os = "macos"))]
@@ -188,12 +188,12 @@ pub(super) fn access_by_extension(
 
 #[cfg(target_os = "macos")]
 pub(super) fn remember_granted(id: String, items: Vec<String>) {
-    edit_later(move |list| wis_core::extension_access::with_granted(list, &id, &items));
+    edit_later(move |list| wis_core::extensions::access::with_granted(list, &id, &items));
 }
 
 #[cfg(target_os = "macos")]
 pub(super) fn forget_granted(id: String, items: Vec<String>) {
-    edit_later(move |list| wis_core::extension_access::without_granted(list, &id, &items));
+    edit_later(move |list| wis_core::extensions::access::without_granted(list, &id, &items));
 }
 
 /// Saves a change to the installed extensions made from the main thread.

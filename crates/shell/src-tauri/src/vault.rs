@@ -10,7 +10,7 @@
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
-use wis_core::backup::CredentialBackup;
+use wis_core::library::backup::CredentialBackup;
 use wis_core::{TabId, WisError, WisResult, WorkspaceId};
 use wis_secrets::EncryptedBlob;
 use zeroize::Zeroizing;

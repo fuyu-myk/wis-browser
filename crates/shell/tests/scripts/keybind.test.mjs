@@ -16,7 +16,7 @@ const RAW = rawStringConst('keybind.rs', 'KEYBIND_JS')
 
 // `reserved_json()`: RESERVED_ACTIONS mapped through `KeyAction::id`.
 const KEYBIND_RS = readFileSync(new URL('../../src-tauri/src/keybind.rs', import.meta.url), 'utf8')
-const CORE_RS = readFileSync(new URL('../../../core/src/keybinding.rs', import.meta.url), 'utf8')
+const CORE_RS = readFileSync(new URL('../../../core/src/settings/keybinding.rs', import.meta.url), 'utf8')
 const ID_FN = CORE_RS.slice(CORE_RS.indexOf('pub fn id(self)'), CORE_RS.indexOf('pub fn from_id'))
 const ID_OF = Object.fromEntries([...ID_FN.matchAll(/Self::(\w+) => "(\w+)"/g)].map((m) => [m[1], m[2]]))
 const RESERVED_BLOCK = KEYBIND_RS.slice(KEYBIND_RS.indexOf('const RESERVED_ACTIONS'), KEYBIND_RS.indexOf('];'))

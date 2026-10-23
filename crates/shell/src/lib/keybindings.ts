@@ -1,6 +1,6 @@
 /**
  * Mapping between web KeyboardEvent state and Tauri's accelerator
- * string format (see crates/core/src/keybinding.rs for the canonical
+ * string format (see crates/core/src/settings/keybinding.rs for the canonical
  * defaults). Tauri uses `Cmd`, `Ctrl`, `Option`, `Shift` for modifiers
  * and specific named keys (`Left`, `Right`, `Backspace`, `Space`, ...);
  * symbols and letters pass through.
@@ -147,7 +147,7 @@ export function keyboardEventToAccelerator(
 
 /**
  * Swap the macOS `Cmd` modifier for `Ctrl` on Windows/Linux, mirroring
- * `localize_accelerator` in crates/core/src/keybinding.rs so this display
+ * `localize_accelerator` in crates/core/src/settings/keybinding.rs so this display
  * mirror matches what the native menu actually registers. A no-op on macOS.
  */
 export function localizeAccelerator(accel: string): string {

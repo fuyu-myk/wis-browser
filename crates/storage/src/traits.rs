@@ -12,7 +12,7 @@ use crate::downloads::DownloadRecord;
 use crate::error::StorageResult;
 use crate::history::{HistoryEntry, HistoryImport, HistoryImportStats, HistoryQuery};
 use crate::searches::SearchEntry;
-use wis_core::canvas::{CanvasDocUpdate, CanvasRecord, CanvasSummary};
+use wis_core::canvas::board::{CanvasDocUpdate, CanvasRecord, CanvasSummary};
 use wis_core::{BrowserState, CanvasId, DownloadId, TabId, WorkspaceId};
 
 /// A pluggable persistent store for the browser's state.
@@ -105,7 +105,7 @@ pub trait Storage: Send + Sync {
         entries: &[HistoryImport],
     ) -> StorageResult<HistoryImportStats>;
 
-    // -- canvases (see `wis_core::canvas`) ------------------------------------
+    // -- canvases (see `wis_core::canvas::board`) ------------------------------------
 
     /// A workspace's canvases, most recently changed first.
     fn list_canvases(&self, workspace_id: WorkspaceId) -> StorageResult<Vec<CanvasSummary>>;
@@ -139,7 +139,7 @@ pub trait Storage: Send + Sync {
     // -- site usage (see `crate::usage`) ------------------------------------
 
     /// Add active seconds; credits for the same workspace, day, hour and site sum.
-    fn add_usage(&self, credits: &[wis_core::usage::Credit]) -> StorageResult<()>;
+    fn add_usage(&self, credits: &[wis_core::library::usage::Credit]) -> StorageResult<()>;
 
     /// Per day, hour and site within `from..=to`, summed across workspaces
     /// when `workspace_id` is `None`.
@@ -148,7 +148,7 @@ pub trait Storage: Send + Sync {
         workspace_id: Option<WorkspaceId>,
         from: chrono::NaiveDate,
         to: chrono::NaiveDate,
-    ) -> StorageResult<Vec<wis_core::usage::UsageRow>>;
+    ) -> StorageResult<Vec<wis_core::library::usage::UsageRow>>;
 
     /// Scoped to `workspace_id` when set; with `from`, only that local day
     /// and hour onward go.

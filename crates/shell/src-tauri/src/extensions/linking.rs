@@ -18,12 +18,12 @@ use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use tauri::Manager;
 #[cfg(target_os = "macos")]
-use wis_core::extension_listing::{
+use wis_core::extensions::installed::{self, InstalledExtension};
+#[cfg(target_os = "macos")]
+use wis_core::extensions::listing::{
     listing_slug, listings, same_name, wants_search, with_declined_listing, with_store_link,
     with_store_searched, with_store_suggestion, StoreSuggestion,
 };
-#[cfg(target_os = "macos")]
-use wis_core::extensions::{self, InstalledExtension};
 #[cfg(target_os = "macos")]
 use wis_core::WisError;
 
@@ -58,7 +58,7 @@ pub async fn extension_link_store(
     #[cfg(target_os = "macos")]
     {
         super::require_support()?;
-        if !extensions::is_store_id(&store_id) {
+        if !installed::is_store_id(&store_id) {
             return Err(refuse("not a Chrome Web Store id"));
         }
 

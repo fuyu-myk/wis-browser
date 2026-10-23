@@ -294,7 +294,7 @@ impl BrowserState {
         let current = self.tab(id)?;
         let updated = current
             .with_url(url.clone())
-            .with_title(crate::tab::placeholder_title(&url))
+            .with_title(crate::tabs::tab::placeholder_title(&url))
             .touched();
 
         Ok((self.replace_tab(id, &updated), updated))
@@ -344,7 +344,7 @@ impl BrowserState {
     pub fn with_tab_load_error(
         &self,
         id: TabId,
-        load_error: Option<crate::load_error::LoadError>,
+        load_error: Option<crate::navigation::load_error::LoadError>,
     ) -> WisResult<Self> {
         let current = self.tab(id)?;
         if current.load_error == load_error {
@@ -382,7 +382,7 @@ impl BrowserState {
     pub fn with_tab_favicon(
         &self,
         id: TabId,
-        favicon: Option<crate::tab::FaviconRef>,
+        favicon: Option<crate::tabs::tab::FaviconRef>,
     ) -> WisResult<Self> {
         let current = self.tab(id)?;
         if current.favicon == favicon {
