@@ -7,11 +7,11 @@ import { test } from 'node:test'
 import { includedFile, rawStringConst } from '../support/rustSource.mjs'
 
 const CLASSIFY = [
-  includedFile('address_field/patterns.js'),
-  rawStringConst('address_field/guess.rs', 'GUESS_JS'),
-  rawStringConst('address_field/scripts.rs', 'CLASSIFY_JS'),
+  includedFile('vault/address_field/patterns.js'),
+  rawStringConst('vault/address_field/guess.rs', 'GUESS_JS'),
+  rawStringConst('vault/address_field/scripts.rs', 'CLASSIFY_JS'),
 ].join('\n')
-const FILL = rawStringConst('address_field/scripts.rs', 'FILL_JS')
+const FILL = rawStringConst('vault/address_field/scripts.rs', 'FILL_JS')
 
 const STYLE = {
   display: 'block',

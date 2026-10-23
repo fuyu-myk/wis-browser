@@ -97,7 +97,8 @@ pub async fn update_settings(
     let autoplay_touched =
         patch.autoplay_policy.is_some() || patch.autoplay_site_overrides.is_some();
     let site_protection_touched = patch.site_protection_overrides.is_some();
-    let unblocked = site_protection_touched.then(|| crate::uncloak::unblocked_sites(&state));
+    let unblocked =
+        site_protection_touched.then(|| crate::protection::uncloak::unblocked_sites(&state));
     let media_extensions_changed = patch.media_extensions_enabled;
     let canvas_page_touched = patch.canvas_theme.is_some()
         || patch.layout.is_some()
@@ -133,10 +134,10 @@ pub async fn update_settings(
 
     if keybindings_touched {
         let effective = wis_core::effective_keymap(&settings.keybindings);
-        crate::keybind::apply_to_all_tabs(&app, &effective);
+        crate::chrome::keybind::apply_to_all_tabs(&app, &effective);
         let app_for_menu = app.clone();
         if let Err(err) = app.run_on_main_thread(move || {
-            if let Err(err) = crate::menu::apply_menu(&app_for_menu, &effective) {
+            if let Err(err) = crate::chrome::menu::apply_menu(&app_for_menu, &effective) {
                 log::warn!("menu rebuild after keybindings change failed: {err}");
             }
         }) {
@@ -145,7 +146,7 @@ pub async fn update_settings(
     }
 
     if canvas_page_touched {
-        crate::canvas::push_page(&app, &settings);
+        crate::canvas::page::push_page(&app, &settings);
     }
 
     if userscripts_touched {
@@ -166,38 +167,39 @@ pub async fn update_settings(
     }
 
     if let Some(enabled) = fraud_warning_changed {
-        crate::webview_prefs::apply_fraud_warning_to_all_remote(&app, enabled);
+        crate::platform::webview_prefs::apply_fraud_warning_to_all_remote(&app, enabled);
     }
 
     if let Some(enabled) = gpc_changed {
         state.refresh_all_proxy_policies().await;
-        crate::gpc::apply_to_all_remote(&app, enabled);
+        crate::protection::gpc::apply_to_all_remote(&app, enabled);
     }
 
     if zoom_touched {
         state.refresh_zoom_cache().await;
-        crate::zoom::apply_to_all_tabs(&app);
+        crate::tabs::zoom::apply_to_all_tabs(&app);
     }
 
     if autoplay_touched {
-        state.refresh_autoplay_cache(crate::autoplay::AutoplayCache {
+        state.refresh_autoplay_cache(crate::tabs::autoplay::AutoplayCache {
             policy: settings.autoplay_policy,
             overrides: settings.autoplay_site_overrides.clone(),
         });
 
         #[cfg(target_os = "linux")]
-        crate::autoplay::apply_to_all_remote(&app);
+        crate::tabs::autoplay::apply_to_all_remote(&app);
     }
 
     if site_protection_touched {
         state.refresh_site_protection_cache().await;
     }
-    if unblocked.is_some_and(|before| before != crate::uncloak::unblocked_sites(&state)) {
+    if unblocked.is_some_and(|before| before != crate::protection::uncloak::unblocked_sites(&state))
+    {
         state.refresh_all_proxy_policies().await;
     }
 
     if let Some(enabled) = media_extensions_changed {
-        crate::webview_prefs::apply_media_extensions_to_all_remote(&app, enabled);
+        crate::platform::webview_prefs::apply_media_extensions_to_all_remote(&app, enabled);
     }
 
     // Keep the sync download-prefs mirror fresh for wry's synchronous
@@ -212,7 +214,7 @@ pub async fn update_settings(
 
     // Turning off "stay logged in" wipes any already-persisted sessions.
     if persistence_disabled {
-        crate::cookies::purge_persisted_sessions(&app, true).await;
+        crate::data::cookies::purge_persisted_sessions(&app, true).await;
     }
 
     Ok(settings)
@@ -226,11 +228,11 @@ pub async fn update_settings(
 pub async fn apply_shortcuts(app: AppHandle, state: State<'_, AppState>) -> WisResult<()> {
     let keybindings = state.browser.lock().await.settings.keybindings.clone();
     let effective = wis_core::effective_keymap(&keybindings);
-    crate::keybind::apply_to_all_tabs(&app, &effective);
+    crate::chrome::keybind::apply_to_all_tabs(&app, &effective);
     let app_for_menu = app.clone();
 
     app.run_on_main_thread(move || {
-        if let Err(err) = crate::menu::apply_menu(&app_for_menu, &effective) {
+        if let Err(err) = crate::chrome::menu::apply_menu(&app_for_menu, &effective) {
             log::warn!("apply_shortcuts: menu rebuild failed: {err}");
         }
     })

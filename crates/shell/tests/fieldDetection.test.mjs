@@ -1,4 +1,4 @@
-// Which focused fields `signup.rs` treats as a signup, as eligible for a
+// Which focused fields `vault/signup.rs` treats as a signup, as eligible for a
 // generated password, or as a sign-in.
 
 import assert from 'node:assert/strict'
@@ -6,7 +6,7 @@ import { describe, test } from 'node:test'
 
 import { rawStringConst } from './support/rustSource.mjs'
 
-const SCRIPT = rawStringConst('signup.rs', 'SIGNUP_JS')
+const SCRIPT = rawStringConst('vault/signup.rs', 'SIGNUP_JS')
 const HELPERS = SCRIPT.slice(
   SCRIPT.indexOf('function passwordCount'),
   SCRIPT.indexOf("document.addEventListener('focusin'"),

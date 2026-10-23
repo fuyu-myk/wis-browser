@@ -459,7 +459,7 @@ async fn ensure_host(
         return false;
     };
     if !private && state.restored_cookies.lock().await.insert(workspace) {
-        crate::cookies::restore_session_cookies(app, workspace).await;
+        crate::data::cookies::restore_session_cookies(app, workspace).await;
     }
 
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();

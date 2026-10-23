@@ -99,7 +99,7 @@ pub async fn set_dock_icon(app: AppHandle, variant: String) -> WisResult<()> {
 pub async fn import_userscript(
     app: AppHandle,
 ) -> WisResult<Option<wis_core::extensions::userscript::Userscript>> {
-    let Some(path) = crate::panels::run_open_panel(&app, &["js"])? else {
+    let Some(path) = crate::system::panels::run_open_panel(&app, &["js"])? else {
         return Ok(None);
     };
 
@@ -126,7 +126,7 @@ pub async fn import_userscript(
 pub async fn start_element_picker(app: AppHandle, id: wis_core::TabId) -> WisResult<()> {
     let label = format!("tab-{}", id.as_uuid());
     if let Some(webview) = app.webviews().get(&label) {
-        crate::cosmetic::start_picker(webview);
+        crate::protection::cosmetic::start_picker(webview);
     }
 
     Ok(())
@@ -274,7 +274,7 @@ pub(crate) async fn rebuild_filter_lists(app: &AppHandle, state: &AppState) -> W
             continue;
         };
         let specs = state.content_rule_specs(mode);
-        if let Err(err) = crate::content_filter::replace_rule_lists(&webview, &specs) {
+        if let Err(err) = crate::protection::content_filter::replace_rule_lists(&webview, &specs) {
             log::warn!("content filter: re-attach for {label} skipped: {err}");
         }
     }

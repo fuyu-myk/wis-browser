@@ -5,7 +5,7 @@
  * stops painting its selection. The highlight API draws over the same ranges
  * without touching the DOM.
  *
- * This is the chrome's copy. The page has its own inside `page_menu.rs`.
+ * This is the chrome's copy. The page has its own inside `pages/context_menu.rs`.
  */
 
 const HIGHLIGHT = 'wis-menu-selection'

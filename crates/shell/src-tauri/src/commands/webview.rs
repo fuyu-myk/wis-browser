@@ -29,7 +29,7 @@ pub async fn create_tab_webview(
 
     let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
     // A canvas tab loads its bundled page and may read its workspace's canvases.
-    let canvas_tab = parsed.scheme() == crate::canvas::SCHEME;
+    let canvas_tab = parsed.scheme() == crate::canvas::page::SCHEME;
     // Session restore: the frontend passes a blob when waking a slept tab; a
     // reopened (Cmd+Shift+T) tab's blob waits Rust-side keyed by tab id.
     let restore_state = match restore_state {
@@ -102,9 +102,11 @@ pub async fn create_tab_webview(
         .accept_first_mouse(true)
         .disable_drag_drop_handler()
         // Global Privacy Control's page signal, in every frame.
-        .initialization_script_for_all_frames(crate::gpc::page_script(global_privacy_control))
+        .initialization_script_for_all_frames(crate::protection::gpc::page_script(
+            global_privacy_control,
+        ))
         // Swipe back/forward: publish the indicator colour, then the gesture+UI.
-        .initialization_script(crate::swipe_nav::accent_script(&swipe_accent));
+        .initialization_script(crate::tabs::swipe_nav::accent_script(&swipe_accent));
 
     // Ride the webview configuration so even an instantly-loading first
     // document (cache, localhost, the restored startup page) gets them. macOS
@@ -117,25 +119,26 @@ pub async fn create_tab_webview(
     // Windows has no such world, so its copies post through a private sender
     // instead (`win_dispatch::private_script`).
     #[cfg(windows)]
-    let token = crate::win_dispatch::token(&label_ident);
+    let token = crate::platform::win_dispatch::token(&label_ident);
     #[cfg(windows)]
     {
-        let private = |source: &str| crate::win_dispatch::private_script(&token, source, &[]);
+        let private =
+            |source: &str| crate::platform::win_dispatch::private_script(&token, source, &[]);
         builder = builder
             .initialization_script(private(crate::video_popout::page_script()))
-            .initialization_script(private(crate::peek::page_script()))
-            .initialization_script(private(crate::link_open::page_script()))
-            .initialization_script(private(&crate::page_menu::page_script()))
-            .initialization_script(private(crate::signup::page_script()))
-            .initialization_script(private(crate::address_field::page_script()));
+            .initialization_script(private(crate::chrome::peek::page_script()))
+            .initialization_script(private(crate::pages::link_open::page_script()))
+            .initialization_script(private(&crate::pages::context_menu::page_script()))
+            .initialization_script(private(crate::vault::signup::page_script()))
+            .initialization_script(private(crate::vault::address_field::page_script()));
     }
 
     // The scroll-phase monitor.
     #[cfg(target_os = "macos")]
     {
-        builder = builder.initialization_script(crate::swipe_nav::phase_flag_script());
+        builder = builder.initialization_script(crate::tabs::swipe_nav::phase_flag_script());
     }
-    builder = builder.initialization_script(crate::swipe_nav::page_script());
+    builder = builder.initialization_script(crate::tabs::swipe_nav::page_script());
 
     // Windows multiplexes every channel over WebView2's single message pipe: the
     // shim recreates `window.webkit.messageHandlers` for the page-world ones, and
@@ -146,50 +149,50 @@ pub async fn create_tab_webview(
     #[cfg(windows)]
     if canvas_tab {
         builder = builder.scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
-        builder = builder.initialization_script(crate::canvas::shim_script(&label_ident));
+        builder = builder.initialization_script(crate::canvas::page::shim_script(&label_ident));
         let keybindings = state.browser.lock().await.settings.keybindings.clone();
         let effective = wis_core::effective_keymap(&keybindings);
-        builder = builder.initialization_script(crate::win_dispatch::private_script(
+        builder = builder.initialization_script(crate::platform::win_dispatch::private_script(
             &token,
-            &crate::keybind::page_script(&effective),
+            &crate::chrome::keybind::page_script(&effective),
             &["__wisKeybindUpdate"],
         ));
     } else {
         // Fluent overlay scrollbars. WebView2 only.
         builder = builder.scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
         builder = builder
-            .initialization_script(crate::win_dispatch::SHIM_SCRIPT)
-            .initialization_script(crate::permissions::gate_script())
+            .initialization_script(crate::platform::win_dispatch::SHIM_SCRIPT)
+            .initialization_script(crate::protection::permissions::gate_script())
             .initialization_script(crate::video_popout::pip_flag_script());
         if !ephemeral {
-            builder = builder.initialization_script(crate::win_dispatch::private_script(
+            builder = builder.initialization_script(crate::platform::win_dispatch::private_script(
                 &token,
-                crate::capture::capture_script(),
+                crate::vault::capture::capture_script(),
                 &[],
             ));
         }
         // Cosmetic element-hiding page script (macOS injects it via
         // `cosmetic::install`); Permissive workspaces opt out of blocking.
         if nav_privacy_mode != wis_core::PrivacyMode::Permissive {
-            builder = builder.initialization_script(crate::cosmetic::page_script());
+            builder = builder.initialization_script(crate::protection::cosmetic::page_script());
         }
         // Find-in-page engine (CSS Custom Highlight reimplementation; macOS uses
         // the native WebKit find SPI instead).
-        builder = builder.initialization_script(crate::find::engine_script());
+        builder = builder.initialization_script(crate::pages::find::engine_script());
         // Navigation-guard click interceptor (macOS injects it via
         // `navguard::install`); applies on every tab like macOS.
-        builder = builder.initialization_script(crate::win_dispatch::private_script(
+        builder = builder.initialization_script(crate::platform::win_dispatch::private_script(
             &token,
-            crate::navguard::page_script(),
+            crate::protection::navguard::page_script(),
             &[],
         ));
         // Page-side keyboard shortcuts.
         {
             let keybindings = state.browser.lock().await.settings.keybindings.clone();
             let effective = wis_core::effective_keymap(&keybindings);
-            builder = builder.initialization_script(crate::win_dispatch::private_script(
+            builder = builder.initialization_script(crate::platform::win_dispatch::private_script(
                 &token,
-                &crate::keybind::page_script(&effective),
+                &crate::chrome::keybind::page_script(&effective),
                 &["__wisKeybindUpdate"],
             ));
         }
@@ -199,18 +202,18 @@ pub async fn create_tab_webview(
     // `gtk_dispatch` receives; the rest it installs in Wis's own world.
     #[cfg(target_os = "linux")]
     if !canvas_tab {
-        builder = builder.initialization_script(crate::permissions::gate_script());
+        builder = builder.initialization_script(crate::protection::permissions::gate_script());
 
         // Cosmetic element-hiding page script; Permissive workspaces opt out.
         if nav_privacy_mode != wis_core::PrivacyMode::Permissive {
-            builder = builder.initialization_script(crate::cosmetic::page_script());
+            builder = builder.initialization_script(crate::protection::cosmetic::page_script());
         }
     }
 
     #[cfg(target_os = "linux")]
     let keybind_script = {
         let keybindings = state.browser.lock().await.settings.keybindings.clone();
-        crate::keybind::page_script(&wis_core::effective_keymap(&keybindings))
+        crate::chrome::keybind::page_script(&wis_core::effective_keymap(&keybindings))
     };
 
     // The single navigation hook carries two concerns: custom-scheme
@@ -222,22 +225,30 @@ pub async fn create_tab_webview(
         let label_for_nav = label_ident.clone();
         let scriptlets = nav_privacy_mode != wis_core::PrivacyMode::Permissive;
         builder = builder.on_navigation(move |url| {
-            if !crate::canvas::navigation_allowed(canvas_tab, url) {
+            if !crate::canvas::page::navigation_allowed(canvas_tab, url) {
                 return false;
             }
             if canvas_tab {
                 return true;
             }
 
-            if crate::app_launch::should_intercept(url) {
-                crate::app_launch::intake_from_tab(&app_for_nav, tab_id, url.clone());
+            if crate::system::app_launch::should_intercept(url) {
+                crate::system::app_launch::intake_from_tab(&app_for_nav, tab_id, url.clone());
                 return false;
             }
             #[cfg(windows)]
-            crate::uncloak::opening_page(&app_for_nav.state(), &label_for_nav, url.as_str());
+            crate::protection::uncloak::opening_page(
+                &app_for_nav.state(),
+                &label_for_nav,
+                url.as_str(),
+            );
 
             if scriptlets {
-                crate::cosmetic::swap_scriptlets(&app_for_nav, &label_for_nav, url.as_str());
+                crate::protection::cosmetic::swap_scriptlets(
+                    &app_for_nav,
+                    &label_for_nav,
+                    url.as_str(),
+                );
             }
 
             true
@@ -251,7 +262,7 @@ pub async fn create_tab_webview(
     if canvas_tab {
         #[cfg(target_os = "macos")]
         {
-            builder = crate::canvas_webview::with_canvas_configuration(&app, builder).await?;
+            builder = crate::canvas::webview::with_canvas_configuration(&app, builder).await?;
             builder = builder.transparent(true);
         }
         // One store for every canvas tab.
@@ -271,7 +282,8 @@ pub async fn create_tab_webview(
         #[cfg(target_os = "macos")]
         {
             builder =
-                crate::private_store::with_workspace_store(&app, workspace_id, builder).await?;
+                crate::protection::private_store::with_workspace_store(&app, workspace_id, builder)
+                    .await?;
         }
 
         #[cfg(not(target_os = "macos"))]
@@ -306,7 +318,7 @@ pub async fn create_tab_webview(
                 webview.label(),
                 crate::extensions::TabChange::Title,
             );
-            let nav = crate::swipe_nav::push_nav_state(&webview);
+            let nav = crate::tabs::swipe_nav::push_nav_state(&webview);
             let app = app.clone();
             let live_url = webview.url().ok();
             tauri::async_runtime::spawn(async move {
@@ -345,7 +357,7 @@ pub async fn create_tab_webview(
                     crate::extensions::TabChange::Finished
                 },
             );
-            let url_string = crate::canvas::stored_url(payload.url().clone()).to_string();
+            let url_string = crate::canvas::page::stored_url(payload.url().clone()).to_string();
             let page_url = payload.url().clone();
 
             #[cfg(target_os = "macos")]
@@ -376,13 +388,13 @@ pub async fn create_tab_webview(
 
             // A popped-out tab navigating loses its pinned video.
             if matches!(event, PageLoadEvent::Started) {
-                crate::page_blocks::forget(&label_for_load);
-                crate::signup::forget_field(&tab_id.as_uuid().to_string());
-                if let Err(err) = crate::find::clear_webview(&webview) {
+                crate::protection::page_blocks::forget(&label_for_load);
+                crate::vault::signup::forget_field(&tab_id.as_uuid().to_string());
+                if let Err(err) = crate::pages::find::clear_webview(&webview) {
                     log::debug!("clearing find on navigation failed: {err}");
                 }
                 #[cfg(target_os = "linux")]
-                crate::autoplay::apply_for_page_load(&app, &webview, payload.url().as_str());
+                crate::tabs::autoplay::apply_for_page_load(&app, &webview, payload.url().as_str());
                 crate::commands::apply_zoom_to_webview(
                     &webview,
                     wis_core::zoom_factor(
@@ -391,10 +403,10 @@ pub async fn create_tab_webview(
                     ),
                 );
                 crate::video_popout::handle_navigation(&app, &label_for_load);
-                crate::load_progress::start(&app, tab_id);
+                crate::tabs::load_progress::start(&app, tab_id);
             }
 
-            let nav = crate::swipe_nav::push_nav_state(&webview);
+            let nav = crate::tabs::swipe_nav::push_nav_state(&webview);
 
             let app_for_state = app.clone();
             tauri::async_runtime::spawn(async move {
@@ -461,8 +473,8 @@ pub async fn create_tab_webview(
                     log::warn!("page load update for {tab_id} failed: {err}");
                 }
                 if policy_interrupted && shown.is_none() {
-                    crate::audio::forget_tab(&app_for_state, tab_id);
-                    crate::tab_preview::forget(&app_for_state, &state, tab_id);
+                    crate::tabs::audio::forget_tab(&app_for_state, tab_id);
+                    crate::tabs::preview::forget(&app_for_state, &state, tab_id);
                 }
             });
 
@@ -472,14 +484,15 @@ pub async fn create_tab_webview(
                 let app_for_guard = app.clone();
                 let guard_url = page_url.clone();
                 tauri::async_runtime::spawn(async move {
-                    crate::navguard::maybe_guard(app_for_guard, tab_id, guard_url).await;
+                    crate::protection::navguard::maybe_guard(app_for_guard, tab_id, guard_url)
+                        .await;
                 });
             }
 
             if matches!(event, PageLoadEvent::Finished) {
-                crate::webview_prefs::keep_inactive_selection(&webview);
+                crate::platform::webview_prefs::keep_inactive_selection(&webview);
                 if page_url.as_str() != "about:blank" {
-                    crate::content_world::cover_first_document(&webview);
+                    crate::platform::content_world::cover_first_document(&webview);
                 }
             }
 
@@ -491,12 +504,12 @@ pub async fn create_tab_webview(
                     .lock()
                     .expect("swipe_accent poisoned")
                     .clone();
-                let _ = webview.eval(crate::swipe_nav::accent_script(&color));
+                let _ = webview.eval(crate::tabs::swipe_nav::accent_script(&color));
 
                 let app_for_favicon = app.clone();
                 let page_url_for_history = page_url.clone();
                 tauri::async_runtime::spawn(async move {
-                    crate::favicons::capture_favicon(
+                    crate::data::favicons::capture_favicon(
                         app_for_favicon,
                         tab_id,
                         workspace_id,
@@ -522,8 +535,11 @@ pub async fn create_tab_webview(
                 if !ephemeral {
                     let app_for_cookies = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        crate::cookies::persist_session_cookies(&app_for_cookies, workspace_id)
-                            .await;
+                        crate::data::cookies::persist_session_cookies(
+                            &app_for_cookies,
+                            workspace_id,
+                        )
+                        .await;
                     });
 
                     // Capture this tab's serialized session (back/forward
@@ -548,16 +564,16 @@ pub async fn create_tab_webview(
         let app = app.clone();
         let opener_label = label_ident.clone();
         move |url, features| {
-            if crate::canvas::is_canvas_url(&url) {
+            if crate::canvas::page::is_canvas_url(&url) {
                 return tauri::webview::NewWindowResponse::Deny;
             }
-            if crate::app_launch::should_intercept(&url) {
-                crate::app_launch::intake_from_tab(&app, tab_id, url.clone());
+            if crate::system::app_launch::should_intercept(&url) {
+                crate::system::app_launch::intake_from_tab(&app, tab_id, url.clone());
                 return tauri::webview::NewWindowResponse::Deny;
             }
 
-            if crate::popup_chrome::wants_popup(&url, &features) {
-                crate::popup_chrome::ensure_running(&app, url.as_str());
+            if crate::chrome::popup::wants_popup(&url, &features) {
+                crate::chrome::popup::ensure_running(&app, url.as_str());
                 return tauri::webview::NewWindowResponse::Allow;
             }
 
@@ -565,9 +581,9 @@ pub async fn create_tab_webview(
                 let in_place = wv
                     .url()
                     .ok()
-                    .is_some_and(|cur| crate::popup_chrome::same_site(&cur, &url));
+                    .is_some_and(|cur| crate::chrome::popup::same_site(&cur, &url));
                 if in_place {
-                    let clean = crate::clean_links::cleaned(&app, url.as_str())
+                    let clean = crate::protection::clean_links::cleaned(&app, url.as_str())
                         .parse()
                         .unwrap_or(url);
                     if let Err(err) = wv.navigate(clean) {
@@ -577,7 +593,7 @@ pub async fn create_tab_webview(
                 }
             }
 
-            crate::link_open::open_in_foreground_tab(url.as_str());
+            crate::pages::link_open::open_in_foreground_tab(url.as_str());
 
             tauri::webview::NewWindowResponse::Deny
         }
@@ -585,7 +601,7 @@ pub async fn create_tab_webview(
 
     // Downloads land in ~/Downloads with sanitised names; private-workspace
     // downloads are flagged so they never reach persistent history.
-    builder = crate::downloads::attach_download_handler(builder, ephemeral);
+    builder = crate::data::downloads::attach_download_handler(builder, ephemeral);
 
     // Restore this workspace's saved session cookies into its data store before
     // the first page loads, so logins survive a restart. Once per workspace per run;
@@ -593,7 +609,7 @@ pub async fn create_tab_webview(
     if !ephemeral && !canvas_tab {
         let first = state.restored_cookies.lock().await.insert(workspace_id);
         if first {
-            crate::cookies::restore_session_cookies(&app, workspace_id).await;
+            crate::data::cookies::restore_session_cookies(&app, workspace_id).await;
         }
     }
 
@@ -606,18 +622,19 @@ pub async fn create_tab_webview(
     }
 
     if canvas_tab {
-        crate::canvas::register(
+        crate::canvas::page::register(
             &label_ident,
-            crate::canvas_store::CanvasTab {
+            crate::canvas::store::CanvasTab {
                 workspace: workspace_id,
                 ephemeral,
             },
         );
-        let script = crate::canvas::page_script(&state.browser.lock().await.settings);
+        let script = crate::canvas::page::page_script(&state.browser.lock().await.settings);
         builder = builder.initialization_script(script);
         #[cfg(target_os = "linux")]
         {
-            builder = builder.initialization_script(crate::canvas::token_script(&label_ident));
+            builder =
+                builder.initialization_script(crate::canvas::page::token_script(&label_ident));
         }
     }
     let tab_workspace = state
@@ -627,13 +644,13 @@ pub async fn create_tab_webview(
         .tab(tab_id)
         .map_or(workspace_id, |tab| tab.workspace_id);
     let hardening = if canvas_tab {
-        crate::hardening::Hardening::default()
+        crate::protection::hardening::Hardening::default()
     } else {
-        crate::hardening::wanted(&state, tab_workspace).await
+        crate::protection::hardening::wanted(&state, tab_workspace).await
     };
-    crate::hardening::mark(&label_ident, hardening);
-    crate::uncloak::register(&state, &label_ident, workspace_id);
-    crate::uncloak::opening_page(&state, &label_ident, &url);
+    crate::protection::hardening::mark(&label_ident, hardening);
+    crate::protection::uncloak::register(&state, &label_ident, workspace_id);
+    crate::protection::uncloak::opening_page(&state, &label_ident, &url);
     let child = window
         .add_child(
             builder,
@@ -641,14 +658,17 @@ pub async fn create_tab_webview(
             tauri::LogicalSize::new(width, height),
         )
         .map_err(|err| {
-            crate::hardening::mark(&label_ident, crate::hardening::Hardening::default());
-            crate::canvas::forget(&app, &label_ident);
+            crate::protection::hardening::mark(
+                &label_ident,
+                crate::protection::hardening::Hardening::default(),
+            );
+            crate::canvas::page::forget(&app, &label_ident);
             WisError::InvalidInput {
                 message: format!("add_child failed: {err}"),
             }
         })?;
 
-    crate::pane_container::wrap(&child);
+    crate::chrome::pane_container::wrap(&child);
 
     #[cfg(target_os = "macos")]
     if extended {
@@ -657,8 +677,8 @@ pub async fn create_tab_webview(
 
     // Restore stacking above the freshly added tab webview:
     // tabs < widget panels < overlays.
-    crate::widget_panel::promote_panels_to_front(&app, &window_label);
-    crate::overlay::promote_overlays_to_front(&app, &window_label);
+    crate::chrome::widget_panel::promote_panels_to_front(&app, &window_label);
+    crate::chrome::overlay::promote_overlays_to_front(&app, &window_label);
 
     // Stamp the native WKWebView so the pane-focus mouse monitor can identify
     // which tab a click landed in (see `pane_focus`).
@@ -678,7 +698,7 @@ pub async fn create_tab_webview(
             let ns: *mut AnyObject =
                 msg_send![objc2::class!(NSString), stringWithUTF8String: c.as_ptr()];
             let _: () = msg_send![wk, setAccessibilityIdentifier: ns];
-            crate::page_blocks::watch_failed_loads(wk.cast());
+            crate::protection::page_blocks::watch_failed_loads(wk.cast());
         });
     }
 
@@ -695,19 +715,19 @@ pub async fn create_tab_webview(
 
     // Engine-level filtering is best-effort: a failure must not block the tab.
     let specs = state.content_rule_specs(privacy_mode);
-    if let Err(err) = crate::content_filter::attach_rule_lists(&child, &specs) {
+    if let Err(err) = crate::protection::content_filter::attach_rule_lists(&child, &specs) {
         log::warn!("content filter: attach skipped: {err}");
     }
 
     // Apple-proxied Safe Browsing warning.
-    crate::webview_prefs::apply_fraud_warning(&child, fraud_warning);
+    crate::platform::webview_prefs::apply_fraud_warning(&child, fraud_warning);
 
     // MSE + EME/FairPlay (adaptive streaming + DRM key system).
-    crate::webview_prefs::apply_media_extensions(&child, media_extensions);
+    crate::platform::webview_prefs::apply_media_extensions(&child, media_extensions);
 
     // Autoplay: macOS applies per navigation through the wry hook.
     #[cfg(target_os = "linux")]
-    crate::autoplay::apply(&child, state.autoplay_policy_for(parsed.as_str()));
+    crate::tabs::autoplay::apply(&child, state.autoplay_policy_for(parsed.as_str()));
 
     // A muted tab stays muted across sleep/wake webview recreation.
     {
@@ -717,14 +737,14 @@ pub async fn create_tab_webview(
             .expect("muted_tabs poisoned")
             .contains(&tab_id.as_uuid().to_string());
         if muted {
-            crate::audio::apply_page_muted(&child, true);
+            crate::tabs::audio::apply_page_muted(&child, true);
         }
     }
 
     // Wake-from-sleep: restore the serialized session (history, scroll,
     // forms). The restore performs its own navigation from about:blank.
     if let Some(state_b64) = &restore_state {
-        crate::interaction_state::apply(&child, state_b64);
+        crate::tabs::interaction_state::apply(&child, state_b64);
 
         let fallback_webview = child.clone();
         let fallback_url = parsed.clone();
@@ -741,37 +761,37 @@ pub async fn create_tab_webview(
 
     // "Save password?" capture.
     if !ephemeral {
-        crate::capture::install(&child);
+        crate::vault::capture::install(&child);
     }
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     if canvas_tab {
-        crate::canvas::install(&child, label_ident.clone());
+        crate::canvas::page::install(&child, label_ident.clone());
     }
 
     // Opt+click "Peek" trigger (safe on all tabs; forwards only the link).
-    crate::peek::install(&child);
+    crate::chrome::peek::install(&child);
 
     // AI page-text channel (inert until the chrome requests extraction).
-    crate::page_text::install(&child);
-    crate::page_source::install(&child);
-    crate::signup::install(&child);
-    crate::address_field::install(&child);
+    crate::pages::text::install(&child);
+    crate::pages::source::install(&child);
+    crate::vault::signup::install(&child);
+    crate::vault::address_field::install(&child);
 
     // Right-click: report the target so the chrome can draw its own menu.
-    crate::page_menu::install(&child);
+    crate::pages::context_menu::install(&child);
 
     // Cmd/middle-click -> open link in a new background tab.
-    crate::link_open::install(&child);
+    crate::pages::link_open::install(&child);
 
     // Native fallback for page-first editing keys (undo/redo/select-all).
-    crate::edit_keys::install(&child);
+    crate::chrome::edit_keys::install(&child);
 
     // Page-first shortcuts.
     #[cfg(target_os = "macos")]
     {
         let keybindings = state.browser.lock().await.settings.keybindings.clone();
-        crate::keybind::install(&child, &wis_core::effective_keymap(&keybindings));
+        crate::chrome::keybind::install(&child, &wis_core::effective_keymap(&keybindings));
     }
 
     // Video popout channel (playing-state tracking + floating mini player).
@@ -780,27 +800,27 @@ pub async fn create_tab_webview(
     // Per-site camera/microphone consent gate (prompts before getUserMedia).
     // Canvas tabs carry neither it nor cosmetic filtering.
     if !canvas_tab {
-        crate::permissions::install(&child);
+        crate::protection::permissions::install(&child);
     }
 
     // Cosmetic filtering (element hiding). Permissive workspaces opt out of
     // blocking entirely, so they skip the channel too.
     if privacy_mode != wis_core::PrivacyMode::Permissive && !canvas_tab {
-        crate::cosmetic::install(&child);
+        crate::protection::cosmetic::install(&child);
         // Seed the document-start scriptlet for the first URL now, before the
         // initial page's scripts run.
-        crate::cosmetic::swap_scriptlets(&app, &label_ident, parsed.as_str());
+        crate::protection::cosmetic::swap_scriptlets(&app, &label_ident, parsed.as_str());
     }
 
     // Plain-click navigation safety interstitial for risky links.
-    crate::navguard::install(&child);
+    crate::protection::navguard::install(&child);
 
     // Windows: one receiver multiplexes every page->chrome channel registered
     // above (those per-feature installs are macOS no-ops there). `ephemeral`
     // gates the save-password channel off and the privacy flag gates cosmetic/zap,
     // matching macOS not installing those handlers in those cases.
     #[cfg(windows)]
-    crate::win_dispatch::install(
+    crate::platform::win_dispatch::install(
         &child,
         ephemeral,
         privacy_mode != wis_core::PrivacyMode::Permissive && !canvas_tab,
@@ -810,7 +830,7 @@ pub async fn create_tab_webview(
     // Linux: register the same page->chrome channels natively on the WebKitGTK
     // UserContentManager.
     #[cfg(target_os = "linux")]
-    crate::gtk_dispatch::install(
+    crate::platform::gtk_dispatch::install(
         &child,
         ephemeral,
         privacy_mode != wis_core::PrivacyMode::Permissive && !canvas_tab,
@@ -821,11 +841,11 @@ pub async fn create_tab_webview(
     // Windows/Linux report page-load failures through their own native
     // callbacks.
     #[cfg(any(windows, target_os = "linux"))]
-    crate::load_failure::install(&child, tab_id);
+    crate::tabs::load_failure::install(&child, tab_id);
 
     // Windows click-to-focus is per-controller (no app-wide mouse monitor like
     // macOS); a no-op elsewhere.
-    crate::pane_focus::install_controller(&child);
+    crate::chrome::pane_focus::install_controller(&child);
 
     // Zoom belongs to the site, so a restored or woken tab takes the zoom of
     // the page it shows rather than whatever this tab was last set to. Also
@@ -833,7 +853,7 @@ pub async fn create_tab_webview(
     let theme = {
         let browser = state.browser.lock().await;
         if canvas_tab {
-            crate::canvas::appearance(browser.settings.canvas_theme)
+            crate::canvas::page::appearance(browser.settings.canvas_theme)
         } else {
             browser.settings.theme
         }
@@ -932,11 +952,11 @@ pub async fn close_tab_webview(app: AppHandle, label: String) -> WisResult<()> {
         return Ok(());
     };
 
-    crate::webview_close::terminate_page(&webview);
-    crate::content_world::forget(&label);
-    crate::canvas::forget(&app, &label);
+    crate::platform::webview_close::terminate_page(&webview);
+    crate::platform::content_world::forget(&label);
+    crate::canvas::page::forget(&app, &label);
     #[cfg(windows)]
-    crate::win_dispatch::forget(&label);
+    crate::platform::win_dispatch::forget(&label);
     webview.close().map_err(|err| WisError::InvalidInput {
         message: format!("close webview failed: {err}"),
     })?;
@@ -959,7 +979,7 @@ pub async fn set_tab_webview_bounds(
     let Some(webview) = app.webviews().get(&label).cloned() else {
         return Ok(());
     };
-    if crate::pane_container::set_bounds(&webview, x, y, width, height) {
+    if crate::chrome::pane_container::set_bounds(&webview, x, y, width, height) {
         return Ok(());
     }
 
@@ -975,7 +995,7 @@ pub async fn set_tab_webview_bounds(
         })?;
 
     #[cfg(windows)]
-    crate::win_webview2::reapply_corner_radius(&webview, (width, height));
+    crate::platform::win_webview2::reapply_corner_radius(&webview, (width, height));
 
     Ok(())
 }
@@ -1005,7 +1025,7 @@ pub async fn set_canvas_ground(
     bottom: f64,
     radius: f64,
 ) -> WisResult<()> {
-    crate::canvas::set_ground(&app, &label, bottom, radius);
+    crate::canvas::page::set_ground(&app, &label, bottom, radius);
     Ok(())
 }
 
@@ -1027,7 +1047,7 @@ pub async fn set_webview_corner_radius(
         })?;
 
     #[cfg(target_os = "macos")]
-    if !crate::pane_container::set_corner_radius(&webview, radius) {
+    if !crate::chrome::pane_container::set_corner_radius(&webview, radius) {
         use objc2::msg_send;
         use objc2::runtime::AnyObject;
 
@@ -1056,7 +1076,7 @@ pub async fn set_webview_corner_radius(
     }
 
     #[cfg(windows)]
-    crate::win_webview2::set_corner_radius(&webview, radius);
+    crate::platform::win_webview2::set_corner_radius(&webview, radius);
 
     #[cfg(not(any(target_os = "macos", windows)))]
     {

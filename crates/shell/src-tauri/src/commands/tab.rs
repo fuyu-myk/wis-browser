@@ -197,7 +197,7 @@ pub async fn close_tab(
             let interaction_state = if load_failed {
                 None
             } else {
-                crate::interaction_state::read_async(
+                crate::tabs::interaction_state::read_async(
                     app.webviews()
                         .get(&format!("tab-{}", id.as_uuid()))
                         .cloned(),
@@ -242,7 +242,7 @@ pub async fn close_tab(
         next.with_active_tab(target)
     })
     .await;
-    crate::address_save::forget(&state, id).await;
+    crate::vault::address_save::forget(&state, id).await;
     closed
 }
 
@@ -253,15 +253,15 @@ const KEPT_SESSIONS: u32 = 25;
 
 /// Everything Wis holds for a tab outside `BrowserState`, dropped as it closes.
 pub(crate) async fn forget_tab_state(app: &AppHandle, state: &AppState, id: TabId) {
-    crate::page_source::forget(id);
-    crate::signup::forget_field(&id.as_uuid().to_string());
+    crate::pages::source::forget(id);
+    crate::vault::signup::forget_field(&id.as_uuid().to_string());
     let label = format!("tab-{}", id.as_uuid());
-    crate::hardening::forget(&label);
-    crate::uncloak::forget(state, &label);
-    crate::capture::forget(state, id).await;
-    crate::address_save::forget(state, id).await;
-    crate::audio::forget_tab(app, id);
-    crate::tab_preview::forget(app, state, id);
+    crate::protection::hardening::forget(&label);
+    crate::protection::uncloak::forget(state, &label);
+    crate::vault::capture::forget(state, id).await;
+    crate::vault::address_save::forget(state, id).await;
+    crate::tabs::audio::forget_tab(app, id);
+    crate::tabs::preview::forget(app, state, id);
 }
 
 /// Records closed tabs, prunes to [`CLOSED_TAB_CAP`] and drops the live
@@ -479,7 +479,7 @@ pub async fn move_tab_to_new_window(
     name: String,
     accent: AccentColor,
 ) -> WisResult<()> {
-    let captured = crate::interaction_state::read_async(
+    let captured = crate::tabs::interaction_state::read_async(
         app.webviews()
             .get(&format!("tab-{}", tab_id.as_uuid()))
             .cloned(),
@@ -511,7 +511,7 @@ pub async fn move_tab_to_new_window(
     })
     .await?;
 
-    crate::audio::forget_tab(&app, tab_id);
+    crate::tabs::audio::forget_tab(&app, tab_id);
 
     // Hand the captured session to the webview the new window is about to create
     // (consumed by `create_tab_webview`).
@@ -523,7 +523,7 @@ pub async fn move_tab_to_new_window(
             .insert(new_tab_id, blob);
     }
 
-    crate::windows::spawn_window(&app, &state, new_ws_id).await?;
+    crate::chrome::multi_window::spawn_window(&app, &state, new_ws_id).await?;
     Ok(())
 }
 
@@ -540,7 +540,7 @@ pub async fn move_tab_to_workspace(
     tab_id: TabId,
     workspace_id: WorkspaceId,
 ) -> WisResult<()> {
-    let captured = crate::interaction_state::read_async(
+    let captured = crate::tabs::interaction_state::read_async(
         app.webviews()
             .get(&format!("tab-{}", tab_id.as_uuid()))
             .cloned(),
@@ -574,7 +574,7 @@ pub async fn move_tab_to_workspace(
     })
     .await?;
 
-    crate::audio::forget_tab(&app, tab_id);
+    crate::tabs::audio::forget_tab(&app, tab_id);
 
     if let Some(blob) = captured {
         state
@@ -715,7 +715,7 @@ pub async fn zoom_forget_site(
     .await?;
 
     state.refresh_zoom_cache().await;
-    crate::zoom::apply_to_all_tabs(&app);
+    crate::tabs::zoom::apply_to_all_tabs(&app);
 
     Ok(())
 }
@@ -908,9 +908,9 @@ pub async fn navigate_tab(
     let label = format!("tab-{}", id.as_uuid());
     if let Some(webview) = app.webviews().get(&label).cloned() {
         let parsed = Url::parse(&url).map_err(|_| WisError::InvalidUrl { url: url.clone() })?;
-        crate::uncloak::opening_page(&state, &label, parsed.as_str());
+        crate::protection::uncloak::opening_page(&state, &label, parsed.as_str());
         webview
-            .navigate(crate::canvas::engine_url(parsed))
+            .navigate(crate::canvas::page::engine_url(parsed))
             .map_err(|err| WisError::InvalidInput {
                 message: format!("webview navigate failed: {err}"),
             })?;
@@ -973,7 +973,7 @@ async fn revive_before_reload(state: &AppState, id: TabId) {
         return;
     };
     if let Some(server) = state.proxies.lock().await.get(&workspace) {
-        let idle_tunnels = crate::wake::disrupted_within(RELOAD_DISRUPTION_WINDOW);
+        let idle_tunnels = crate::system::wake::disrupted_within(RELOAD_DISRUPTION_WINDOW);
         server.revive(RELOAD_STALE_AFTER, idle_tunnels);
     }
 }
@@ -1002,7 +1002,7 @@ pub async fn tab_reload(app: AppHandle, state: State<'_, AppState>, id: TabId) -
 /// stop/reload toggle flips back even if the engine skips a finish event.
 #[tauri::command]
 pub async fn tab_stop(app: AppHandle, state: State<'_, AppState>, id: TabId) -> WisResult<()> {
-    crate::navguard::stop_tab_load(&app, id);
+    crate::protection::navguard::stop_tab_load(&app, id);
     mutate_unit(&app, &state, |s| s.with_tab_loading(id, false)).await
 }
 
@@ -1028,7 +1028,7 @@ pub async fn tab_set_reader(
         })?;
 
     let js = if enabled {
-        crate::reader::reader_script()
+        crate::pages::reader::reader_script()
     } else {
         "window.location.reload()"
     };
@@ -1074,7 +1074,7 @@ fn eval_history_step(app: &AppHandle, id: TabId, direction: &str) -> WisResult<(
             return;
         };
 
-        if let Some((back, fwd)) = crate::swipe_nav::push_nav_state(&webview) {
+        if let Some((back, fwd)) = crate::tabs::swipe_nav::push_nav_state(&webview) {
             let state = app.state::<AppState>();
             let result = mutate_unit(&app, &state, |s| s.with_tab_nav_state(id, back, fwd)).await;
             if let Err(err) = result {

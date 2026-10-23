@@ -83,8 +83,8 @@ for (const platform of ['macos', 'windows']) {
   })
 }
 
-test('the AI assistant is offered exactly where ai.rs can seal its key', () => {
-  const rust = readSource('src-tauri/src/ai.rs')
+test('the AI assistant is offered exactly where ai/chat.rs can seal its key', () => {
+  const rust = readSource('src-tauri/src/ai/chat.rs')
   const at = rust.indexOf('fn ai_supported()')
   const body = rust.slice(at, rust.indexOf('}', at))
   const rustSupports = {
@@ -96,24 +96,24 @@ test('the AI assistant is offered exactly where ai.rs can seal its key', () => {
   assert.equal(isFeatureUnavailableHere('ai_assistant'), true, 'Linux')
 })
 
-test('the JavaScript switch is offered exactly where page_preferences.rs sets it per page', () => {
-  const rust = readSource('src-tauri/src/page_preferences.rs')
+test('the JavaScript switch is offered exactly where pages/preferences.rs sets it per page', () => {
+  const rust = readSource('src-tauri/src/pages/preferences.rs')
   assert.match(rust, /#\[cfg\(target_os = "macos"\)\]\npub fn install_hook/)
   assert.equal(isFeatureUnavailableHere('site_javascript'), true, 'Linux')
   assert.deepEqual(probe('windows', ['site_javascript']).unavailable, ['site_javascript'])
   assert.deepEqual(probe('macos', ['site_javascript']).unavailable, [])
 })
 
-test('blocked counts are offered exactly where page_blocks.rs hears of blocks', () => {
-  const rust = readSource('src-tauri/src/page_blocks.rs')
+test('blocked counts are offered exactly where protection/page_blocks.rs hears of blocks', () => {
+  const rust = readSource('src-tauri/src/protection/page_blocks.rs')
   assert.match(rust, /#\[cfg\(target_os = "macos"\)\]\npub fn install/)
   assert.equal(isFeatureUnavailableHere('site_block_counts'), true, 'Linux')
   assert.deepEqual(probe('windows', ['site_block_counts']).unavailable, ['site_block_counts'])
   assert.deepEqual(probe('macos', ['site_block_counts']).unavailable, [])
 })
 
-test('Lockdown Mode is offered exactly where hardening.rs applies it', () => {
-  const rust = readSource('src-tauri/src/hardening.rs')
+test('Lockdown Mode is offered exactly where protection/hardening.rs applies it', () => {
+  const rust = readSource('src-tauri/src/protection/hardening.rs')
   assert.match(rust, /#\[cfg\(target_os = "macos"\)\]\npub unsafe fn apply/)
   assert.equal(isFeatureUnavailableHere('lockdown_mode'), true, 'Linux')
   assert.deepEqual(probe('windows', ['lockdown_mode']).unavailable, ['lockdown_mode'])
@@ -121,7 +121,7 @@ test('Lockdown Mode is offered exactly where hardening.rs applies it', () => {
 })
 
 test('the fingerprinting switch is offered exactly where WebKit takes it per page', () => {
-  const rust = readSource('src-tauri/src/site_protection.rs')
+  const rust = readSource('src-tauri/src/protection/site_protection.rs')
   assert.match(rust, /#\[cfg\(target_os = "macos"\)\]\npub mod imp \{[\s\S]*pub unsafe fn set_fingerprinting_protection/)
   assert.equal(isFeatureUnavailableHere('site_fingerprinting'), true, 'Linux')
   assert.deepEqual(probe('windows', ['site_fingerprinting']).unavailable, ['site_fingerprinting'])

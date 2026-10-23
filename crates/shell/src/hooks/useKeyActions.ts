@@ -45,7 +45,7 @@ export const WINDOW_PICKER_OPEN_EVENT = 'wis-window-picker-open'
 
 interface KeyActionEvent {
   action: KeyAction
-  /** Source tab when dispatched by the Windows page forwarder (`keybind.rs`);
+  /** Source tab when dispatched by the Windows page forwarder (`chrome/keybind.rs`);
    *  absent for native menu / chrome-emitted actions. */
   tab?: string
 }

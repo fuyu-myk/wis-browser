@@ -1,4 +1,4 @@
-// find.rs: FIND_ENGINE_JS, the Windows find-in-page engine on the CSS Custom Highlight API.
+// pages/find.rs: FIND_ENGINE_JS, the Windows find-in-page engine on the CSS Custom Highlight API.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -6,7 +6,7 @@ import { describe, test } from 'node:test'
 import { rawStringConst } from '../support/rustSource.mjs'
 import { Highlight, NodeFilter, h, handlers, page } from '../support/s2-dom.mjs'
 
-const SCRIPT = rawStringConst('find.rs', 'FIND_ENGINE_JS')
+const SCRIPT = rawStringConst('pages/find.rs', 'FIND_ENGINE_JS')
 
 /**
  * A page running the engine over `children`. Options drop the Highlight API

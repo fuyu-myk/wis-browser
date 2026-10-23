@@ -50,8 +50,8 @@ describe('the slices of site data', () => {
     assert.ok(SITE_DATA_KIND_ROWS.every((r) => r.label && r.hint))
   })
 
-  test('the kinds are exactly the variants cookies.rs accepts', () => {
-    const rust = readSource('src-tauri/src/cookies.rs')
+  test('the kinds are exactly the variants data/cookies/mod.rs accepts', () => {
+    const rust = readSource('src-tauri/src/data/cookies/mod.rs')
     const at = rust.indexOf('pub enum SiteDataKind {')
     const body = rust.slice(at, rust.indexOf('}', at)).replace(/\/\/.*$/gm, '')
     assert.ok(rust.slice(0, at).trimEnd().endsWith('#[serde(rename_all = "snake_case")]'))

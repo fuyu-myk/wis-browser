@@ -1,4 +1,4 @@
-// permissions.rs: GATE_JS, which holds getUserMedia until wisMediaPermission returns the user's decision.
+// protection/permissions.rs: GATE_JS, which holds getUserMedia until wisMediaPermission returns the user's decision.
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { rawStringConst } from '../support/rustSource.mjs'
 import { handlers } from '../support/s2-dom.mjs'
 
-const SCRIPT = rawStringConst('permissions.rs', 'GATE_JS')
+const SCRIPT = rawStringConst('protection/permissions.rs', 'GATE_JS')
 
 /**
  * A page with a MediaDevices whose real getUserMedia records its calls.

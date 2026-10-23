@@ -206,7 +206,7 @@ fn new_host(
     mtm: MainThreadMarker,
 ) -> Option<Host> {
     let store = if private {
-        crate::private_store::store_for(workspace, mtm)
+        crate::protection::private_store::store_for(workspace, mtm)
     } else {
         workspace_store(workspace, mtm)
     };

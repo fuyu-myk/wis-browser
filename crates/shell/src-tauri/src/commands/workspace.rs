@@ -64,8 +64,8 @@ pub async fn delete_workspace(
         .is_ok_and(|w| w.ephemeral);
 
     mutate_unit_immediate(&app, &state, |s| s.with_workspace_removed(id)).await?;
-    crate::private_store::release(&app, id);
-    crate::uncloak::forget_workspace(&state, id);
+    crate::protection::private_store::release(&app, id);
+    crate::protection::uncloak::forget_workspace(&state, id);
 
     #[cfg(target_os = "macos")]
     {
@@ -77,12 +77,12 @@ pub async fn delete_workspace(
 
     // What `close_tab` drops for each tab it closes.
     for tab in tabs {
-        crate::page_source::forget(tab);
-        crate::signup::forget_field(&tab.as_uuid().to_string());
-        crate::capture::forget(&state, tab).await;
-        crate::address_save::forget(&state, tab).await;
-        crate::audio::forget_tab(&app, tab);
-        crate::tab_preview::forget(&app, &state, tab);
+        crate::pages::source::forget(tab);
+        crate::vault::signup::forget_field(&tab.as_uuid().to_string());
+        crate::vault::capture::forget(&state, tab).await;
+        crate::vault::address_save::forget(&state, tab).await;
+        crate::tabs::audio::forget_tab(&app, tab);
+        crate::tabs::preview::forget(&app, &state, tab);
     }
 
     let storage = state.storage.clone();
@@ -92,10 +92,10 @@ pub async fn delete_workspace(
         log::warn!("clearing closed tabs for a deleted workspace panicked: {err}");
     }
     super::closed_tabs_changed(&app);
-    if let Err(err) = crate::usage::clear(&app, Some(id), None).await {
+    if let Err(err) = crate::data::usage::clear(&app, Some(id), None).await {
         log::warn!("clearing a deleted workspace's usage: {err:?}");
     }
-    crate::canvas::release_workspace(&app, id).await;
+    crate::canvas::page::release_workspace(&app, id).await;
 
     Ok(())
 }
@@ -167,7 +167,7 @@ pub async fn set_active_workspace(
     // focus that window.
     if let Some(owner) = state.window_for_workspace(id) {
         if owner != window.label() {
-            crate::windows::focus_window(&app, &owner);
+            crate::chrome::multi_window::focus_window(&app, &owner);
             return Ok(());
         }
     }
@@ -190,11 +190,11 @@ pub async fn set_workspace_privacy_mode(
     mode: PrivacyMode,
 ) -> WisResult<Workspace> {
     let (workspace, rehardened, pages) = mutate(&app, &state, |s| {
-        let before = crate::hardening::Hardening::of(s.workspace(id)?);
+        let before = crate::protection::hardening::Hardening::of(s.workspace(id)?);
         let next = s.with_workspace_privacy_mode(id, mode)?;
         let updated = next.workspace(id)?.clone();
-        let rehardened = crate::hardening::Hardening::of(&updated) != before;
-        let pages = crate::hardening::web_pages(&next, id);
+        let rehardened = crate::protection::hardening::Hardening::of(&updated) != before;
+        let pages = crate::protection::hardening::web_pages(&next, id);
 
         Ok((next, (updated, rehardened, pages)))
     })
@@ -220,14 +220,14 @@ pub async fn set_workspace_privacy_mode(
         let Some(webview) = app.webviews().get(&label).cloned() else {
             continue;
         };
-        match crate::content_filter::replace_rule_lists(&webview, &specs) {
+        match crate::protection::content_filter::replace_rule_lists(&webview, &specs) {
             Ok(()) => reattached += 1,
             Err(err) => log::warn!("content filter: re-attach for {label} skipped: {err}"),
         }
     }
     log::info!("workspace {id} privacy mode now {mode:?}: re-attached {reattached}/{total} tabs");
     if rehardened {
-        crate::hardening::rebuild_workspace(&app, &state, id, pages);
+        crate::protection::hardening::rebuild_workspace(&app, &state, id, pages);
     }
 
     Ok(workspace)

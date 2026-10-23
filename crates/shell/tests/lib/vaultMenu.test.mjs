@@ -12,14 +12,14 @@ import {
   serializedStructFields,
 } from '../support/l3-harness.mjs'
 
-test('the captured-login event is the one capture.rs emits', () => {
-  const rust = readSource('src-tauri/src/capture.rs')
+test('the captured-login event is the one vault/capture.rs emits', () => {
+  const rust = readSource('src-tauri/src/vault/capture.rs')
   assert.ok(rust.includes(`const CAPTURE_EVENT: &str = "${vault.CAPTURE_LOGIN_EVENT}";`))
 })
 
-test('the capture payload has exactly the fields capture.rs serialises', () => {
+test('the capture payload has exactly the fields vault/capture.rs serialises', () => {
   const ts = interfaceFields(readSource('src/lib/vaultMenu.ts'), 'CaptureInfo')
-  const rust = serializedStructFields(readSource('src-tauri/src/capture.rs'), 'CaptureInfo')
+  const rust = serializedStructFields(readSource('src-tauri/src/vault/capture.rs'), 'CaptureInfo')
   assert.deepEqual(ts, rust)
 })
 

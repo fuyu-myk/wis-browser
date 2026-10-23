@@ -164,8 +164,10 @@ pub async fn open_video_popout(
             });
         }
 
-        crate::content_world::eval(&webview, ENTER_EVAL).map_err(|err| WisError::InvalidInput {
-            message: format!("video popout enter eval: {err}"),
+        crate::platform::content_world::eval(&webview, ENTER_EVAL).map_err(|err| {
+            WisError::InvalidInput {
+                message: format!("video popout enter eval: {err}"),
+            }
         })?;
     }
 
@@ -211,7 +213,7 @@ pub async fn close_video_popout(
         if pending_cancelled {
             // The page may have applied popout styling before the cancel.
             if let Some(webview) = app.webviews().get(&label).cloned() {
-                let _ = crate::content_world::eval(&webview, EXIT_EVAL);
+                let _ = crate::platform::content_world::eval(&webview, EXIT_EVAL);
             }
         }
 

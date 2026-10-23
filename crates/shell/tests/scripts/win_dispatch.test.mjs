@@ -1,4 +1,4 @@
-// win_dispatch.rs: SHIM_SCRIPT and AI_FETCH_SHIM, which rebuild webkit.messageHandlers over WebView2's single channel,
+// platform/win_dispatch.rs: SHIM_SCRIPT and AI_FETCH_SHIM, which rebuild webkit.messageHandlers over WebView2's single channel,
 // and private_script, which keeps a script's acting channels behind a sender only it holds.
 
 import assert from 'node:assert/strict'
@@ -7,18 +7,18 @@ import { describe, test } from 'node:test'
 import { formatTemplate, rawStringConst } from '../support/rustSource.mjs'
 import { fnBody, shellSource } from '../support/s2-rust.mjs'
 
-const SHIM = rawStringConst('win_dispatch.rs', 'SHIM_SCRIPT')
-const AI_FETCH_SHIM = rawStringConst('win_dispatch.rs', 'AI_FETCH_SHIM')
+const SHIM = rawStringConst('platform/win_dispatch.rs', 'SHIM_SCRIPT')
+const AI_FETCH_SHIM = rawStringConst('platform/win_dispatch.rs', 'AI_FETCH_SHIM')
 
 // Every handler name the native receivers route: the tab dispatcher's match
 // arms, plus the panel receiver's two open-in-tab channels.
 const ROUTED = [
-  ...[...fnBody('win_dispatch.rs', 'dispatch').matchAll(/^\s*"(wis\w+)"(?:\s+if\s+\w+)?\s*=>/gm)].map((m) => m[1]),
-  ...[...shellSource('link_open.rs').matchAll(/const HANDLER_\w+: &str = "(wis\w+)";/g)].map((m) => m[1]),
+  ...[...fnBody('platform/win_dispatch.rs', 'dispatch').matchAll(/^\s*"(wis\w+)"(?:\s+if\s+\w+)?\s*=>/gm)].map((m) => m[1]),
+  ...[...shellSource('pages/link_open.rs').matchAll(/const HANDLER_\w+: &str = "(wis\w+)";/g)].map((m) => m[1]),
 ]
 // The channels that post only through private_script's sender.
 const ACTING = [
-  ...shellSource('win_dispatch.rs')
+  ...shellSource('platform/win_dispatch.rs')
     .match(/const ACTING: &\[&str\] = &\[([^\]]*)\]/)[1]
     .matchAll(/"(wis\w+)"/g),
 ].map((m) => m[1])
@@ -169,7 +169,7 @@ const NAMES = ['wisPeek', 'wisKeybind']
 
 /** `source` wrapped as Rust wraps it, with `frozen` fixed behind the token. */
 function wrap(source, frozen = []) {
-  return formatTemplate('win_dispatch.rs', 'private_script', {
+  return formatTemplate('platform/win_dispatch.rs', 'private_script', {
     token: 't1',
     channels: NAMES.map((name) => `${name}: channel('${name}')`).join(', '),
     source: source.replace(/window\.webkit/g, 'webkit'),
@@ -243,15 +243,15 @@ describe('private_script', () => {
 
 test('every channel the wrapped scripts post to is one the private sender carries', () => {
   const scripts = [
-    ['link_open.rs', 'OPEN_IN_TAB_JS'],
-    ['link_open.rs', 'PANEL_CROSS_SITE_JS'],
-    ['peek.rs', 'PEEK_JS'],
-    ['page_menu.rs', 'PAGE_MENU_JS'],
-    ['signup.rs', 'SIGNUP_JS'],
-    ['address_field/scripts.rs', 'FOCUS_JS'],
-    ['capture.rs', 'CAPTURE_JS'],
-    ['navguard.rs', 'NAVGUARD_JS'],
-    ['keybind.rs', 'KEYBIND_JS'],
+    ['pages/link_open.rs', 'OPEN_IN_TAB_JS'],
+    ['pages/link_open.rs', 'PANEL_CROSS_SITE_JS'],
+    ['chrome/peek.rs', 'PEEK_JS'],
+    ['pages/context_menu.rs', 'PAGE_MENU_JS'],
+    ['vault/signup.rs', 'SIGNUP_JS'],
+    ['vault/address_field/scripts.rs', 'FOCUS_JS'],
+    ['vault/capture.rs', 'CAPTURE_JS'],
+    ['protection/navguard.rs', 'NAVGUARD_JS'],
+    ['chrome/keybind.rs', 'KEYBIND_JS'],
     ['video_popout/script.rs', 'POPOUT_JS'],
   ]
   for (const [file, name] of scripts) {
@@ -264,7 +264,7 @@ test('every channel the wrapped scripts post to is one the private sender carrie
 })
 
 describe('the canvas shim (Windows)', () => {
-  const SHIM_CANVAS = formatTemplate('canvas.rs', 'shim_script', { token: 't1' })
+  const SHIM_CANVAS = formatTemplate('canvas/page.rs', 'shim_script', { token: 't1' })
   /** A WebView2 window after the canvas shim runs; `top` false makes it a card's frame. */
   const loadCanvas = ({ top = true, webview = true } = {}) => {
     const sent = []

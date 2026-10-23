@@ -1,11 +1,11 @@
-// devtools.rs: REVEAL_JS, which finds the node page_menu.rs marked and inspects it.
+// pages/devtools.rs: REVEAL_JS, which finds the node pages/context_menu.rs marked and inspects it.
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { rawStringConst } from '../support/rustSource.mjs'
 
-const SCRIPT = rawStringConst('devtools.rs', 'REVEAL_JS').replace('__WIS_NONCE__', 'n1')
+const SCRIPT = rawStringConst('pages/devtools.rs', 'REVEAL_JS').replace('__WIS_NONCE__', 'n1')
 
 /** A root over `children`, searched one level deep as the script expects. */
 function root(children) {

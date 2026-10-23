@@ -46,7 +46,7 @@ pub async fn clear_history(
         let local = instant.with_timezone(&chrono::Local);
         (local.date_naive(), chrono::Timelike::hour(&local) as u8)
     });
-    crate::usage::clear(&app, workspace_id, usage_from).await?;
+    crate::data::usage::clear(&app, workspace_id, usage_from).await?;
     state.closed_tab_sessions.lock().await.clear();
 
     Ok(())

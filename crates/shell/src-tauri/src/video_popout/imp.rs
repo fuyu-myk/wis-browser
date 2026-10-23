@@ -8,7 +8,7 @@ use super::{
     EXIT_EVAL, MAX_DELTA, MEDIA_EVENT, OPENED_EVENT, POPOUT_WINDOW_LABEL, REQUESTED_EVENT,
     RESUME_EVAL, TAB_LABEL_PREFIX,
 };
-use crate::content_world::macos as content_world;
+use crate::platform::content_world::macos as content_world;
 use crate::state::AppState;
 
 declare_class!(
@@ -129,7 +129,7 @@ impl HoverHandler {
 
     unsafe fn eval_hover(&self, on: bool) {
         // Suppress hover on the origin window's other tabs that the popout floats over.
-        crate::hover_guard::set_window_tabs_suppressed(&self.ivars().origin_window, on);
+        crate::chrome::hover_guard::set_window_tabs_suppressed(&self.ivars().origin_window, on);
 
         let wk = self.ivars().webview;
         if wk.is_null() {
@@ -401,7 +401,7 @@ fn on_entered(app: &AppHandle, label: &str, aspect: f64) {
         // styling it just applied.
         log::debug!("video popout: enter from {label} without a pending open; unwinding");
         if let Some(webview) = app.webviews().get(label).cloned() {
-            let _ = crate::content_world::eval(&webview, EXIT_EVAL);
+            let _ = crate::platform::content_world::eval(&webview, EXIT_EVAL);
         }
         return;
     };
@@ -440,7 +440,7 @@ fn on_entered(app: &AppHandle, label: &str, aspect: f64) {
         Ok(w) => w,
         Err(err) => {
             log::warn!("video popout: window build failed: {err}");
-            let _ = crate::content_world::eval(&webview, EXIT_EVAL);
+            let _ = crate::platform::content_world::eval(&webview, EXIT_EVAL);
             return;
         }
     };
@@ -448,7 +448,7 @@ fn on_entered(app: &AppHandle, label: &str, aspect: f64) {
     if let Err(err) = webview.reparent(&window) {
         log::warn!("video popout: reparent failed: {err}");
         let _ = window.close();
-        let _ = crate::content_world::eval(&webview, EXIT_EVAL);
+        let _ = crate::platform::content_world::eval(&webview, EXIT_EVAL);
         return;
     }
 
@@ -471,7 +471,7 @@ fn on_entered(app: &AppHandle, label: &str, aspect: f64) {
         });
     }
 
-    let _ = crate::content_world::eval(&webview, RESUME_EVAL);
+    let _ = crate::platform::content_world::eval(&webview, RESUME_EVAL);
     log::info!(
         "video popout: opened for {label} at {:.0}x{:.0}+{:.0}+{:.0}",
         frame.w,
@@ -604,11 +604,11 @@ pub fn close_and_notify(app: &AppHandle, label: &str, eval_exit: bool) {
 
     if was_active {
         if let Some(origin) = origin_window.as_deref() {
-            crate::hover_guard::set_window_tabs_suppressed(origin, false);
+            crate::chrome::hover_guard::set_window_tabs_suppressed(origin, false);
         }
         if let Some(webview) = app.webviews().get(label).cloned() {
             if eval_exit {
-                let _ = crate::content_world::eval(&webview, EXIT_EVAL);
+                let _ = crate::platform::content_world::eval(&webview, EXIT_EVAL);
             }
             set_fills_window(&webview, false);
             let _ = webview.hide();
@@ -625,7 +625,7 @@ pub fn close_and_notify(app: &AppHandle, label: &str, eval_exit: bool) {
             }
             // The reparent back paused the video; resume it so folding
             // the popout in never silences a playing video.
-            let _ = crate::content_world::eval(&webview, RESUME_EVAL);
+            let _ = crate::platform::content_world::eval(&webview, RESUME_EVAL);
         }
         if let Some(window) = window {
             let _ = window.close();

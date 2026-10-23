@@ -1,4 +1,4 @@
-// ai_fetch.rs: search_script (DuckDuckGo results as JSON) and page_script (main text) for the hidden fetch webview.
+// ai/fetch.rs: search_script (DuckDuckGo results as JSON) and page_script (main text) for the hidden fetch webview.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -7,10 +7,10 @@ import { rawStringConst } from '../support/rustSource.mjs'
 import { h, handlers, page } from '../support/s2-dom.mjs'
 import { rawStringInFn } from '../support/s2-rust.mjs'
 
-const SEARCH = rawStringInFn('ai_fetch.rs', 'search_script')
+const SEARCH = rawStringInFn('ai/fetch.rs', 'search_script')
 // page_script(max) is MAIN_CONTENT_FINDER, then the extraction with MAX_CHARS replaced by `max`.
 const pageScript = (max) =>
-  `${rawStringConst('reader.rs', 'MAIN_CONTENT_FINDER')}\n${rawStringInFn('ai_fetch.rs', 'page_script').replaceAll('MAX_CHARS', String(max))}`
+  `${rawStringConst('pages/reader.rs', 'MAIN_CONTENT_FINDER')}\n${rawStringInFn('ai/fetch.rs', 'page_script').replaceAll('MAX_CHARS', String(max))}`
 const PAGE = pageScript(8000)
 
 /** Run `script` over a page; returns what it posted to wisAiFetch. */

@@ -1,6 +1,6 @@
 /**
  * An overlay card pinned to a field in a tab's page, as the generated-password
- * offer and the saved-logins card are. `signup.rs` reports the field.
+ * offer and the saved-logins card are. `vault/signup.rs` reports the field.
  *
  * The card steps aside while the page scrolls and comes back where the field
  * settles. It closes when the field settles out of its pane, focus moves on,

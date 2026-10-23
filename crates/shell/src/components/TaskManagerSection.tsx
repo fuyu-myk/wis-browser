@@ -79,7 +79,7 @@ export function TaskManagerSection() {
     queryKey: ['webview-memory'],
     queryFn: () => commands.listWebviewMemory(),
     refetchInterval: POLL_MS,
-    // Per-tab memory is macOS only (see memory.rs); skip the poll elsewhere.
+    // Per-tab memory is macOS only (see system/memory.rs); skip the poll elsewhere.
     enabled: isMacOS(),
   })
 

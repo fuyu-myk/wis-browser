@@ -1,4 +1,4 @@
-// `gpc.rs` GPC_JS: defines `navigator.globalPrivacyControl` with the baked setting, and `window.__wisGpcSet` to flip it.
+// `protection/gpc.rs` GPC_JS: defines `navigator.globalPrivacyControl` with the baked setting, and `window.__wisGpcSet` to flip it.
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -6,12 +6,12 @@ import { describe, test } from 'node:test'
 
 import { rawStringConst } from '../support/rustSource.mjs'
 
-const RAW = rawStringConst('gpc.rs', 'GPC_JS')
+const RAW = rawStringConst('protection/gpc.rs', 'GPC_JS')
 /** The script as `page_script(enabled)` bakes it. */
 const scriptFor = (enabled) => RAW.replaceAll('%ON%', enabled ? 'true' : 'false')
 
 // `flip_script` is a plain `format!` string, so it is read out directly.
-const SOURCE = readFileSync(new URL('../../src-tauri/src/gpc.rs', import.meta.url), 'utf8')
+const SOURCE = readFileSync(new URL('../../src-tauri/src/protection/gpc.rs', import.meta.url), 'utf8')
 const FLIP = SOURCE.match(/fn flip_script[\s\S]*?format!\("([^"]*)"\)/)[1]
 const flipFor = (enabled) => FLIP.replace('{enabled}', String(enabled))
 

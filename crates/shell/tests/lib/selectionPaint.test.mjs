@@ -163,6 +163,6 @@ describe('clearing', () => {
 })
 
 test('the chrome carries out as much selection as the page script', () => {
-  const page = readFileSync(new URL('../../src-tauri/src/page_menu.rs', import.meta.url), 'utf8')
+  const page = readFileSync(new URL('../../src-tauri/src/pages/context_menu.rs', import.meta.url), 'utf8')
   assert.equal(MAX_SELECTION_CHARS, Number(page.match(/var MAX_SELECTION = (\d+);/)[1]))
 })

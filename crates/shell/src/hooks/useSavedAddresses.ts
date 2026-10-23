@@ -1,7 +1,7 @@
 /**
  * Chrome-side orchestration for the saved-addresses card.
  *
- * `address_field.rs` emits `wis-address-field` when an address field takes
+ * `vault/address_field/mod.rs` emits `wis-address-field` when an address field takes
  * focus. With the setting on and addresses saved, the `overlay-addresses` card
  * is placed at the field: the addresses once the vault is open, else one row
  * to unlock it. A pick settles the page until it navigates.

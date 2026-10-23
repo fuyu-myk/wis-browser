@@ -1011,7 +1011,7 @@ export interface SiteDataEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Downloads (mirror of `downloads.rs` `DownloadItem`, camelCase serde).
+// Downloads (mirror of `data/downloads.rs` `DownloadItem`, camelCase serde).
 // ---------------------------------------------------------------------------
 
 export type DownloadStatus = 'in_progress' | 'completed' | 'failed' | 'cancelled'
@@ -1119,7 +1119,7 @@ export interface UsageSummary {
 }
 
 // ---------------------------------------------------------------------------
-// Password vault (mirror of `vault.rs`).
+// Password vault (mirror of `vault/passwords.rs`).
 // ---------------------------------------------------------------------------
 
 /** Vault lock state + whether it's been set up / supported on this platform. */
@@ -1151,7 +1151,7 @@ export interface CredentialSummary {
 }
 
 // ---------------------------------------------------------------------------
-// URL-bar suggestions (mirror of `suggest.rs`).
+// URL-bar suggestions (mirror of `data/suggest.rs`).
 // ---------------------------------------------------------------------------
 
 export interface SearchSuggestion {

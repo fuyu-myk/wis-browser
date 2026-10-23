@@ -1,8 +1,8 @@
-"""Writes crates/shell/src-tauri/src/address_field/patterns.js from Chromium's
+"""Writes crates/shell/src-tauri/src/vault/address_field/patterns.js from Chromium's
 components/autofill/core/browser/form_parsing/resources/legacy_regex_patterns.json.
 
     python3 crates/shell/scripts/port-address-patterns.py <legacy_regex_patterns.json> \
-        crates/shell/src-tauri/src/address_field/patterns.js
+        crates/shell/src-tauri/src/vault/address_field/patterns.js
 
 Update COMMIT to the Chromium commit the JSON came from.
 """

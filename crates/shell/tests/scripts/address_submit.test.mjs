@@ -8,11 +8,11 @@ import { test } from 'node:test'
 import { includedFile, rawStringConst } from '../support/rustSource.mjs'
 
 const SCRIPT = [
-  includedFile('address_field/patterns.js'),
-  rawStringConst('address_field/guess.rs', 'GUESS_JS'),
-  rawStringConst('address_field/scripts.rs', 'CLASSIFY_JS'),
-  rawStringConst('address_field/scripts.rs', 'FOCUS_JS'),
-  rawStringConst('address_field/submit.rs', 'SUBMIT_JS'),
+  includedFile('vault/address_field/patterns.js'),
+  rawStringConst('vault/address_field/guess.rs', 'GUESS_JS'),
+  rawStringConst('vault/address_field/scripts.rs', 'CLASSIFY_JS'),
+  rawStringConst('vault/address_field/scripts.rs', 'FOCUS_JS'),
+  rawStringConst('vault/address_field/submit.rs', 'SUBMIT_JS'),
 ].join('\n')
 
 const STYLE = {
@@ -259,7 +259,7 @@ test('the country codes match the ones Settings offers', () => {
   const settings = readFileSync(new URL('../../src/lib/addresses.ts', import.meta.url), 'utf8')
   const codes = (source) => source.match(/\b[A-Z]{2}\b/g)
   const listed = codes(settings.slice(settings.indexOf('COUNTRY_CODES'), settings.indexOf(".split(' ')")))
-  const script = rawStringConst('address_field/submit.rs', 'SUBMIT_JS')
+  const script = rawStringConst('vault/address_field/submit.rs', 'SUBMIT_JS')
   const shipped = codes(script.slice(script.indexOf('COUNTRY_CODES'), script.indexOf(".split(' ')")))
   assert.deepEqual(shipped, listed)
 })

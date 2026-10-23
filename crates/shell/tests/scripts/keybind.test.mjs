@@ -1,4 +1,4 @@
-// `keybind.rs` KEYBIND_JS: forwards bound keystrokes to `wisKeybind` (Windows, Linux, macOS tabs), reserved ones at capture and the rest page-first.
+// `chrome/keybind.rs` KEYBIND_JS: forwards bound keystrokes to `wisKeybind` (Windows, Linux, macOS tabs), reserved ones at capture and the rest page-first.
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -12,10 +12,10 @@ import {
 } from '../../src/lib/keybindings.ts'
 import { rawStringConst } from '../support/rustSource.mjs'
 
-const RAW = rawStringConst('keybind.rs', 'KEYBIND_JS')
+const RAW = rawStringConst('chrome/keybind.rs', 'KEYBIND_JS')
 
 // `reserved_json()`: RESERVED_ACTIONS mapped through `KeyAction::id`.
-const KEYBIND_RS = readFileSync(new URL('../../src-tauri/src/keybind.rs', import.meta.url), 'utf8')
+const KEYBIND_RS = readFileSync(new URL('../../src-tauri/src/chrome/keybind.rs', import.meta.url), 'utf8')
 const CORE_RS = readFileSync(new URL('../../../core/src/settings/keybinding.rs', import.meta.url), 'utf8')
 const ID_FN = CORE_RS.slice(CORE_RS.indexOf('pub fn id(self)'), CORE_RS.indexOf('pub fn from_id'))
 const ID_OF = Object.fromEntries([...ID_FN.matchAll(/Self::(\w+) => "(\w+)"/g)].map((m) => [m[1], m[2]]))

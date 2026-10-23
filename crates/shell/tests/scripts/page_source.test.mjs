@@ -1,11 +1,11 @@
-// `page_source.rs` CAPTURE_JS: serialises a clone of the live DOM for View Source, without Wis's injected nodes.
+// `pages/source.rs` CAPTURE_JS: serialises a clone of the live DOM for View Source, without Wis's injected nodes.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import { rawStringConst } from '../support/rustSource.mjs'
 
-const SCRIPT = rawStringConst('page_source.rs', 'CAPTURE_JS')
+const SCRIPT = rawStringConst('pages/source.rs', 'CAPTURE_JS')
 const MAX = 4000000
 
 /** The ids of nodes Wis's own page scripts put into a document. */

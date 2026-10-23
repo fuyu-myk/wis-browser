@@ -1,4 +1,4 @@
-// reader.rs: MAIN_CONTENT_FINDER picks a page's article element; READER_BODY rebuilds the page around it.
+// pages/reader.rs: MAIN_CONTENT_FINDER picks a page's article element; READER_BODY rebuilds the page around it.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -6,8 +6,8 @@ import { describe, test } from 'node:test'
 import { rawStringConst } from '../support/rustSource.mjs'
 import { h, page } from '../support/s2-dom.mjs'
 
-const FINDER = rawStringConst('reader.rs', 'MAIN_CONTENT_FINDER')
-const BODY = rawStringConst('reader.rs', 'READER_BODY')
+const FINDER = rawStringConst('pages/reader.rs', 'MAIN_CONTENT_FINDER')
+const BODY = rawStringConst('pages/reader.rs', 'READER_BODY')
 const URL_NOW = 'https://site.test/story'
 
 /** `n` characters of prose. */

@@ -190,7 +190,7 @@ where
     mutate_immediate(app, state, |s| transition(s).map(|next| (next, ()))).await
 }
 
-/// Favicon attach helper exposed to [`crate::favicons`] so the capture
+/// Favicon attach helper exposed to [`crate::data::favicons`] so the capture
 /// pipeline can persist `tab.favicon = Some(ref)` through the same
 /// transaction the rest of the chrome uses.
 pub(crate) async fn mutate_unit_for_favicon(
@@ -273,8 +273,8 @@ pub(crate) async fn note_in_page_navigation(
     live_url: Url,
     title: String,
 ) {
-    let live_url = crate::canvas::stored_url(live_url);
-    let canvas = crate::canvas::is_canvas_url(&live_url);
+    let live_url = crate::canvas::page::stored_url(live_url);
+    let canvas = crate::canvas::page::is_canvas_url(&live_url);
     if !canvas && !matches!(live_url.scheme(), "http" | "https") {
         return;
     }
@@ -406,7 +406,7 @@ pub(crate) fn apply_zoom_to_webview<R: tauri::Runtime>(
     // The controller's `ZoomFactor` is the user-facing (Ctrl +/-) page zoom,
     // the analog of WKWebView's `setPageZoom:`.
     #[cfg(windows)]
-    crate::win_webview2::with_controller(webview, move |controller| {
+    crate::platform::win_webview2::with_controller(webview, move |controller| {
         // SAFETY: runs on the UI thread via `with_controller`.
         let _ = unsafe { controller.SetZoomFactor(factor) };
     });
@@ -465,7 +465,7 @@ pub(crate) fn apply_tab_appearance<R: tauri::Runtime>(
 
     // WebView2's preferred color scheme lives on the profile. `Auto` follows the OS.
     #[cfg(windows)]
-    crate::win_webview2::with_core_webview2(webview, move |core| {
+    crate::platform::win_webview2::with_core_webview2(webview, move |core| {
         use webview2_com::Microsoft::Web::WebView2::Win32::{
             ICoreWebView2_13, COREWEBVIEW2_PREFERRED_COLOR_SCHEME_AUTO,
             COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK, COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT,
@@ -494,7 +494,7 @@ pub(crate) fn apply_tab_appearance<R: tauri::Runtime>(
 /// Re-apply the theme appearance to every live tab webview (on a theme change).
 pub(crate) fn apply_appearance_to_all_tabs(app: &AppHandle, theme: ThemeMode) {
     for (label, webview) in app.webviews() {
-        if label.starts_with("tab-") && !crate::canvas::is_canvas_tab(&label) {
+        if label.starts_with("tab-") && !crate::canvas::page::is_canvas_tab(&label) {
             apply_tab_appearance(&webview, theme);
         }
     }

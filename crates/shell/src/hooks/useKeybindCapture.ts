@@ -22,7 +22,7 @@
  * Scope:
  * - A caret-moving shortcut is left to a focused text field, on every platform.
  * - This webview's focus only. When a tab webview has focus its own keydown
- *   fires in the page, covered by the injected forwarder (`keybind.rs`).
+ *   fires in the page, covered by the injected forwarder (`chrome/keybind.rs`).
  *
  * Mount exactly once per webview: the chrome mounts it in `Window.tsx` (with
  * `takeFocusOnMount`, see below), and each overlay surface webview mounts it

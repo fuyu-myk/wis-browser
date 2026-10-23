@@ -1,11 +1,11 @@
-// `capture.rs` CAPTURE_JS: spots a submitted login and posts `{ username, password }` to `wisCapture`.
+// `vault/capture.rs` CAPTURE_JS: spots a submitted login and posts `{ username, password }` to `wisCapture`.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import { rawStringConst } from '../support/rustSource.mjs'
 
-const SCRIPT = rawStringConst('capture.rs', 'CAPTURE_JS')
+const SCRIPT = rawStringConst('vault/capture.rs', 'CAPTURE_JS')
 
 /** An `<input>` the script can read. `attrs` holds what `getAttribute` returns. */
 function input(spec = {}) {

@@ -23,7 +23,7 @@ export interface TabAudio {
 
 /**
  * Per-tab audio state for the tab strips: audibility comes from the native
- * poll (`audio.rs`), mute is engine-level page muting toggled per tab.
+ * poll (`tabs/audio.rs`), mute is engine-level page muting toggled per tab.
  */
 export function useTabAudio(): TabAudio {
   const [audible, setAudible] = useState<ReadonlySet<TabId>>(new Set())

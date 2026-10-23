@@ -1,4 +1,4 @@
-// navguard.rs: NAVGUARD_JS, which stops a plain click on a risky-looking link and posts it to wisNavGuard.
+// protection/navguard.rs: NAVGUARD_JS, which stops a plain click on a risky-looking link and posts it to wisNavGuard.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -7,7 +7,7 @@ import { rawStringConst } from '../support/rustSource.mjs'
 import { h, handlers, page } from '../support/s2-dom.mjs'
 import { crateSource } from '../support/s2-rust.mjs'
 
-const RAW = rawStringConst('navguard.rs', 'NAVGUARD_JS')
+const RAW = rawStringConst('protection/navguard.rs', 'NAVGUARD_JS')
 
 // `navguard_js()` fills the placeholder with the core crate's TEXT_DOMAIN_TLDS
 // as a JSON array; read the list from the same source.

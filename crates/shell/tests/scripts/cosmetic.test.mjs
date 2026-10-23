@@ -1,4 +1,4 @@
-// cosmetic.rs: COSMETIC_JS (class/id collector and CSS applier) and PICKER_JS (element zapper).
+// protection/cosmetic.rs: COSMETIC_JS (class/id collector and CSS applier) and PICKER_JS (element zapper).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -7,12 +7,12 @@ import { rawStringConst } from '../support/rustSource.mjs'
 import { eventTarget, h, handlers, makeLocation, page } from '../support/s2-dom.mjs'
 import { fnBody } from '../support/s2-rust.mjs'
 
-const COSMETIC = rawStringConst('cosmetic.rs', 'COSMETIC_JS')
-const PICKER = rawStringConst('cosmetic.rs', 'PICKER_JS')
+const COSMETIC = rawStringConst('protection/cosmetic.rs', 'COSMETIC_JS')
+const PICKER = rawStringConst('protection/cosmetic.rs', 'PICKER_JS')
 
 // Windows and Linux inject COSMETIC_JS through `page_script()`, which wraps it
 // in a top-frame check built from two string literals.
-const [WRAP_OPEN, WRAP_CLOSE] = [...fnBody('cosmetic.rs', 'page_script').matchAll(/"((?:[^"\\]|\\.)*)"/g)].map(
+const [WRAP_OPEN, WRAP_CLOSE] = [...fnBody('protection/cosmetic.rs', 'page_script').matchAll(/"((?:[^"\\]|\\.)*)"/g)].map(
   (m) => JSON.parse(`"${m[1]}"`),
 )
 const WRAPPED = `${WRAP_OPEN}${COSMETIC}${WRAP_CLOSE}`

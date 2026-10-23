@@ -17,7 +17,7 @@ test('every widget-panel event has its own name in the wis namespace', () => {
 })
 
 test('the panel navigation event matches the name the panel webview emits', () => {
-  const rust = readFileSync(new URL('../../src-tauri/src/widget_panel.rs', import.meta.url), 'utf8')
+  const rust = readFileSync(new URL('../../src-tauri/src/chrome/widget_panel.rs', import.meta.url), 'utf8')
   const emitted = rust.match(/const WPANEL_NAV_EVENT: &str = "([^"]+)";/)[1]
   assert.equal(events.WPANEL_NAV_EVENT, emitted)
 })

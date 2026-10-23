@@ -1,4 +1,4 @@
-// `page_menu.rs` PAGE_MENU_JS: posts what was right-clicked to `wisPageMenu` and paints the selection while the menu is up.
+// `pages/context_menu.rs` PAGE_MENU_JS: posts what was right-clicked to `wisPageMenu` and paints the selection while the menu is up.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -8,7 +8,7 @@ import { rawStringConst } from '../support/rustSource.mjs'
 const FALLBACK = 'background-color:rgba(179, 215, 255, 0.6)'
 const PREFERRED = 'background-color:light-dark(rgba(179, 215, 255, 0.6), rgba(63, 99, 139, 0.8))'
 // As `page_script()` bakes in the selection colours.
-const SCRIPT = rawStringConst('page_menu.rs', 'PAGE_MENU_JS')
+const SCRIPT = rawStringConst('pages/context_menu.rs', 'PAGE_MENU_JS')
   .replaceAll('__WIS_SEL_FALLBACK__', FALLBACK)
   .replaceAll('__WIS_SEL_PREFERRED__', PREFERRED)
 

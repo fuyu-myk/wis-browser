@@ -1,4 +1,4 @@
-// What `signup.rs` reports while a password card is anchored to a field:
+// What `vault/signup.rs` reports while a password card is anchored to a field:
 // focus, scroll and settle, leave, and the ways a card is dismissed.
 
 import assert from 'node:assert/strict'
@@ -6,7 +6,7 @@ import { test } from 'node:test'
 
 import { rawStringConst } from './support/rustSource.mjs'
 
-const SCRIPT = rawStringConst('signup.rs', 'SIGNUP_JS')
+const SCRIPT = rawStringConst('vault/signup.rs', 'SIGNUP_JS')
 
 /** A fresh page running the script, with a signup field at y = 300. */
 function loadPage() {

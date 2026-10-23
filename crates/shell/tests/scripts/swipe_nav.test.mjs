@@ -1,4 +1,4 @@
-// What the swipe back/forward script in `swipe_nav.rs` does with wheel sequences, the shell's phase and history signals, and its edge indicator.
+// What the swipe back/forward script in `tabs/swipe_nav.rs` does with wheel sequences, the shell's phase and history signals, and its edge indicator.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -7,13 +7,13 @@ import { rawStringConst } from '../support/rustSource.mjs'
 import { createClock } from '../support/s3-clock.mjs'
 import { evalIn, rustLiteral } from '../support/s3-native.mjs'
 
-const SCRIPT = rawStringConst('swipe_nav.rs', 'SWIPE_NAV_JS')
+const SCRIPT = rawStringConst('tabs/swipe_nav.rs', 'SWIPE_NAV_JS')
 const NATIVE = {
-  hasPhase: rustLiteral('swipe_nav.rs', '__wisSwipeHasPhase='),
-  began: rustLiteral('swipe_nav.rs', "__wisSwipePhase('began')"),
-  ended: rustLiteral('swipe_nav.rs', "__wisSwipePhase('ended')"),
-  navState: rustLiteral('swipe_nav.rs', '__wisSwipeNavState('),
-  accent: rustLiteral('swipe_nav.rs', '__wisSwipeAccent='),
+  hasPhase: rustLiteral('tabs/swipe_nav.rs', '__wisSwipeHasPhase='),
+  began: rustLiteral('tabs/swipe_nav.rs', "__wisSwipePhase('began')"),
+  ended: rustLiteral('tabs/swipe_nav.rs', "__wisSwipePhase('ended')"),
+  navState: rustLiteral('tabs/swipe_nav.rs', '__wisSwipeNavState('),
+  accent: rustLiteral('tabs/swipe_nav.rs', '__wisSwipeAccent='),
 }
 const DEFAULT_ACCENT = '#6b77f8'
 

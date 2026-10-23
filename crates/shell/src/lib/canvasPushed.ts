@@ -1,7 +1,7 @@
 /**
  * Values in a canvas page obtained from Rust evaluating `window.<key> = <json>`:
  * the browser's theme accent (`__wisSwipeAccent`, set in every tab after each
- * load and whenever the theme changes, `swipe_nav.rs`) and the canvas theme
+ * load and whenever the theme changes, `tabs/swipe_nav.rs`) and the canvas theme
  * (`__wisCanvasTheme`, set at start and on change, `canvas.rs`).
  */
 

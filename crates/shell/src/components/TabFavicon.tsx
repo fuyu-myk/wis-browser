@@ -48,7 +48,7 @@ const FALLBACK_PALETTES = ['fav-pri', 'fav-mint', 'fav-rose', 'fav-sun', 'fav-li
  * (chrome URLs, fresh tab pre-capture, unsupported sites).
  *
  * The favicon is captured Rust-side from `on_page_load(Finished)` (see
- * `favicons.rs`) and persisted as `tab.favicon = Some(FaviconRef)`. So
+ * `data/favicons.rs`) and persisted as `tab.favicon = Some(FaviconRef)`. So
  * the render path here is purely a `hash -> data: URL` lookup with no
  * outbound traffic to Google or any other third party.
  */

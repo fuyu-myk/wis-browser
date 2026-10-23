@@ -1,7 +1,7 @@
 /**
  * Chrome-side orchestration for the saved-logins card.
  *
- * `signup.rs` emits `wis-login-field` when a sign-in field takes focus. When
+ * `vault/signup.rs` emits `wis-login-field` when a sign-in field takes focus. When
  * the vault has logins for the page's host, the `overlay-logins` card is
  * placed at the field (`useAnchoredCard`) with their usernames. Listing needs
  * no unlock, since usernames are stored in the clear; Touch ID is asked for

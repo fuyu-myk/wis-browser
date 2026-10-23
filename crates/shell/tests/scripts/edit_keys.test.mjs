@@ -1,11 +1,11 @@
-// `edit_keys.rs` EDIT_KEYS_JS: posts Cmd+Z, Cmd+Shift+Z and Cmd+A to `wisEditKey` when the page leaves them unconsumed.
+// `chrome/edit_keys.rs` EDIT_KEYS_JS: posts Cmd+Z, Cmd+Shift+Z and Cmd+A to `wisEditKey` when the page leaves them unconsumed.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import { rawStringConst } from '../support/rustSource.mjs'
 
-const SCRIPT = rawStringConst('edit_keys.rs', 'EDIT_KEYS_JS')
+const SCRIPT = rawStringConst('chrome/edit_keys.rs', 'EDIT_KEYS_JS')
 
 /** A fresh page running the script. */
 function loadPage({ handler = true } = {}) {

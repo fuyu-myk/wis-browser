@@ -1,11 +1,11 @@
-// Where `vault.rs`'s fill script writes a saved login.
+// Where `vault/passwords.rs`'s fill script writes a saved login.
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { formatTemplate } from './support/rustSource.mjs'
 
-const SCRIPT = formatTemplate('vault.rs', 'fill_script', {
+const SCRIPT = formatTemplate('vault/passwords.rs', 'fill_script', {
   host: JSON.stringify('example.com'),
   user: JSON.stringify('alice'),
   pass: JSON.stringify('secret'),

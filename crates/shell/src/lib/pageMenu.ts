@@ -18,7 +18,7 @@ export const PAGE_MENU_DONE_EVENT = 'wis-pagemenu-done'
  */
 export const PAGE_MENU_ACK_EVENT = 'wis-pagemenu-ack'
 
-/** What the page reported, as it reaches the chrome from `page_menu.rs`. */
+/** What the page reported, as it reaches the chrome from `pages/context_menu.rs`. */
 export interface PageMenuReport {
   tabId: string
   pageUrl: string

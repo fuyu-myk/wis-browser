@@ -24,9 +24,9 @@ test('the menu events are distinct and spelled only in this contract', () => {
   for (const name of names) assert.deepEqual(filesSpelling(name), ['lib/pageMenu.ts'], name)
 })
 
-test('the page report has exactly the fields page_menu.rs serialises', () => {
+test('the page report has exactly the fields pages/context_menu.rs serialises', () => {
   const ts = interfaceFields(readSource('src/lib/pageMenu.ts'), 'PageMenuReport')
-  const rust = serializedStructFields(readSource('src-tauri/src/page_menu.rs'), 'PageMenuEvent')
+  const rust = serializedStructFields(readSource('src-tauri/src/pages/context_menu.rs'), 'PageMenuEvent')
   assert.deepEqual(ts, rust)
 })
 

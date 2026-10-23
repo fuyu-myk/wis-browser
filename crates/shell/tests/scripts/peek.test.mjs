@@ -1,4 +1,4 @@
-// peek.rs: PEEK_JS, which turns an Option-click on a link into a wisPeek preview request.
+// chrome/peek.rs: PEEK_JS, which turns an Option-click on a link into a wisPeek preview request.
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { rawStringConst } from '../support/rustSource.mjs'
 import { h, handlers, page } from '../support/s2-dom.mjs'
 
-const SCRIPT = rawStringConst('peek.rs', 'PEEK_JS')
+const SCRIPT = rawStringConst('chrome/peek.rs', 'PEEK_JS')
 
 /** A page with one link to `href` reading `text`, running the Peek trigger. */
 function loadPage(href, text = 'Read more', { channel = handlers('wisPeek') } = {}) {

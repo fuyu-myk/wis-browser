@@ -1,7 +1,7 @@
 /**
  * Chrome-side orchestration for the generated-password offer.
  *
- * `signup.rs` emits `wis-signup-field` when a password field takes focus.
+ * `vault/signup.rs` emits `wis-signup-field` when a password field takes focus.
  * With the standing choice set to always, a signup field is filled without a
  * prompt; with it set to never, nothing happens. Otherwise the
  * `overlay-signup` card is placed at the field (`useAnchoredCard`) and handed

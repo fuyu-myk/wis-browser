@@ -1,4 +1,4 @@
-// `page_text.rs` extract_script: posts the page's main readable text and title to `wisPageText` for the assistant.
+// `pages/text.rs` extract_script: posts the page's main readable text and title to `wisPageText` for the assistant.
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -8,11 +8,11 @@ import { rawStringConst } from '../support/rustSource.mjs'
 
 // The extraction is a raw-string argument to `format!`, not a template, so it
 // is read out of `fn extract_script` directly.
-const SOURCE = readFileSync(new URL('../../src-tauri/src/page_text.rs', import.meta.url), 'utf8')
+const SOURCE = readFileSync(new URL('../../src-tauri/src/pages/text.rs', import.meta.url), 'utf8')
 const FN_AT = SOURCE.indexOf('fn extract_script')
 const BODY_AT = SOURCE.indexOf('r#"', FN_AT) + 3
 const BODY = SOURCE.slice(BODY_AT, SOURCE.indexOf('"#', BODY_AT))
-const FINDER = rawStringConst('reader.rs', 'MAIN_CONTENT_FINDER')
+const FINDER = rawStringConst('pages/reader.rs', 'MAIN_CONTENT_FINDER')
 // As `format!("{}\n{}", MAIN_CONTENT_FINDER, body)` assembles it.
 const SCRIPT = `${FINDER}\n${BODY}`
 
@@ -60,7 +60,7 @@ function extractPage({ named = [], blocks = [], body = el(''), title = 'A page' 
 describe('the script as shipped', () => {
   test('is the shared main-content finder followed by the extraction', () => {
     const call = SOURCE.slice(FN_AT, BODY_AT)
-    assert.match(call, /format!\(\s*"\{\}\\n\{\}",\s*crate::reader::MAIN_CONTENT_FINDER,\s*r#"$/)
+    assert.match(call, /format!\(\s*"\{\}\\n\{\}",\s*crate::pages::reader::MAIN_CONTENT_FINDER,\s*r#"$/)
   })
 
   test("posts the text of the finder's main content, not the whole page", () => {

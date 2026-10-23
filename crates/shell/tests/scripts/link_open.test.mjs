@@ -1,4 +1,4 @@
-// link_open.rs: OPEN_IN_TAB_JS (modified or middle click to a background tab) and PANEL_CROSS_SITE_JS (panel cross-site click to a foreground tab).
+// pages/link_open.rs: OPEN_IN_TAB_JS (modified or middle click to a background tab) and PANEL_CROSS_SITE_JS (panel cross-site click to a foreground tab).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -6,8 +6,8 @@ import { describe, test } from 'node:test'
 import { rawStringConst } from '../support/rustSource.mjs'
 import { h, handlers, page } from '../support/s2-dom.mjs'
 
-const OPEN_IN_TAB = rawStringConst('link_open.rs', 'OPEN_IN_TAB_JS')
-const PANEL = rawStringConst('link_open.rs', 'PANEL_CROSS_SITE_JS')
+const OPEN_IN_TAB = rawStringConst('pages/link_open.rs', 'OPEN_IN_TAB_JS')
+const PANEL = rawStringConst('pages/link_open.rs', 'PANEL_CROSS_SITE_JS')
 
 /** A page at `url` holding `children`, running `script`. */
 function loadPage(script, { url = 'https://page.test/article', children = [], channel = handlers('wisOpenInTab'), navigator = {} } = {}) {

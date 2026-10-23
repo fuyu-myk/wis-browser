@@ -1,121 +1,22 @@
 // macOS is the primary platform and keeps the strict dead-code gate.
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
-mod address_field;
-mod address_save;
-mod addresses;
 mod ai;
-mod ai_actions;
-mod ai_fetch;
-mod ai_local;
-mod ai_models;
-mod app_launch;
-mod audio;
-mod autoplay;
-mod backup;
-mod biometrics;
-mod bookmarks;
-mod browser_import;
 mod canvas;
-mod canvas_ai;
-mod canvas_health;
-mod canvas_store;
-mod canvas_webview;
-mod capture;
-mod clean_links;
-mod clipboard;
+mod chrome;
 mod commands;
-mod content_filter;
-mod content_world;
-mod cookies;
-mod cosmetic;
-mod default_browser;
-mod devtools;
-mod dictation;
-mod document_text;
-mod downloads;
-mod edit_keys;
+mod data;
 mod error_compat;
 mod extensions;
-mod external;
-mod fatal_dialog;
-mod favicons;
-mod file_io;
-mod filter_engine;
-mod find;
-mod gpc;
-#[cfg(target_os = "linux")]
-mod gtk_dispatch;
-mod hardening;
-mod hover_guard;
-mod idle;
-mod interaction_state;
-mod keybind;
-mod link_open;
-#[cfg(any(windows, target_os = "linux"))]
-mod load_failure;
-mod load_progress;
-mod memory;
-mod menu;
-#[cfg(target_os = "macos")]
-mod native_webview;
-mod navguard;
-mod overlay;
-mod page_archive;
-mod page_blocks;
-mod page_image;
-mod page_menu;
-#[cfg(any(windows, target_os = "linux", test))]
-mod page_message;
-mod page_preferences;
-mod page_source;
-mod page_text;
-mod pane_container;
-mod pane_focus;
-mod panels;
-mod peek;
-mod permissions;
-mod popup_chrome;
-mod print;
-mod print_export;
-mod private_store;
-mod reader;
+mod pages;
+mod platform;
+mod protection;
 mod save_coalescer;
-mod screenshot;
-mod selection_color;
-mod signup;
-mod site_protection;
 mod state;
-mod suggest;
-mod swipe_nav;
-mod tab_archive;
-mod tab_preview;
-mod tab_session;
-mod themes;
-mod uncloak;
-mod usage;
+mod system;
+mod tabs;
 mod vault;
-mod vault_csv;
-mod vault_recovery;
-mod vault_store;
 mod video_popout;
-mod wake;
-mod wallpapers;
-#[cfg(target_os = "macos")]
-mod webkit_features;
-mod webview_close;
-mod webview_prefs;
-mod widget_panel;
-#[cfg(windows)]
-mod win_default_browser;
-#[cfg(windows)]
-mod win_dispatch;
-#[cfg(windows)]
-mod win_focus;
-#[cfg(windows)]
-mod win_webview2;
-mod windows;
-mod zoom;
 
 use std::sync::Arc;
 
@@ -129,7 +30,7 @@ use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    document_text::serve_child();
+    canvas::document_text::serve_child();
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,wis_network=debug"));
     let subscriber = tracing_subscriber::fmt()
@@ -138,16 +39,16 @@ pub fn run() {
         .with_writer(std::io::stderr)
         .finish();
     let _ = tracing::subscriber::set_global_default(subscriber);
-    webview_prefs::keep_ipc_global_off_remote_pages();
+    platform::webview_prefs::keep_ipc_global_off_remote_pages();
     #[cfg(target_os = "macos")]
-    webkit_features::install_configuration_hook();
+    platform::webkit_features::install_configuration_hook();
 
     let mut builder = tauri::Builder::default();
 
     #[cfg(any(windows, target_os = "linux"))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            default_browser::handle_external_urls(app, argv.into_iter().skip(1));
+            system::default_browser::handle_external_urls(app, argv.into_iter().skip(1));
             if let Some(window) = app.get_webview_window("main") {
                 if let Err(err) = window.set_focus() {
                     log::warn!("focus after second-instance launch failed: {err}");
@@ -156,15 +57,20 @@ pub fn run() {
         }));
     }
 
-    builder =
-        builder.register_asynchronous_uri_scheme_protocol(canvas::SCHEME, canvas::handle_request);
+    builder = builder.register_asynchronous_uri_scheme_protocol(
+        canvas::page::SCHEME,
+        canvas::page::handle_request,
+    );
     #[cfg(windows)]
     wry::set_profile_name_hook(Box::new(|label| {
-        canvas::is_canvas_tab(label).then(|| canvas::WINDOWS_PROFILE.to_string())
+        canvas::page::is_canvas_tab(label).then(|| canvas::page::WINDOWS_PROFILE.to_string())
     }));
 
     builder = builder
-        .register_asynchronous_uri_scheme_protocol("wis-asset", wallpapers::handle_asset_request)
+        .register_asynchronous_uri_scheme_protocol(
+            "wis-asset",
+            data::wallpapers::handle_asset_request,
+        )
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(if cfg!(debug_assertions) {
@@ -192,7 +98,7 @@ pub fn run() {
                 .app_data_dir()
                 .expect("could not resolve app data directory");
             std::fs::create_dir_all(&data_dir)?;
-            vault_store::keep_sealed_key_in(&data_dir);
+            vault::store::keep_sealed_key_in(&data_dir);
             let db_path = data_dir.join("wis.db");
 
             log::info!("opening database at {}", db_path.display());
@@ -201,7 +107,7 @@ pub fn run() {
                 Err(fault) => {
                     let message = fault.user_message(&db_path);
                     log::error!("refusing to launch: {message}");
-                    fatal_dialog::show("Wis cannot open this profile", &message);
+                    system::fatal_dialog::show("Wis cannot open this profile", &message);
                     std::process::exit(1);
                 }
             };
@@ -223,10 +129,10 @@ pub fn run() {
             // Cache-aware build: a warm launch deserializes the compiled
             // engine instead of re-parsing the whole filter list.
             let sub_urls = browser_state.settings.subscribed_lists();
-            let (tracker_blocker, content_rules) = match filter_engine::build(
+            let (tracker_blocker, content_rules) = match protection::filter_engine::build(
                 &filter_cache_dir,
                 &filter_text,
-                &filter_engine::Subscriptions::of(&browser_state.settings),
+                &protection::filter_engine::Subscriptions::of(&browser_state.settings),
             ) {
                 Ok((blocker, rules)) => (Arc::new(blocker), rules),
                 Err(err) => {
@@ -235,7 +141,7 @@ pub fn run() {
                     );
                     (
                         Arc::new(TrackerBlocker::empty()),
-                        content_filter::build_rule_specs_from(&filter_text, None),
+                        protection::content_filter::build_rule_specs_from(&filter_text, None),
                     )
                 }
             };
@@ -274,8 +180,8 @@ pub fn run() {
                 if let Err(err) = state.storage.purge_tab_sessions_except(&restored_tab_ids) {
                     log::warn!("purge orphaned tab sessions: {err}");
                 }
-                if let Some(dir) = tab_preview::previews_dir(app.handle()) {
-                    tab_preview::purge_except(&dir, &restored_tab_ids);
+                if let Some(dir) = tabs::preview::previews_dir(app.handle()) {
+                    tabs::preview::purge_except(&dir, &restored_tab_ids);
                 }
 
                 match state.storage.load_tab_sessions() {
@@ -313,10 +219,10 @@ pub fn run() {
                     match event {
                         // Same page teardown as secondary windows (windows.rs).
                         tauri::WindowEvent::CloseRequested { .. } => {
-                            webview_close::terminate_window_pages(&app_handle, "main");
+                            platform::webview_close::terminate_window_pages(&app_handle, "main");
                         }
                         tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
-                            windows::record_window_geometry(&app_handle, "main");
+                            chrome::multi_window::record_window_geometry(&app_handle, "main");
                         }
                         _ => {}
                     }
@@ -324,14 +230,14 @@ pub fn run() {
 
                 // Windows glass applied by Mica.
                 #[cfg(windows)]
-                let _ = main.set_effects(windows::chrome_window_effects());
+                let _ = main.set_effects(chrome::multi_window::chrome_window_effects());
 
                 // Forward the boot activation's frame-level WM_SETFOCUS (and
                 // every later one) into a webview, before the window can gain
                 // focus for the first time; see `win_focus`.
                 #[cfg(windows)]
                 if let Some(win) = app.get_window("main") {
-                    win_focus::install(&win);
+                    platform::win_focus::install(&win);
                 }
 
                 let _ = main.show();
@@ -352,7 +258,7 @@ pub fn run() {
             // the WebKit store doesn't accumulate stale entries forever.
             {
                 let state = app.state::<AppState>();
-                content_filter::prune_stale_rule_lists(state.wis_rule_list_ids());
+                protection::content_filter::prune_stale_rule_lists(state.wis_rule_list_ids());
             }
 
             // Background EasyPrivacy refresh. Runs once per launch when the
@@ -415,15 +321,15 @@ pub fn run() {
 
             // Native menu + accelerator wiring.
             let effective_keymap = wis_core::effective_keymap(&initial_keybindings);
-            if let Err(err) = menu::install_menu(app, &effective_keymap) {
+            if let Err(err) = chrome::menu::install_menu(app, &effective_keymap) {
                 log::error!("menu install failed: {err}");
             }
 
             // Native click-to-focus for split panes.
-            pane_focus::install(app.handle());
+            chrome::pane_focus::install(app.handle());
 
             // Trackpad scroll-phase monitor (macOS; no-op elsewhere).
-            swipe_nav::install_phase_monitor(app.handle());
+            tabs::swipe_nav::install_phase_monitor(app.handle());
 
             // PDFs and attachment responses download instead of rendering in
             // WebKit's viewer.
@@ -431,75 +337,75 @@ pub fn run() {
             wry::set_main_frame_download_policy(&["application/pdf"], true);
 
             // App handle for the native "Save password?" capture handler.
-            capture::set_app_handle(app.handle().clone());
+            vault::capture::set_app_handle(app.handle().clone());
             #[cfg(target_os = "macos")]
-            page_preferences::install_hook(app.handle().clone());
+            pages::preferences::install_hook(app.handle().clone());
             #[cfg(target_os = "macos")]
-            page_blocks::install(app.handle().clone());
+            protection::page_blocks::install(app.handle().clone());
             #[cfg(target_os = "macos")]
-            clean_links::install(app.handle().clone());
-            signup::set_app_handle(app.handle().clone());
+            protection::clean_links::install(app.handle().clone());
+            vault::signup::set_app_handle(app.handle().clone());
 
             // App handle for the AI page-text channel's native handler.
-            page_text::set_app_handle(app.handle().clone());
-            page_menu::set_app_handle(app.handle().clone());
-            page_source::set_app_handle(app.handle().clone());
+            pages::text::set_app_handle(app.handle().clone());
+            pages::context_menu::set_app_handle(app.handle().clone());
+            pages::source::set_app_handle(app.handle().clone());
 
             // App handle for the assistant's web-fetch dispatchers.
             #[cfg(any(windows, target_os = "linux"))]
-            ai_fetch::set_app_handle(app.handle().clone());
+            ai::fetch::set_app_handle(app.handle().clone());
 
             // App handle for the native Opt+click "Peek" handler.
-            peek::set_app_handle(app.handle().clone());
+            chrome::peek::set_app_handle(app.handle().clone());
 
             // App handle for the link-open handler.
-            link_open::set_app_handle(app.handle().clone());
+            pages::link_open::set_app_handle(app.handle().clone());
 
             // A first launch's argv can itself carry a URL (Wis started by a
             // link click); queued until the chrome drains it.
             #[cfg(any(windows, target_os = "linux"))]
-            default_browser::handle_external_urls(
+            system::default_browser::handle_external_urls(
                 app.handle(),
                 std::env::args_os().skip(1).filter_map(|a| a.into_string().ok()),
             );
 
             // App handle for the cosmetic-filtering handler.
-            cosmetic::set_app_handle(app.handle().clone());
+            protection::cosmetic::set_app_handle(app.handle().clone());
 
             // App handle for the native click navigation-guard handler.
-            navguard::set_app_handle(app.handle().clone());
+            protection::navguard::set_app_handle(app.handle().clone());
 
             // App handle for the video-popout message handler.
             video_popout::set_app_handle(app.handle().clone());
 
             // App handle for the popup hover-guard.
-            hover_guard::set_app_handle(app.handle().clone());
+            chrome::hover_guard::set_app_handle(app.handle().clone());
 
-            wake::install(app.handle());
+            system::wake::install(app.handle());
 
             // App handle for the camera/microphone consent message handler.
-            permissions::set_app_handle(app.handle().clone());
+            protection::permissions::set_app_handle(app.handle().clone());
 
             // App handle for the popup open-in-app navigation delegate.
-            app_launch::set_app_handle(app.handle().clone());
+            system::app_launch::set_app_handle(app.handle().clone());
 
             // App handle for the find-in-page match-count delegate.
-            find::set_app_handle(app.handle().clone());
+            pages::find::set_app_handle(app.handle().clone());
 
             // App handle for the page-side keyboard-shortcut forwarder.
-            keybind::set_app_handle(app.handle().clone());
+            chrome::keybind::set_app_handle(app.handle().clone());
             #[cfg(target_os = "macos")]
-            keybind::offer_page_first_combos_to_tabs();
+            chrome::keybind::offer_page_first_combos_to_tabs();
 
             // App handle for the native page-load failure callbacks.
             #[cfg(any(windows, target_os = "linux"))]
-            load_failure::set_app_handle(app.handle().clone());
+            tabs::load_failure::set_app_handle(app.handle().clone());
 
             // Per-tab audibility poll (tab audio icons + click-to-mute).
-            audio::start_poll(app.handle().clone());
-            tab_archive::start(app.handle().clone());
-            usage::start(app.handle().clone());
-            canvas::start(app.handle().clone());
+            tabs::audio::start_poll(app.handle().clone());
+            tabs::archive::start(app.handle().clone());
+            data::usage::start(app.handle().clone());
+            canvas::page::start(app.handle().clone());
             #[cfg(target_os = "macos")]
             extensions::start(app.handle());
 
@@ -510,7 +416,7 @@ pub fn run() {
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     // Drop any persisted sessions past their TTL at launch.
-                    cookies::purge_persisted_sessions(&handle, false).await;
+                    data::cookies::purge_persisted_sessions(&handle, false).await;
                     let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
                     tick.tick().await; // consume the immediate first tick
                     loop {
@@ -524,7 +430,7 @@ pub fn run() {
                             .copied()
                             .collect();
                         for ws in workspaces {
-                            cookies::persist_session_cookies(&handle, ws).await;
+                            data::cookies::persist_session_cookies(&handle, ws).await;
                         }
                     }
                 });
@@ -604,14 +510,14 @@ pub fn run() {
             commands::set_workspace_background,
             commands::set_workspace_icon,
             commands::set_tab_folder_icon,
-            wallpapers::import_wallpaper,
-            themes::set_active_theme,
-            themes::export_theme,
-            themes::import_theme,
-            themes::encode_theme_code,
-            themes::decode_theme_code,
-            backup::export_backup,
-            backup::import_backup,
+            data::wallpapers::import_wallpaper,
+            data::themes::set_active_theme,
+            data::themes::export_theme,
+            data::themes::import_theme,
+            data::themes::encode_theme_code,
+            data::themes::decode_theme_code,
+            data::backup::export_backup,
+            data::backup::import_backup,
             commands::set_workspace_custom_accent,
             commands::get_browser_state,
             commands::get_workspace,
@@ -620,48 +526,48 @@ pub fn run() {
             commands::get_history,
             commands::delete_history,
             commands::clear_history,
-            cookies::clear_site_data,
-            cookies::list_site_data,
-            cookies::delete_site_data,
-            vault::vault_status,
-            vault::vault_unlock,
-            vault::vault_lock,
-            vault_recovery::vault_recovery_key,
-            vault_recovery::vault_set_recovery_key,
-            vault_recovery::vault_remove_recovery_key,
-            vault_recovery::vault_recover,
-            vault_recovery::vault_reset,
-            vault_store::vault_create_password,
-            addresses::address_list,
-            addresses::address_any,
-            address_field::address_fill,
-            address_field::release_address_field,
-            address_save::address_capture_pending,
-            address_save::address_capture_save,
-            address_save::address_capture_dismiss,
-            address_save::address_capture_hush,
-            addresses::address_save,
-            addresses::address_delete,
-            vault_store::vault_unlock_password,
-            vault_store::vault_change_password,
-            vault::vault_list,
-            vault::vault_save,
-            vault::vault_reveal,
-            vault::generate_password,
-            vault::vault_check_breaches,
-            vault::vault_delete,
-            vault::vault_has_credentials,
-            vault_csv::vault_import_csv,
-            vault_csv::vault_export_csv,
-            vault::autofill_candidates,
-            vault::autofill_fill,
-            vault::generate_password_for_field,
-            suggest::get_url_suggestions,
-            suggest::record_search,
-            suggest::delete_search,
-            capture::capture_save,
-            capture::capture_dismiss,
-            capture::capture_pending,
+            data::cookies::clear_site_data,
+            data::cookies::list_site_data,
+            data::cookies::delete_site_data,
+            vault::passwords::vault_status,
+            vault::passwords::vault_unlock,
+            vault::passwords::vault_lock,
+            vault::recovery::vault_recovery_key,
+            vault::recovery::vault_set_recovery_key,
+            vault::recovery::vault_remove_recovery_key,
+            vault::recovery::vault_recover,
+            vault::recovery::vault_reset,
+            vault::store::vault_create_password,
+            vault::addresses::address_list,
+            vault::addresses::address_any,
+            vault::address_field::address_fill,
+            vault::address_field::release_address_field,
+            vault::address_save::address_capture_pending,
+            vault::address_save::address_capture_save,
+            vault::address_save::address_capture_dismiss,
+            vault::address_save::address_capture_hush,
+            vault::addresses::address_save,
+            vault::addresses::address_delete,
+            vault::store::vault_unlock_password,
+            vault::store::vault_change_password,
+            vault::passwords::vault_list,
+            vault::passwords::vault_save,
+            vault::passwords::vault_reveal,
+            vault::passwords::generate_password,
+            vault::passwords::vault_check_breaches,
+            vault::passwords::vault_delete,
+            vault::passwords::vault_has_credentials,
+            vault::csv::vault_import_csv,
+            vault::csv::vault_export_csv,
+            vault::passwords::autofill_candidates,
+            vault::passwords::autofill_fill,
+            vault::passwords::generate_password_for_field,
+            data::suggest::get_url_suggestions,
+            data::suggest::record_search,
+            data::suggest::delete_search,
+            vault::capture::capture_save,
+            vault::capture::capture_dismiss,
+            vault::capture::capture_pending,
             commands::create_workspace,
             commands::create_private_workspace,
             commands::rename_workspace,
@@ -692,10 +598,10 @@ pub fn run() {
             commands::tab_hard_reload,
             commands::tab_zoom,
             commands::zoom_forget_site,
-            site_protection::tab_set_site_protection,
-            hardening::set_workspace_lockdown,
-            site_protection::site_protection_session,
-            page_blocks::tab_page_blocks,
+            protection::site_protection::tab_set_site_protection,
+            protection::hardening::set_workspace_lockdown,
+            protection::site_protection::site_protection_session,
+            protection::page_blocks::tab_page_blocks,
             commands::reorder_tabs,
             commands::pin_tab,
             commands::create_tab_folder,
@@ -722,8 +628,8 @@ pub fn run() {
             commands::tab_set_reader,
             commands::tab_go_back,
             commands::tab_go_forward,
-            tab_preview::stash_tab_preview,
-            tab_preview::capture_tab_preview,
+            tabs::preview::stash_tab_preview,
+            tabs::preview::capture_tab_preview,
             commands::update_settings,
             commands::apply_shortcuts,
             commands::check_url_policy,
@@ -731,75 +637,75 @@ pub fn run() {
             commands::set_window_icon,
             commands::set_dock_icon,
             commands::refresh_filter_lists,
-            external::open_in_external_browser,
-            default_browser::default_browser_status,
-            default_browser::set_default_browser,
-            default_browser::drain_external_urls,
-            default_browser::route_external_link,
-            clipboard::copy_text,
-            clipboard::clean_link,
-            clean_links::clean_followed_link,
-            memory::list_webview_memory,
+            system::external::open_in_external_browser,
+            system::default_browser::default_browser_status,
+            system::default_browser::set_default_browser,
+            system::default_browser::drain_external_urls,
+            system::default_browser::route_external_link,
+            system::clipboard::copy_text,
+            system::clipboard::clean_link,
+            protection::clean_links::clean_followed_link,
+            system::memory::list_webview_memory,
             commands::start_element_picker,
             commands::import_userscript,
-            downloads::list_downloads,
-            downloads::cancel_download,
-            downloads::remove_download,
-            downloads::remove_downloads,
-            downloads::open_download,
-            downloads::reveal_download,
-            interaction_state::tab_interaction_state,
-            tab_session::persist_tab_session,
-            find::tab_find_string,
-            find::tab_find_clear,
-            print::print_active_tab,
-            screenshot::capture_to_clipboard,
-            devtools::inspect_tab,
-            page_archive::save_page_archive,
-            page_image::copy_image,
-            page_menu::clear_menu_selection,
-            signup::fill_generated_password,
-            signup::signup_field,
-            signup::release_signup_field,
-            page_source::capture_page_source,
-            page_source::page_source,
-            page_image::save_image_as,
-            screenshot::save_last_screenshot,
-            peek::open_peek,
-            peek::set_peek_bounds,
-            peek::close_peek,
-            peek::peek_set_reader,
-            peek::peek_go_back,
-            peek::peek_go_forward,
-            peek::peek_reload,
-            widget_panel::open_widget_panel,
-            widget_panel::show_widget_panel,
-            widget_panel::hide_widget_panel,
-            widget_panel::set_widget_panel_bounds,
-            widget_panel::close_widget_panel,
-            widget_panel::close_all_widget_panels,
-            widget_panel::list_widget_panels,
-            widget_panel::reload_widget_panel,
-            widget_panel::navigate_widget_panel,
+            data::downloads::list_downloads,
+            data::downloads::cancel_download,
+            data::downloads::remove_download,
+            data::downloads::remove_downloads,
+            data::downloads::open_download,
+            data::downloads::reveal_download,
+            tabs::interaction_state::tab_interaction_state,
+            tabs::session::persist_tab_session,
+            pages::find::tab_find_string,
+            pages::find::tab_find_clear,
+            pages::print::print_active_tab,
+            pages::screenshot::capture_to_clipboard,
+            pages::devtools::inspect_tab,
+            pages::archive::save_page_archive,
+            pages::image::copy_image,
+            pages::context_menu::clear_menu_selection,
+            vault::signup::fill_generated_password,
+            vault::signup::signup_field,
+            vault::signup::release_signup_field,
+            pages::source::capture_page_source,
+            pages::source::page_source,
+            pages::image::save_image_as,
+            pages::screenshot::save_last_screenshot,
+            chrome::peek::open_peek,
+            chrome::peek::set_peek_bounds,
+            chrome::peek::close_peek,
+            chrome::peek::peek_set_reader,
+            chrome::peek::peek_go_back,
+            chrome::peek::peek_go_forward,
+            chrome::peek::peek_reload,
+            chrome::widget_panel::open_widget_panel,
+            chrome::widget_panel::show_widget_panel,
+            chrome::widget_panel::hide_widget_panel,
+            chrome::widget_panel::set_widget_panel_bounds,
+            chrome::widget_panel::close_widget_panel,
+            chrome::widget_panel::close_all_widget_panels,
+            chrome::widget_panel::list_widget_panels,
+            chrome::widget_panel::reload_widget_panel,
+            chrome::widget_panel::navigate_widget_panel,
             video_popout::open_video_popout,
             video_popout::close_video_popout,
-            audio::set_tab_muted,
-            audio::tab_audio_state,
-            widget_panel::set_widget_panel_muted,
-            widget_panel::widget_panel_muted,
-            windows::new_window,
-            windows::open_url_in_new_window,
-            windows::free_workspaces,
-            windows::restore_session_windows,
-            swipe_nav::set_swipe_accent,
-            navguard::nav_guard_proceed,
-            ai::ai_set_key,
-            ai::ai_key_present,
-            ai::ai_clear_key,
-            ai::ai_chat,
-            ai::ai_cancel,
-            ai::ai_assess_link,
-            ai_models::ai_list_models,
+            tabs::audio::set_tab_muted,
+            tabs::audio::tab_audio_state,
+            chrome::widget_panel::set_widget_panel_muted,
+            chrome::widget_panel::widget_panel_muted,
+            chrome::multi_window::new_window,
+            chrome::multi_window::open_url_in_new_window,
+            chrome::multi_window::free_workspaces,
+            chrome::multi_window::restore_session_windows,
+            tabs::swipe_nav::set_swipe_accent,
+            protection::navguard::nav_guard_proceed,
+            ai::chat::ai_set_key,
+            ai::chat::ai_key_present,
+            ai::chat::ai_clear_key,
+            ai::chat::ai_chat,
+            ai::chat::ai_cancel,
+            ai::chat::ai_assess_link,
+            ai::models::ai_list_models,
             extensions::extensions_supported,
             extensions::extension_choose,
             extensions::extension_install,
@@ -824,50 +730,50 @@ pub fn run() {
             extensions::linking::extension_link_store,
             extensions::linking::extension_decline_listing,
             extensions::extension_dismiss_popup,
-            ai_fetch::ai_web_search,
-            ai_fetch::ai_web_fetch,
-            ai_actions::ai_preview_tabs,
-            ai_actions::ai_preview_urls,
-            ai_actions::ai_open_tabs,
-            ai_actions::ai_switch_tab,
-            ai_actions::ai_close_tabs,
-            ai_actions::ai_group_tabs,
-            ai_local::ai_list_tabs,
-            ai_local::ai_resolve_tab,
-            ai_local::ai_search_history,
-            ai_local::ai_search_bookmarks,
-            page_text::request_page_text,
-            permissions::resolve_media_permission,
-            app_launch::app_launch_decide,
-            bookmarks::list_bookmark_folders,
-            bookmarks::list_bookmarks,
-            bookmarks::create_bookmark_folder,
-            bookmarks::rename_bookmark_folder,
-            bookmarks::reorder_bookmark_folders,
-            bookmarks::delete_bookmark_folder,
-            bookmarks::add_bookmark,
-            bookmarks::move_bookmark,
-            bookmarks::set_bookmark_pinned,
-            bookmarks::reorder_pinned_bookmarks,
-            bookmarks::reorder_bookmarks,
-            bookmarks::delete_bookmark,
-            bookmarks::export_bookmarks_html,
-            bookmarks::import_bookmarks_html,
-            browser_import::list_import_sources,
-            browser_import::import_browser_bookmarks,
-            browser_import::import_browser_history,
-            usage::usage_summary,
-            overlay::focus_webview,
-            overlay::focus_self,
-            overlay::ensure_overlay,
-            overlay::set_overlay_bounds,
-            overlay::set_overlay_position,
-            overlay::size_overlay,
-            overlay::hide_overlay,
-            overlay::promote_overlay,
-            favicons::get_favicon_data_url,
-            favicons::favicon_origin_hash,
-            favicons::prefetch_favicon,
+            ai::fetch::ai_web_search,
+            ai::fetch::ai_web_fetch,
+            ai::actions::ai_preview_tabs,
+            ai::actions::ai_preview_urls,
+            ai::actions::ai_open_tabs,
+            ai::actions::ai_switch_tab,
+            ai::actions::ai_close_tabs,
+            ai::actions::ai_group_tabs,
+            ai::local::ai_list_tabs,
+            ai::local::ai_resolve_tab,
+            ai::local::ai_search_history,
+            ai::local::ai_search_bookmarks,
+            pages::text::request_page_text,
+            protection::permissions::resolve_media_permission,
+            system::app_launch::app_launch_decide,
+            data::bookmarks::list_bookmark_folders,
+            data::bookmarks::list_bookmarks,
+            data::bookmarks::create_bookmark_folder,
+            data::bookmarks::rename_bookmark_folder,
+            data::bookmarks::reorder_bookmark_folders,
+            data::bookmarks::delete_bookmark_folder,
+            data::bookmarks::add_bookmark,
+            data::bookmarks::move_bookmark,
+            data::bookmarks::set_bookmark_pinned,
+            data::bookmarks::reorder_pinned_bookmarks,
+            data::bookmarks::reorder_bookmarks,
+            data::bookmarks::delete_bookmark,
+            data::bookmarks::export_bookmarks_html,
+            data::bookmarks::import_bookmarks_html,
+            data::browser_import::list_import_sources,
+            data::browser_import::import_browser_bookmarks,
+            data::browser_import::import_browser_history,
+            data::usage::usage_summary,
+            chrome::overlay::focus_webview,
+            chrome::overlay::focus_self,
+            chrome::overlay::ensure_overlay,
+            chrome::overlay::set_overlay_bounds,
+            chrome::overlay::set_overlay_position,
+            chrome::overlay::size_overlay,
+            chrome::overlay::hide_overlay,
+            chrome::overlay::promote_overlay,
+            data::favicons::get_favicon_data_url,
+            data::favicons::favicon_origin_hash,
+            data::favicons::prefetch_favicon,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -881,9 +787,9 @@ pub fn run() {
             ) {
                 let state = app_handle.state::<state::AppState>();
                 state.save_coalescer.flush(&state.storage);
-                usage::flush_now(&state);
-                canvas::flush_logged(state.storage.as_ref());
-                canvas::quit(app_handle);
+                data::usage::flush_now(&state);
+                canvas::page::flush_logged(state.storage.as_ref());
+                canvas::page::quit(app_handle);
             }
 
             if let tauri::RunEvent::WindowEvent {
@@ -892,7 +798,7 @@ pub fn run() {
                 ..
             } = &event
             {
-                usage::window_focused(app_handle, label, *focused);
+                data::usage::window_focused(app_handle, label, *focused);
             }
 
             // The floating video popout must not outlive the main window
@@ -907,8 +813,8 @@ pub fn run() {
                 if label == "main" {
                     video_popout::close_popout_window(app_handle);
                     if let Some(id) = app_handle.state::<AppState>().window_workspace("main") {
-                        private_store::release(app_handle, id);
-                        uncloak::clear(&app_handle.state(), id);
+                        protection::private_store::release(app_handle, id);
+                        protection::uncloak::clear(&app_handle.state(), id);
                         #[cfg(target_os = "macos")]
                         extensions::release(app_handle, id);
                     }
@@ -919,7 +825,7 @@ pub fn run() {
             // arrive as Apple Events; queued until the chrome can open tabs.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = &event {
-                default_browser::handle_external_urls(
+                system::default_browser::handle_external_urls(
                     app_handle,
                     urls.iter().map(|u| u.to_string()),
                 );

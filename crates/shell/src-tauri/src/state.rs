@@ -27,8 +27,8 @@ use wis_network::{
 };
 use wis_storage::Storage;
 
-use crate::content_filter::{RuleSpec, RuleSpecs};
 use crate::error_compat::WisShellError;
+use crate::protection::content_filter::{RuleSpec, RuleSpecs};
 
 /// A window's on-screen geometry in **logical** pixels (the unit the window
 /// builder and `set_position`/`set_size` use), persisted per workspace so a
@@ -75,8 +75,8 @@ pub struct AppState {
     pub save_coalescer: Arc<crate::save_coalescer::SaveCoalescer>,
     /// Per-tab debounced writer for serialized WKWebView `interactionState`, so
     /// a tab's back/forward history + scroll survive a full restart (see
-    /// [`crate::tab_session`]).
-    pub tab_session_saver: crate::tab_session::TabSessionSaver,
+    /// [`crate::tabs::session`]).
+    pub tab_session_saver: crate::tabs::session::TabSessionSaver,
     pub tracker_blocker: RwLock<Arc<TrackerBlocker>>,
     /// Swappable so a DoH provider change takes effect on the next lookup:
     /// running proxies hold this handle, not the resolver behind it.
@@ -84,7 +84,7 @@ pub struct AppState {
     pub content_rules: RwLock<RuleSpecs>,
     filter_rebuild: Mutex<()>,
     pub filter_refresh: Mutex<()>,
-    /// See [`crate::uncloak`].
+    /// See [`crate::protection::uncloak`].
     pub cloaking: std::sync::Mutex<HashMap<WorkspaceId, Arc<wis_network::cloaking::Cloaking>>>,
     pub webview_workspaces: std::sync::RwLock<HashMap<String, WorkspaceId>>,
     /// Sync read-cache of [`UserSettings.user_cosmetic_rules`](wis_core::UserSettings::user_cosmetic_rules)
@@ -103,10 +103,10 @@ pub struct AppState {
     /// Logins captured from pages, one per tab, awaiting the user's save or
     /// dismiss decision. The plaintext passwords live here only; they never
     /// cross back to a webview.
-    pub pending_captures: Mutex<HashMap<wis_core::TabId, crate::capture::PendingCapture>>,
+    pub pending_captures: Mutex<HashMap<wis_core::TabId, crate::vault::capture::PendingCapture>>,
     /// Addresses pages submitted, one per tab, awaiting the user's save or
     /// dismiss decision.
-    pub pending_addresses: Mutex<HashMap<wis_core::TabId, crate::address_save::Captured>>,
+    pub pending_addresses: Mutex<HashMap<wis_core::TabId, crate::vault::address_save::Captured>>,
     /// Live sessions (WebKit `interactionState`) of tabs closed in this run,
     /// keyed by their `closed_tabs` row id. The rows live in storage and
     /// survive a restart.
@@ -122,25 +122,25 @@ pub struct AppState {
     /// their WebKit data store this run, these are only restored once per workspace.
     pub restored_cookies: Mutex<HashSet<WorkspaceId>>,
     /// Hover-preview snapshots (downscaled PNGs), newest last; capped (see
-    /// [`crate::tab_preview`]). Captured on switch-away/sleep, served on hover.
+    /// [`crate::tabs::preview`]). Captured on switch-away/sleep, served on hover.
     pub tab_previews: std::sync::Mutex<Vec<(wis_core::TabId, Vec<u8>)>>,
-    /// Tracked downloads, oldest first (see [`crate::downloads`]). A sync
+    /// Tracked downloads, oldest first (see [`crate::data::downloads`]). A sync
     /// mutex because wry's download callbacks are synchronous main-thread
     /// code that cannot await.
-    pub downloads: std::sync::Mutex<Vec<crate::downloads::DownloadItem>>,
+    pub downloads: std::sync::Mutex<Vec<crate::data::downloads::DownloadItem>>,
     /// Sync mirror of the download settings (ask-where + remembered dir),
     /// readable from the same synchronous download callbacks.
-    pub download_prefs: std::sync::Mutex<crate::downloads::DownloadPrefs>,
+    pub download_prefs: std::sync::Mutex<crate::data::downloads::DownloadPrefs>,
     /// Video-popout bookkeeping (pending enter handshake + the live popout).
     /// A sync mutex because the `wisPopout` script-message handler is
     /// synchronous main-thread code that cannot await.
     pub video_popout: std::sync::Mutex<crate::video_popout::VideoPopoutState>,
     /// Tab uuids whose webview reported audible playback on the last audio
-    /// poll (see [`crate::audio`]).
+    /// poll (see [`crate::tabs::audio`]).
     pub audible_tabs: std::sync::Mutex<HashSet<String>>,
     /// Label of the focused Wis window, from window focus events.
     pub focused_window: std::sync::Mutex<Option<String>>,
-    /// Site usage being metered and not yet stored (see [`crate::usage`]).
+    /// Site usage being metered and not yet stored (see [`crate::data::usage`]).
     pub usage: std::sync::Mutex<wis_core::library::usage::UsageLedger>,
     /// Serialises usage flushes with clears.
     pub usage_io: tokio::sync::Mutex<()>,
@@ -160,7 +160,7 @@ pub struct AppState {
     pub media_permissions_session: std::sync::RwLock<HashMap<String, bool>>,
     /// Sync mirror of the autoplay setting and its per-host overrides, read
     /// per navigation on the main thread.
-    pub autoplay: std::sync::RwLock<crate::autoplay::AutoplayCache>,
+    pub autoplay: std::sync::RwLock<crate::tabs::autoplay::AutoplayCache>,
     /// Sync mirror of the saved per-site protection, read per navigation on
     /// the main thread.
     pub site_protection: std::sync::RwLock<HashMap<String, wis_core::SiteProtection>>,
@@ -168,10 +168,10 @@ pub struct AppState {
     pub site_protection_session: std::sync::RwLock<HashMap<String, wis_core::SiteProtection>>,
     /// Sync mirror of the page-zoom setting and its per-host overrides, read
     /// per navigation on the main thread.
-    pub zoom: std::sync::RwLock<crate::zoom::ZoomCache>,
+    pub zoom: std::sync::RwLock<crate::tabs::zoom::ZoomCache>,
     /// Camera/microphone requests awaiting the user's decision in the prompt
     /// overlay, keyed by a monotonic request id (`media_seq`).
-    pub pending_media: std::sync::Mutex<HashMap<u64, crate::permissions::PendingMedia>>,
+    pub pending_media: std::sync::Mutex<HashMap<u64, crate::protection::permissions::PendingMedia>>,
     pub media_seq: std::sync::atomic::AtomicU64,
     /// Persisted per-site custom-scheme launch decisions, keyed
     /// `"<scheme>|<initiator host>"`. A sync mirror of
@@ -179,7 +179,8 @@ pub struct AppState {
     pub app_launch_permissions: std::sync::RwLock<HashMap<String, bool>>,
     /// Custom-scheme launches awaiting the user's decision in the prompt
     /// overlay, keyed by a monotonic request id.
-    pub pending_app_launch: std::sync::Mutex<HashMap<u64, crate::app_launch::PendingAppLaunch>>,
+    pub pending_app_launch:
+        std::sync::Mutex<HashMap<u64, crate::system::app_launch::PendingAppLaunch>>,
     pub app_launch_seq: std::sync::atomic::AtomicU64,
     /// Set once the main window has reopened the saved multi-window layout, so
     /// `restore_session_windows` spawns the secondary windows exactly once per run.
@@ -201,7 +202,7 @@ pub struct AppState {
     pub last_screenshot: std::sync::Mutex<Option<Vec<u8>>>,
     /// Cancel flags for in-flight assistant completions, keyed by the request
     /// id the panel minted. Set by `ai_cancel` and dropped by `ai_chat` when
-    /// its stream ends. (see [`crate::ai`])
+    /// its stream ends. (see [`crate::ai::chat`])
     pub ai_cancels: std::sync::Mutex<HashMap<String, Arc<std::sync::atomic::AtomicBool>>>,
     /// The built-in Tor (Arti) SOCKS5 proxy, started lazily on first use.
     /// Only present with the `tor` feature.
@@ -218,16 +219,17 @@ impl AppState {
         filter_cache_dir: PathBuf,
         content_rules: RuleSpecs,
     ) -> Self {
-        let download_prefs = crate::downloads::DownloadPrefs::from_settings(&browser.settings);
+        let download_prefs =
+            crate::data::downloads::DownloadPrefs::from_settings(&browser.settings);
         let initial_user_cosmetic_rules = browser.settings.user_cosmetic_rules.clone();
         let initial_userscripts = browser.settings.userscripts.clone();
         let initial_media_permissions = browser.settings.media_permissions.clone();
-        let initial_autoplay = crate::autoplay::AutoplayCache {
+        let initial_autoplay = crate::tabs::autoplay::AutoplayCache {
             policy: browser.settings.autoplay_policy,
             overrides: browser.settings.autoplay_site_overrides.clone(),
         };
         let initial_site_protection = browser.settings.site_protection_overrides.clone();
-        let initial_zoom = crate::zoom::ZoomCache {
+        let initial_zoom = crate::tabs::zoom::ZoomCache {
             default_percent: browser.settings.default_zoom_percent,
             overrides: browser.settings.zoom_site_overrides.clone(),
         };
@@ -242,7 +244,7 @@ impl AppState {
             )])),
             storage,
             save_coalescer: Arc::new(crate::save_coalescer::SaveCoalescer::new()),
-            tab_session_saver: crate::tab_session::TabSessionSaver::new(),
+            tab_session_saver: crate::tabs::session::TabSessionSaver::new(),
             tracker_blocker: RwLock::new(tracker_blocker),
             resolver,
             content_rules: RwLock::new(content_rules),
@@ -430,7 +432,7 @@ impl AppState {
     }
 
     /// Replace the autoplay read-cache.
-    pub fn refresh_autoplay_cache(&self, cache: crate::autoplay::AutoplayCache) {
+    pub fn refresh_autoplay_cache(&self, cache: crate::tabs::autoplay::AutoplayCache) {
         let mut guard = self.autoplay.write().expect("autoplay poisoned");
         *guard = cache;
     }
@@ -453,7 +455,7 @@ impl AppState {
             .site_protection_session
             .read()
             .expect("site_protection_session poisoned");
-        crate::site_protection::for_url(&saved, &session, url)
+        crate::protection::site_protection::for_url(&saved, &session, url)
     }
 
     pub fn wis_rule_list_ids(&self) -> Vec<String> {
@@ -470,7 +472,7 @@ impl AppState {
     pub async fn refresh_zoom_cache(&self) {
         let browser = self.browser.lock().await;
         let mut guard = self.zoom.write().expect("zoom poisoned");
-        *guard = crate::zoom::ZoomCache {
+        *guard = crate::tabs::zoom::ZoomCache {
             default_percent: browser.settings.default_zoom_percent,
             overrides: browser.settings.zoom_site_overrides.clone(),
         };
@@ -479,13 +481,13 @@ impl AppState {
     /// The zoom percentage for the page at `url`.
     pub fn zoom_percent_for_url(&self, url: &str) -> u16 {
         let cache = self.zoom.read().expect("zoom poisoned");
-        crate::zoom::percent_for_url(&cache, url)
+        crate::tabs::zoom::percent_for_url(&cache, url)
     }
 
     /// The autoplay policy for the page at `url`.
     pub fn autoplay_policy_for(&self, url: &str) -> wis_core::AutoplayPolicy {
         let cache = self.autoplay.read().expect("autoplay poisoned");
-        crate::autoplay::policy_for_url(&cache, url)
+        crate::tabs::autoplay::policy_for_url(&cache, url)
     }
 
     /// Replace the remembered app-launch read-cache.
@@ -655,10 +657,10 @@ impl AppState {
     ) -> RequestPolicy {
         let mut policy = RequestPolicy::new(privacy_mode, self.current_tracker_blocker())
             .with_global_privacy_control(global_privacy_control);
-        if crate::uncloak::SUPPORTED {
+        if crate::protection::uncloak::SUPPORTED {
             policy = policy.with_cloaking(
-                crate::uncloak::cloaking_for(self, workspace_id),
-                crate::uncloak::unblocked_sites(self),
+                crate::protection::uncloak::cloaking_for(self, workspace_id),
+                crate::protection::uncloak::unblocked_sites(self),
             );
         }
         match upstream {
@@ -802,19 +804,19 @@ impl AppState {
     /// specs (engine-level blocking), then re-points every running proxy at
     /// the new blocker in place. Dropping them instead would strand the open
     /// tabs, which keep the port they were built with. Live tab webviews still hold
-    /// the previous rule list attached by [`crate::content_filter`]; the
+    /// the previous rule list attached by [`crate::protection::content_filter`]; the
     /// caller is responsible for re-attaching the new specs to active tabs.
     /// Returns the number of bytes in the new filter text for diagnostics.
     pub async fn rebuild_filter_engine(&self, filter_text: String) -> Result<usize, WisShellError> {
         let _one_at_a_time = self.filter_rebuild.lock().await;
         let subscriptions = {
             let browser = self.browser.lock().await;
-            crate::filter_engine::Subscriptions::of(&browser.settings)
+            crate::protection::filter_engine::Subscriptions::of(&browser.settings)
         };
         let cache_dir = self.filter_cache_dir.clone();
         let size = filter_text.len();
         let (blocker, rules) = tokio::task::spawn_blocking(move || {
-            crate::filter_engine::build(&cache_dir, &filter_text, &subscriptions)
+            crate::protection::filter_engine::build(&cache_dir, &filter_text, &subscriptions)
         })
         .await
         .map_err(|err| WisShellError::Other(format!("rebuild blocker: {err}")))?
@@ -871,7 +873,7 @@ mod tests {
             blocker,
             resolver,
             std::env::temp_dir().join("wis-filter-test"),
-            crate::content_filter::build_rule_specs_from(DEFAULT_TRACKER_LIST, None),
+            crate::protection::content_filter::build_rule_specs_from(DEFAULT_TRACKER_LIST, None),
         )
     }
 
@@ -1036,7 +1038,7 @@ mod tests {
             );
         }
 
-        let sites = crate::uncloak::unblocked_sites(&state);
+        let sites = crate::protection::uncloak::unblocked_sites(&state);
         assert_eq!(
             *sites,
             std::collections::HashSet::from(["example.org".to_owned()])
@@ -1047,17 +1049,21 @@ mod tests {
     fn each_workspace_keeps_its_own_pages_until_it_is_deleted() {
         let state = app_state_for_test();
         let (opening, other) = (WorkspaceId::new(), WorkspaceId::new());
-        crate::uncloak::register(&state, "tab-opening", opening);
-        crate::uncloak::opening_page(&state, "tab-opening", "https://go.shop.test/offer");
-        crate::uncloak::opening_page(&state, "tab-unknown", "https://elsewhere.test/");
+        crate::protection::uncloak::register(&state, "tab-opening", opening);
+        crate::protection::uncloak::opening_page(
+            &state,
+            "tab-opening",
+            "https://go.shop.test/offer",
+        );
+        crate::protection::uncloak::opening_page(&state, "tab-unknown", "https://elsewhere.test/");
 
         assert_eq!(
-            crate::uncloak::cloaking_for(&state, opening).is_page("go.shop.test"),
-            crate::uncloak::SUPPORTED
+            crate::protection::uncloak::cloaking_for(&state, opening).is_page("go.shop.test"),
+            crate::protection::uncloak::SUPPORTED
         );
-        assert!(!crate::uncloak::cloaking_for(&state, other).is_page("go.shop.test"));
-        crate::uncloak::forget_workspace(&state, opening);
-        assert!(!crate::uncloak::cloaking_for(&state, opening).is_page("go.shop.test"));
+        assert!(!crate::protection::uncloak::cloaking_for(&state, other).is_page("go.shop.test"));
+        crate::protection::uncloak::forget_workspace(&state, opening);
+        assert!(!crate::protection::uncloak::cloaking_for(&state, opening).is_page("go.shop.test"));
     }
 
     #[test]

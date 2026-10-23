@@ -1,4 +1,4 @@
-// Which fields `address_field.rs` takes for an address, which it counts as
+// Which fields `vault/address_field/mod.rs` takes for an address, which it counts as
 // shown, and how it fills them.
 
 import assert from 'node:assert/strict'
@@ -7,12 +7,12 @@ import { test } from 'node:test'
 import { includedFile, rawStringConst } from '../support/rustSource.mjs'
 
 const CLASSIFY = [
-  includedFile('address_field/patterns.js'),
-  rawStringConst('address_field/guess.rs', 'GUESS_JS'),
-  rawStringConst('address_field/scripts.rs', 'CLASSIFY_JS'),
+  includedFile('vault/address_field/patterns.js'),
+  rawStringConst('vault/address_field/guess.rs', 'GUESS_JS'),
+  rawStringConst('vault/address_field/scripts.rs', 'CLASSIFY_JS'),
 ].join('\n')
-const FOCUS = rawStringConst('address_field/scripts.rs', 'FOCUS_JS')
-const FILL = rawStringConst('address_field/scripts.rs', 'FILL_JS')
+const FOCUS = rawStringConst('vault/address_field/scripts.rs', 'FOCUS_JS')
+const FILL = rawStringConst('vault/address_field/scripts.rs', 'FILL_JS')
 
 const SHOWN_STYLE = {
   display: 'block',
