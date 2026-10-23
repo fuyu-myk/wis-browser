@@ -25,7 +25,17 @@ var ADDRESS_KINDS = {
   'email': 'email'
 };
 var PLACE_KINDS = ['street', 'line1', 'city', 'region', 'postal', 'country'];
-var TEXT_TYPES = ['', 'text', 'email', 'tel', 'number'];
+var INPUT_TYPES = { '': 1, text: 1, search: 2, tel: 4, number: 8, email: 16 };
+// The autofill field names that are not an address's.
+var OTHER_FIELDS = ['username', 'new-password', 'current-password', 'one-time-code',
+  'cc-name', 'cc-given-name', 'cc-additional-name', 'cc-family-name', 'cc-number', 'cc-exp',
+  'cc-exp-month', 'cc-exp-year', 'cc-csc', 'cc-type', 'transaction-currency',
+  'transaction-amount', 'language', 'bday', 'bday-day', 'bday-month', 'bday-year', 'sex',
+  'url', 'photo', 'impp', 'honorific-prefix', 'additional-name', 'honorific-suffix',
+  'nickname', 'organization-title', 'address-level3', 'address-level4', 'tel-country-code',
+  'tel-area-code', 'tel-local', 'tel-local-prefix', 'tel-local-suffix', 'tel-extension'];
+var MAX_FIELDS = 200;
+var PAGE_PARTS = 'header, footer, aside, nav, dialog, [role="search"], [role="dialog"]';
 
 function docProp(name) {
   try {
@@ -44,21 +54,34 @@ function query(root, selector) {
   }
 }
 
-function addressField(el) {
-  if (!el || el.disabled || el.readOnly) return null;
+function own(map, key) {
+  return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
+}
+
+// The control type bit the patterns use, or 0 for a control no address goes in.
+function controlType(el) {
+  if (!el || el.disabled || el.readOnly) return 0;
   if (el.tagName === 'INPUT') {
-    var type = String(el.getAttribute('type') || '').toLowerCase();
-    if (TEXT_TYPES.indexOf(type) < 0) return null;
-  } else if (el.tagName !== 'SELECT' && el.tagName !== 'TEXTAREA') {
-    return null;
+    return own(INPUT_TYPES, String(el.getAttribute('type') || '').toLowerCase()) || 0;
   }
+  if (el.tagName === 'SELECT') return el.multiple ? 0 : 32;
+  return el.tagName === 'TEXTAREA' ? 64 : 0;
+}
+
+function tokensOf(el) {
   var tokens = String(el.getAttribute('autocomplete') || '')
     .toLowerCase()
     .trim()
     .split(/\s+/)
     .filter(Boolean);
   if (tokens[tokens.length - 1] === 'webauthn') tokens.pop();
-  var kind = ADDRESS_KINDS[tokens.pop() || ''];
+  return tokens;
+}
+
+function addressField(el) {
+  if (!controlType(el)) return null;
+  var tokens = tokensOf(el);
+  var kind = own(ADDRESS_KINDS, tokens.pop() || '');
   if (!kind) return null;
   var section = tokens.filter(function (token) {
     return token.indexOf('section-') === 0 || token === 'shipping' || token === 'billing';
@@ -66,19 +89,65 @@ function addressField(el) {
   return { kind: kind, section: section.join(' ') };
 }
 
-function addressSection(el) {
-  var mine = addressField(el);
-  if (!mine) return [];
-  var all = query(el.form || document, 'input, select, textarea');
-  var fields = [];
-  for (var i = 0; i < all.length; i++) {
-    var found = addressField(all[i]);
-    if (found && found.section === mine.section) fields.push({ el: all[i], kind: found.kind });
-  }
-  return fields;
+// Whether `el` is read from its words: no autofill field name of its own.
+function guessable(el) {
+  if (!controlType(el)) return false;
+  var last = tokensOf(el).pop() || '';
+  return !own(ADDRESS_KINDS, last) && OTHER_FIELDS.indexOf(last) < 0;
 }
 
-function worthOffering(kinds) {
+// The form `el` belongs to, or for a field outside any form, the part of the
+// page it sits in: a header, footer, aside, nav or dialog, else the page.
+function groupOf(el) {
+  if (el.form) return el.form;
+  var part = null;
+  try {
+    part = Element.prototype.closest.call(el, PAGE_PARTS);
+  } catch (e) {
+    part = typeof el.closest === 'function' ? el.closest(PAGE_PARTS) : null;
+  }
+  return part || document;
+}
+
+// Every address field in the group `root`, tagged or read from its words,
+// with its section.
+function addressFields(root) {
+  var all = (root.tagName === 'FORM' && read('HTMLFormElement', 'elements', root)) ||
+    query(root, 'input, select, textarea');
+  var found = [];
+  var guesses = [];
+  var carded = false;
+  for (var i = 0; i < all.length && i < MAX_FIELDS; i++) {
+    var el = all[i];
+    if (groupOf(el) !== root) continue;
+    var tagged = addressField(el);
+    if (tagged) {
+      found.push({ el: el, kind: tagged.kind, section: tagged.section, guessed: false });
+    } else if (guessable(el)) {
+      guesses.push(el);
+    } else if ((tokensOf(el).pop() || '').indexOf('cc-') === 0) {
+      carded = true;
+    }
+  }
+  return found.concat(guessKinds(guesses, carded));
+}
+
+function addressSection(el) {
+  if (!controlType(el)) return null;
+  var fields = addressFields(groupOf(el));
+  var mine = null;
+  for (var i = 0; i < fields.length; i++) {
+    if (fields[i].el === el) mine = fields[i];
+  }
+  if (!mine) return null;
+  return fields.filter(function (field) {
+    return field.section === mine.section;
+  });
+}
+
+// A section read from words alone needs three kinds of field, as in Chromium.
+function worthOffering(kinds, guessed) {
+  if (guessed) return kinds.length >= 3;
   return kinds.length >= 3 || kinds.some(function (kind) {
     return PLACE_KINDS.indexOf(kind) >= 0;
   });
@@ -263,16 +332,19 @@ function shownField(el, anchor) {
 // The kinds of fields a fill from `el` would reach, or null when `el` is not a
 // shown address field or its section is not worth an address.
 function offerKinds(el) {
-  if (!addressField(el) || !shownField(el, el)) return null;
+  if (!addressField(el) && !(guessable(el) && maybeAddress(el))) return null;
+  if (!shownField(el, el)) return null;
+  var section = addressSection(el);
+  if (!section) return null;
   var shown = [];
   var kinds = [];
-  addressSection(el).forEach(function (field) {
+  section.forEach(function (field) {
     var list = field.el.tagName === 'SELECT' && (field.kind === 'country' || field.kind === 'region');
     var visible = shownField(field.el, el);
     if (visible && shown.indexOf(field.kind) < 0) shown.push(field.kind);
     if ((visible || list) && kinds.indexOf(field.kind) < 0) kinds.push(field.kind);
   });
-  return worthOffering(shown) ? kinds : null;
+  return worthOffering(shown, section[0].guessed) ? kinds : null;
 }
 "#;
 
@@ -285,7 +357,7 @@ try {
   if (location.origin !== ORIGIN || window.__wisAddressToken !== TOKEN) return;
   var anchor = window.__wisAddressAnchor;
   if (!anchor || !anchor.isConnected || anchor !== docProp('activeElement')) return;
-  var fields = addressSection(anchor);
+  var fields = addressSection(anchor) || [];
   var lines = V.street ? V.street.split('\n') : [];
 
   var valueFor = function (kind, el) {
@@ -464,7 +536,8 @@ document.addEventListener('focusin', function (e) {
 
 document.addEventListener('pointerdown', function (e) {
   if (anchored && e.target !== anchored) leave();
-  if (e.isTrusted && window.top === window.self && addressField(e.target)) report(e.target);
+  if (!e.isTrusted || window.top !== window.self) return;
+  if (addressField(e.target) || guessable(e.target)) report(e.target);
 }, true);
 document.addEventListener('keydown', function (e) {
   if (anchored && e.target === anchored && e.key === 'Escape') leave();

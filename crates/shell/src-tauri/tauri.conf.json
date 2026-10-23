@@ -80,8 +80,9 @@
         "desktopTemplate": "./wis.desktop"
       }
     },
-    "resources": [
-      "icons/runtime/*"
-    ]
+    "resources": {
+      "icons/runtime/*": "icons/runtime/",
+      "../../../THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt"
+    }
   }
 }

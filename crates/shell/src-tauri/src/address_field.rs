@@ -13,9 +13,14 @@ use wis_core::{TabId, WisError, WisResult};
 use crate::signup::{field_rect, source, FieldRect};
 use crate::state::AppState;
 
+mod guess;
 mod scripts;
 
+use guess::GUESS_JS;
 use scripts::{CLASSIFY_JS, FILL_JS, FOCUS_JS, RELEASE_JS};
+
+/// Chromium's address patterns, which `GUESS_JS` reads.
+const PATTERNS_JS: &str = include_str!("address_field/patterns.js");
 
 const FIELD_EVENT: &str = "wis-address-field";
 const MOVE_EVENT: &str = "wis-address-move";
@@ -80,7 +85,7 @@ struct TabEvent<'a> {
 pub fn page_script() -> &'static str {
     static SCRIPT: LazyLock<String> = LazyLock::new(|| {
         format!(
-            "(function () {{\nif (window.__wisAddressInstalled) return;\nwindow.__wisAddressInstalled = true;\n{CLASSIFY_JS}\n{FOCUS_JS}\n}})();"
+            "(function () {{\nif (window.__wisAddressInstalled) return;\nwindow.__wisAddressInstalled = true;\n{PATTERNS_JS}\n{GUESS_JS}\n{CLASSIFY_JS}\n{FOCUS_JS}\n}})();"
         )
     });
     &SCRIPT
@@ -328,7 +333,7 @@ fn fill_script(offered: &Offered, address: &wis_core::address::Address) -> Strin
     let origin = serde_json::Value::String(offered.origin.clone());
     let token = serde_json::Value::String(offered.token.clone());
     format!(
-        "(function () {{\nvar ORIGIN = {origin};\nvar TOKEN = {token};\nvar V = {values};\n{CLASSIFY_JS}\n{FILL_JS}\n}})();"
+        "(function () {{\nvar ORIGIN = {origin};\nvar TOKEN = {token};\nvar V = {values};\n{PATTERNS_JS}\n{GUESS_JS}\n{CLASSIFY_JS}\n{FILL_JS}\n}})();"
     )
 }
 
@@ -544,6 +549,20 @@ mod tests {
         assert!(focus_allowed("tab-test-forget", at));
         forget("tab-test-forget");
         assert!(focus_allowed("tab-test-forget", at));
+    }
+
+    #[test]
+    fn the_page_and_fill_scripts_carry_the_patterns_and_the_guessing() {
+        let offered = Offered {
+            origin: "https://shop.example".into(),
+            kinds: vec!["postal"],
+            token: TOKEN.into(),
+        };
+        for script in [page_script(), fill_script(&offered, &home()).as_str()] {
+            let at = |needle: &str| script.find(needle).expect(needle);
+            assert!(at("function addressPatterns()") < at("var GUESS_ORDER"));
+            assert!(at("var GUESS_ORDER") < at("function addressFields("));
+        }
     }
 
     #[test]

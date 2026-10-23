@@ -4,9 +4,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { rawStringConst } from '../support/rustSource.mjs'
+import { includedFile, rawStringConst } from '../support/rustSource.mjs'
 
-const CLASSIFY = rawStringConst('address_field/scripts.rs', 'CLASSIFY_JS')
+const CLASSIFY = [
+  includedFile('address_field/patterns.js'),
+  rawStringConst('address_field/guess.rs', 'GUESS_JS'),
+  rawStringConst('address_field/scripts.rs', 'CLASSIFY_JS'),
+].join('\n')
 const FOCUS = rawStringConst('address_field/scripts.rs', 'FOCUS_JS')
 const FILL = rawStringConst('address_field/scripts.rs', 'FILL_JS')
 

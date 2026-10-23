@@ -9,6 +9,11 @@ function read(file) {
   return readFileSync(new URL(file, SRC), 'utf8').replace(/\r\n/g, '\n')
 }
 
+/** A file the Rust sources include whole with `include_str!`. */
+export function includedFile(file) {
+  return read(file)
+}
+
 /** The body of `const NAME: &str = r#"..."#;` in `file`. */
 export function rawStringConst(file, name) {
   const source = read(file)

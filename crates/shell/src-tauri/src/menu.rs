@@ -18,6 +18,9 @@ use wis_core::KeyAction;
 /// Tauri event name the chrome listens to for menu / accelerator triggers.
 pub const KEYACTION_EVENT: &str = "wis-keyaction";
 
+/// The third-party notices, shown in the About panel.
+const THIRD_PARTY_NOTICES: &str = include_str!("../../../../THIRD_PARTY_NOTICES.txt");
+
 #[derive(Debug, Clone, Serialize)]
 struct KeyActionPayload<'a> {
     action: &'a str,
@@ -116,7 +119,12 @@ fn build_menu(
     let about = PredefinedMenuItem::about(
         app,
         Some("About Wis"),
-        Some(AboutMetadataBuilder::new().name(Some("Wis")).build()),
+        Some(
+            AboutMetadataBuilder::new()
+                .name(Some("Wis"))
+                .credits(Some(THIRD_PARTY_NOTICES))
+                .build(),
+        ),
     )?;
     let app_menu = SubmenuBuilder::new(app, "Wis")
         .item(&about)
