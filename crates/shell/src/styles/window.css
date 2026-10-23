@@ -4187,6 +4187,31 @@ body.has-custom-img .kb-launch-mark {
   cursor: pointer;
 }
 .kb-vault-forgot:hover { color: var(--text-primary); text-decoration: underline; }
+.kb-address-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+  padding: 8px 4px 4px;
+}
+.kb-address-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.kb-address-field.is-wide { grid-column: 1 / -1; }
+.kb-address-field .kb-text-input { width: 100%; box-sizing: border-box; }
+.kb-address-field textarea.kb-text-input { resize: vertical; font-family: inherit; }
+.kb-address-field .kb-select,
+.kb-address-field .kb-select select { width: 100%; max-width: none; }
+.kb-address-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .kb-select {
   position: relative;
   display: inline-flex;

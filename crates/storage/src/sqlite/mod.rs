@@ -9,6 +9,7 @@
 //! back. A corrupted store returns [`StorageError::DataCorruption`] so the
 //! shell can log and fall back to defaults rather than crash.
 
+mod addresses;
 mod bookmarks;
 mod canvases;
 mod closed_tabs;
@@ -397,6 +398,40 @@ impl Storage for SqliteStorage {
     fn has_credentials(&self) -> StorageResult<bool> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         credentials::any(&conn)
+    }
+
+    fn save_address(&self, id: Option<i64>, ciphertext: &[u8], nonce: &[u8]) -> StorageResult<i64> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        addresses::save(&conn, id, ciphertext, nonce)
+    }
+
+    fn list_addresses(&self) -> StorageResult<Vec<crate::addresses::AddressRecord>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        addresses::list(&conn)
+    }
+
+    fn delete_address(&self, id: i64) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        addresses::delete(&conn, id)
+    }
+
+    fn clear_addresses(&self) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        addresses::clear(&conn)
+    }
+
+    fn has_addresses(&self) -> StorageResult<bool> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        addresses::any(&conn)
+    }
+
+    fn clear_vault(&self) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let tx = conn.unchecked_transaction()?;
+        credentials::clear(&tx)?;
+        addresses::clear(&tx)?;
+        tx.commit()?;
+        Ok(())
     }
 
     fn record_search(&self, query: &str) -> StorageResult<()> {

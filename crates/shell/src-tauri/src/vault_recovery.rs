@@ -143,8 +143,10 @@ pub async fn vault_recover(
         return Err(invalid("No recovery key is set up on this device"));
     };
     let storage = state.storage.clone();
-    if !blocking(move || storage.has_credentials().map_err(persist_err)).await? {
-        return Err(invalid("There are no saved passwords to recover"));
+    if !blocking(move || crate::vault_store::has_sealed_data(&*storage).map_err(persist_err))
+        .await?
+    {
+        return Err(invalid("There is nothing saved to recover"));
     }
     if !uses_password
         && !crate::vault_store::confirm_user(&state, "Recover your saved passwords", None).await?
@@ -162,9 +164,11 @@ pub async fn vault_recover(
             .filter(|text| !text.is_empty())
             .map(SecretString::from);
         let key = recovery::open(&copy.sealed, &private_key, passphrase).map_err(recovery_err)?;
-        let saved = storage.list_credentials(None).map_err(persist_err)?;
-        let opened = saved
-            .iter()
+        let passwords = storage.list_credentials(None).map_err(persist_err)?;
+        let addresses = storage.list_addresses().map_err(persist_err)?;
+        let total = passwords.len() + addresses.len();
+        let opened_passwords = passwords
+            .into_iter()
             .filter(|row| {
                 let blob = EncryptedBlob {
                     ciphertext: row.ciphertext.clone(),
@@ -175,14 +179,18 @@ pub async fn vault_recover(
                     .is_ok()
             })
             .count();
-        Ok((key, opened, saved.len()))
+        let opened_addresses = addresses
+            .iter()
+            .filter(|row| crate::addresses::opens(&key, row))
+            .count();
+        Ok((key, opened_passwords + opened_addresses, total))
     })
     .await?;
     if total == 0 {
-        return Err(invalid("There are no saved passwords to recover"));
+        return Err(invalid("There is nothing saved to recover"));
     }
     if opened == 0 {
-        return Err(invalid("This key doesn't open any of your saved passwords"));
+        return Err(invalid("This key doesn't open anything you saved"));
     }
     if opened < total && !force {
         return Ok(RecoverOutcome::Partial { opened, total });
@@ -191,10 +199,16 @@ pub async fn vault_recover(
     let mut slot = state.vault_key.lock().await;
     let storage = state.storage.clone();
     let restored = blocking(move || {
-        if !storage.has_credentials().map_err(persist_err)? {
-            return Err(invalid("There are no saved passwords to recover"));
+        if !crate::vault_store::has_sealed_data(&*storage).map_err(persist_err)? {
+            return Err(invalid("There is nothing saved to recover"));
         }
         crate::vault_store::restore_key(&key, new_password.as_deref().map(String::as_str))?;
+        let addresses = storage.list_addresses().map_err(persist_err)?;
+        addresses
+            .iter()
+            .filter(|row| !crate::addresses::opens(&key, row))
+            .try_for_each(|row| storage.delete_address(row.id))
+            .map_err(persist_err)?;
         Ok(key)
     })
     .await?;
@@ -224,7 +238,8 @@ pub async fn vault_reset(
     let confirmed = if uses_password {
         confirm_erase_natively(&app).await?
     } else {
-        crate::vault_store::confirm_user(&state, "Erase your saved passwords", None).await?
+        crate::vault_store::confirm_user(&state, "Erase your saved passwords and addresses", None)
+            .await?
     };
     if !confirmed {
         return Ok(false);
@@ -241,7 +256,7 @@ pub async fn vault_reset(
                     "Wis couldn't remove the vault's key, so nothing was erased ({err})"
                 ))
             })?;
-            storage.clear_credentials().map_err(persist_err)?;
+            storage.clear_vault().map_err(persist_err)?;
             remove_copy(&path)?;
 
             let Some(password) = new_password else {
@@ -272,8 +287,8 @@ async fn confirm_erase_natively(app: &AppHandle) -> WisResult<bool> {
     let answered = tokio::task::spawn_blocking(move || {
         crate::panels::confirm_natively(
             &app,
-            "Erase every saved password?",
-            "Wis deletes your saved passwords, the vault's key and its recovery copy, then sets up a new vault with the password you chose. This can't be undone.",
+            "Erase every saved password and address?",
+            "Wis deletes your saved passwords and addresses, the vault's key and its recovery copy, then sets up a new vault with the password you chose. This can't be undone.",
             "Erase",
         )
     })

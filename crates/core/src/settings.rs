@@ -162,6 +162,9 @@ pub struct UserSettings {
     /// Whether a signup form is offered a generated password.
     #[serde(default)]
     pub password_offer: crate::PasswordOffer,
+    /// Whether saved addresses are offered at address fields.
+    #[serde(default = "default_address_autofill")]
+    pub address_autofill: bool,
     /// Per-host user agent overrides for sites that still special-case a
     /// particular browser. Keyed by `www.`-stripped host.
     #[serde(default)]
@@ -353,6 +356,10 @@ fn default_filter_list_auto_update() -> bool {
     true
 }
 
+fn default_address_autofill() -> bool {
+    true
+}
+
 fn default_tab_sleep_enabled() -> bool {
     true
 }
@@ -504,6 +511,7 @@ impl Default for UserSettings {
             video_popout_enabled: true,
             user_agent_profile: UaProfile::default(),
             password_offer: crate::PasswordOffer::default(),
+            address_autofill: true,
             ua_site_overrides: HashMap::new(),
             media_permissions: HashMap::new(),
             app_launch_permissions: HashMap::new(),
@@ -624,6 +632,7 @@ pub struct UserSettingsPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_agent_profile: Option<UaProfile>,
     pub password_offer: Option<crate::PasswordOffer>,
+    pub address_autofill: Option<bool>,
     /// Replaces the whole override map when present (the frontend holds the
     /// full map). `None` keeps the current map.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -772,6 +781,7 @@ impl UserSettings {
                 .user_agent_profile
                 .unwrap_or_else(|| self.user_agent_profile.clone()),
             password_offer: patch.password_offer.unwrap_or(self.password_offer),
+            address_autofill: patch.address_autofill.unwrap_or(self.address_autofill),
             ua_site_overrides: patch
                 .ua_site_overrides
                 .unwrap_or_else(|| self.ua_site_overrides.clone()),

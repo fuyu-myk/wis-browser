@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 
+use crate::addresses::AddressRecord;
 use crate::bookmarks::{Bookmark, BookmarkFolder, BookmarkImport, BookmarkImportStats};
 use crate::closed_tabs::ClosedTabRecord;
 use crate::credentials::CredentialRecord;
@@ -157,7 +158,7 @@ pub trait Storage: Send + Sync {
         from: Option<(chrono::NaiveDate, u8)>,
     ) -> StorageResult<()>;
 
-    // -- password vault (see [`crate::credentials`]) -----------------------
+    // -- password vault (see `crate::credentials`) -------------------------
 
     /// Upsert a credential (dedup by host+username); returns its row id. The
     /// `ciphertext`/`nonce` are produced by `wis-secrets`; this layer never
@@ -183,6 +184,22 @@ pub trait Storage: Send + Sync {
     fn clear_credentials(&self) -> StorageResult<()>;
 
     fn has_credentials(&self) -> StorageResult<bool>;
+
+    // -- saved addresses (see `crate::addresses`) ---------------------------
+
+    /// Insert an address, or replace the one with `id`; returns its row id.
+    fn save_address(&self, id: Option<i64>, ciphertext: &[u8], nonce: &[u8]) -> StorageResult<i64>;
+
+    fn list_addresses(&self) -> StorageResult<Vec<AddressRecord>>;
+
+    fn delete_address(&self, id: i64) -> StorageResult<()>;
+
+    fn clear_addresses(&self) -> StorageResult<()>;
+
+    fn has_addresses(&self) -> StorageResult<bool>;
+
+    /// Delete every credential and address in one transaction.
+    fn clear_vault(&self) -> StorageResult<()>;
 
     // -- URL-bar suggestions ------------------------------------------------
 

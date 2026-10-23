@@ -52,6 +52,13 @@ fn sealed_key_path() -> WisResult<PathBuf> {
         })
 }
 
+/// Whether anything is sealed with the vault key: passwords or addresses.
+pub(crate) fn has_sealed_data(
+    storage: &dyn wis_storage::Storage,
+) -> wis_storage::StorageResult<bool> {
+    Ok(storage.has_credentials()? || storage.has_addresses()?)
+}
+
 pub(crate) fn has_key() -> bool {
     if uses_password() {
         sealed_key_path().is_ok_and(|path| path.try_exists().unwrap_or(true))
@@ -193,7 +200,7 @@ pub async fn vault_create_password(state: State<'_, AppState>, password: String)
         if has_key() {
             return Err(invalid("A vault is already set up on this device"));
         }
-        if storage.has_credentials().map_err(persist_err)? {
+        if has_sealed_data(&*storage).map_err(persist_err)? {
             return Err(vault_err(VaultError::Missing));
         }
         let key = wis_secrets::generate_master_key();
@@ -237,7 +244,7 @@ pub async fn vault_change_password(
     .await
 }
 
-async fn blocking<T, F>(op: F) -> WisResult<T>
+pub(crate) async fn blocking<T, F>(op: F) -> WisResult<T>
 where
     T: Send + 'static,
     F: FnOnce() -> WisResult<T> + Send + 'static,
@@ -271,6 +278,16 @@ mod tests {
         assert_eq!(wait_after(4), Duration::from_secs(2));
         assert_eq!(wait_after(11), Duration::from_secs(256));
         assert_eq!(wait_after(u32::MAX), Duration::from_secs(256));
+    }
+
+    #[test]
+    fn an_address_alone_counts_as_sealed_data() {
+        use wis_storage::Storage;
+
+        let storage = wis_storage::SqliteStorage::open_in_memory().unwrap();
+        assert!(!has_sealed_data(&storage).unwrap());
+        storage.save_address(None, b"c", b"n").unwrap();
+        assert!(has_sealed_data(&storage).unwrap());
     }
 
     #[test]

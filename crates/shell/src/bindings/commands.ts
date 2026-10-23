@@ -8,6 +8,8 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 import type { CaptureInfo } from '@/lib/vaultMenu'
 import type {
+  Address,
+  SavedAddress,
   RecoverOutcome,
   AiBookmarkHit,
   AiFetchResponse,
@@ -230,6 +232,20 @@ export const commands = {
 
   async vaultUnlockPassword(password: string): Promise<void> {
     return invoke('vault_unlock_password', { password })
+  },
+
+  /** Saved addresses, opened with the vault key; needs the vault unlocked. */
+  async addressList(): Promise<SavedAddress[]> {
+    return invoke('address_list')
+  },
+
+  /** Save an address as a new one, or in place of `id`; returns its id. */
+  async addressSave(id: number | null, address: Address): Promise<number> {
+    return invoke('address_save', { id, address })
+  },
+
+  async addressDelete(id: number): Promise<void> {
+    return invoke('address_delete', { id })
   },
 
   async vaultChangePassword(current: string, next: string): Promise<void> {

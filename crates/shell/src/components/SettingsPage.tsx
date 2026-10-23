@@ -12,6 +12,7 @@ import {
   ImportIcon,
   KeyboardIcon,
   KeyIcon,
+  MapPinIcon,
   PaletteIcon,
   PuzzleIcon,
   ShieldIcon,
@@ -34,6 +35,7 @@ import { NetworkSection } from '@/components/NetworkSection'
 import { CompatibilitySection } from '@/components/CompatibilitySection'
 import { SiteDataSection } from '@/components/SiteDataSection'
 import { PasswordsSection } from '@/components/PasswordsSection'
+import { AddressesSection } from '@/components/AddressesSection'
 import { KeyboardShortcutsSection } from '@/components/KeyboardShortcutsSection'
 import { BackupSection } from '@/components/BackupSection'
 import { AiSection } from '@/components/AiSection'
@@ -62,6 +64,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'import', label: 'Import', icon: <ImportIcon /> },
   { id: 'extensions', label: 'Extensions', icon: <PuzzleIcon /> },
   { id: 'passwords', label: 'Passwords', icon: <KeyIcon /> },
+  { id: 'addresses', label: 'Addresses', icon: <MapPinIcon /> },
   { id: 'ai', label: 'AI assistant', icon: <SparkleIcon /> },
   { id: 'shortcuts', label: 'Shortcuts', icon: <KeyboardIcon /> },
   { id: 'backup', label: 'Backup & restore', icon: <LockIcon /> },
@@ -256,6 +259,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
           onUpdate={(patch) => update.mutate(patch)}
         />
         <PasswordsSection />
+        <AddressesSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <AiSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <KeyboardShortcutsSection
           keybindings={settings.keybindings}

@@ -315,6 +315,19 @@ const M0024_CLOSED_TAB_ARCHIVED: &str = r#"
 ALTER TABLE closed_tabs ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
 "#;
 
+/// Saved addresses for form filling, each sealed whole under the vault key
+/// (see `wis-secrets`), so nothing about them is readable without it. Never
+/// touched by "clear browsing data".
+const M0025_ADDRESSES: &str = r#"
+CREATE TABLE addresses (
+    id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    ciphertext   BLOB    NOT NULL,
+    nonce        BLOB    NOT NULL,
+    created_at   TEXT    NOT NULL,
+    updated_at   TEXT    NOT NULL
+);
+"#;
+
 /// Every migration, in order. The index of the last entry is the schema
 /// version a fresh database lands on.
 const ALL: &[&str] = &[
@@ -342,6 +355,7 @@ const ALL: &[&str] = &[
     M0022_CANVASES,
     M0023_WORKSPACE_LOCKDOWN,
     M0024_CLOSED_TAB_ARCHIVED,
+    M0025_ADDRESSES,
 ];
 
 fn all() -> Migrations<'static> {
@@ -439,6 +453,21 @@ mod tests {
             .query_row("SELECT archived FROM closed_tabs", [], |row| row.get(0))
             .expect("migrated row");
         assert!(!archived);
+    }
+
+    #[test]
+    fn a_profile_from_before_addresses_gains_an_empty_address_table() {
+        let mut conn = Connection::open_in_memory().expect("open in-memory db");
+        Migrations::new(ALL[..24].iter().copied().map(M::up).collect())
+            .to_latest(&mut conn)
+            .expect("migrate to version 24");
+
+        run(&mut conn).expect("migrate to latest");
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM addresses", [], |row| row.get(0))
+            .expect("address table");
+        assert_eq!(count, 0);
     }
 
     #[test]

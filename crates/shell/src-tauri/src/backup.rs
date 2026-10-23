@@ -60,6 +60,8 @@ pub struct ImportSummary {
     pub history_added: usize,
     pub canvases_added: usize,
     pub passwords_added: usize,
+    pub addresses_added: usize,
+    pub vault_skipped: bool,
 }
 
 /// On-disk envelope: a versioned, passphrase-encrypted [`BackupPayload`]. The
@@ -90,6 +92,20 @@ pub async fn export_backup(
         });
     }
 
+    let (credentials, addresses) = if options.vault {
+        crate::vault::authorize_vault(
+            &state,
+            "Include your saved passwords and addresses in this backup",
+            vault_password.as_deref().map(String::as_str),
+        )
+        .await?;
+        (
+            Some(crate::vault::credentials_in_clear(&state).await?),
+            Some(crate::addresses::export_addresses(&state).await?),
+        )
+    } else {
+        (None, None)
+    };
     let payload = BackupPayload {
         settings: if options.settings {
             Some(state.browser.lock().await.settings.clone())
@@ -101,18 +117,8 @@ pub async fn export_backup(
         } else {
             None
         },
-        credentials: if options.vault {
-            Some(
-                crate::vault::export_credentials(
-                    &state,
-                    "Include your saved passwords in this backup",
-                    vault_password.as_deref().map(String::as_str),
-                )
-                .await?,
-            )
-        } else {
-            None
-        },
+        credentials,
+        addresses,
     };
     if payload.is_empty() {
         return Err(WisError::InvalidInput {
@@ -120,9 +126,7 @@ pub async fn export_backup(
         });
     }
 
-    let plaintext = serde_json::to_vec(&payload).map_err(|err| WisError::InvalidInput {
-        message: format!("serialize backup: {err}"),
-    })?;
+    let plaintext = sealed_json(&payload)?;
 
     let salt = wis_secrets::random_salt();
     let key = wis_secrets::derive_passphrase_key(&passphrase, &salt).map_err(|_| {
@@ -202,10 +206,13 @@ pub async fn import_backup(
             message: "key derivation failed".to_string(),
         }
     })?;
-    let plaintext = wis_secrets::decrypt(&key, &wis_secrets::EncryptedBlob { ciphertext, nonce })
-        .map_err(|_| WisError::InvalidInput {
-        message: "wrong passphrase, or the backup is corrupted".to_string(),
-    })?;
+    let plaintext = zeroize::Zeroizing::new(
+        wis_secrets::decrypt(&key, &wis_secrets::EncryptedBlob { ciphertext, nonce }).map_err(
+            |_| WisError::InvalidInput {
+                message: "wrong passphrase, or the backup is corrupted".to_string(),
+            },
+        )?,
+    );
 
     let payload: BackupPayload =
         serde_json::from_slice(&plaintext).map_err(|err| WisError::InvalidInput {
@@ -221,16 +228,25 @@ pub async fn import_backup(
         history_added: 0,
         canvases_added: 0,
         passwords_added: 0,
+        addresses_added: 0,
+        vault_skipped: false,
     };
 
-    if let Some(creds) = payload.credentials {
-        summary.passwords_added = crate::vault::import_credentials(
-            &state,
-            creds,
-            "Restore your saved passwords",
-            vault_password.as_deref().map(String::as_str),
-        )
-        .await?;
+    let creds = payload.credentials.unwrap_or_default();
+    let addresses = payload.addresses.unwrap_or_default();
+    if !creds.is_empty() || !addresses.is_empty() {
+        if crate::vault_store::uses_password() && !crate::vault_store::has_key() {
+            summary.vault_skipped = true;
+        } else {
+            crate::vault::authorize_vault(
+                &state,
+                "Restore your saved passwords and addresses",
+                vault_password.as_deref().map(String::as_str),
+            )
+            .await?;
+            summary.passwords_added = crate::vault::seal_credentials(&state, creds).await?;
+            summary.addresses_added = crate::addresses::import_addresses(&state, addresses).await?;
+        }
     }
 
     let imported = payload
@@ -254,6 +270,29 @@ pub async fn import_backup(
     }
 
     Ok(Some(summary))
+}
+
+/// The payload as JSON in one buffer of exactly its size, wiped on drop.
+fn sealed_json(payload: &BackupPayload) -> WisResult<zeroize::Zeroizing<Vec<u8>>> {
+    struct Measure(usize);
+    impl std::io::Write for Measure {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 += bytes.len();
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let failed = |err: serde_json::Error| WisError::InvalidInput {
+        message: format!("serialize backup: {err}"),
+    };
+    let mut size = Measure(0);
+    serde_json::to_writer(&mut size, payload).map_err(failed)?;
+    let mut json = zeroize::Zeroizing::new(Vec::with_capacity(size.0));
+    serde_json::to_writer(&mut *json, payload).map_err(failed)?;
+    Ok(json)
 }
 
 /// Merge a re-minted profile: splice its non-clashing workspaces + tabs into the
@@ -503,4 +542,23 @@ fn suggested_name() -> String {
         "{}.wisbackup",
         wis_core::sanitize_filename(&format!("Wis Backup {stamp}"))
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_backup_json_fills_one_buffer_of_exactly_its_size() {
+        let payload = BackupPayload {
+            addresses: Some(vec![wis_core::address::Address {
+                city: "London".into(),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        let json = sealed_json(&payload).unwrap();
+        assert_eq!(*json, serde_json::to_vec(&payload).unwrap());
+        assert_eq!(json.capacity(), json.len());
+    }
 }

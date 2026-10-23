@@ -4,6 +4,7 @@
 //! workspaces, tabs, settings, and the operations that produce new states
 //! from old ones.
 
+pub mod address;
 pub mod ai;
 pub mod ai_models;
 pub mod app_launch;

@@ -40,6 +40,11 @@ The trust boundary is **local vs remote content**, not the window.
 - **Memory**: the password and the derived keys are wiped where Wis holds them (`Zeroizing`, Argon2's `zeroize` feature), but copies made by the IPC layer and the WebView are beyond reach.
 - A debug build run with `WIS_VAULT_PASSWORD_MODE` set uses the vault password on macOS and Windows too, through a file in the data folder of the build's identifier (the dev app's under `make dev`) and never the key store, so the Linux flows can be tried without a Linux machine. The count of wrong passwords lives in memory, so a restart clears it.
 
+## Saved addresses
+
+- Each address is serialized and sealed whole with the vault key, bound to the purpose `wis/address/v1` as associated data so it cannot pass for a password (`addresses.rs`, `addresses` table, ids never reused), with no column in the clear, so listing, saving and deleting need the vault unlocked. Rows that do not open under the current key are skipped, in lists and backups, and a recovery restored over such rows removes them.
+- Addresses count as sealed data everywhere passwords do: a key is created only when neither exists, recovery checks the key against both, and reset erases both. Backups take them with the passwords under one confirmation.
+
 ## Recovery and reset
 
 - **Recovery key** (Settings > Passwords, `vault_recovery.rs`, `wis_secrets::recovery`): the user pastes an age (`age1...`) or SSH ed25519 or RSA public key, and after a biometric check Wis seals the master key to it in the age format (the `age` crate) and keeps the armored copy in `<app data>/vault-recovery.json` (mode 0600, written to a fresh temporary file, synced and renamed). A pasted private key is refused, and the key is stored in canonical form with a short printable comment. The copy also carries a keyed BLAKE2b check value of the master key, so a copy that no longer matches the unlocked key is found stale and removed, and Settings asks for recovery again. The sealed part is a standard age file, so the `age` or `rage` tool opens it too.

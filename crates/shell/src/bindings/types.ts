@@ -429,6 +429,30 @@ export interface ImportSummary {
   history_added: number
   canvases_added: number
   passwords_added: number
+  addresses_added: number
+  vault_skipped: boolean
+}
+
+/** A postal address with contact details (mirror of `wis_core::address::Address`). */
+export interface Address {
+  given_name: string
+  family_name: string
+  organization: string
+  /** Street lines separated by newlines. */
+  street_address: string
+  city: string
+  /** State, province, county or region. */
+  region: string
+  postal_code: string
+  /** ISO 3166-1 alpha-2, or empty. */
+  country: string
+  tel: string
+  email: string
+}
+
+export interface SavedAddress {
+  id: number
+  address: Address
 }
 
 /** AI provider wire protocol (mirror of `wis_core::AiProvider`). */
@@ -675,6 +699,8 @@ export interface UserSettings {
   /** Default user agent presented to remote pages. */
   user_agent_profile: UaProfile
   password_offer: PasswordOffer
+  /** Whether saved addresses are offered at address fields. */
+  address_autofill: boolean
   /** Per-host user agent overrides, keyed by `www.`-stripped host. */
   ua_site_overrides: Record<string, UaProfile>
   /** Remembered camera/mic consent, keyed `"<kind>|<origin>"` (true = allow). */
@@ -774,6 +800,7 @@ export interface UserSettingsPatch {
   video_popout_enabled?: boolean
   user_agent_profile?: UaProfile
   password_offer?: PasswordOffer
+  address_autofill?: boolean
   /** Replaces the whole override map when present. */
   ua_site_overrides?: Record<string, UaProfile>
   /** Replaces the whole remembered-permissions map when present. */

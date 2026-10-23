@@ -1,6 +1,7 @@
 // macOS is the primary platform and keeps the strict dead-code gate.
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
+mod addresses;
 mod ai;
 mod ai_actions;
 mod ai_fetch;
@@ -92,6 +93,7 @@ mod themes;
 mod uncloak;
 mod usage;
 mod vault;
+mod vault_csv;
 mod vault_recovery;
 mod vault_store;
 mod video_popout;
@@ -628,6 +630,9 @@ pub fn run() {
             vault_recovery::vault_recover,
             vault_recovery::vault_reset,
             vault_store::vault_create_password,
+            addresses::address_list,
+            addresses::address_save,
+            addresses::address_delete,
             vault_store::vault_unlock_password,
             vault_store::vault_change_password,
             vault::vault_list,
@@ -637,8 +642,8 @@ pub fn run() {
             vault::vault_check_breaches,
             vault::vault_delete,
             vault::vault_has_credentials,
-            vault::vault_import_csv,
-            vault::vault_export_csv,
+            vault_csv::vault_import_csv,
+            vault_csv::vault_export_csv,
             vault::autofill_candidates,
             vault::autofill_fill,
             vault::generate_password_for_field,

@@ -34,7 +34,7 @@ pub use password::{
 pub use password_rules::{recipe_for_rules, RulesRecipe};
 
 use argon2::Argon2;
-use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use rand::RngCore;
 use zeroize::Zeroizing;
@@ -127,12 +127,32 @@ pub fn derive_passphrase_key(passphrase: &str, salt: &[u8]) -> Result<MasterKey,
 
 /// Seal `plaintext` under `key` with a fresh random 96-bit nonce.
 pub fn encrypt(key: &MasterKey, plaintext: &[u8]) -> Result<EncryptedBlob, VaultError> {
+    encrypt_for(key, plaintext, &[])
+}
+
+/// Open a sealed value. Returns the plaintext bytes (caller must handle them
+/// carefully and avoid logging).
+pub fn decrypt(key: &MasterKey, blob: &EncryptedBlob) -> Result<Vec<u8>, VaultError> {
+    decrypt_for(key, blob, &[])
+}
+
+/// Seal `plaintext` bound to `purpose`, so it opens only for that purpose.
+pub fn encrypt_for(
+    key: &MasterKey,
+    plaintext: &[u8],
+    purpose: &[u8],
+) -> Result<EncryptedBlob, VaultError> {
     let cipher = ChaCha20Poly1305::new(Key::from_slice(key.as_ref()));
     let mut nonce_bytes = [0u8; 12];
     rand::rngs::OsRng.fill_bytes(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
     let ciphertext = cipher
-        .encrypt(nonce, plaintext)
+        .encrypt(
+            Nonce::from_slice(&nonce_bytes),
+            Payload {
+                msg: plaintext,
+                aad: purpose,
+            },
+        )
         .map_err(|_| VaultError::Crypto)?;
 
     Ok(EncryptedBlob {
@@ -141,17 +161,24 @@ pub fn encrypt(key: &MasterKey, plaintext: &[u8]) -> Result<EncryptedBlob, Vault
     })
 }
 
-/// Open a sealed value. Returns the plaintext bytes (caller must handle them
-/// carefully and avoid logging).
-pub fn decrypt(key: &MasterKey, blob: &EncryptedBlob) -> Result<Vec<u8>, VaultError> {
+/// Open a blob sealed by [`encrypt_for`] for the same `purpose`.
+pub fn decrypt_for(
+    key: &MasterKey,
+    blob: &EncryptedBlob,
+    purpose: &[u8],
+) -> Result<Vec<u8>, VaultError> {
     if blob.nonce.len() != 12 {
         return Err(VaultError::Malformed);
     }
     let cipher = ChaCha20Poly1305::new(Key::from_slice(key.as_ref()));
-    let nonce = Nonce::from_slice(&blob.nonce);
-
     cipher
-        .decrypt(nonce, blob.ciphertext.as_ref())
+        .decrypt(
+            Nonce::from_slice(&blob.nonce),
+            Payload {
+                msg: blob.ciphertext.as_ref(),
+                aad: purpose,
+            },
+        )
         .map_err(|_| VaultError::Crypto)
 }
 
@@ -598,6 +625,18 @@ mod tests {
             stored_or_new(Ok(None), false, never),
             Err(VaultError::Missing)
         ));
+    }
+
+    #[test]
+    fn data_sealed_for_one_purpose_does_not_open_for_another() {
+        let key = generate_master_key();
+        let blob = encrypt_for(&key, b"address", b"wis/address/v1").unwrap();
+        assert_eq!(
+            decrypt_for(&key, &blob, b"wis/address/v1").unwrap(),
+            b"address"
+        );
+        assert!(decrypt_for(&key, &blob, b"wis/password/v1").is_err());
+        assert!(decrypt(&key, &blob).is_err());
     }
 
     #[test]

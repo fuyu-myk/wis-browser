@@ -149,13 +149,21 @@ export function BackupSection({ settings }: BackupSectionProps) {
         await qc.invalidateQueries({ queryKey: ['vault-list'] })
         await qc.invalidateQueries({ queryKey: ['vault-status'] })
       }
+      if (summary.addresses_added > 0) {
+        applied.push(`${summary.addresses_added} address${summary.addresses_added === 1 ? '' : 'es'}`)
+        await qc.invalidateQueries({ queryKey: ['address-list'] })
+      }
       await qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
       setImportPass('')
+      const skipped = summary.vault_skipped
+        ? ' Saved passwords and addresses were left out: set up your vault under Passwords, then restore again.'
+        : ''
       setStatus({
         kind: 'ok',
-        text: applied.length
-          ? `Restored ${applied.join(', ')}.`
-          : 'Nothing new to restore (same-named workspaces are skipped).',
+        text:
+          (applied.length
+            ? `Restored ${applied.join(', ')}.`
+            : 'Nothing new to restore (same-named workspaces are skipped).') + skipped,
       })
     } catch (error: unknown) {
       setStatus({ kind: 'err', text: errorMessage(error) })
@@ -218,13 +226,13 @@ export function BackupSection({ settings }: BackupSectionProps) {
 
       <div className="row">
         <div className="l">
-          <span>Saved passwords</span>
-          <span>Your vault logins, re-encrypted under your backup passphrase. Touch ID is required to include or restore them.</span>
+          <span>Saved passwords and addresses</span>
+          <span>Everything in your vault, re-encrypted under your backup passphrase. Unlocking your vault is required to include or restore them.</span>
         </div>
         <Switch
           checked={includeVault}
           onChange={setIncludeVault}
-          label="Include saved passwords"
+          label="Include saved passwords and addresses"
         />
       </div>
 

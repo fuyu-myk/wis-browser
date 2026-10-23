@@ -107,11 +107,12 @@ export function VaultRescue({ passwordMode, onDone }: VaultRescueProps) {
             <div className="row">
               <div className="l">
                 <span>
-                  This key opens {partial.opened} of {partial.total} saved passwords
+                  This key opens {partial.opened} of {partial.total} saved items
                 </span>
                 <span>
-                  The other {partial.total - partial.opened} were sealed with a different key and
-                  stay unreadable. Restoring keeps the {partial.opened} it opens.
+                  The other {partial.total - partial.opened} were sealed with a different key.
+                  Restoring keeps the {partial.opened} it opens; passwords it can't open stay
+                  listed but unreadable, and addresses it can't open are removed.
                 </span>
               </div>
               <button
@@ -129,7 +130,7 @@ export function VaultRescue({ passwordMode, onDone }: VaultRescueProps) {
       <div className="row">
         <div className="l">
           <span>Start over</span>
-          <span>Erase every saved password and set up a new vault.</span>
+          <span>Erase every saved password and address and set up a new vault.</span>
         </div>
         <button
           type="button"
@@ -143,8 +144,8 @@ export function VaultRescue({ passwordMode, onDone }: VaultRescueProps) {
       <Failure error={recover.error ?? reset.error ?? copyError} />
       <ConfirmDialog
         open={confirmReset}
-        title="Erase every saved password?"
-        message="Wis deletes your saved passwords, the vault's key and its recovery copy, then sets up a new, empty vault. This can't be undone. Set recovery up again afterwards."
+        title="Erase every saved password and address?"
+        message="Wis deletes your saved passwords and addresses, the vault's key and its recovery copy, then sets up a new, empty vault. This can't be undone. Set recovery up again afterwards."
         confirmLabel="Erase"
         danger
         onConfirm={() => {

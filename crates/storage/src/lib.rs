@@ -4,6 +4,7 @@
 //! pulled into the shell's `AppState` so storage can be swapped out in tests
 //! (and, later, replaced with an encrypted variant).
 
+pub mod addresses;
 pub mod bookmarks;
 pub mod closed_tabs;
 pub mod credentials;
@@ -14,6 +15,7 @@ pub mod searches;
 pub mod sqlite;
 pub mod traits;
 
+pub use addresses::AddressRecord;
 pub use bookmarks::{Bookmark, BookmarkFolder, BookmarkImport, BookmarkImportStats};
 pub use closed_tabs::ClosedTabRecord;
 pub use credentials::CredentialRecord;

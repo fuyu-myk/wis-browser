@@ -17,7 +17,7 @@ use crate::settings::UserSettings;
 use crate::state::BrowserState;
 use crate::tab::Tab;
 use crate::workspace::Workspace;
-use crate::WisResult;
+use crate::{WisError, WisResult};
 
 /// Bump when the payload shape changes incompatibly. An import rejects a file
 /// whose version is newer than this.
@@ -134,12 +134,19 @@ pub struct BackupPayload {
     /// Saved passwords (opt-in). Plaintext within the passphrase-sealed payload.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credentials: Option<Vec<CredentialBackup>>,
+    /// Saved addresses, taken with the passwords. Plaintext within the
+    /// passphrase-sealed payload.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub addresses: Option<Vec<crate::address::Address>>,
 }
 
 impl BackupPayload {
     /// True when no category is present (an empty export).
     pub fn is_empty(&self) -> bool {
-        self.settings.is_none() && self.profile.is_none() && self.credentials.is_none()
+        self.settings.is_none()
+            && self.profile.is_none()
+            && self.credentials.is_none()
+            && self.addresses.is_none()
     }
 
     /// Validate every included section. A backup file is untrusted input, so
@@ -154,6 +161,16 @@ impl BackupPayload {
             for canvas in profile.canvases.iter().flat_map(|set| &set.canvases) {
                 canvas_name(&canvas.name)?;
                 check_doc(&canvas.doc)?;
+            }
+        }
+        if let Some(addresses) = &self.addresses {
+            if addresses.len() > crate::address::MAX_ADDRESSES {
+                return Err(WisError::InvalidInput {
+                    message: "the backup holds too many addresses".to_string(),
+                });
+            }
+            for address in addresses {
+                address.clone().tidied()?;
             }
         }
 
@@ -372,6 +389,32 @@ mod tests {
     #[test]
     fn empty_payload_is_empty() {
         assert!(BackupPayload::default().is_empty());
+    }
+
+    #[test]
+    fn a_backup_from_before_addresses_reads_without_them() {
+        let payload: BackupPayload = serde_json::from_str("{}").unwrap();
+        assert!(payload.addresses.is_none());
+    }
+
+    #[test]
+    fn addresses_make_a_backup_and_are_checked_like_any_input() {
+        let home = crate::address::Address {
+            city: "London".into(),
+            ..Default::default()
+        };
+        let with = |addresses: Vec<crate::address::Address>| BackupPayload {
+            addresses: Some(addresses),
+            ..Default::default()
+        };
+        assert!(!with(vec![home.clone()]).is_empty());
+        assert!(with(vec![home.clone()]).validate().is_ok());
+        assert!(with(vec![crate::address::Address::default()])
+            .validate()
+            .is_err());
+        assert!(with(vec![home; crate::address::MAX_ADDRESSES + 1])
+            .validate()
+            .is_err());
     }
 
     #[test]
