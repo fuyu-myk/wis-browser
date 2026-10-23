@@ -443,6 +443,7 @@ fn dispatch(
                     label,
                     str_field("username"),
                     str_field("password"),
+                    str_field("kind") == "change",
                 );
             }
         }

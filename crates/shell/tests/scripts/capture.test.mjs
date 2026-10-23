@@ -455,3 +455,30 @@ describe('the password field disappearing', () => {
     assert.equal(p.timers().length, 0)
   })
 })
+
+describe('a password change', () => {
+  const pw = (value, autocomplete) =>
+    input({ type: 'password', value, attrs: autocomplete ? { autocomplete } : {} })
+  const user = () => input({ type: 'email', name: 'email', value: 'alice@example.com' })
+  const submitted = (nodes) => {
+    const p = loadPage({ nodes })
+    p.submit()
+    return p.sent
+  }
+
+  test('a form with the current and a new password posts the new one as a change', () => {
+    const tagged = [user(), pw('old', 'current-password'), pw('fresh', 'new-password'), pw('fresh', 'new-password')]
+    assert.deepEqual(submitted(tagged), [{ username: 'alice@example.com', password: 'fresh', kind: 'change' }])
+    const untagged = [user(), pw('old'), pw('fresh'), pw('fresh')]
+    assert.deepEqual(submitted(untagged), [{ username: 'alice@example.com', password: 'fresh', kind: 'change' }])
+    const pair = [user(), pw('old'), pw('fresh')]
+    assert.deepEqual(submitted(pair), [{ username: 'alice@example.com', password: 'fresh', kind: 'change' }])
+  })
+
+  test('a new password and its confirmation alone are a sign-up, not a change', () => {
+    const tagged = [user(), pw('fresh', 'new-password'), pw('fresh', 'new-password')]
+    assert.deepEqual(submitted(tagged), [{ username: 'alice@example.com', password: 'fresh' }])
+    const untagged = [user(), pw('fresh'), pw('fresh')]
+    assert.deepEqual(submitted(untagged), [{ username: 'alice@example.com', password: 'fresh' }])
+  })
+})
