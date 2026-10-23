@@ -166,7 +166,8 @@ pub async fn vault_recover(
         let key = recovery::open(&copy.sealed, &private_key, passphrase).map_err(recovery_err)?;
         let passwords = storage.list_credentials(None).map_err(persist_err)?;
         let addresses = storage.list_addresses().map_err(persist_err)?;
-        let total = passwords.len() + addresses.len();
+        let cards = storage.list_cards().map_err(persist_err)?;
+        let total = passwords.len() + addresses.len() + cards.len();
         let opened_passwords = passwords
             .into_iter()
             .filter(|row| {
@@ -183,7 +184,15 @@ pub async fn vault_recover(
             .iter()
             .filter(|row| crate::vault::addresses::opens(&key, row))
             .count();
-        Ok((key, opened_passwords + opened_addresses, total))
+        let opened_cards = cards
+            .iter()
+            .filter(|row| crate::vault::cards::opens(&key, row))
+            .count();
+        Ok((
+            key,
+            opened_passwords + opened_addresses + opened_cards,
+            total,
+        ))
     })
     .await?;
     if total == 0 {
@@ -208,6 +217,12 @@ pub async fn vault_recover(
             .iter()
             .filter(|row| !crate::vault::addresses::opens(&key, row))
             .try_for_each(|row| storage.delete_address(row.id))
+            .map_err(persist_err)?;
+        let cards = storage.list_cards().map_err(persist_err)?;
+        cards
+            .iter()
+            .filter(|row| !crate::vault::cards::opens(&key, row))
+            .try_for_each(|row| storage.delete_card(row.id))
             .map_err(persist_err)?;
         Ok(key)
     })
@@ -238,8 +253,12 @@ pub async fn vault_reset(
     let confirmed = if uses_password {
         confirm_erase_natively(&app).await?
     } else {
-        crate::vault::store::confirm_user(&state, "Erase your saved passwords and addresses", None)
-            .await?
+        crate::vault::store::confirm_user(
+            &state,
+            "Erase your saved passwords, addresses and cards",
+            None,
+        )
+        .await?
     };
     if !confirmed {
         return Ok(false);
@@ -287,8 +306,8 @@ async fn confirm_erase_natively(app: &AppHandle) -> WisResult<bool> {
     let answered = tokio::task::spawn_blocking(move || {
         crate::system::panels::confirm_natively(
             &app,
-            "Erase every saved password and address?",
-            "Wis deletes your saved passwords and addresses, the vault's key and its recovery copy, then sets up a new vault with the password you chose. This can't be undone.",
+            "Erase every saved password, address and card?",
+            "Wis deletes your saved passwords, addresses and cards, the vault's key and its recovery copy, then sets up a new vault with the password you chose. This can't be undone.",
             "Erase",
         )
     })

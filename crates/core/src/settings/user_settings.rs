@@ -165,6 +165,9 @@ pub struct UserSettings {
     /// Whether saved addresses are offered at address fields.
     #[serde(default = "default_address_autofill")]
     pub address_autofill: bool,
+    /// Whether saved payment cards are offered at card fields.
+    #[serde(default = "default_card_autofill")]
+    pub card_autofill: bool,
     /// Per-host user agent overrides for sites that still special-case a
     /// particular browser. Keyed by `www.`-stripped host.
     #[serde(default)]
@@ -360,6 +363,10 @@ fn default_address_autofill() -> bool {
     true
 }
 
+fn default_card_autofill() -> bool {
+    true
+}
+
 fn default_tab_sleep_enabled() -> bool {
     true
 }
@@ -512,6 +519,7 @@ impl Default for UserSettings {
             user_agent_profile: UaProfile::default(),
             password_offer: crate::PasswordOffer::default(),
             address_autofill: true,
+            card_autofill: true,
             ua_site_overrides: HashMap::new(),
             media_permissions: HashMap::new(),
             app_launch_permissions: HashMap::new(),
@@ -633,6 +641,7 @@ pub struct UserSettingsPatch {
     pub user_agent_profile: Option<UaProfile>,
     pub password_offer: Option<crate::PasswordOffer>,
     pub address_autofill: Option<bool>,
+    pub card_autofill: Option<bool>,
     /// Replaces the whole override map when present (the frontend holds the
     /// full map). `None` keeps the current map.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -782,6 +791,7 @@ impl UserSettings {
                 .unwrap_or_else(|| self.user_agent_profile.clone()),
             password_offer: patch.password_offer.unwrap_or(self.password_offer),
             address_autofill: patch.address_autofill.unwrap_or(self.address_autofill),
+            card_autofill: patch.card_autofill.unwrap_or(self.card_autofill),
             ua_site_overrides: patch
                 .ua_site_overrides
                 .unwrap_or_else(|| self.ua_site_overrides.clone()),

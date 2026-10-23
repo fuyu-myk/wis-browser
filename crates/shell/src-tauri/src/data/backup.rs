@@ -61,6 +61,7 @@ pub struct ImportSummary {
     pub canvases_added: usize,
     pub passwords_added: usize,
     pub addresses_added: usize,
+    pub cards_added: usize,
     pub vault_skipped: bool,
 }
 
@@ -92,19 +93,20 @@ pub async fn export_backup(
         });
     }
 
-    let (credentials, addresses) = if options.vault {
+    let (credentials, addresses, cards) = if options.vault {
         crate::vault::passwords::authorize_vault(
             &state,
-            "Include your saved passwords and addresses in this backup",
+            "Include your saved passwords, addresses and cards in this backup",
             vault_password.as_deref().map(String::as_str),
         )
         .await?;
         (
             Some(crate::vault::passwords::credentials_in_clear(&state).await?),
             Some(crate::vault::addresses::export_addresses(&state).await?),
+            Some(crate::vault::cards::export_cards(&state).await?),
         )
     } else {
-        (None, None)
+        (None, None, None)
     };
     let payload = BackupPayload {
         settings: if options.settings {
@@ -119,6 +121,7 @@ pub async fn export_backup(
         },
         credentials,
         addresses,
+        cards,
     };
     if payload.is_empty() {
         return Err(WisError::InvalidInput {
@@ -229,18 +232,20 @@ pub async fn import_backup(
         canvases_added: 0,
         passwords_added: 0,
         addresses_added: 0,
+        cards_added: 0,
         vault_skipped: false,
     };
 
     let creds = payload.credentials.unwrap_or_default();
     let addresses = payload.addresses.unwrap_or_default();
-    if !creds.is_empty() || !addresses.is_empty() {
+    let cards = payload.cards.unwrap_or_default();
+    if !creds.is_empty() || !addresses.is_empty() || !cards.is_empty() {
         if crate::vault::store::uses_password() && !crate::vault::store::has_key() {
             summary.vault_skipped = true;
         } else {
             crate::vault::passwords::authorize_vault(
                 &state,
-                "Restore your saved passwords and addresses",
+                "Restore your saved passwords, addresses and cards",
                 vault_password.as_deref().map(String::as_str),
             )
             .await?;
@@ -248,6 +253,7 @@ pub async fn import_backup(
                 crate::vault::passwords::seal_credentials(&state, creds).await?;
             summary.addresses_added =
                 crate::vault::addresses::import_addresses(&state, addresses).await?;
+            summary.cards_added = crate::vault::cards::import_cards(&state, cards).await?;
         }
     }
 

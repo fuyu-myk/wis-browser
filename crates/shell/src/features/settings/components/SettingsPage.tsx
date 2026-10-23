@@ -7,6 +7,7 @@ import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { DownloadIcon, GlobeIcon, LockIcon, MonitorIcon, PanelTopIcon, PlusIcon, SearchIcon, SunIcon } from '@/lib/icons'
 import {
   BookmarkIcon,
+  CardIcon,
   DatabaseIcon,
   GridIcon,
   ImportIcon,
@@ -36,6 +37,7 @@ import { CompatibilitySection } from '@/features/site/components/CompatibilitySe
 import { SiteDataSection } from '@/features/privacy/components/SiteDataSection'
 import { PasswordsSection } from '@/features/vault/components/PasswordsSection'
 import { AddressesSection } from '@/features/vault/components/AddressesSection'
+import { CardsSection } from '@/features/vault/components/CardsSection'
 import { KeyboardShortcutsSection } from '@/features/keyboard/KeyboardShortcutsSection'
 import { BackupSection } from '@/features/settings/components/BackupSection'
 import { AiSection } from '@/features/ai/components/AiSection'
@@ -65,6 +67,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'extensions', label: 'Extensions', icon: <PuzzleIcon /> },
   { id: 'passwords', label: 'Passwords', icon: <KeyIcon /> },
   { id: 'addresses', label: 'Addresses', icon: <MapPinIcon /> },
+  { id: 'cards', label: 'Payment cards', icon: <CardIcon /> },
   { id: 'ai', label: 'AI assistant', icon: <SparkleIcon /> },
   { id: 'shortcuts', label: 'Shortcuts', icon: <KeyboardIcon /> },
   { id: 'backup', label: 'Backup & restore', icon: <LockIcon /> },
@@ -260,6 +263,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
         />
         <PasswordsSection />
         <AddressesSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
+        <CardsSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <AiSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <KeyboardShortcutsSection
           keybindings={settings.keybindings}

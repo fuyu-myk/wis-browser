@@ -430,6 +430,7 @@ export interface ImportSummary {
   canvases_added: number
   passwords_added: number
   addresses_added: number
+  cards_added: number
   vault_skipped: boolean
 }
 
@@ -454,6 +455,32 @@ export interface SavedAddress {
   id: number
   address: Address
 }
+
+/** A card network (mirror of `wis_core::vault::card::CardBrand`). */
+export type CardBrand = 'visa' | 'mastercard' | 'amex' | 'discover' | 'jcb' | 'diners' | 'unionpay' | 'other'
+
+/** A payment card as entered (mirror of `wis_core::vault::card::Card`) without the security code. */
+export interface Card {
+  /** Empty on an edit keeps the saved number. */
+  number: string
+  name: string
+  exp_month: number
+  exp_year: number
+  nickname: string
+}
+
+/** What a saved card shows without the vault key. */
+export interface SavedCard {
+  id: number
+  nickname: string
+  brand: CardBrand
+  last4: string
+  exp_month: number
+  exp_year: number
+}
+
+/** A saved card for its edit form, without the number. */
+export type CardDetails = Omit<Card, 'number'>
 
 /** AI provider wire protocol (mirror of `wis_core::AiProvider`). */
 export type AiProvider = 'anthropic' | 'open_ai_compatible'
@@ -701,6 +728,7 @@ export interface UserSettings {
   password_offer: PasswordOffer
   /** Whether saved addresses are offered at address fields. */
   address_autofill: boolean
+  card_autofill: boolean
   /** Per-host user agent overrides, keyed by `www.`-stripped host. */
   ua_site_overrides: Record<string, UaProfile>
   /** Remembered camera/mic consent, keyed `"<kind>|<origin>"` (true = allow). */
@@ -801,6 +829,7 @@ export interface UserSettingsPatch {
   user_agent_profile?: UaProfile
   password_offer?: PasswordOffer
   address_autofill?: boolean
+  card_autofill?: boolean
   /** Replaces the whole override map when present. */
   ua_site_overrides?: Record<string, UaProfile>
   /** Replaces the whole remembered-permissions map when present. */

@@ -104,7 +104,7 @@ pub(crate) async fn load_key(state: &State<'_, AppState>) -> WisResult<()> {
 fn key_unavailable(err: wis_secrets::VaultError) -> WisError {
     log::warn!("vault: master key unavailable: {err}");
     let message = match err {
-        wis_secrets::VaultError::Missing => "The key your saved passwords and addresses were sealed with is missing from this device, so nothing was changed".to_string(),
+        wis_secrets::VaultError::Missing => "The key your saved passwords, addresses and cards were sealed with is missing from this device, so nothing was changed".to_string(),
         err => format!("Your vault's key couldn't be loaded, so nothing was changed ({err})"),
     };
     WisError::InvalidInput { message }

@@ -52,11 +52,11 @@ fn sealed_key_path() -> WisResult<PathBuf> {
         })
 }
 
-/// Whether anything is sealed with the vault key: passwords or addresses.
+/// Whether anything is sealed with the vault key: passwords, addresses or cards.
 pub(crate) fn has_sealed_data(
     storage: &dyn wis_storage::Storage,
 ) -> wis_storage::StorageResult<bool> {
-    Ok(storage.has_credentials()? || storage.has_addresses()?)
+    Ok(storage.has_credentials()? || storage.has_addresses()? || storage.has_cards()?)
 }
 
 pub(crate) fn has_key() -> bool {

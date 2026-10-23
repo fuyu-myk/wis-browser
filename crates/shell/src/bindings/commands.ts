@@ -10,6 +10,9 @@ import type { CaptureInfo, PendingAddress } from '@/features/vault/lib/vaultMenu
 import type {
   Address,
   SavedAddress,
+  Card,
+  CardDetails,
+  SavedCard,
   RecoverOutcome,
   AiBookmarkHit,
   AiFetchResponse,
@@ -246,6 +249,25 @@ export const commands = {
 
   async addressDelete(id: number): Promise<void> {
     return invoke('address_delete', { id })
+  },
+
+  /** Saved cards' summaries; needs no unlock. */
+  async cardList(): Promise<SavedCard[]> {
+    return invoke('card_list')
+  },
+
+  /** Saved card `id` without its number; needs the vault unlocked. */
+  async cardDetails(id: number): Promise<CardDetails> {
+    return invoke('card_details', { id })
+  },
+
+  /** Save a card as a new one, or in place of `id`, where an empty number keeps the saved one. */
+  async cardSave(id: number | null, card: Card): Promise<number> {
+    return invoke('card_save', { id, card })
+  },
+
+  async cardDelete(id: number): Promise<void> {
+    return invoke('card_delete', { id })
   },
 
   /** Whether any address is saved; needs no unlock. */

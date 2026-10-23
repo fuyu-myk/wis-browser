@@ -6,6 +6,7 @@
 
 pub mod addresses;
 pub mod bookmarks;
+pub mod cards;
 pub mod closed_tabs;
 pub mod credentials;
 pub mod downloads;
@@ -17,6 +18,7 @@ pub mod traits;
 
 pub use addresses::AddressRecord;
 pub use bookmarks::{Bookmark, BookmarkFolder, BookmarkImport, BookmarkImportStats};
+pub use cards::{CardRecord, CardRow};
 pub use closed_tabs::ClosedTabRecord;
 pub use credentials::CredentialRecord;
 pub use downloads::DownloadRecord;

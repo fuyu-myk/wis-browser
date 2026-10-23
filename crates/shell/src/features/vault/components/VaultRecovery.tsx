@@ -130,7 +130,7 @@ export function VaultRescue({ passwordMode, onDone }: VaultRescueProps) {
       <div className="row">
         <div className="l">
           <span>Start over</span>
-          <span>Erase every saved password and address and set up a new vault.</span>
+          <span>Erase every saved password, address and card and set up a new vault.</span>
         </div>
         <button
           type="button"
@@ -144,8 +144,8 @@ export function VaultRescue({ passwordMode, onDone }: VaultRescueProps) {
       <Failure error={recover.error ?? reset.error ?? copyError} />
       <ConfirmDialog
         open={confirmReset}
-        title="Erase every saved password and address?"
-        message="Wis deletes your saved passwords and addresses, the vault's key and its recovery copy, then sets up a new, empty vault. This can't be undone. Set recovery up again afterwards."
+        title="Erase every saved password, address and card?"
+        message="Wis deletes your saved passwords, addresses and cards, the vault's key and its recovery copy, then sets up a new, empty vault. This can't be undone. Set recovery up again afterwards."
         confirmLabel="Erase"
         danger
         onConfirm={() => {

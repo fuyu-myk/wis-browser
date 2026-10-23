@@ -240,7 +240,7 @@ fn same_phone(a: &str, b: &str) -> bool {
     short.len() >= 7 && long.ends_with(short)
 }
 
-fn printable(text: &str) -> String {
+pub(crate) fn printable(text: &str) -> String {
     text.chars()
         .filter(|c| !c.is_control() && !invisible(*c))
         .collect()

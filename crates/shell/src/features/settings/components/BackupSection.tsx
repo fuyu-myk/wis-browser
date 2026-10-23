@@ -153,10 +153,14 @@ export function BackupSection({ settings }: BackupSectionProps) {
         applied.push(`${summary.addresses_added} address${summary.addresses_added === 1 ? '' : 'es'}`)
         await qc.invalidateQueries({ queryKey: ['address-list'] })
       }
+      if (summary.cards_added > 0) {
+        applied.push(`${summary.cards_added} card${summary.cards_added === 1 ? '' : 's'}`)
+        await qc.invalidateQueries({ queryKey: ['card-list'] })
+      }
       await qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
       setImportPass('')
       const skipped = summary.vault_skipped
-        ? ' Saved passwords and addresses were left out: set up your vault under Passwords, then restore again.'
+        ? ' Saved passwords, addresses and cards were left out: set up your vault under Passwords, then restore again.'
         : ''
       setStatus({
         kind: 'ok',
@@ -226,13 +230,13 @@ export function BackupSection({ settings }: BackupSectionProps) {
 
       <div className="row">
         <div className="l">
-          <span>Saved passwords and addresses</span>
+          <span>Saved passwords, addresses and cards</span>
           <span>Everything in your vault, re-encrypted under your backup passphrase. Unlocking your vault is required to include or restore them.</span>
         </div>
         <Switch
           checked={includeVault}
           onChange={setIncludeVault}
-          label="Include saved passwords and addresses"
+          label="Include saved passwords, addresses and cards"
         />
       </div>
 

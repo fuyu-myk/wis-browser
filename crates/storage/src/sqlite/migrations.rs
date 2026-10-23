@@ -328,6 +328,23 @@ CREATE TABLE addresses (
 );
 "#;
 
+/// Saved payment cards: a plain summary to list them by, and the card sealed
+/// whole under the vault key. Never touched by "clear browsing data".
+const M0026_CARDS: &str = r#"
+CREATE TABLE cards (
+    id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    nickname     TEXT    NOT NULL,
+    brand        TEXT    NOT NULL,
+    last4        TEXT    NOT NULL,
+    exp_month    INTEGER NOT NULL,
+    exp_year     INTEGER NOT NULL,
+    ciphertext   BLOB    NOT NULL,
+    nonce        BLOB    NOT NULL,
+    created_at   TEXT    NOT NULL,
+    updated_at   TEXT    NOT NULL
+);
+"#;
+
 /// Every migration, in order. The index of the last entry is the schema
 /// version a fresh database lands on.
 const ALL: &[&str] = &[
@@ -356,6 +373,7 @@ const ALL: &[&str] = &[
     M0023_WORKSPACE_LOCKDOWN,
     M0024_CLOSED_TAB_ARCHIVED,
     M0025_ADDRESSES,
+    M0026_CARDS,
 ];
 
 fn all() -> Migrations<'static> {
@@ -467,6 +485,21 @@ mod tests {
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM addresses", [], |row| row.get(0))
             .expect("address table");
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn a_profile_from_before_cards_gains_an_empty_card_table() {
+        let mut conn = Connection::open_in_memory().expect("open in-memory db");
+        Migrations::new(ALL[..25].iter().copied().map(M::up).collect())
+            .to_latest(&mut conn)
+            .expect("migrate to version 25");
+
+        run(&mut conn).expect("migrate to latest");
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cards", [], |row| row.get(0))
+            .expect("card table");
         assert_eq!(count, 0);
     }
 

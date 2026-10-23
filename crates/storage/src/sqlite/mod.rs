@@ -12,6 +12,7 @@
 mod addresses;
 mod bookmarks;
 mod canvases;
+mod cards;
 mod closed_tabs;
 mod convert;
 mod credentials;
@@ -425,11 +426,32 @@ impl Storage for SqliteStorage {
         addresses::any(&conn)
     }
 
+    fn save_card(&self, id: Option<i64>, row: &crate::cards::CardRow) -> StorageResult<i64> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        cards::save(&conn, id, row)
+    }
+
+    fn list_cards(&self) -> StorageResult<Vec<crate::cards::CardRecord>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        cards::list(&conn)
+    }
+
+    fn delete_card(&self, id: i64) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        cards::delete(&conn, id)
+    }
+
+    fn has_cards(&self) -> StorageResult<bool> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        cards::any(&conn)
+    }
+
     fn clear_vault(&self) -> StorageResult<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         let tx = conn.unchecked_transaction()?;
         credentials::clear(&tx)?;
         addresses::clear(&tx)?;
+        cards::clear(&tx)?;
         tx.commit()?;
         Ok(())
     }

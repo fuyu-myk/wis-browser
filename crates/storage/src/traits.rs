@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 
 use crate::addresses::AddressRecord;
 use crate::bookmarks::{Bookmark, BookmarkFolder, BookmarkImport, BookmarkImportStats};
+use crate::cards::{CardRecord, CardRow};
 use crate::closed_tabs::ClosedTabRecord;
 use crate::credentials::CredentialRecord;
 use crate::downloads::DownloadRecord;
@@ -198,7 +199,18 @@ pub trait Storage: Send + Sync {
 
     fn has_addresses(&self) -> StorageResult<bool>;
 
-    /// Delete every credential and address in one transaction.
+    // -- saved payment cards (see `crate::cards`) ----------------------------
+
+    /// Insert a card, or replace the one with `id`; returns its row id.
+    fn save_card(&self, id: Option<i64>, row: &CardRow) -> StorageResult<i64>;
+
+    fn list_cards(&self) -> StorageResult<Vec<CardRecord>>;
+
+    fn delete_card(&self, id: i64) -> StorageResult<()>;
+
+    fn has_cards(&self) -> StorageResult<bool>;
+
+    /// Delete every credential, address and card in one transaction.
     fn clear_vault(&self) -> StorageResult<()>;
 
     // -- URL-bar suggestions ------------------------------------------------

@@ -52,6 +52,15 @@ The trust boundary is **local vs remote content**, not the window.
 - **Limits**: whether a person can see a field is a judgement the page can still fool: a field placed under the card itself, text coloured like its background, a cover that ignores hit-testing, a field down a scrolling box or the page that the user never scrolls to, a field slotted into a closed shadow root (its slot is out of reach), and a field positioned against a block outside a scrolling box yet within that box's scroll range all pass. That is why the card names what it fills and only those values are sent. On Windows the script runs in the page's own world, so a hostile page can read the token and whatever values were sent; the same naming bounds it.
 - Addresses count as sealed data everywhere passwords do: a key is created only when neither exists, recovery checks the key against both, and reset erases both. Backups take them with the passwords under one confirmation.
 
+## Saved payment cards
+
+- Settings > Payment cards keeps cards (`wis_core::vault::card::Card`: number, name on card, expiry, nickname) in the `cards` table (migration 26). The security code is never kept.
+- Each card is sealed whole with the vault key. Its nickname, network, last four digits and expiry also sit in the clear, so a card field can list cards before an unlock. A fill reads only the sealed card.
+- A number must have 12 to 19 digits and pass the Luhn check, except UnionPay, which issues some cards without a valid check digit; spaces and dashes are dropped. The number is zeroized wherever a card is dropped. The network comes from the issuer prefix. A card already saved is refused, as is a 101st.
+- The full number never goes back to the chrome: the edit form gets the card without it (`card_details`), and an edit with a blank number keeps the saved one.
+- Cards count as sealed data for key creation, recovery (cards the recovered key can't open are dropped) and reset. Backups take them with the passwords and addresses under one confirmation; a restore skips a card whose number is already saved.
+- A "Save and fill payment cards" switch (`UserSettings::card_autofill`, on by default) will govern offering them at card fields.
+
 ## Recovery and reset
 
 - **Recovery key** (Settings > Passwords, `vault/recovery.rs`, `wis_secrets::recovery`): the user pastes an age (`age1...`) or SSH ed25519 or RSA public key, and after a biometric check Wis seals the master key to it in the age format (the `age` crate) and keeps the armored copy in `<app data>/vault-recovery.json` (mode 0600, written to a fresh temporary file, synced and renamed). A pasted private key is refused, and the key is stored in canonical form with a short printable comment. The copy also carries a keyed BLAKE2b check value of the master key, so a copy that no longer matches the unlocked key is found stale and removed, and Settings asks for recovery again. The sealed part is a standard age file, so the `age` or `rage` tool opens it too.

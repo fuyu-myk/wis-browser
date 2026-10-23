@@ -138,6 +138,10 @@ pub struct BackupPayload {
     /// passphrase-sealed payload.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub addresses: Option<Vec<crate::vault::address::Address>>,
+    /// Saved payment cards, taken with the passwords. Plaintext within the
+    /// passphrase-sealed payload.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cards: Option<Vec<crate::vault::card::Card>>,
 }
 
 impl BackupPayload {
@@ -147,6 +151,7 @@ impl BackupPayload {
             && self.profile.is_none()
             && self.credentials.is_none()
             && self.addresses.is_none()
+            && self.cards.is_none()
     }
 
     /// Validate every included section. A backup file is untrusted input, so
@@ -171,6 +176,16 @@ impl BackupPayload {
             }
             for address in addresses {
                 address.clone().tidied()?;
+            }
+        }
+        if let Some(cards) = &self.cards {
+            if cards.len() > crate::vault::card::MAX_CARDS {
+                return Err(WisError::InvalidInput {
+                    message: "the backup holds too many cards".to_string(),
+                });
+            }
+            for card in cards {
+                card.clone().tidied()?;
             }
         }
 
@@ -415,6 +430,30 @@ mod tests {
         assert!(with(vec![home; crate::vault::address::MAX_ADDRESSES + 1])
             .validate()
             .is_err());
+    }
+
+    #[test]
+    fn cards_make_a_backup_and_are_checked_like_any_input() {
+        let visa = crate::vault::card::Card {
+            number: zeroize::Zeroizing::new("4242424242424242".into()),
+            exp_month: 8,
+            exp_year: 2028,
+            ..Default::default()
+        };
+        let with = |cards: Vec<crate::vault::card::Card>| BackupPayload {
+            cards: Some(cards),
+            ..Default::default()
+        };
+        assert!(!with(vec![visa.clone()]).is_empty());
+        assert!(with(vec![visa.clone()]).validate().is_ok());
+        assert!(with(vec![crate::vault::card::Card::default()])
+            .validate()
+            .is_err());
+        assert!(with(vec![visa; crate::vault::card::MAX_CARDS + 1])
+            .validate()
+            .is_err());
+        let older: BackupPayload = serde_json::from_str("{}").unwrap();
+        assert!(older.cards.is_none());
     }
 
     #[test]
