@@ -46,6 +46,14 @@ export interface AddressCaptureEvent extends PendingAddress {
   tab: TabId
 }
 
+/** surface → chrome: the menu unlocked the vault a card handed. */
+export const VAULT_UNLOCKED_EVENT = 'wis-vault-unlocked'
+
+export interface VaultUnlocked {
+  window: string
+  tab: TabId
+}
+
 /** Saved-logins card. */
 export const VAULTMENU_FILL_EVENT = 'wis-vaultmenu-fill'
 

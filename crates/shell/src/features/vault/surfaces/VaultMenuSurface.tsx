@@ -17,8 +17,8 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { commands } from '@/bindings/commands'
-import type { CredentialSummary, SignupFieldInfo, TabId } from '@/bindings/types'
-import { addressSummary } from '@/features/vault/lib/addresses'
+import type { CredentialSummary, SavedAddress, SignupFieldInfo, TabId } from '@/bindings/types'
+import { AddressSavePrompt } from '@/features/vault/components/AddressSavePrompt'
 import { LockIcon } from '@/lib/icons'
 import { cx } from '@/lib/cx'
 import { SETTINGS_URL } from '@/lib/url'
@@ -30,6 +30,8 @@ import {
   type CaptureInfo,
   type PendingAddress,
   type VaultMenuAnchor,
+  type VaultUnlocked,
+  VAULT_UNLOCKED_EVENT,
 } from '@/features/vault/lib/vaultMenu'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
@@ -69,6 +71,9 @@ export function VaultMenuSurface() {
 
   const [pending, setPending] = useState<CaptureInfo | null>(null)
   const [address, setAddress] = useState<PendingAddress | null>(null)
+  const [match, setMatch] = useState<SavedAddress | null>(null)
+  /** The serial whose saved match was looked up. */
+  const checkedRef = useRef<number | null>(null)
   const addressTabRef = useRef<TabId | null>(null)
   const addressRef = useRef<TabId | null>(null)
   addressRef.current = address ? addressTabRef.current : null
@@ -98,6 +103,13 @@ export function VaultMenuSurface() {
     setPasswordField(field)
     addressTabRef.current = typed ? tabId : null
     setAddress(typed)
+    const status = typed ? await commands.vaultStatus().catch(() => null) : null
+    setMatch(
+      typed && status?.unlocked
+        ? await commands.addressCaptureMatch(tabId as TabId, typed.serial).catch(() => null)
+        : null,
+    )
+    checkedRef.current = typed && status?.unlocked ? typed.serial : null
   }, [host, tabId])
 
   useEffect(() => {
@@ -193,7 +205,10 @@ export function VaultMenuSurface() {
   fillRef.current = fill
 
   const unlockOnly = async (forTab: TabId) => {
-    if (await ensureUnlocked(forTab)) close()
+    if (!(await ensureUnlocked(forTab))) return
+    const unlocked: VaultUnlocked = { window: getCurrentWindow().label, tab: forTab }
+    void emit(VAULT_UNLOCKED_EVENT, unlocked).catch(() => undefined)
+    close()
   }
   unlockOnlyRef.current = unlockOnly
 
@@ -221,10 +236,37 @@ export function VaultMenuSurface() {
     const label = getCurrentWindow().label
     try {
       if (!(await ensureUnlocked(tabId))) return
+      if (checkedRef.current !== address.serial) {
+        checkedRef.current = address.serial
+        const found = await commands.addressCaptureMatch(tabId, address.serial)
+        if (found) {
+          setMatch(found)
+          return
+        }
+      }
       const saved = await commands.addressCaptureSave(tabId, address.serial)
       void showRemoteToast(label, saved ? 'Address saved' : 'This address is already saved')
       addressRef.current = null
       setAddress(null)
+      if (!pending) close()
+    } catch (error: unknown) {
+      void showRemoteToast(label, errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onUpdateAddress = async () => {
+    if (!tabId || !address || !match) return
+    setBusy(true)
+    const label = getCurrentWindow().label
+    try {
+      if (!(await ensureUnlocked(tabId))) return
+      await commands.addressCaptureUpdate(tabId, address.serial, match.id)
+      void showRemoteToast(label, 'Address updated')
+      addressRef.current = null
+      setAddress(null)
+      setMatch(null)
       if (!pending) close()
     } catch (error: unknown) {
       void showRemoteToast(label, errorMessage(error))
@@ -281,15 +323,6 @@ export function VaultMenuSurface() {
     !!address ||
     (!!host && candidates.length > 0) ||
     !!passwordField
-  const typed = address ? addressSummary(address.address, navigator.language) : null
-  const rest = address
-    ? [
-        ...address.address.street_address.split('\n').slice(1),
-        address.address.organization,
-        address.address.tel,
-        address.address.email,
-      ].filter((part) => part && part !== typed?.title)
-    : []
 
   return (
     <div className="kb-vaultmenu-backdrop" onMouseDown={close}>
@@ -336,41 +369,20 @@ export function VaultMenuSurface() {
               </button>
             </div>
           </div>
-          {(candidates.length > 0 || typed) && <div className="kb-vaultmenu-sep" />}
+          {(candidates.length > 0 || address) && <div className="kb-vaultmenu-sep" />}
         </>
       )}
 
-          {typed && (
+          {address && (
             <>
-              <div className="kb-vaultmenu-save">
-                <div className="kb-vaultmenu-save-text">
-                  <div className="kb-vaultmenu-save-title">Save address?</div>
-                  <div className="kb-vaultmenu-save-sub">
-                    {[typed.title, typed.detail].filter(Boolean).join(' · ')}
-                  </div>
-                  {rest.length > 0 && (
-                    <div className="kb-vaultmenu-save-sub">{rest.join(' · ')}</div>
-                  )}
-                </div>
-                <div className="kb-vaultmenu-save-actions">
-                  <button
-                    type="button"
-                    className="kb-vaultmenu-btn"
-                    onClick={onDismissAddress}
-                    disabled={busy}
-                  >
-                    Not now
-                  </button>
-                  <button
-                    type="button"
-                    className="kb-vaultmenu-btn kb-vaultmenu-btn-primary"
-                    onClick={() => void onSaveAddress()}
-                    disabled={busy}
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
+              <AddressSavePrompt
+                address={address}
+                match={match}
+                busy={busy}
+                onSave={() => void onSaveAddress()}
+                onUpdate={() => void onUpdateAddress()}
+                onDismiss={onDismissAddress}
+              />
               {candidates.length > 0 && <div className="kb-vaultmenu-sep" />}
             </>
           )}

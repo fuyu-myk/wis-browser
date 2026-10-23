@@ -80,6 +80,22 @@ export interface AnchoredCard {
   close: (release: boolean) => void
 }
 
+/** The cards open in this window, by name, with the tab each is for. */
+const openCards = new Map<string, TabId>()
+
+/** A window event, `{ name, tabId }`, as a card opens in this window. */
+export const CARD_OPENED_EVENT = 'wis-card-opened'
+
+export interface CardOpened {
+  name: string
+  tabId: TabId
+}
+
+/** Whether a card other than `name` is open for `tabId`. */
+export function otherCardOpenFor(name: string, tabId: TabId): boolean {
+  return [...openCards].some(([other, tab]) => other !== name && tab === tabId)
+}
+
 export function activeTabOf(state: BrowserState): TabId | null {
   return state.workspaces.find((w) => w.id === state.active_workspace_id)?.active_tab_id ?? null
 }
@@ -143,11 +159,12 @@ export function useAnchoredCard(
       if (!tabId) return
       openRef.current = null
       placedRef.current = null
+      openCards.delete(name)
       void hide().catch(() => undefined)
       if (release) void channel.release(tabId).catch(() => undefined)
       onCloseRef.current()
     },
-    [hide, channel],
+    [hide, channel, name],
   )
 
   const open = useCallback(
@@ -160,9 +177,12 @@ export function useAnchoredCard(
       }
       openRef.current = tabId
       sizeRef.current = size
+      openCards.set(name, tabId)
+      const opened: CardOpened = { name, tabId }
+      window.dispatchEvent(new CustomEvent(CARD_OPENED_EVENT, { detail: opened }))
       await place(tabId, rect)
     },
-    [place, channel],
+    [place, channel, name],
   )
 
   useEffect(() => {

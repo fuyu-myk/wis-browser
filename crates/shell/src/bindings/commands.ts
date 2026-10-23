@@ -272,6 +272,16 @@ export const commands = {
     return invoke('address_capture_save', { tabId, serial })
   },
 
+  /** The saved address the submitted one would update, if any; needs the vault unlocked. */
+  async addressCaptureMatch(tabId: TabId, serial: number): Promise<SavedAddress | null> {
+    return invoke('address_capture_match', { tabId, serial })
+  },
+
+  /** Update saved address `id` with what the submitted one holds differently. */
+  async addressCaptureUpdate(tabId: TabId, serial: number, id: number): Promise<void> {
+    return invoke('address_capture_update', { tabId, serial, id })
+  },
+
   /** Drop the address `serial` names; the tab's next prompt waits to be opened. */
   async addressCaptureDismiss(tabId: TabId, serial: number): Promise<void> {
     return invoke('address_capture_dismiss', { tabId, serial })

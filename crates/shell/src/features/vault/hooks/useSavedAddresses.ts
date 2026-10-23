@@ -18,6 +18,9 @@ import {
   useAnchoredCard,
   type CardChannel,
   type FieldRect,
+  CARD_OPENED_EVENT,
+  otherCardOpenFor,
+  type CardOpened,
 } from '@/features/vault/hooks/useAnchoredCard'
 import {
   ADDRESS_FIELD_EVENT,
@@ -33,6 +36,10 @@ import {
   type AddressOffer,
 } from '@/features/vault/lib/addressCard'
 import { addressSummary } from '@/features/vault/lib/addresses'
+import {
+  VAULT_UNLOCKED_EVENT,
+  type VaultUnlocked,
+} from '@/features/vault/lib/vaultMenu'
 
 const ADDRESS_CHANNEL: CardChannel = {
   move: ADDRESS_MOVE_EVENT,
@@ -70,6 +77,7 @@ async function offerFor(field: AddressField): Promise<AddressOffer | null> {
 export function useSavedAddresses(state: BrowserState, suspended: boolean): void {
   const offerRef = useRef<AddressOffer | null>(null)
   const fieldRef = useRef<AddressField | null>(null)
+  const waitingRef = useRef<AddressField | null>(null)
   const pickedRef = useRef(new Set<TabId>())
   const enabledRef = useRef(state.settings.address_autofill)
   enabledRef.current = state.settings.address_autofill
@@ -100,7 +108,7 @@ export function useSavedAddresses(state: BrowserState, suspended: boolean): void
         if (cancelled || mine !== focus || !next) return
         const size = addressCardSize(next.rows.length)
         const rect = card.placeAt(tabId, field.rect, size)
-        if (!rect) return
+        if (!rect || otherCardOpenFor('addresses', tabId)) return
         offerRef.current = next
         await card.open(tabId, rect, size)
         void emit(ADDRESSES_SHOW_EVENT, next)
@@ -128,6 +136,7 @@ export function useSavedAddresses(state: BrowserState, suspended: boolean): void
     track(
       listen<TabPayload>(FIELD_GONE_EVENT, (event) => {
         pickedRef.current.delete(event.payload.tabId as TabId)
+        if (waitingRef.current?.tabId === event.payload.tabId) waitingRef.current = null
         if (fieldRef.current?.tabId !== event.payload.tabId) return
         focus++
         fieldRef.current = null
@@ -153,14 +162,32 @@ export function useSavedAddresses(state: BrowserState, suspended: boolean): void
       listen<AddressesClose>(ADDRESSES_CLOSE_EVENT, (event) => {
         if (event.payload.window !== getCurrentWindow().label) return
         focus++
+        waitingRef.current = event.payload.unlocking ? fieldRef.current : null
         fieldRef.current = null
         if (event.payload.picked) pickedRef.current.add(event.payload.tabId)
-        card.close(true)
+        card.close(!event.payload.unlocking)
       }),
     )
 
+    track(
+      listen<VaultUnlocked>(VAULT_UNLOCKED_EVENT, (event) => {
+        const waiting = waitingRef.current
+        if (event.payload.window !== getCurrentWindow().label) return
+        if (!waiting || waiting.tabId !== event.payload.tab) return
+        waitingRef.current = null
+        offer(waiting)
+      }),
+    )
+
+    const yieldToOther = (event: Event) => {
+      const { name, tabId } = (event as CustomEvent<CardOpened>).detail
+      if (name !== 'addresses' && card.openFor() === tabId) card.close(true)
+    }
+    window.addEventListener(CARD_OPENED_EVENT, yieldToOther)
+
     return () => {
       cancelled = true
+      window.removeEventListener(CARD_OPENED_EVENT, yieldToOther)
       unlistens.forEach((fn) => fn())
     }
   }, [card])

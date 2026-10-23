@@ -379,7 +379,10 @@ try {
 
   var valueFor = function (kind, el) {
     switch (kind) {
-      case 'name': return [V.given, V.family].filter(Boolean).join(' ');
+      case 'name':
+        return /[\u{1100}-\u{11ff}\u{3040}-\u{30ff}\u{3130}-\u{318f}\u{31f0}-\u{31ff}\u{3400}-\u{9fff}\u{ac00}-\u{d7af}\u{f900}-\u{faff}\u{ff66}-\u{ff9f}\u{20000}-\u{323af}]/u.test(V.given + V.family)
+          ? V.family + V.given
+          : [V.given, V.family].filter(Boolean).join(' ');
       case 'given': return V.given;
       case 'family': return V.family;
       case 'organization': return V.organization;

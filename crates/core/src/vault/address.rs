@@ -139,6 +139,48 @@ impl Address {
             && words(&self.email, &other.email)
     }
 
+    /// Whether `other` contains the same street, and the same postal code,
+    /// or the same city when either lacks a postal code.
+    pub fn same_place(&self, other: &Address) -> bool {
+        let filled = |a: &str, b: &str| !a.is_empty() && !b.is_empty();
+        let placed = if filled(&self.postal_code, &other.postal_code) {
+            alphanumeric(&self.postal_code).eq(alphanumeric(&other.postal_code))
+        } else {
+            filled(&self.city, &other.city) && same_words(&self.city, &other.city)
+        };
+        filled(&self.street_address, &other.street_address)
+            && same_words(&self.street_address, &other.street_address)
+            && placed
+    }
+
+    /// This address with every value `other` has that this one lacks or holds
+    /// differently. A value only written differently stays as saved.
+    pub fn updated_by(&self, other: &Address) -> Address {
+        let pick = |mine: &str, theirs: &str, same: bool| {
+            if theirs.is_empty() || same {
+                mine.to_string()
+            } else {
+                theirs.to_string()
+            }
+        };
+        let words = |mine: &str, theirs: &str| pick(mine, theirs, same_words(mine, theirs));
+        let compact = |mine: &str, theirs: &str| {
+            pick(mine, theirs, alphanumeric(mine).eq(alphanumeric(theirs)))
+        };
+        Address {
+            given_name: words(&self.given_name, &other.given_name),
+            family_name: words(&self.family_name, &other.family_name),
+            organization: words(&self.organization, &other.organization),
+            street_address: words(&self.street_address, &other.street_address),
+            city: words(&self.city, &other.city),
+            region: words(&self.region, &other.region),
+            postal_code: compact(&self.postal_code, &other.postal_code),
+            country: compact(&self.country, &other.country),
+            tel: pick(&self.tel, &other.tel, same_phone(&self.tel, &other.tel)),
+            email: words(&self.email, &other.email),
+        }
+    }
+
     /// Whether `name`, written whole, is this address's given and family name,
     /// in either order, with or without a space between.
     pub fn named(&self, name: &str) -> bool {
@@ -413,6 +455,66 @@ mod tests {
         assert!(japanese.named("山田 太郎"));
         assert!(japanese.named("山田太郎"));
         assert!(japanese.named("太郎 山田"));
+    }
+
+    #[test]
+    fn an_address_at_the_same_place_takes_only_what_changed() {
+        let saved = Address {
+            given_name: "Ada".into(),
+            family_name: "Lovelace".into(),
+            street_address: "12 St James Square\nFlat 3".into(),
+            city: "London".into(),
+            postal_code: "SW1Y 4JH".into(),
+            country: "GB".into(),
+            tel: "+44 20 7946 0000".into(),
+            ..Address::default()
+        };
+        let typed = Address {
+            given_name: "ada".into(),
+            street_address: "12 St James Square, Flat 3".into(),
+            postal_code: "sw1y4jh".into(),
+            tel: "+44 20 7946 9999".into(),
+            email: "ada@example.org".into(),
+            ..Address::default()
+        };
+        assert!(saved.same_place(&typed));
+        let updated = saved.updated_by(&typed);
+        assert_eq!(updated.tel, "+44 20 7946 9999");
+        assert_eq!(updated.email, "ada@example.org");
+        assert_eq!(
+            updated.given_name, "Ada",
+            "a value written differently stays as saved"
+        );
+        assert_eq!(updated.street_address, saved.street_address);
+        assert_eq!(updated.family_name, "Lovelace");
+
+        let elsewhere = Address {
+            street_address: "9 Elm Road".into(),
+            postal_code: "SW1Y 4JH".into(),
+            ..Address::default()
+        };
+        assert!(!saved.same_place(&elsewhere));
+        let street_only = Address {
+            street_address: "12 St James Square\nFlat 3".into(),
+            ..Address::default()
+        };
+        assert!(
+            !saved.same_place(&street_only),
+            "a street alone does not place it"
+        );
+        let by_city = Address {
+            city: "london".into(),
+            ..street_only
+        };
+        assert!(saved.same_place(&by_city));
+        let other_district = Address {
+            postal_code: "SW1A 1AA".into(),
+            ..by_city
+        };
+        assert!(
+            !saved.same_place(&other_district),
+            "two postcodes decide on their own"
+        );
     }
 
     #[test]

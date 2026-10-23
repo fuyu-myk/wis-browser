@@ -544,6 +544,8 @@ pub fn run() {
             vault::address_field::release_address_field,
             vault::address_save::address_capture_pending,
             vault::address_save::address_capture_save,
+            vault::address_save::address_capture_match,
+            vault::address_save::address_capture_update,
             vault::address_save::address_capture_dismiss,
             vault::address_save::address_capture_hush,
             vault::addresses::address_save,

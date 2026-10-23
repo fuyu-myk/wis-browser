@@ -716,3 +716,18 @@ test('moving on, Escape or typing in the field lets the card go', () => {
   page.fire('doc:input', { target: page.postal, isTrusted: false })
   assert.equal(page.sent.at(-1).kind, 'focus')
 })
+
+test('a single name field puts the family name first for Chinese, Japanese and Korean names', () => {
+  for (const [given, family, whole] of [
+    ['太郎', '山田', '山田太郎'],
+    ['小明', '王', '王小明'],
+    ['민준', '김', '김민준'],
+    ['ﾀﾛｳ', 'ﾔﾏﾀﾞ', 'ﾔﾏﾀﾞﾀﾛｳ'],
+    ['太郎', '𠮷田', '𠮷田太郎'],
+    ['Ada', 'Lovelace', 'Ada Lovelace'],
+  ]) {
+    const name = field('name')
+    fill(page([name]), { ...home, given, family })
+    assert.equal(name.value, whole, whole)
+  }
+})

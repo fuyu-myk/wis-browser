@@ -70,9 +70,9 @@ export function AddressCardSurface() {
 
   const early = () => performance.now() - shownAt.current < EARLY_CLICK_MS
 
-  const closeCard = (tabId: AddressOffer['tabId'], picked: boolean) => {
+  const closeCard = (tabId: AddressOffer['tabId'], picked: boolean, unlocking = false) => {
     setOffer(null)
-    const close: AddressesClose = { window: getCurrentWindow().label, tabId, picked }
+    const close: AddressesClose = { window: getCurrentWindow().label, tabId, picked, unlocking }
     void emit(ADDRESSES_CLOSE_EVENT, close)
   }
 
@@ -85,7 +85,7 @@ export function AddressCardSurface() {
       if (status?.password) {
         const request: VaultMenuFill = { window: label, tab: offer.tabId }
         void emit(VAULTMENU_FILL_EVENT, request)
-        closeCard(offer.tabId, false)
+        closeCard(offer.tabId, false, true)
         return
       }
       const unlocked = await commands.vaultUnlock().catch((error: unknown) => {

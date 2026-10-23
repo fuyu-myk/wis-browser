@@ -25,6 +25,7 @@ export interface AddressesClose {
   window: string
   tabId: TabId
   picked: boolean
+  unlocking?: boolean
 }
 
 export interface AddressOffer {

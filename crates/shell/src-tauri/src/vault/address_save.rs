@@ -14,6 +14,7 @@ use wis_core::vault::address::Address;
 use wis_core::{TabId, WisError, WisResult};
 
 use crate::state::AppState;
+use crate::vault::addresses::SavedAddress;
 
 const CAPTURE_EVENT: &str = "wis-address-capture";
 const OFFER_INTERVAL: Duration = Duration::from_secs(1);
@@ -151,6 +152,120 @@ pub async fn address_capture_save(
     .await?;
     drop_shown(&mut *state.pending_addresses.lock().await, tab_id, serial);
     Ok(saved)
+}
+
+/// The saved address the submitted one `serial` names would update.
+/// Needs the vault unlocked.
+#[tauri::command]
+pub async fn address_capture_match(
+    state: State<'_, AppState>,
+    tab_id: TabId,
+    serial: u64,
+) -> WisResult<Option<SavedAddress>> {
+    let captured = shown(&state, tab_id, serial).await?;
+    let known = saved(&state).await?;
+    Ok(closest(&known, &captured).map(|(id, address)| SavedAddress { id, address }))
+}
+
+/// Update saved address `id` with what the submitted one `serial` names
+/// holds differently. Needs the vault unlocked.
+#[tauri::command]
+pub async fn address_capture_update(
+    state: State<'_, AppState>,
+    tab_id: TabId,
+    serial: u64,
+    id: i64,
+) -> WisResult<()> {
+    let captured = shown(&state, tab_id, serial).await?;
+    let known = saved(&state).await?;
+    let (_, current) = known
+        .iter()
+        .find(|(known_id, _)| *known_id == id)
+        .ok_or_else(|| WisError::InvalidInput {
+            message: "This address was removed".to_string(),
+        })?;
+    if !updates(current, &captured) {
+        return Err(WisError::InvalidInput {
+            message: "This address no longer matches the saved one".to_string(),
+        });
+    }
+
+    let updated = update_for(current, &captured);
+    crate::vault::addresses::address_save(state.clone(), Some(id), updated).await?;
+    drop_shown(&mut *state.pending_addresses.lock().await, tab_id, serial);
+
+    Ok(())
+}
+
+async fn shown(state: &State<'_, AppState>, tab_id: TabId, serial: u64) -> WisResult<Captured> {
+    waiting(&*state.pending_addresses.lock().await, tab_id, serial).ok_or_else(|| {
+        WisError::InvalidInput {
+            message: "That address is no longer waiting to be saved".to_string(),
+        }
+    })
+}
+
+async fn saved(state: &State<'_, AppState>) -> WisResult<Vec<(i64, Address)>> {
+    let list = crate::vault::addresses::address_list(state.clone()).await?;
+    Ok(list
+        .into_iter()
+        .map(|saved| (saved.id, saved.address))
+        .collect())
+}
+
+/// The first saved address at the place `captured` names, unless one already
+/// holds it all.
+fn closest(known: &[(i64, Address)], captured: &Captured) -> Option<(i64, Address)> {
+    let addresses: Vec<Address> = known.iter().map(|(_, address)| address.clone()).collect();
+    if already_saved(&addresses, captured) {
+        return None;
+    }
+    known
+        .iter()
+        .find(|(_, saved)| updates(saved, captured))
+        .cloned()
+}
+
+/// Whether `captured` can update `saved`: the same place, and the same person
+/// where both name one.
+fn updates(saved: &Address, captured: &Captured) -> bool {
+    let unnamed = |a: &Address| a.given_name.is_empty() && a.family_name.is_empty();
+    let same_person = unnamed(saved)
+        || unnamed(&captured.address)
+        || if captured.whole_name.is_empty() {
+            saved.covers(&Address {
+                given_name: captured.address.given_name.clone(),
+                family_name: captured.address.family_name.clone(),
+                ..Address::default()
+            })
+        } else {
+            saved.named(&captured.whole_name)
+        };
+    saved.same_place(&captured.address) && same_person
+}
+
+/// `saved` with what `captured` holds differently, with a whole name or a
+/// region picked by its code that matches staying as saved.
+fn update_for(saved: &Address, captured: &Captured) -> Address {
+    let named = !captured.whole_name.is_empty() && saved.named(&captured.whole_name);
+    let coded = !captured.region_code.is_empty()
+        && saved.covers(&Address {
+            region: captured.region_code.clone(),
+            ..Address::default()
+        });
+    let keep = |keep: bool, value: &str| {
+        if keep {
+            String::new()
+        } else {
+            value.to_string()
+        }
+    };
+    saved.updated_by(&Address {
+        given_name: keep(named, &captured.address.given_name),
+        family_name: keep(named, &captured.address.family_name),
+        region: keep(coded, &captured.address.region),
+        ..captured.address.clone()
+    })
 }
 
 /// Drop `tab`'s waiting address if it is still the one `serial` names.
@@ -485,6 +600,60 @@ mod tests {
             );
         }
         assert!(family_first('ｶ') && family_first('ㄱ') && family_first('\u{20000}'));
+    }
+
+    #[test]
+    fn a_capture_at_a_saved_place_updates_that_address() {
+        let home = Address {
+            given_name: "Juan".into(),
+            family_name: "García López".into(),
+            street_address: "Calle Mayor 1".into(),
+            city: "Madrid".into(),
+            region: "Madrid".into(),
+            tel: "600 000 000".into(),
+            ..Address::default()
+        };
+        let other = Address {
+            street_address: "Otra 2".into(),
+            city: "Madrid".into(),
+            ..Address::default()
+        };
+        let typed = captured(Some(&serde_json::json!({
+            "name": "Juan García López", "street": "Calle Mayor 1", "city": "Madrid",
+            "region": "Comunidad de Madrid", "regionCode": "Madrid", "tel": "600 111 111",
+        })))
+        .unwrap();
+        let known = vec![(7, other), (9, home.clone())];
+        let (id, saved) = closest(&known, &typed).unwrap();
+        assert_eq!(id, 9);
+        let updated = update_for(&saved, &typed);
+        assert_eq!(updated.tel, "600 111 111");
+        assert_eq!(
+            (updated.given_name.as_str(), updated.family_name.as_str()),
+            ("Juan", "García López")
+        );
+        assert_eq!(
+            updated.region, "Madrid",
+            "a region picked by its code stays as saved"
+        );
+
+        let same = captured(Some(
+            &serde_json::json!({ "street": "Calle Mayor 1", "city": "Madrid" }),
+        ))
+        .unwrap();
+        assert!(
+            closest(&[(9, home.clone())], &same).is_none(),
+            "already saved, nothing to update"
+        );
+
+        let housemate = captured(Some(&serde_json::json!({
+            "name": "Ana Ruiz", "street": "Calle Mayor 1", "city": "Madrid", "tel": "600 222 222",
+        })))
+        .unwrap();
+        assert!(
+            closest(&[(9, home)], &housemate).is_none(),
+            "someone else at the same place"
+        );
     }
 
     #[test]
