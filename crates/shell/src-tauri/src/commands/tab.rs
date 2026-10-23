@@ -216,7 +216,7 @@ pub async fn close_tab(
         }
     }
 
-    mutate_unit_immediate(&app, &state, move |s| {
+    let closed = mutate_unit_immediate(&app, &state, move |s| {
         let workspace_id = s.tab(id)?.workspace_id;
         let plain_close = s
             .workspace(workspace_id)
@@ -241,7 +241,9 @@ pub async fn close_tab(
 
         next.with_active_tab(target)
     })
-    .await
+    .await;
+    crate::address_save::forget(&state, id).await;
+    closed
 }
 
 /// How many closed tabs stay reopenable, archived ones included.
@@ -257,6 +259,7 @@ pub(crate) async fn forget_tab_state(app: &AppHandle, state: &AppState, id: TabI
     crate::hardening::forget(&label);
     crate::uncloak::forget(state, &label);
     crate::capture::forget(state, id).await;
+    crate::address_save::forget(state, id).await;
     crate::audio::forget_tab(app, id);
     crate::tab_preview::forget(app, state, id);
 }

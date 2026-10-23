@@ -6,7 +6,7 @@
 // side. Passing snake_case from JS silently fails to deserialise.
 
 import { Channel, invoke } from '@tauri-apps/api/core'
-import type { CaptureInfo } from '@/lib/vaultMenu'
+import type { CaptureInfo, PendingAddress } from '@/lib/vaultMenu'
 import type {
   Address,
   SavedAddress,
@@ -260,6 +260,26 @@ export const commands = {
 
   async releaseAddressField(tabId: TabId): Promise<void> {
     return invoke('release_address_field', { tabId })
+  },
+
+  /** The address the tab's page submitted, waiting for "Save address?". */
+  async addressCapturePending(tabId: TabId): Promise<PendingAddress | null> {
+    return invoke('address_capture_pending', { tabId })
+  },
+
+  /** Save the address `serial` names; false when a saved one holds it. */
+  async addressCaptureSave(tabId: TabId, serial: number): Promise<boolean> {
+    return invoke('address_capture_save', { tabId, serial })
+  },
+
+  /** Drop the address `serial` names; the tab's next prompt waits to be opened. */
+  async addressCaptureDismiss(tabId: TabId, serial: number): Promise<void> {
+    return invoke('address_capture_dismiss', { tabId, serial })
+  },
+
+  /** The prompt closed unanswered: the next one waits to be opened. */
+  async addressCaptureHush(tabId: TabId): Promise<void> {
+    return invoke('address_capture_hush', { tabId })
   },
 
   async vaultChangePassword(current: string, next: string): Promise<void> {

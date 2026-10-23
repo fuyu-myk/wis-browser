@@ -8,7 +8,7 @@
  * close request back.
  */
 
-import type { TabId } from '@/bindings/types'
+import type { Address, TabId } from '@/bindings/types'
 
 /** chrome → surface: (re)load + render, anchoring the card at this rect. */
 export const VAULTMENU_OPEN_EVENT = 'wis-vaultmenu-open'
@@ -28,6 +28,21 @@ export interface CaptureInfo {
 
 /** A captured login, with the tab it was captured in. */
 export interface CaptureEvent extends CaptureInfo {
+  tab: TabId
+}
+
+/** native → all: a page submitted an address worth offering to save. */
+export const ADDRESS_CAPTURE_EVENT = 'wis-address-capture'
+
+/** A submitted address waiting for "Save address?"; a save names its serial. */
+export interface PendingAddress {
+  serial: number
+  address: Address
+  /** One was dismissed in this tab lately: wait to be opened. */
+  quiet: boolean
+}
+
+export interface AddressCaptureEvent extends PendingAddress {
   tab: TabId
 }
 

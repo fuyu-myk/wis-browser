@@ -80,6 +80,7 @@ pub async fn delete_workspace(
         crate::page_source::forget(tab);
         crate::signup::forget_field(&tab.as_uuid().to_string());
         crate::capture::forget(&state, tab).await;
+        crate::address_save::forget(&state, tab).await;
         crate::audio::forget_tab(&app, tab);
         crate::tab_preview::forget(&app, &state, tab);
     }

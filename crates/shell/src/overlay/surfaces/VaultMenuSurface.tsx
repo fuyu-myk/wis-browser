@@ -3,6 +3,7 @@
  *
  * Shows, for the active tab's host:
  *  - a "Save password?" block when a login was just captured;
+ *  - a "Save address?" block when the page submitted an address;
  *  - the saved-account picker (fill on click; Touch ID on demand);
  *  - a "Manage passwords" row.
  *
@@ -17,14 +18,17 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { commands } from '@/bindings/commands'
 import type { CredentialSummary, SignupFieldInfo, TabId } from '@/bindings/types'
+import { addressSummary } from '@/lib/addresses'
 import { LockIcon } from '@/lib/icons'
 import { cx } from '@/lib/cx'
 import { SETTINGS_URL } from '@/lib/url'
 import {
+  ADDRESS_CAPTURE_EVENT,
   CAPTURE_LOGIN_EVENT,
   VAULTMENU_CLOSE_EVENT,
   VAULTMENU_OPEN_EVENT,
   type CaptureInfo,
+  type PendingAddress,
   type VaultMenuAnchor,
 } from '@/lib/vaultMenu'
 import { useBrowserState } from '@/hooks/useBrowserState'
@@ -64,6 +68,10 @@ export function VaultMenuSurface() {
   const workspaceId = activeWorkspace?.id ?? null
 
   const [pending, setPending] = useState<CaptureInfo | null>(null)
+  const [address, setAddress] = useState<PendingAddress | null>(null)
+  const addressTabRef = useRef<TabId | null>(null)
+  const addressRef = useRef<TabId | null>(null)
+  addressRef.current = address ? addressTabRef.current : null
   const [candidates, setCandidates] = useState<CredentialSummary[]>([])
   const [passwordField, setPasswordField] = useState<SignupFieldInfo | null>(null)
   const [busy, setBusy] = useState(false)
@@ -77,16 +85,19 @@ export function VaultMenuSurface() {
   const unlockOnlyRef = useRef<(forTab: TabId) => Promise<void>>(async () => undefined)
 
   const load = useCallback(async () => {
-    const [cands, pend, field] = await Promise.all([
+    const [cands, pend, field, typed] = await Promise.all([
       host
         ? commands.autofillCandidates(host).catch(() => [] as CredentialSummary[])
         : Promise.resolve([] as CredentialSummary[]),
       tabId ? commands.capturePending(tabId).catch(() => null) : Promise.resolve(null),
       tabId ? commands.signupField(tabId).catch(() => null) : Promise.resolve(null),
+      tabId ? commands.addressCapturePending(tabId).catch(() => null) : Promise.resolve(null),
     ])
     setCandidates(cands)
     setPending(pend)
     setPasswordField(field)
+    addressTabRef.current = typed ? tabId : null
+    setAddress(typed)
   }, [host, tabId])
 
   useEffect(() => {
@@ -96,6 +107,7 @@ export function VaultMenuSurface() {
   useEffect(() => {
     let unOpen: UnlistenFn | null = null
     let unCapture: UnlistenFn | null = null
+    let unAddress: UnlistenFn | null = null
     let cancelled = false
     void listen<VaultMenuAnchor>(VAULTMENU_OPEN_EVENT, (e) => {
       setAnchor(e.payload)
@@ -107,14 +119,20 @@ export function VaultMenuSurface() {
     void listen<CaptureInfo>(CAPTURE_LOGIN_EVENT, () => void load()).then((fn) =>
       cancelled ? fn() : (unCapture = fn),
     )
+    void listen(ADDRESS_CAPTURE_EVENT, () => void load()).then((fn) =>
+      cancelled ? fn() : (unAddress = fn),
+    )
     return () => {
       cancelled = true
       unOpen?.()
       unCapture?.()
+      unAddress?.()
     }
   }, [load])
 
   const close = useCallback(() => {
+    const unanswered = addressRef.current
+    if (unanswered) void commands.addressCaptureHush(unanswered).catch(() => undefined)
     const asking = unlockRef.current
     unlockRef.current = null
     setUnlocking(false)
@@ -184,7 +202,8 @@ export function VaultMenuSurface() {
     try {
       if (!tabId || !(await ensureUnlocked(tabId))) return
       await commands.captureSave(tabId).catch(() => undefined)
-      close()
+      setPending(null)
+      if (!address) close()
     } finally {
       setBusy(false)
     }
@@ -193,7 +212,34 @@ export function VaultMenuSurface() {
   const onDismiss = () => {
     if (tabId) void commands.captureDismiss(tabId).catch(() => undefined)
     setPending(null)
-    if (candidates.length === 0) close()
+    if (candidates.length === 0 && !address) close()
+  }
+
+  const onSaveAddress = async () => {
+    if (!tabId || !address) return
+    setBusy(true)
+    const label = getCurrentWindow().label
+    try {
+      if (!(await ensureUnlocked(tabId))) return
+      const saved = await commands.addressCaptureSave(tabId, address.serial)
+      void showRemoteToast(label, saved ? 'Address saved' : 'This address is already saved')
+      addressRef.current = null
+      setAddress(null)
+      if (!pending) close()
+    } catch (error: unknown) {
+      void showRemoteToast(label, errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onDismissAddress = () => {
+    if (tabId && address) {
+      void commands.addressCaptureDismiss(tabId, address.serial).catch(() => undefined)
+    }
+    addressRef.current = null
+    setAddress(null)
+    if (!pending && candidates.length === 0) close()
   }
 
   // Generated to the field's own rules, the same as the offer would have been.
@@ -230,7 +276,20 @@ export function VaultMenuSurface() {
   if (!anchor) return null
 
   const hasContent =
-    !!unlocking || !!pending || (!!host && candidates.length > 0) || !!passwordField
+    !!unlocking ||
+    !!pending ||
+    !!address ||
+    (!!host && candidates.length > 0) ||
+    !!passwordField
+  const typed = address ? addressSummary(address.address, navigator.language) : null
+  const rest = address
+    ? [
+        ...address.address.street_address.split('\n').slice(1),
+        address.address.organization,
+        address.address.tel,
+        address.address.email,
+      ].filter((part) => part && part !== typed?.title)
+    : []
 
   return (
     <div className="kb-vaultmenu-backdrop" onMouseDown={close}>
@@ -277,9 +336,44 @@ export function VaultMenuSurface() {
               </button>
             </div>
           </div>
-          {candidates.length > 0 && <div className="kb-vaultmenu-sep" />}
+          {(candidates.length > 0 || typed) && <div className="kb-vaultmenu-sep" />}
         </>
       )}
+
+          {typed && (
+            <>
+              <div className="kb-vaultmenu-save">
+                <div className="kb-vaultmenu-save-text">
+                  <div className="kb-vaultmenu-save-title">Save address?</div>
+                  <div className="kb-vaultmenu-save-sub">
+                    {[typed.title, typed.detail].filter(Boolean).join(' · ')}
+                  </div>
+                  {rest.length > 0 && (
+                    <div className="kb-vaultmenu-save-sub">{rest.join(' · ')}</div>
+                  )}
+                </div>
+                <div className="kb-vaultmenu-save-actions">
+                  <button
+                    type="button"
+                    className="kb-vaultmenu-btn"
+                    onClick={onDismissAddress}
+                    disabled={busy}
+                  >
+                    Not now
+                  </button>
+                  <button
+                    type="button"
+                    className="kb-vaultmenu-btn kb-vaultmenu-btn-primary"
+                    onClick={() => void onSaveAddress()}
+                    disabled={busy}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+              {candidates.length > 0 && <div className="kb-vaultmenu-sep" />}
+            </>
+          )}
 
       {candidates.map((c) => (
         <button

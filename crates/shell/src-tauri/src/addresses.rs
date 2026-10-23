@@ -129,6 +129,42 @@ pub(crate) async fn import_addresses(
     saved.map(|()| added)
 }
 
+/// Seal and store `address` as a new one unless `covered` finds it among the
+/// saved ones. Returns whether it was stored.
+pub(crate) async fn add_unless(
+    state: &AppState,
+    address: Address,
+    covered: impl FnOnce(&[Address]) -> bool,
+) -> WisResult<bool> {
+    let address = address.tidied()?;
+    let guard = state.vault_key.lock().await;
+    let key = guard.as_ref().ok_or_else(locked)?;
+    let storage = state.storage.clone();
+    let rows = blocking(move || storage.list_addresses().map_err(persist_err)).await?;
+    let stored = rows.len();
+    let known: Vec<Address> = readable(key, rows).map(|(_, address)| address).collect();
+    if covered(&known) {
+        return Ok(false);
+    }
+    if stored >= MAX_ADDRESSES {
+        return Err(invalid(&format!(
+            "Wis keeps up to {MAX_ADDRESSES} addresses"
+        )));
+    }
+
+    let blob = seal(key, &address)?;
+    let storage = state.storage.clone();
+    let saved = blocking(move || {
+        storage
+            .save_address(None, &blob.ciphertext, &blob.nonce)
+            .map(|_| ())
+            .map_err(persist_err)
+    })
+    .await;
+    drop(guard);
+    saved.map(|()| true)
+}
+
 /// Saved address `id` in the clear, for a fill the user chose.
 pub(crate) async fn opened(state: &State<'_, AppState>, id: i64) -> WisResult<Address> {
     let guard = state.vault_key.lock().await;

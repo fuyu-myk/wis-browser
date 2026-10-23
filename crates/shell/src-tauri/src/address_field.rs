@@ -15,9 +15,11 @@ use crate::state::AppState;
 
 mod guess;
 mod scripts;
+mod submit;
 
 use guess::GUESS_JS;
 use scripts::{CLASSIFY_JS, FILL_JS, FOCUS_JS, RELEASE_JS};
+use submit::SUBMIT_JS;
 
 /// Chromium's address patterns, which `GUESS_JS` reads.
 const PATTERNS_JS: &str = include_str!("address_field/patterns.js");
@@ -85,7 +87,7 @@ struct TabEvent<'a> {
 pub fn page_script() -> &'static str {
     static SCRIPT: LazyLock<String> = LazyLock::new(|| {
         format!(
-            "(function () {{\nif (window.__wisAddressInstalled) return;\nwindow.__wisAddressInstalled = true;\n{PATTERNS_JS}\n{GUESS_JS}\n{CLASSIFY_JS}\n{FOCUS_JS}\n}})();"
+            "(function () {{\nif (window.__wisAddressInstalled) return;\nwindow.__wisAddressInstalled = true;\n{PATTERNS_JS}\n{GUESS_JS}\n{CLASSIFY_JS}\n{FOCUS_JS}\n{SUBMIT_JS}\n}})();"
         )
     });
     &SCRIPT
@@ -203,6 +205,12 @@ pub(crate) fn dispatch_message(label: &str, body: &serde_json::Value) {
                 tab_id: from.tab_id,
             },
         ),
+        Some("save") => {
+            if origin_of(from.app, label).is_some() {
+                crate::address_save::receive(from.app, from.tab_id, body.get("values"));
+            }
+            return;
+        }
         Some("leave") => from.app.emit(
             LEAVE_EVENT,
             TabEvent {
@@ -563,6 +571,8 @@ mod tests {
             assert!(at("function addressPatterns()") < at("var GUESS_ORDER"));
             assert!(at("var GUESS_ORDER") < at("function addressFields("));
         }
+        let page = page_script();
+        assert!(page.find("function send(").unwrap() < page.find("function offerToSave(").unwrap());
     }
 
     #[test]

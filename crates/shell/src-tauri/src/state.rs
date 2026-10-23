@@ -104,6 +104,9 @@ pub struct AppState {
     /// dismiss decision. The plaintext passwords live here only; they never
     /// cross back to a webview.
     pub pending_captures: Mutex<HashMap<wis_core::TabId, crate::capture::PendingCapture>>,
+    /// Addresses pages submitted, one per tab, awaiting the user's save or
+    /// dismiss decision.
+    pub pending_addresses: Mutex<HashMap<wis_core::TabId, crate::address_save::Captured>>,
     /// Live sessions (WebKit `interactionState`) of tabs closed in this run,
     /// keyed by their `closed_tabs` row id. The rows live in storage and
     /// survive a restart.
@@ -253,6 +256,7 @@ impl AppState {
             proxies: Mutex::new(HashMap::new()),
             vault_key: Mutex::new(None),
             pending_captures: Mutex::new(HashMap::new()),
+            pending_addresses: Mutex::new(HashMap::new()),
             closed_tab_sessions: Mutex::new(HashMap::new()),
             pending_restore_states: Mutex::new(HashMap::new()),
             nav_guard_bypass: Mutex::new(HashSet::new()),

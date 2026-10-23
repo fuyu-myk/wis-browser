@@ -2,6 +2,7 @@
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
 mod address_field;
+mod address_save;
 mod addresses;
 mod ai;
 mod ai_actions;
@@ -635,6 +636,10 @@ pub fn run() {
             addresses::address_any,
             address_field::address_fill,
             address_field::release_address_field,
+            address_save::address_capture_pending,
+            address_save::address_capture_save,
+            address_save::address_capture_dismiss,
+            address_save::address_capture_hush,
             addresses::address_save,
             addresses::address_delete,
             vault_store::vault_unlock_password,
