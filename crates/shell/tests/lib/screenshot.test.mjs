@@ -1,9 +1,9 @@
-// The screenshot toast and region-selection event names (`lib/screenshot.ts`).
+// The screenshot toast and region-selection event names (`features/screenshot/screenshot.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import * as shot from '../../src/lib/screenshot.ts'
+import * as shot from '../../src/features/screenshot/screenshot.ts'
 import { filesSpelling } from '../support/l3-harness.mjs'
 
 const NAMES = [
@@ -22,5 +22,5 @@ test('every screenshot event name is distinct', () => {
 })
 
 test('every screenshot event name is spelled only in this contract', () => {
-  for (const name of NAMES) assert.deepEqual(filesSpelling(name), ['lib/screenshot.ts'], name)
+  for (const name of NAMES) assert.deepEqual(filesSpelling(name), ['features/screenshot/screenshot.ts'], name)
 })

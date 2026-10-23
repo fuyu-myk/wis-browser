@@ -1,11 +1,11 @@
-// The canvas document (`lib/canvas.ts`) and its channel to Rust (`lib/canvasChannel.ts`).
+// The canvas document (`features/canvas/lib/canvas.ts`) and its channel to Rust (`features/canvas/lib/canvasChannel.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import * as canvas from '../../src/lib/canvas.ts'
-import { createCanvasChannel, sealMessage } from '../../src/lib/canvasChannel.ts'
-import { followPushed } from '../../src/lib/canvasPushed.ts'
+import * as canvas from '../../src/features/canvas/lib/canvas.ts'
+import { createCanvasChannel, sealMessage } from '../../src/features/canvas/lib/canvasChannel.ts'
+import { followPushed } from '../../src/features/canvas/lib/canvasPushed.ts'
 
 const card = (id, x = 0, y = 0, text = 'note') => ({ id, x, y, w: canvas.CARD_WIDTH, text })
 

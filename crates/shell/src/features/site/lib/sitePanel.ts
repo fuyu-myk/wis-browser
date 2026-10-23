@@ -1,0 +1,84 @@
+import type { PrivacyMode, SiteProtection, TabId } from '@/bindings/types'
+import type { Box } from '@/features/extensions/lib/extensionsMenu'
+import { normalizeHostInput } from '@/features/site/lib/host'
+import { isFeatureUnavailableHere } from '@/lib/platformSupport'
+
+export const SITE_PANEL_OPEN = 'wis-sitepanel-open'
+export const SITE_PANEL_READY = 'wis-sitepanel-ready'
+export const SITE_PANEL_DONE = 'wis-sitepanel-done'
+export const SITE_PANEL_SIZE = 'wis-sitepanel-size'
+export const SITE_PANEL_CLOSE = 'wis-sitepanel-close'
+export const SITE_PROTECTION_SESSION_EVENT = 'wis-site-protection-session'
+
+export const PANEL_WIDTH = 280
+export const UNMEASURED_PANEL_HEIGHT = 140
+const GAP = 6
+const MARGIN = 8
+
+export interface SitePanelPayload {
+  window: string
+  tabId: TabId
+  url: string
+}
+
+const PROTECTED: SiteProtection = { blocking: true, javascript: true, fingerprinting: true }
+
+/** Below `anchor` with the left edges lined up, above it when there is no
+ *  room below, and always inside the window. */
+export function panelBounds(anchor: Box, height: number, viewport: { width: number; height: number }): Box {
+  const x = Math.min(Math.max(MARGIN, anchor.x), viewport.width - PANEL_WIDTH - MARGIN)
+  const under = anchor.y + anchor.height + GAP
+  const y = under + height > viewport.height - MARGIN ? Math.max(MARGIN, anchor.y - GAP - height) : under
+  return { x, y, width: PANEL_WIDTH, height }
+}
+
+export function siteOf(url: string): string | null {
+  try {
+    const { protocol } = new URL(url)
+    if (protocol !== 'http:' && protocol !== 'https:') return null
+  } catch {
+    return null
+  }
+  return normalizeHostInput(url) || null
+}
+
+type Overrides = Record<string, SiteProtection> | undefined
+
+/** `session` holds the switches changed in private workspaces. */
+export function siteProtection(saved: Overrides, session: Overrides, site: string): SiteProtection {
+  return session?.[site] ?? saved?.[site] ?? PROTECTED
+}
+
+export function fingerprintingApplies(mode: PrivacyMode | undefined): boolean {
+  return mode !== 'permissive' && !isFeatureUnavailableHere('site_fingerprinting')
+}
+
+export function applicableProtection(protection: SiteProtection, fingerprinting: boolean): SiteProtection {
+  return fingerprinting ? protection : { ...protection, fingerprinting: true }
+}
+
+export function isUnprotected(protection: SiteProtection): boolean {
+  return !protection.blocking || !protection.javascript || !protection.fingerprinting
+}
+
+export function blockedLine(total: number): string {
+  return total === 0 ? 'Nothing blocked on this page' : `${total} blocked on this page`
+}
+
+export function shownHosts(
+  hosts: [string, number][],
+  limit: number,
+): { shown: [string, number][]; more: number } {
+  return { shown: hosts.slice(0, limit), more: Math.max(0, hosts.length - limit) }
+}
+
+export function protectionLabel(protection: SiteProtection): string {
+  const off = [
+    !protection.blocking && 'Blocking',
+    !protection.javascript && 'JavaScript',
+    !protection.fingerprinting && 'fingerprinting protection',
+  ].filter((name) => name !== false)
+  if (off.length === 0) return 'Protected'
+  const named = off.length === 1 ? off.join('') : `${off.slice(0, -1).join(', ')} and ${off[off.length - 1]}`
+  return `${named.charAt(0).toUpperCase()}${named.slice(1)} off`
+}

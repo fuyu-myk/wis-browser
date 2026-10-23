@@ -7,7 +7,7 @@ import { commands } from '@/bindings/commands'
 import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { isChromeUrl } from '@/lib/url'
 import { canParkOffscreen, currentPlatform } from '@/lib/platform'
-import type { VideoPopoutController } from '@/hooks/useVideoPopout'
+import type { VideoPopoutController } from '@/features/video-popout/useVideoPopout'
 
 const PARK_HIDDEN_OFFSCREEN = currentPlatform() === 'windows'
 

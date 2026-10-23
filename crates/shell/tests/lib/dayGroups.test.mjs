@@ -1,9 +1,9 @@
-// Lists grouped by the local day of each entry (`lib/dayGroups.ts`).
+// Lists grouped by the local day of each entry (`features/history/dayGroups.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { groupByDay, hostOf } from '../../src/lib/dayGroups.ts'
+import { groupByDay, hostOf } from '../../src/features/history/dayGroups.ts'
 
 const at = (daysAgo, hour) => {
   const date = new Date()

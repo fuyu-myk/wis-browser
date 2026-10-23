@@ -1,9 +1,9 @@
-// The research pipeline (`lib/research.ts`): planning, picking, reading, citing.
+// The research pipeline (`features/ai/lib/research.ts`): planning, picking, reading, citing.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import * as research from '../../src/lib/research.ts'
+import * as research from '../../src/features/ai/lib/research.ts'
 
 const result = (url, title = url) => ({ title, url, snippet: '' })
 const words = (n, word = 'filler') => Array.from({ length: n }, () => word).join(' ')

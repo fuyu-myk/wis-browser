@@ -1,4 +1,4 @@
-// Formatting and ranges for the usage panel and page (`lib/usage.ts`).
+// Formatting and ranges for the usage panel and page (`features/usage/lib/usage.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
@@ -22,7 +22,7 @@ import {
   weekTotals,
   weekdayLabel,
   weeklyAverage,
-} from '../../src/lib/usage.ts'
+} from '../../src/features/usage/lib/usage.ts'
 
 const HOUR = 3600
 

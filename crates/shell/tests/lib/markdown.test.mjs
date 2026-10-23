@@ -1,9 +1,9 @@
-// The assistant's markdown subset: inline spans and block structure (`lib/markdown.ts`).
+// The assistant's markdown subset: inline spans and block structure (`features/ai/lib/markdown.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { parseMarkdown, parseSpans } from '../../src/lib/markdown.ts'
+import { parseMarkdown, parseSpans } from '../../src/features/ai/lib/markdown.ts'
 
 const text = (t) => ({ kind: 'text', text: t })
 const paragraph = (...spans) => ({ kind: 'paragraph', spans })

@@ -6,7 +6,7 @@
 // side. Passing snake_case from JS silently fails to deserialise.
 
 import { Channel, invoke } from '@tauri-apps/api/core'
-import type { CaptureInfo, PendingAddress } from '@/lib/vaultMenu'
+import type { CaptureInfo, PendingAddress } from '@/features/vault/lib/vaultMenu'
 import type {
   Address,
   SavedAddress,

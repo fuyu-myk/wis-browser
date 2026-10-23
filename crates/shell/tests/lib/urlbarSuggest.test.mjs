@@ -1,4 +1,4 @@
-// The address bar dropdown's row contract and sizing (`lib/urlbarSuggest.ts`).
+// The address bar dropdown's row contract and sizing (`features/urlbar/urlbarSuggest.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
@@ -9,7 +9,7 @@ import {
   SECTION_RECENT_SEARCHES,
   SECTION_RECOMMENDATIONS,
   SECTION_TOP,
-} from '../../src/lib/urlbarSuggest.ts'
+} from '../../src/features/urlbar/urlbarSuggest.ts'
 
 const site = (section = SECTION_TOP) => ({ kind: 'site', section, id: 1, url: 'https://a.test/', title: 'A', openTabId: null })
 const searchRow = (section = SECTION_RECENT_SEARCHES) => ({ kind: 'search', section, query: 'cats' })

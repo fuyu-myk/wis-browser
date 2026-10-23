@@ -301,11 +301,11 @@ function PaneSplit({
   )
 }
 
-import { NewTabPage } from '@/components/NewTabPage'
-import { SettingsPage } from '@/components/SettingsPage'
-import { HistoryPage } from '@/components/HistoryPage'
-import { DownloadsPage } from '@/components/DownloadsPage'
-import { UsagePage } from '@/components/UsagePage'
+import { NewTabPage } from '@/features/new-tab/NewTabPage'
+import { SettingsPage } from '@/features/settings/components/SettingsPage'
+import { HistoryPage } from '@/features/history/HistoryPage'
+import { DownloadsPage } from '@/features/downloads/DownloadsPage'
+import { UsagePage } from '@/features/usage/components/UsagePage'
 import { NetErrorPage } from '@/components/NetErrorPage'
 import { TlsErrorPage } from '@/components/TlsErrorPage'
 import { DOWNLOADS_URL, HISTORY_URL, SETTINGS_URL, sourceTargetOf, USAGE_URL } from '@/lib/url'

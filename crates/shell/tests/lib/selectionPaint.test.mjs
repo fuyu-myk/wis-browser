@@ -1,5 +1,5 @@
 // Keeping a page selection visible while the page menu holds focus
-// (`lib/selectionPaint.ts`), drawn through the CSS highlight API.
+// (`features/page-tools/selectionPaint.ts`), drawn through the CSS highlight API.
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -41,7 +41,7 @@ globalThis.document = fakeDocument
 globalThis.requestAnimationFrame = (cb) => frames.push(cb)
 
 const { MAX_SELECTION_CHARS, clearSelectionPaint, paintSelection } = await import(
-  '../../src/lib/selectionPaint.ts'
+  '../../src/features/page-tools/selectionPaint.ts'
 )
 
 beforeEach(() => {

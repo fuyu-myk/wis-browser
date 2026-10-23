@@ -1,4 +1,4 @@
-// How the top tab strip shares its width (`lib/tabStripLayout.ts`): name chip
+// How the top tab strip shares its width (`features/tabs/lib/tabStripLayout.ts`): name chip
 // widths, the active/inactive split, the fixed reservations, and list moves.
 
 import assert from 'node:assert/strict'
@@ -25,7 +25,7 @@ import {
   computeSizing,
   computeStripSizing,
   moveInList,
-} from '../../src/lib/tabStripLayout.ts'
+} from '../../src/features/tabs/lib/tabStripLayout.ts'
 
 // Text measures 10px per character plus a fraction, so rounding up shows.
 let canvasWorks = true

@@ -1,6 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 
-import { useActivePrivacyMode } from '@/hooks/useActivePrivacyMode'
+import { useActivePrivacyMode } from '@/features/workspaces/hooks/useActivePrivacyMode'
 import { useWindowIconSwap } from '@/hooks/useWindowIcon'
 import { WisMark } from '@/components/WisMark'
 

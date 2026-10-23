@@ -1,9 +1,9 @@
-// React Query keys for the per-workspace bookmark stores (`lib/bookmarkKeys.ts`).
+// React Query keys for the per-workspace bookmark stores (`features/bookmarks/lib/bookmarkKeys.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { bookmarkFoldersKey, bookmarksKey } from '../../src/lib/bookmarkKeys.ts'
+import { bookmarkFoldersKey, bookmarksKey } from '../../src/features/bookmarks/lib/bookmarkKeys.ts'
 import { readSource } from '../support/l3-harness.mjs'
 
 test('each store is keyed by its name and the workspace', () => {
@@ -17,7 +17,7 @@ test('workspaces and stores never share a key', () => {
 })
 
 test('the cross-webview sync invalidates both stores by their leading key', () => {
-  const sync = readSource('src/hooks/useBookmarkSync.ts')
+  const sync = readSource('src/features/bookmarks/hooks/useBookmarkSync.ts')
   assert.ok(sync.includes(`k === '${bookmarksKey('x')[0]}'`))
   assert.ok(sync.includes(`k === '${bookmarkFoldersKey('x')[0]}'`))
 })

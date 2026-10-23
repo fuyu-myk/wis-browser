@@ -1,10 +1,10 @@
-// Aligning, distributing and tidying selected cards (`lib/canvasArrange.ts`).
+// Aligning, distributing and tidying selected cards (`features/canvas/lib/canvasArrange.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import * as arrange from '../../src/lib/canvasArrange.ts'
-import { GAP } from '../../src/lib/canvasLayout.ts'
+import * as arrange from '../../src/features/canvas/lib/canvasArrange.ts'
+import { GAP } from '../../src/features/canvas/lib/canvasLayout.ts'
 
 const note = (id, x, y, w = 200, h = 100) => ({ id, x, y, w, text: id, h })
 const doc = (cards) => ({ version: 1, view: { x: 0, y: 0, k: 1 }, cards, edges: [], frames: [] })

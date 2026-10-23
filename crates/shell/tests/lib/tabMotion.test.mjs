@@ -1,4 +1,4 @@
-// Drag-reorder choreography (`lib/tabMotion.ts`): parting offsets, the
+// Drag-reorder choreography (`features/tabs/lib/tabMotion.ts`): parting offsets, the
 // optimistic cache patches, and the landing and workspace-slide animations.
 
 import assert from 'node:assert/strict'
@@ -12,8 +12,8 @@ import {
   patchTabOrder,
   runPendingGlide,
   workspaceSlideIn,
-} from '../../src/lib/tabMotion.ts'
-import { moveInList } from '../../src/lib/tabStripLayout.ts'
+} from '../../src/features/tabs/lib/tabMotion.ts'
+import { moveInList } from '../../src/features/tabs/lib/tabStripLayout.ts'
 
 const bodyClasses = new Set()
 globalThis.document = { body: { classList: { contains: (c) => bodyClasses.has(c) } } }

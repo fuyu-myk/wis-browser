@@ -1,9 +1,9 @@
-// What a check for extension updates reports (`lib/extensionUpdates.ts`).
+// What a check for extension updates reports (`features/extensions/lib/extensionUpdates.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { describeLinked, describeUpdates } from '../../src/lib/extensionUpdates.ts'
+import { describeLinked, describeUpdates } from '../../src/features/extensions/lib/extensionUpdates.ts'
 
 const none = { updated: [], waiting: [], failed: [] }
 

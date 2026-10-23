@@ -1,9 +1,9 @@
-// The encrypted-DNS provider picker and which provider a stored URL means (`lib/doh.ts`).
+// The encrypted-DNS provider picker and which provider a stored URL means (`features/network/doh.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { DOH_PROVIDERS, dohProviderFor } from '../../src/lib/doh.ts'
+import { DOH_PROVIDERS, dohProviderFor } from '../../src/features/network/doh.ts'
 
 test('no stored resolver means Cloudflare', () => {
   assert.equal(dohProviderFor(null), 'cloudflare')

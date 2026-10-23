@@ -1,9 +1,9 @@
-// The saved-addresses card's size and what it says it fills (`lib/addressCard.ts`).
+// The saved-addresses card's size and what it says it fills (`features/vault/lib/addressCard.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { addressCardSize, fillsLine } from '../../src/lib/addressCard.ts'
+import { addressCardSize, fillsLine } from '../../src/features/vault/lib/addressCard.ts'
 
 test('the card grows with its rows up to five, and holds at least one', () => {
   assert.deepEqual(addressCardSize(0), { width: 280, height: 104 })

@@ -1,11 +1,11 @@
 // Closing a tab with its exit animation, and hearing about closes from any
-// webview (`lib/tabClose.ts`).
+// webview (`features/tabs/lib/tabClose.ts`).
 
 import assert from 'node:assert/strict'
 import { beforeEach, describe, test } from 'node:test'
 
-import { TAB_CLOSING_EVENT, closeTabAnimated, onTabClosing } from '../../src/lib/tabClose.ts'
-import { noteActiveTab, pruneTabMru, recentTabs } from '../../src/lib/tabMru.ts'
+import { TAB_CLOSING_EVENT, closeTabAnimated, onTabClosing } from '../../src/features/tabs/lib/tabClose.ts'
+import { noteActiveTab, pruneTabMru, recentTabs } from '../../src/features/tabs/lib/tabMru.ts'
 import { installTauri, settle } from '../support/l3-harness.mjs'
 
 let ipc

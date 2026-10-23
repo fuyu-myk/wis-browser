@@ -1,7 +1,7 @@
 import { Window } from '@/components/Window'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
-import { PendingRenameProvider } from '@/hooks/usePendingRename'
+import { PendingRenameProvider } from '@/features/workspaces/hooks/usePendingRename'
 import { useSessionRestore } from '@/hooks/useSessionRestore'
 import { useThemeApply } from '@/hooks/useThemeApply'
 import { useUpdateCheck } from '@/hooks/useUpdateCheck'

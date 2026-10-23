@@ -1,9 +1,9 @@
-// How far a filter list refresh has got (`lib/filterRefresh.ts`).
+// How far a filter list refresh has got (`features/privacy/lib/filterRefresh.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { FILTER_REFRESH_PROGRESS_EVENT, refreshProgressLine } from '../../src/lib/filterRefresh.ts'
+import { FILTER_REFRESH_PROGRESS_EVENT, refreshProgressLine } from '../../src/features/privacy/lib/filterRefresh.ts'
 import { readSource } from '../support/l3-harness.mjs'
 
 test('names the list being fetched, then the apply step', () => {

@@ -1,10 +1,10 @@
 // Whether this window's Peek overlay is open, the flag key actions check
-// before acting on the page beneath it (`lib/peekState.ts`).
+// before acting on the page beneath it (`features/page-tools/peekState.ts`).
 
 import assert from 'node:assert/strict'
 import { beforeEach, test } from 'node:test'
 
-import { isPeekOpen, setPeekOpen } from '../../src/lib/peekState.ts'
+import { isPeekOpen, setPeekOpen } from '../../src/features/page-tools/peekState.ts'
 
 const openAtLoad = isPeekOpen()
 

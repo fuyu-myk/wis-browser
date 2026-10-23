@@ -1,9 +1,9 @@
-// How often streamed text repaints (`lib/streamFlush.ts`).
+// How often streamed text repaints (`features/ai/lib/streamFlush.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { flushDue } from '../../src/lib/streamFlush.ts'
+import { flushDue } from '../../src/features/ai/lib/streamFlush.ts'
 
 const frames = (hz, count) => Array.from({ length: count }, (_, i) => 1000 + (i * 1000) / hz)
 

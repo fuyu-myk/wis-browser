@@ -1,9 +1,9 @@
-// Spoken prompts on the canvas (`lib/canvasDictation.ts`).
+// Spoken prompts on the canvas (`features/canvas/lib/canvasDictation.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import * as dictation from '../../src/lib/canvasDictation.ts'
+import * as dictation from '../../src/features/canvas/lib/canvasDictation.ts'
 
 describe('what dictation writes into the prompt', () => {
   test('heard words follow what was typed, with one space between', () => {

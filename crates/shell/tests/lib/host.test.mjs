@@ -1,9 +1,9 @@
-// Reducing a typed or pasted site to the host a per-site override is keyed by (`lib/host.ts`).
+// Reducing a typed or pasted site to the host a per-site override is keyed by (`features/site/lib/host.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { normalizeHostInput } from '../../src/lib/host.ts'
+import { normalizeHostInput } from '../../src/features/site/lib/host.ts'
 
 test('blank input gives no host', () => {
   assert.equal(normalizeHostInput(''), '')

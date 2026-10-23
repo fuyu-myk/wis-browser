@@ -1,10 +1,10 @@
 // The video popout's event names and its remembered position
-// (`lib/videoPopout.ts`).
+// (`features/video-popout/videoPopout.ts`).
 
 import assert from 'node:assert/strict'
 import { beforeEach, describe, test } from 'node:test'
 
-import * as popout from '../../src/lib/videoPopout.ts'
+import * as popout from '../../src/features/video-popout/videoPopout.ts'
 import { readSource } from '../support/l3-harness.mjs'
 
 const KEY = 'wis-video-popout-geometry'

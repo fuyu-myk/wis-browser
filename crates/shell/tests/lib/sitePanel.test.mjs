@@ -1,4 +1,4 @@
-// The site panel's placement and protection lookups (`lib/sitePanel.ts`).
+// The site panel's placement and protection lookups (`features/site/lib/sitePanel.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -14,7 +14,7 @@ import {
   shownHosts,
   siteOf,
   siteProtection,
-} from '../../src/lib/sitePanel.ts'
+} from '../../src/features/site/lib/sitePanel.ts'
 
 const viewport = { width: 1200, height: 800 }
 const padlock = { x: 300, y: 20, width: 20, height: 24 }

@@ -1,11 +1,11 @@
-// Workspace background CSS (`lib/background.ts`): gradient stops and opacity,
+// Workspace background CSS (`features/workspaces/lib/background.ts`): gradient stops and opacity,
 // the image dim overlay, image fit, and the editor's seed gradients.
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, test } from 'node:test'
 
-import { backgroundCss, defaultGradient, fitCss, gradientCss } from '../../src/lib/background.ts'
+import { backgroundCss, defaultGradient, fitCss, gradientCss } from '../../src/features/workspaces/lib/background.ts'
 
 const spec = (opacity, stops = [
   { color: '#ff0000', position: 0 },

@@ -1,9 +1,9 @@
-// The rows a model picker offers (`lib/modelChoices.ts`).
+// The rows a model picker offers (`features/ai/lib/modelChoices.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { modelChoices, SHOWN_MODELS } from '../../src/lib/modelChoices.ts'
+import { modelChoices, SHOWN_MODELS } from '../../src/features/ai/lib/modelChoices.ts'
 
 const models = [
   { id: 'claude-opus-5-5', name: 'Claude Opus 5.5' },

@@ -1,9 +1,9 @@
-// The per-site rules the site panel gathers from settings (`lib/siteRules.ts`).
+// The per-site rules the site panel gathers from settings (`features/site/lib/siteRules.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { forgetSiteRule, siteRules } from '../../src/lib/siteRules.ts'
+import { forgetSiteRule, siteRules } from '../../src/features/site/lib/siteRules.ts'
 
 const settings = {
   media_permissions: {

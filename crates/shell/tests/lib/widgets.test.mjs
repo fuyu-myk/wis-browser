@@ -1,4 +1,4 @@
-// The sidebar widget catalog and custom widgets (`lib/widgets.ts`): rows,
+// The sidebar widget catalog and custom widgets (`features/widgets/widgets.ts`): rows,
 // theme-aware panel URLs, custom URL checks, and drag placement.
 
 import assert from 'node:assert/strict'
@@ -19,7 +19,7 @@ import {
   normalizeCustomWidgetUrl,
   placeWidget,
   widgetCategory,
-} from '../../src/lib/widgets.ts'
+} from '../../src/features/widgets/widgets.ts'
 
 const widget = (id, kind, extra = {}) => ({
   id,

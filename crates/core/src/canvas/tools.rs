@@ -10,7 +10,7 @@ fn tool(name: &str, description: &str, parameters: Value) -> Value {
     })
 }
 
-/// The canvas palette; the page's `CARD_COLORS` in `lib/canvas.ts`.
+/// The canvas palette; the page's `CARD_COLORS` in `features/canvas/lib/canvas.ts`.
 const COLORS: [&str; 7] = [
     "accent", "red", "orange", "yellow", "green", "blue", "purple",
 ];

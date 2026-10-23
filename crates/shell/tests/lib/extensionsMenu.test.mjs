@@ -1,4 +1,4 @@
-// Where the extensions menu opens (`lib/extensionsMenu.ts`).
+// Where the extensions menu opens (`features/extensions/lib/extensionsMenu.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -12,7 +12,7 @@ import {
   menuBounds,
   menuHeight,
   promptBounds,
-} from '../../src/lib/extensionsMenu.ts'
+} from '../../src/features/extensions/lib/extensionsMenu.ts'
 
 const viewport = { width: 1200, height: 800 }
 const button = { x: 900, y: 20, width: 24, height: 24 }

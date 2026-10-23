@@ -1,11 +1,11 @@
-// The canvas agent's tools (`lib/canvasAgent.ts`): what they read, how they
+// The canvas agent's tools (`features/canvas/lib/canvasAgent.ts`): what they read, how they
 // change a document, and where new cards land.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import * as canvas from '../../src/lib/canvas.ts'
-import * as agent from '../../src/lib/canvasAgent.ts'
+import * as canvas from '../../src/features/canvas/lib/canvas.ts'
+import * as agent from '../../src/features/canvas/lib/canvasAgent.ts'
 
 const note = (id, x, y, text = 'note') => ({ id, x, y, w: 280, text })
 const doc = (cards = [], extra = {}) => ({

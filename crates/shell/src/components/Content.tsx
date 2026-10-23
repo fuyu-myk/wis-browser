@@ -1,15 +1,15 @@
 import { useRef } from 'react'
-import type { AiAskRequest } from '@/lib/aiAsk'
+import type { AiAskRequest } from '@/features/ai/lib/aiAsk'
 
 import { commands } from '@/bindings/commands'
 import type { BrowserState, TabId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { isChromeUrl } from '@/lib/url'
-import type { AiPageSource } from '@/hooks/useAiChat'
+import type { AiPageSource } from '@/features/ai/hooks/useAiChat'
 
-import { AiPanel } from '@/components/AiPanel'
+import { AiPanel } from '@/features/ai/components/AiPanel'
 import { TabWebViewHost } from '@/components/TabWebViewHost'
-import { UsagePanel } from '@/components/UsagePanel'
+import { UsagePanel } from '@/features/usage/components/UsagePanel'
 
 interface ContentProps {
   state: BrowserState

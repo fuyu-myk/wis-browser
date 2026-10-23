@@ -1,9 +1,9 @@
-// Text files attached to a canvas agent request (`lib/canvasAttach.ts`).
+// Text files attached to a canvas agent request (`features/canvas/lib/canvasAttach.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import * as attach from '../../src/lib/canvasAttach.ts'
+import * as attach from '../../src/features/canvas/lib/canvasAttach.ts'
 
 describe('attaching files', () => {
   test('text files are taken, binaries and oversized ones refused with a reason', () => {

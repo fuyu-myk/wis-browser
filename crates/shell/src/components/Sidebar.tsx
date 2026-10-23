@@ -4,14 +4,14 @@ import type { BrowserState, Tab, UserSettings } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { AssistantIcon, CanvasIcon, HistoryIcon, SettingsIcon, UsageIcon } from '@/lib/icons'
 
-import { BookmarksButton } from '@/components/BookmarksButton'
+import { BookmarksButton } from '@/features/bookmarks/components/BookmarksButton'
 import { Brand } from '@/components/Brand'
-import { DownloadsButton } from '@/components/DownloadsButton'
-import { PinnedTabs } from '@/components/PinnedTabs'
-import { TabList } from '@/components/TabList'
-import { VpnToggle } from '@/components/VpnToggle'
-import { WidgetDock } from '@/components/WidgetDock'
-import { WorkspacePill } from '@/components/WorkspacePill'
+import { DownloadsButton } from '@/features/downloads/DownloadsButton'
+import { PinnedTabs } from '@/features/tabs/components/PinnedTabs'
+import { TabList } from '@/features/tabs/components/TabList'
+import { VpnToggle } from '@/features/network/VpnToggle'
+import { WidgetDock } from '@/features/widgets/WidgetDock'
+import { WorkspacePill } from '@/features/workspaces/components/WorkspacePill'
 
 interface SidebarProps {
   state: BrowserState

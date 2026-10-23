@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { CLOSED_TABS_CHANGED_EVENT, visibleClosedTabs } from '../../src/lib/closedTabs.ts'
+import { CLOSED_TABS_CHANGED_EVENT, visibleClosedTabs } from '../../src/features/history/closedTabs.ts'
 import { CLOSED_TAB_LIMIT } from '../../src/lib/palette.ts'
 import { readSource } from '../support/l3-harness.mjs'
 

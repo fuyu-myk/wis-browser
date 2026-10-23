@@ -1,10 +1,10 @@
 // Formatting and filtering for the downloads button, popup and page
-// (`lib/downloads.ts`).
+// (`features/downloads/downloads.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import * as dl from '../../src/lib/downloads.ts'
+import * as dl from '../../src/features/downloads/downloads.ts'
 import { filesSpelling, readSource } from '../support/l3-harness.mjs'
 
 const KB = 1024
@@ -117,5 +117,5 @@ test('the change event is the one data/downloads.rs emits', () => {
 test('the popup events are distinct and spelled only in this contract', () => {
   const names = [dl.DOWNLOADS_OPEN_EVENT, dl.DOWNLOADS_CLOSED_EVENT, dl.DOWNLOADS_SHOWN_EVENT]
   assert.equal(new Set([...names, dl.DOWNLOADS_CHANGED_EVENT]).size, 4)
-  for (const name of names) assert.deepEqual(filesSpelling(name), ['lib/downloads.ts'], name)
+  for (const name of names) assert.deepEqual(filesSpelling(name), ['features/downloads/downloads.ts'], name)
 })

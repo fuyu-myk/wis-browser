@@ -1,9 +1,9 @@
-// Matching and ranking for the settings search (`lib/settingsSearch.ts`).
+// Matching and ranking for the settings search (`features/settings/lib/settingsSearch.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { searchSettings } from '../../src/lib/settingsSearch.ts'
+import { searchSettings } from '../../src/features/settings/lib/settingsSearch.ts'
 
 const ENTRIES = [
   { section: 'Privacy', title: 'Count time on sites', detail: 'On-device tally of active time per site.' },

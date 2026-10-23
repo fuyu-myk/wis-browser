@@ -1,4 +1,4 @@
-// The window's tab history (`lib/tabMru.ts`): switch-to-last-tab, the tab a
+// The window's tab history (`features/tabs/lib/tabMru.ts`): switch-to-last-tab, the tab a
 // close returns to, and the order a closed split pane is refilled from.
 
 import assert from 'node:assert/strict'
@@ -11,7 +11,7 @@ import {
   previousTab,
   pruneTabMru,
   recentTabs,
-} from '../src/lib/tabMru.ts'
+} from '../src/features/tabs/lib/tabMru.ts'
 
 beforeEach(() => pruneTabMru(() => false))
 

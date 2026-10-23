@@ -1,10 +1,10 @@
-// What the canvas props panel shows and changes (`lib/canvasProps.ts`).
+// What the canvas props panel shows and changes (`features/canvas/lib/canvasProps.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import * as canvas from '../../src/lib/canvas.ts'
-import * as props from '../../src/lib/canvasProps.ts'
+import * as canvas from '../../src/features/canvas/lib/canvas.ts'
+import * as props from '../../src/features/canvas/lib/canvasProps.ts'
 
 const note = (id, x, y, text = id, w = 280) => ({ id, x, y, w, text })
 const html = (id, x, y, w = 480, h = 320) => ({ id, x, y, w, h, kind: 'html', text: `<title>${id}</title>` })

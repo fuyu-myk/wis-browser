@@ -1,4 +1,4 @@
-// Inline checks for a workspace's typed upstream proxy (`lib/upstream.ts`).
+// Inline checks for a workspace's typed upstream proxy (`features/network/upstream.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -8,7 +8,7 @@ import {
   proxyHostProblem,
   proxyPortProblem,
   upstreamMode,
-} from '../../src/lib/upstream.ts'
+} from '../../src/features/network/upstream.ts'
 
 const SHAPE = 'Enter a host and port only, with no scheme, credentials or path.'
 const INVALID = 'That host is not valid.'

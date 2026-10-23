@@ -1,10 +1,10 @@
 // The docked assistant's pure logic: activation, prompt assembly, transcript
-// updates and tool-round planning (`lib/ai.ts`).
+// updates and tool-round planning (`features/ai/lib/ai.ts`).
 
 import assert from 'node:assert/strict'
 import { beforeEach, describe, test } from 'node:test'
 
-import * as ai from '../../src/lib/ai.ts'
+import * as ai from '../../src/features/ai/lib/ai.ts'
 
 function turn(id, role, content = '', over = {}) {
   return {

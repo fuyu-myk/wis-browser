@@ -1,9 +1,9 @@
-// The rule for a new vault password (`lib/vaultPassword.ts`).
+// The rule for a new vault password (`features/vault/lib/vaultPassword.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { newPasswordProblem } from '../../src/lib/vaultPassword.ts'
+import { newPasswordProblem } from '../../src/features/vault/lib/vaultPassword.ts'
 
 test('a new vault password needs twelve characters and a matching repeat', () => {
   assert.equal(newPasswordProblem('', ''), 'Use at least 12 characters')

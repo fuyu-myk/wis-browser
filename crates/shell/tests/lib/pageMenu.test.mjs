@@ -1,11 +1,11 @@
 // The contract between the page-menu opener and its overlay surface
-// (`lib/pageMenu.ts`).
+// (`features/page-tools/pageMenu.ts`).
 
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { test } from 'node:test'
 
-import * as menu from '../../src/lib/pageMenu.ts'
+import * as menu from '../../src/features/page-tools/pageMenu.ts'
 import {
   filesSpelling,
   interfaceFields,
@@ -21,11 +21,11 @@ test('the menu events are distinct and spelled only in this contract', () => {
     menu.PAGE_MENU_ACK_EVENT,
   ]
   assert.equal(new Set(names).size, names.length)
-  for (const name of names) assert.deepEqual(filesSpelling(name), ['lib/pageMenu.ts'], name)
+  for (const name of names) assert.deepEqual(filesSpelling(name), ['features/page-tools/pageMenu.ts'], name)
 })
 
 test('the page report has exactly the fields pages/context_menu.rs serialises', () => {
-  const ts = interfaceFields(readSource('src/lib/pageMenu.ts'), 'PageMenuReport')
+  const ts = interfaceFields(readSource('src/features/page-tools/pageMenu.ts'), 'PageMenuReport')
   const rust = serializedStructFields(readSource('src-tauri/src/pages/context_menu.rs'), 'PageMenuEvent')
   assert.deepEqual(ts, rust)
 })

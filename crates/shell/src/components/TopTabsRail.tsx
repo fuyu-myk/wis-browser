@@ -4,12 +4,12 @@ import type { BrowserState, RailSide } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { AssistantIcon, CanvasIcon, HistoryIcon, SettingsIcon, UsageIcon } from '@/lib/icons'
 
-import { BookmarksButton } from '@/components/BookmarksButton'
+import { BookmarksButton } from '@/features/bookmarks/components/BookmarksButton'
 import { Brand } from '@/components/Brand'
-import { DownloadsButton } from '@/components/DownloadsButton'
-import { VpnToggle } from '@/components/VpnToggle'
-import { WidgetDock } from '@/components/WidgetDock'
-import { WorkspacePill } from '@/components/WorkspacePill'
+import { DownloadsButton } from '@/features/downloads/DownloadsButton'
+import { VpnToggle } from '@/features/network/VpnToggle'
+import { WidgetDock } from '@/features/widgets/WidgetDock'
+import { WorkspacePill } from '@/features/workspaces/components/WorkspacePill'
 
 interface TopTabsRailProps {
   state: BrowserState

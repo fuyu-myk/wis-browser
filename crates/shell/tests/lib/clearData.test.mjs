@@ -1,4 +1,4 @@
-// The clear-data dialog's time ranges and site-data slices (`lib/clearData.ts`).
+// The clear-data dialog's time ranges and site-data slices (`features/privacy/lib/clearData.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -8,7 +8,7 @@ import {
   CLEAR_RANGES,
   SITE_DATA_KIND_ROWS,
   clearSince,
-} from '../../src/lib/clearData.ts'
+} from '../../src/features/privacy/lib/clearData.ts'
 import { readSource } from '../support/l3-harness.mjs'
 
 const NOW_MS = 1_790_000_000_750

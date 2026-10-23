@@ -1,9 +1,9 @@
-// Reordering launchpad shortcut tiles after a drag (`lib/shortcuts.ts`).
+// Reordering launchpad shortcut tiles after a drag (`features/new-tab/shortcuts.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { reorderByKeys } from '../../src/lib/shortcuts.ts'
+import { reorderByKeys } from '../../src/features/new-tab/shortcuts.ts'
 
 const a = { label: 'A', url: 'https://a.test/' }
 const b = { label: 'B', url: 'https://b.test/' }

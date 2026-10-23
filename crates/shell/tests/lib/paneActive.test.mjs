@@ -1,12 +1,12 @@
 // Which tab the chrome predicts becomes active after a close
-// (`lib/paneActive.ts`), mirroring core's `close_tab`: the return to the
+// (`features/tabs/lib/paneActive.ts`), mirroring core's `close_tab`: the return to the
 // previous tab, `with_tab_closed_keeping_split`, `with_tab_removed` and
 // `with_pane_after_removed`.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { predictActiveAfterClose } from '../../src/lib/paneActive.ts'
+import { predictActiveAfterClose } from '../../src/features/tabs/lib/paneActive.ts'
 
 const leaf = (tab) => ({ kind: 'leaf', tab })
 const split = (first, second) => ({ kind: 'split', dir: 'row', ratio: 500, first, second })

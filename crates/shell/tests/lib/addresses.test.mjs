@@ -1,9 +1,9 @@
-// How Settings shows a saved address and its country (`lib/addresses.ts`).
+// How Settings shows a saved address and its country (`features/vault/lib/addresses.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { addressMatches, addressSummary, countryOptions, emptyAddress } from '../../src/lib/addresses.ts'
+import { addressMatches, addressSummary, countryOptions, emptyAddress } from '../../src/features/vault/lib/addresses.ts'
 
 test('an address is shown by its name, or what it has instead, and where it is', () => {
   const home = {

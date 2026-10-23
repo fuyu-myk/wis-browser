@@ -6,9 +6,9 @@ import { FOLDER_ACCENTS } from '@/lib/accents'
 import { FolderPlusIcon, PlusIcon } from '@/lib/icons'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 
-import { HorizontalTabs } from '@/components/HorizontalTabs'
+import { HorizontalTabs } from '@/features/tabs/components/HorizontalTabs'
 import { NavRow } from '@/components/NavRow'
-import { FloatingUrlBar } from '@/components/UrlBar'
+import { FloatingUrlBar } from '@/features/urlbar/UrlBar'
 import { WindowControls } from '@/components/WindowControls'
 
 interface TopBarProps {

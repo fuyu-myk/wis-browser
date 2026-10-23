@@ -256,7 +256,7 @@ test('a country typed as a name is sent as its code, a region list as its name a
 })
 
 test('the country codes match the ones Settings offers', () => {
-  const settings = readFileSync(new URL('../../src/lib/addresses.ts', import.meta.url), 'utf8')
+  const settings = readFileSync(new URL('../../src/features/vault/lib/addresses.ts', import.meta.url), 'utf8')
   const codes = (source) => source.match(/\b[A-Z]{2}\b/g)
   const listed = codes(settings.slice(settings.indexOf('COUNTRY_CODES'), settings.indexOf(".split(' ')")))
   const script = rawStringConst('vault/address_field/submit.rs', 'SUBMIT_JS')

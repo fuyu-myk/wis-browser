@@ -1,9 +1,9 @@
-// The bookmarks popup and star folder-picker contract (`lib/bookmarkMenu.ts`).
+// The bookmarks popup and star folder-picker contract (`features/bookmarks/lib/bookmarkMenu.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import * as bm from '../../src/lib/bookmarkMenu.ts'
+import * as bm from '../../src/features/bookmarks/lib/bookmarkMenu.ts'
 import { filesSpelling } from '../support/l3-harness.mjs'
 
 test('the last-used folder is remembered per workspace under a stable key', () => {
@@ -20,5 +20,5 @@ test('the popup and picker events are distinct and spelled only in this contract
     bm.BMPICKER_CLOSE_EVENT,
   ]
   assert.equal(new Set(names).size, names.length)
-  for (const name of names) assert.deepEqual(filesSpelling(name), ['lib/bookmarkMenu.ts'], name)
+  for (const name of names) assert.deepEqual(filesSpelling(name), ['features/bookmarks/lib/bookmarkMenu.ts'], name)
 })

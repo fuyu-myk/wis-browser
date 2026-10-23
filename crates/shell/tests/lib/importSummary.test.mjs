@@ -1,9 +1,9 @@
-// Result lines shown after a bookmark import (`lib/importSummary.ts`).
+// Result lines shown after a bookmark import (`features/data-import/importSummary.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { bookmarkImportSummary, historyImportSummary } from '../../src/lib/importSummary.ts'
+import { bookmarkImportSummary, historyImportSummary } from '../../src/features/data-import/importSummary.ts'
 
 const stats = (added, folders, skipped) => ({
   bookmarks_added: added,

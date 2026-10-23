@@ -1,10 +1,10 @@
 // How far a canvas tab reaches past its pane into the chrome below it
-// (`lib/canvasGround.ts`).
+// (`features/canvas/lib/canvasGround.ts`).
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { canvasGround, readGround } from '../../src/lib/canvasGround.ts'
+import { canvasGround, readGround } from '../../src/features/canvas/lib/canvasGround.ts'
 
 const pane = { x: 200, y: 60, width: 900, height: 728 }
 

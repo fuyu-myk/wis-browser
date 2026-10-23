@@ -1,11 +1,11 @@
 // Event names shared by the widget-panel overlays and the chrome
-// (`lib/widgetResize.ts`).
+// (`features/widgets/widgetResize.ts`).
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 
-import * as events from '../../src/lib/widgetResize.ts'
+import * as events from '../../src/features/widgets/widgetResize.ts'
 
 test('every widget-panel event has its own name in the wis namespace', () => {
   const names = Object.entries(events)

@@ -1,9 +1,9 @@
-// Settings' recovery key display and the unlock failure message (`lib/vaultRecovery.ts`).
+// Settings' recovery key display and the unlock failure message (`features/vault/lib/vaultRecovery.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { shortKey, unlockProblem } from '../../src/lib/vaultRecovery.ts'
+import { shortKey, unlockProblem } from '../../src/features/vault/lib/vaultRecovery.ts'
 
 test('a recovery key is shown short enough to recognise', () => {
   assert.equal(

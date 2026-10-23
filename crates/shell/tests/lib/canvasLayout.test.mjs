@@ -1,10 +1,10 @@
-// Where the canvas agent's cards go (`lib/canvasLayout.ts`): free space, groups
+// Where the canvas agent's cards go (`features/canvas/lib/canvasLayout.ts`): free space, groups
 // kept in shape at their real sizes, and room made when a card grows.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import * as layout from '../../src/lib/canvasLayout.ts'
+import * as layout from '../../src/features/canvas/lib/canvasLayout.ts'
 
 const box = (x, y, w = 100, h = 100) => ({ x, y, w, h })
 const touching = (a, b, gap = 0) =>

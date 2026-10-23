@@ -1,9 +1,9 @@
-// Where a password card sits beside its field (`lib/signupPlacement.ts`).
+// Where a password card sits beside its field (`features/vault/lib/signupPlacement.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { fieldInWindow, placeOffer } from '../src/lib/signupPlacement.ts'
+import { fieldInWindow, placeOffer } from '../src/features/vault/lib/signupPlacement.ts'
 
 const pane = { x: 100, y: 50, width: 800, height: 600 }
 const card = { width: 340, height: 190 }

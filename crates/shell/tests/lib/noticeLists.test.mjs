@@ -1,9 +1,9 @@
-// The cookie-notice and annoyance switches (`lib/noticeLists.ts`).
+// The cookie-notice and annoyance switches (`features/privacy/lib/noticeLists.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { noticeListsPatch } from '../../src/lib/noticeLists.ts'
+import { noticeListsPatch } from '../../src/features/privacy/lib/noticeLists.ts'
 
 test('annoyances carry cookie notices, which they contain', () => {
   assert.deepEqual(noticeListsPatch('annoyances', true), { block_annoyances: true, block_cookie_notices: true })

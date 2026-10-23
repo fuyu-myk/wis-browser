@@ -1,4 +1,4 @@
-// Settings' rules for links from other apps (`lib/linkRoutes.ts`).
+// Settings' rules for links from other apps (`features/site/lib/linkRoutes.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
@@ -9,7 +9,7 @@ import {
   withImportedRoutes,
   withRoute,
   withoutRoute,
-} from '../../src/lib/linkRoutes.ts'
+} from '../../src/features/site/lib/linkRoutes.ts'
 
 test('a rule can be added for a site, with or without a path', () => {
   for (const site of [

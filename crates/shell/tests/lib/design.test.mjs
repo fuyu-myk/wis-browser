@@ -1,4 +1,4 @@
-// Sidebar width bounds (`lib/design.ts`), which must match core's clamp.
+// Sidebar width bounds (`features/settings/lib/design.ts`), which must match core's clamp.
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -8,7 +8,7 @@ import {
   SIDEBAR_WIDTH_DEFAULT,
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
-} from '../../src/lib/design.ts'
+} from '../../src/features/settings/lib/design.ts'
 
 test('the sidebar width bounds mirror wis_core::appearance::design', () => {
   const core = readFileSync(new URL('../../../core/src/appearance/design.rs', import.meta.url), 'utf8')

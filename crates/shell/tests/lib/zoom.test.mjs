@@ -1,9 +1,9 @@
-// The zoom indicator's view of per-site zoom (`lib/zoom.ts`).
+// The zoom indicator's view of per-site zoom (`features/zoom/zoom.ts`).
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { hostOfUrl, zoomPercentForHost } from '../../src/lib/zoom.ts'
+import { hostOfUrl, zoomPercentForHost } from '../../src/features/zoom/zoom.ts'
 
 test('a page URL gives its hostname, without port', () => {
   assert.equal(hostOfUrl('https://www.example.com:8443/a?b'), 'www.example.com')

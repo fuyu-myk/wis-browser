@@ -15,7 +15,7 @@ import { useEffect } from 'react'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { BROWSER_STATE_KEY } from './useBrowserState'
+import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 
 const EVENT_NAME = 'browser-state-changed'
 
