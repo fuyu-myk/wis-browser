@@ -23,6 +23,7 @@ import { useThemeApply } from '@/hooks/useThemeApply'
 import { cx } from '@/lib/cx'
 import { menusGlass } from '@/lib/glass'
 import { GlobeIcon } from '@/lib/icons'
+import { errorMessage } from '@/lib/errors'
 import { showRemoteToast } from '@/lib/toast'
 import { VAULTMENU_FILL_EVENT, type VaultMenuFill } from '@/features/vault/lib/vaultMenu'
 import { unlockProblem } from '@/features/vault/lib/vaultRecovery'
@@ -85,8 +86,8 @@ export function SavedLoginsSurface() {
       setPick(null)
       void emit(LOGINS_CLOSE_EVENT, getCurrentWindow().label)
       void commands.focusWebview(`tab-${pick.tabId}`).catch(() => undefined)
-    } catch {
-      // Nothing was filled, so the card stays.
+    } catch (error: unknown) {
+      void showRemoteToast(getCurrentWindow().label, errorMessage(error))
     } finally {
       setBusy(false)
     }

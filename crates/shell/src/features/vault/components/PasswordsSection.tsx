@@ -9,6 +9,7 @@ import { useVaultStatus, VAULT_STATUS_KEY } from '@/features/vault/hooks/useVaul
 import { cx } from '@/lib/cx'
 import { LockIcon, SearchIcon, XIcon } from '@/lib/icons'
 import { isMacOS } from '@/lib/platform'
+import { showToast } from '@/lib/toast'
 import { useBrowserState, BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { Segmented } from '@/components/controls'
 import type { PasswordOffer } from '@/bindings/types'
@@ -430,6 +431,11 @@ interface CredentialRowProps {
   onDelete: () => void
 }
 
+function revealProblem(error: unknown): null {
+  showToast(errorMessage(error))
+  return null
+}
+
 function CredentialRow({ id, host, username, breachCount, onDelete }: CredentialRowProps) {
   const [revealed, setRevealed] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -439,12 +445,12 @@ function CredentialRow({ id, host, username, breachCount, onDelete }: Credential
       setRevealed(null)
       return
     }
-    const pw = await commands.vaultReveal(id).catch(() => null)
+    const pw = await commands.vaultReveal(id).catch(revealProblem)
     if (pw !== null) setRevealed(pw)
   }
 
   const copy = async () => {
-    const pw = await commands.vaultReveal(id).catch(() => null)
+    const pw = await commands.vaultReveal(id).catch(revealProblem)
     if (pw === null) return
     try {
       await navigator.clipboard.writeText(pw)

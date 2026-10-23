@@ -195,7 +195,9 @@ export function VaultMenuSurface() {
     setBusy(true)
     try {
       if (!(await ensureUnlocked(forTab))) return
-      await commands.autofillFill(forTab, credentialId).catch(() => undefined)
+      await commands.autofillFill(forTab, credentialId).catch((error: unknown) => {
+        void showRemoteToast(getCurrentWindow().label, errorMessage(error))
+      })
       refocusRef.current = forTab
       close()
     } finally {

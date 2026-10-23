@@ -165,7 +165,7 @@ pub(crate) async fn credentials_in_clear(
                 nonce: record.nonce,
             },
         )
-        .map_err(vault_err)?;
+        .map_err(|_| unreadable())?;
         let password = String::from_utf8(plaintext).map_err(|_| WisError::InvalidInput {
             message: "a stored password is not valid UTF-8".to_string(),
         })?;
@@ -323,7 +323,7 @@ pub async fn vault_reveal(state: State<'_, AppState>, id: i64) -> WisResult<Stri
         ciphertext: record.ciphertext,
         nonce: record.nonce,
     };
-    let plaintext = wis_secrets::decrypt(key, &blob).map_err(vault_err)?;
+    let plaintext = wis_secrets::decrypt(key, &blob).map_err(|_| unreadable())?;
 
     String::from_utf8(plaintext).map_err(|_| WisError::InvalidInput {
         message: "stored password is not valid UTF-8".to_string(),
@@ -576,7 +576,7 @@ pub async fn autofill_fill(
                 nonce: record.nonce,
             },
         )
-        .map_err(vault_err)?;
+        .map_err(|_| unreadable())?;
 
         String::from_utf8(plaintext).map_err(|_| WisError::InvalidInput {
             message: "stored password is not valid UTF-8".to_string(),
@@ -678,6 +678,14 @@ pub(crate) fn locked() -> WisError {
 pub(crate) fn unsupported() -> WisError {
     WisError::InvalidInput {
         message: "the password vault is not available on this platform".to_string(),
+    }
+}
+
+/// A saved password the vault's key does not open, as when it was sealed with
+/// another key.
+fn unreadable() -> WisError {
+    WisError::InvalidInput {
+        message: "This password was saved with another vault key and can't be opened".to_string(),
     }
 }
 
