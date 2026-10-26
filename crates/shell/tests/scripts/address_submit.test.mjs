@@ -11,6 +11,7 @@ const SCRIPT = [
   includedFile('vault/address_field/patterns.js'),
   rawStringConst('vault/address_field/guess.rs', 'GUESS_JS'),
   rawStringConst('vault/address_field/scripts.rs', 'CLASSIFY_JS'),
+  rawStringConst('vault/address_field/card_scripts.rs', 'CARD_JS'),
   rawStringConst('vault/address_field/scripts.rs', 'FOCUS_JS'),
   rawStringConst('vault/address_field/submit.rs', 'SUBMIT_JS'),
 ].join('\n')

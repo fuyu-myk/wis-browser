@@ -152,6 +152,26 @@ pub async fn card_delete(state: State<'_, AppState>, id: i64) -> WisResult<()> {
     deleted
 }
 
+/// Saved card `id` in the clear, for a fill the user chose and confirmed. A
+/// card that is not the one its row lists is refused.
+pub(crate) async fn opened(state: &State<'_, AppState>, id: i64) -> WisResult<Card> {
+    let guard = state.vault_key.lock().await;
+    let key = guard.as_ref().ok_or_else(locked)?;
+    let storage = state.storage.clone();
+    let rows = blocking(move || storage.list_cards().map_err(persist_err)).await?;
+    let row = rows
+        .into_iter()
+        .find(|row| row.id == id)
+        .ok_or_else(|| invalid("This card was removed"))?;
+    let card = open(key, row.ciphertext.clone(), row.nonce.clone())?;
+    drop(guard);
+    if !listed_as(&card, &row) {
+        log::warn!("vault: saved card {id} does not match its listing");
+        return Err(invalid("This saved card is damaged"));
+    }
+    Ok(card)
+}
+
 /// Whether `row` opens with `key`.
 pub(crate) fn opens(key: &MasterKey, row: &CardRecord) -> bool {
     open(key, row.ciphertext.clone(), row.nonce.clone()).is_ok()
@@ -209,6 +229,11 @@ fn to_add(known: &[Card], stored: usize, incoming: Vec<Card>) -> WisResult<Vec<C
         }
     }
     Ok(kept)
+}
+
+/// Whether `card` is the one `row` lists.
+fn listed_as(card: &Card, row: &CardRecord) -> bool {
+    summary(row).summary == card.summary()
 }
 
 fn summary(row: &CardRecord) -> SavedCard {
@@ -279,6 +304,35 @@ mod tests {
             number: Zeroizing::new("5555555555554444".into()),
             ..visa()
         }
+    }
+
+    fn record(card: &Card) -> CardRecord {
+        let summary = card.summary();
+        CardRecord {
+            id: 7,
+            nickname: summary.nickname,
+            brand: summary.brand.as_str().into(),
+            last4: summary.last4,
+            exp_month: u32::from(summary.exp_month),
+            exp_year: u32::from(summary.exp_year),
+            ciphertext: Vec::new(),
+            nonce: Vec::new(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    /// The summary sits in the clear, so a swapped row would list one card
+    /// and fill another.
+    #[test]
+    fn a_card_fills_only_when_it_matches_the_summary_listed() {
+        assert!(listed_as(&visa(), &record(&visa())));
+        assert!(!listed_as(&mastercard(), &record(&visa())));
+        let renamed = CardRecord {
+            nickname: "Work".into(),
+            ..record(&visa())
+        };
+        assert!(!listed_as(&visa(), &renamed));
     }
 
     #[test]

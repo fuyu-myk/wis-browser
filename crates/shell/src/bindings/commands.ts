@@ -270,6 +270,11 @@ export const commands = {
     return invoke('card_delete', { id })
   },
 
+  /** Fill saved card `id` into the card field report `token` names; asks Touch ID or the vault password. */
+  async cardFill(tabId: TabId, id: number, token: string, vaultPassword: string | null): Promise<void> {
+    return invoke('card_fill', { tabId, id, token, vaultPassword })
+  },
+
   /** Whether any address is saved; needs no unlock. */
   async addressAny(): Promise<boolean> {
     return invoke('address_any')

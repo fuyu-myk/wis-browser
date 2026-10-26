@@ -10,6 +10,7 @@ const CLASSIFY = [
   includedFile('vault/address_field/patterns.js'),
   rawStringConst('vault/address_field/guess.rs', 'GUESS_JS'),
   rawStringConst('vault/address_field/scripts.rs', 'CLASSIFY_JS'),
+  rawStringConst('vault/address_field/card_scripts.rs', 'CARD_JS'),
 ].join('\n')
 const FOCUS = rawStringConst('vault/address_field/scripts.rs', 'FOCUS_JS')
 const FILL = rawStringConst('vault/address_field/scripts.rs', 'FILL_JS')
@@ -661,6 +662,7 @@ test('a real focus on an address field is reported with its box and what it woul
     width: 200,
     height: 30,
     viewWidth: 1280,
+    form: 'address',
     kinds: ['postal', 'city'],
     token: report.token,
   })

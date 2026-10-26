@@ -24,6 +24,7 @@ import { PeekSurface } from '@/features/page-tools/PeekSurface'
 import { AppLaunchSurface } from '@/features/page-prompts/AppLaunchSurface'
 import { SavedLoginsSurface } from '@/features/vault/surfaces/SavedLoginsSurface'
 import { AddressCardSurface } from '@/features/vault/surfaces/AddressCardSurface'
+import { CardPickerSurface } from '@/features/vault/surfaces/CardPickerSurface'
 import { SignupOfferSurface } from '@/features/vault/surfaces/SignupOfferSurface'
 import { SitePanelSurface } from '@/features/site/surfaces/SitePanelSurface'
 import { PermissionSurface } from '@/features/page-prompts/PermissionSurface'
@@ -62,6 +63,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'signup') return <SignupOfferSurface />
   if (surface === 'logins') return <SavedLoginsSurface />
   if (surface === 'addresses') return <AddressCardSurface />
+  if (surface === 'cards') return <CardPickerSurface />
   if (surface === 'applaunch') return <AppLaunchSurface />
   if (surface === 'bookmarks') return <BookmarksMenuSurface />
   if (surface === 'downloads') return <DownloadsMenuSurface />

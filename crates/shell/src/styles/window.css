@@ -9184,6 +9184,13 @@ body.motion-off .kb-ai-think-label.is-live {
   padding: 0 8px;
 }
 
+.kb-cards-ask {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px;
+}
+.kb-cards-ask .kb-vaultmenu-btn { flex: 0 0 auto; }
 .kb-addresses-note {
   height: 30px;
   padding: 0 8px;

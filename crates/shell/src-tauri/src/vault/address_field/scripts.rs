@@ -513,8 +513,9 @@ try {
 } catch (e) {}
 "#;
 
-/// Reports focus on an address field, and where it moves, to `wisAddress`.
-/// Placed after [`CLASSIFY_JS`] in the page script.
+/// Reports focus on an address or card field, and where it moves, to
+/// `wisAddress`. Placed after [`CLASSIFY_JS`] and the card script in the page
+/// script.
 pub(super) const FOCUS_JS: &str = r#"
 var anchored = null;
 var offered = '';
@@ -552,8 +553,8 @@ function freshToken() {
   return hex;
 }
 
-function anchor(el, kinds) {
-  var key = kinds ? kinds.join(' ') : '';
+function anchor(el, key) {
+  key = key || '';
   if (el !== anchored || key !== offered) token = el ? freshToken() : null;
   anchored = el;
   offered = key;
@@ -586,11 +587,17 @@ function report(el) {
     }, wait);
     return;
   }
-  var kinds = offerKinds(el);
+  var form = 'card';
+  var kinds = cardOfferKinds(el);
+  if (!kinds) {
+    form = 'address';
+    kinds = offerKinds(el);
+  }
   if (!kinds) return;
   lastReport = performance.now();
-  anchor(el, kinds);
+  anchor(el, form + ' ' + kinds.join(' '));
   var body = measured(el, 'focus');
+  body.form = form;
   body.kinds = kinds;
   body.token = token;
   send(body);
@@ -605,7 +612,7 @@ document.addEventListener('focusin', function (e) {
 document.addEventListener('pointerdown', function (e) {
   if (anchored && e.target !== anchored) leave();
   if (!e.isTrusted || window.top !== window.self) return;
-  if (addressField(e.target) || guessable(e.target)) report(e.target);
+  if (addressField(e.target) || guessable(e.target) || cardField(e.target)) report(e.target);
 }, true);
 document.addEventListener('keydown', function (e) {
   if (anchored && e.target === anchored && e.key === 'Escape') leave();

@@ -12,6 +12,7 @@ import { useOverlay } from '@/hooks/useOverlay'
 import { usePermissionOverlay } from '@/features/page-prompts/usePermissionOverlay'
 import { useSavedLogins } from '@/features/vault/hooks/useSavedLogins'
 import { useSavedAddresses } from '@/features/vault/hooks/useSavedAddresses'
+import { useSavedCards } from '@/features/vault/hooks/useSavedCards'
 import { useSignupOffer } from '@/features/vault/hooks/useSignupOffer'
 import { useTabAudio } from '@/features/tabs/hooks/useTabAudio'
 import { currentWebviewRadius, useTabWebviews, type Bounds, type WebviewLayout } from '@/hooks/useTabWebviews'
@@ -257,6 +258,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
   useSignupOffer(hostRef, state, webviewsHidden)
   useSavedLogins(state, webviewsHidden)
   useSavedAddresses(state, webviewsHidden)
+  useSavedCards(state, webviewsHidden)
 
   const handlePaneDrop = useCallback(
     (targetTabId: TabId, movedTabId: TabId, side: PaneSide) => {

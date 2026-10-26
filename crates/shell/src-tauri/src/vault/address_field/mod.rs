@@ -1,6 +1,6 @@
-//! Saved addresses at a page's address fields: which fields are for an
-//! address, reporting focus on one so the chrome can offer the saved
-//! addresses, and filling the chosen one into the fields around it.
+//! Saved addresses and cards at a page's form fields: which fields are for an
+//! address or a card, reporting focus on one so the chrome can offer what is
+//! saved, and filling the chosen one into the fields around it.
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -13,10 +13,13 @@ use wis_core::{TabId, WisError, WisResult};
 use crate::state::AppState;
 use crate::vault::signup::{field_rect, source, FieldRect};
 
+pub(crate) mod card_fill;
+mod card_scripts;
 mod guess;
 mod scripts;
 mod submit;
 
+use card_scripts::CARD_JS;
 use guess::GUESS_JS;
 use scripts::{CLASSIFY_JS, FILL_JS, FOCUS_JS, RELEASE_JS};
 use submit::SUBMIT_JS;
@@ -25,6 +28,7 @@ use submit::SUBMIT_JS;
 const PATTERNS_JS: &str = include_str!("patterns.js");
 
 const FIELD_EVENT: &str = "wis-address-field";
+const CARD_FIELD_EVENT: &str = "wis-card-field";
 const MOVE_EVENT: &str = "wis-address-move";
 const SCROLL_EVENT: &str = "wis-address-scroll";
 const LEAVE_EVENT: &str = "wis-address-leave";
@@ -46,13 +50,25 @@ const KINDS: [&str; 14] = [
     "tel",
     "email",
 ];
+/// The kinds of card fields `CARD_JS` knows.
+const CARD_KINDS: [&str; 8] = [
+    "number", "name", "given", "family", "exp", "month", "year", "type",
+];
 const FOCUS_INTERVAL: Duration = Duration::from_millis(250);
 
-/// What a tab's last address field report offered: the origin it came from,
-/// the kinds of fields a fill would reach, and the token naming that report.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Form {
+    Address,
+    Card,
+}
+
+/// What a tab's last field report offered: the origin it came from, whether
+/// an address or a card, the kinds of fields a fill would reach, and the
+/// token naming that report.
 #[derive(Clone)]
 struct Offered {
     origin: String,
+    form: Form,
     kinds: Vec<&'static str>,
     token: String,
 }
@@ -87,14 +103,14 @@ struct TabEvent<'a> {
 pub fn page_script() -> &'static str {
     static SCRIPT: LazyLock<String> = LazyLock::new(|| {
         format!(
-            "(function () {{\nif (window.__wisAddressInstalled) return;\nwindow.__wisAddressInstalled = true;\n{PATTERNS_JS}\n{GUESS_JS}\n{CLASSIFY_JS}\n{FOCUS_JS}\n{SUBMIT_JS}\n}})();"
+            "(function () {{\nif (window.__wisAddressInstalled) return;\nwindow.__wisAddressInstalled = true;\n{PATTERNS_JS}\n{GUESS_JS}\n{CLASSIFY_JS}\n{CARD_JS}\n{FOCUS_JS}\n{SUBMIT_JS}\n}})();"
         )
     });
     &SCRIPT
 }
 
-/// The known kinds a report lists, in order and once each.
-fn known_kinds(listed: Option<&serde_json::Value>) -> Vec<&'static str> {
+/// The kinds of `known` a report lists, in order and once each.
+fn known_kinds(listed: Option<&serde_json::Value>, known: &[&'static str]) -> Vec<&'static str> {
     let mut kinds = Vec::new();
     for value in listed
         .and_then(serde_json::Value::as_array)
@@ -103,7 +119,7 @@ fn known_kinds(listed: Option<&serde_json::Value>) -> Vec<&'static str> {
     {
         let known = value
             .as_str()
-            .and_then(|kind| KINDS.iter().find(|known| **known == kind));
+            .and_then(|kind| known.iter().find(|known| **known == kind));
         if let Some(kind) = known {
             if !kinds.contains(kind) {
                 kinds.push(*kind);
@@ -154,7 +170,18 @@ pub(crate) fn dispatch_message(label: &str, body: &serde_json::Value) {
     };
     let emitted = match body.get("kind").and_then(serde_json::Value::as_str) {
         Some("focus") => {
-            let kinds = known_kinds(body.get("kinds"));
+            let form = match body.get("form").and_then(serde_json::Value::as_str) {
+                Some("card") => Form::Card,
+                _ => Form::Address,
+            };
+            let kinds = known_kinds(
+                body.get("kinds"),
+                if form == Form::Card {
+                    &CARD_KINDS
+                } else {
+                    &KINDS
+                },
+            );
             let token = body.get("token").and_then(serde_json::Value::as_str);
             let (Some(rect), Some(origin), Some(token)) = (
                 rect(),
@@ -163,7 +190,10 @@ pub(crate) fn dispatch_message(label: &str, body: &serde_json::Value) {
             ) else {
                 return;
             };
-            if kinds.is_empty() || !focus_allowed(from.tab_id, Instant::now()) {
+            if kinds.is_empty()
+                || (form == Form::Card && !card_fill::card_origin(&origin))
+                || !focus_allowed(from.tab_id, Instant::now())
+            {
                 return;
             }
 
@@ -171,12 +201,17 @@ pub(crate) fn dispatch_message(label: &str, body: &serde_json::Value) {
                 from.tab_id,
                 Offered {
                     origin,
+                    form,
                     kinds: kinds.clone(),
                     token: token.to_string(),
                 },
             );
             from.app.emit(
-                FIELD_EVENT,
+                if form == Form::Card {
+                    CARD_FIELD_EVENT
+                } else {
+                    FIELD_EVENT
+                },
                 FieldEvent {
                     window: from.window,
                     tab_id: from.tab_id,
@@ -238,16 +273,29 @@ fn remember(tab_id: &str, offered: Offered) {
         .insert(tab_id.to_string(), offered);
 }
 
-/// The tab's offer, if it is still the report `token` names.
-fn take(tab_id: &str, token: &str) -> Option<Offered> {
+/// The tab's offer, if it is still the report `token` names and for `form`.
+fn take(tab_id: &str, token: &str, form: Form) -> Option<Offered> {
     let mut offered = OFFERED
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let offered = offered.as_mut()?;
-    if offered.get(tab_id)?.token != token {
+    let current = offered.get(tab_id)?;
+    if current.token != token || current.form != form {
         return None;
     }
     offered.remove(tab_id)
+}
+
+/// The origin of the tab's offer, while it is still the report `token`
+/// names, for `form`.
+fn current(tab_id: &str, token: &str, form: Form) -> Option<String> {
+    OFFERED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .as_ref()
+        .and_then(|offered| offered.get(tab_id))
+        .filter(|offered| offered.token == token && offered.form == form)
+        .map(|offered| offered.origin.clone())
 }
 
 pub(crate) fn forget(tab_id: &str) {
@@ -286,7 +334,8 @@ pub async fn address_fill(
     let tab = tab_id.as_uuid().to_string();
     let label = format!("tab-{tab}");
     let address = crate::vault::addresses::opened(&state, id).await?;
-    let offered = take(&tab, &token).ok_or_else(|| invalid("The page has moved on"))?;
+    let offered =
+        take(&tab, &token, Form::Address).ok_or_else(|| invalid("The page has moved on"))?;
     let webview = app
         .webviews()
         .get(&label)
@@ -495,6 +544,7 @@ mod tests {
     fn a_fill_carries_only_the_values_its_fields_reach() {
         let offered = Offered {
             origin: "https://shop.example".into(),
+            form: Form::Address,
             kinds: vec!["postal", "city"],
             token: TOKEN.into(),
         };
@@ -512,6 +562,7 @@ mod tests {
     fn values_are_quoted_so_they_cannot_end_the_script() {
         let offered = Offered {
             origin: "https://shop.example".into(),
+            form: Form::Address,
             kinds: vec!["street"],
             token: TOKEN.into(),
         };
@@ -524,17 +575,29 @@ mod tests {
         let tab = "tab-test-take";
         let offer = |token: &str| Offered {
             origin: "https://shop.example".into(),
+            form: Form::Address,
             kinds: vec!["postal"],
             token: token.into(),
         };
         remember(tab, offer(TOKEN));
         remember(tab, offer(OTHER));
-        assert!(take(tab, TOKEN).is_none(), "a newer report came in");
+        assert!(
+            take(tab, TOKEN, Form::Address).is_none(),
+            "a newer report came in"
+        );
         assert_eq!(
-            take(tab, OTHER).map(|offered| offered.token),
+            current(tab, OTHER, Form::Address).as_deref(),
+            Some("https://shop.example")
+        );
+        assert!(current(tab, OTHER, Form::Card).is_none());
+        assert_eq!(
+            take(tab, OTHER, Form::Address).map(|offered| offered.token),
             Some(OTHER.into())
         );
-        assert!(take(tab, OTHER).is_none(), "an offer fills once");
+        assert!(
+            take(tab, OTHER, Form::Address).is_none(),
+            "an offer fills once"
+        );
     }
 
     #[test]
@@ -563,6 +626,7 @@ mod tests {
     fn the_page_and_fill_scripts_carry_the_patterns_and_the_guessing() {
         let offered = Offered {
             origin: "https://shop.example".into(),
+            form: Form::Address,
             kinds: vec!["postal"],
             token: TOKEN.into(),
         };
@@ -573,14 +637,22 @@ mod tests {
         }
         let page = page_script();
         assert!(page.find("function send(").unwrap() < page.find("function offerToSave(").unwrap());
+        assert!(
+            page.find("function cardOfferKinds(").unwrap() < page.find("function report(").unwrap()
+        );
     }
 
     #[test]
     fn a_report_lists_only_known_kinds_once_each() {
         let listed = serde_json::json!(["postal", "city", "postal", "password", 7, "email"]);
-        assert_eq!(known_kinds(Some(&listed)), vec!["postal", "city", "email"]);
-        assert!(known_kinds(None).is_empty());
-        assert!(known_kinds(Some(&serde_json::json!("postal"))).is_empty());
+        assert_eq!(
+            known_kinds(Some(&listed), &KINDS),
+            vec!["postal", "city", "email"]
+        );
+        assert!(known_kinds(None, &KINDS).is_empty());
+        assert!(known_kinds(Some(&serde_json::json!("postal")), &KINDS).is_empty());
+        let card = serde_json::json!(["number", "postal", "exp", "csc"]);
+        assert_eq!(known_kinds(Some(&card), &CARD_KINDS), vec!["number", "exp"]);
     }
 
     #[test]

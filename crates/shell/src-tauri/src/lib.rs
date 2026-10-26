@@ -542,6 +542,7 @@ pub fn run() {
             vault::addresses::address_any,
             vault::address_field::address_fill,
             vault::address_field::release_address_field,
+            vault::address_field::card_fill::card_fill,
             vault::address_save::address_capture_pending,
             vault::address_save::address_capture_save,
             vault::address_save::address_capture_match,

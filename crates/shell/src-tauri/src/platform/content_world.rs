@@ -42,6 +42,31 @@ pub fn eval<R: Runtime>(webview: &Webview<R>, js: impl Into<String>) -> tauri::R
     webview.eval(js)
 }
 
+/// Run `js`, which holds a secret, as [`eval`] does, wiping Wis's copy once it
+/// has run. The engine's own copy of the source can't be wiped.
+pub fn eval_secret<R: Runtime>(
+    webview: &Webview<R>,
+    js: zeroize::Zeroizing<String>,
+) -> tauri::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        webview.with_webview(move |w| unsafe {
+            let wk = w.inner() as *mut objc2::runtime::AnyObject;
+            if !wk.is_null() {
+                macos::run(wk, &js);
+            }
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        webview.with_webview(move |w| linux::run(&w.inner(), &js))
+    }
+
+    #[cfg(windows)]
+    webview.eval(js.as_str())
+}
+
 /// Run the scripts `webview` installed again, once, when its first page has
 /// loaded. That page can start in a fresh web process before the scripts reach
 /// it, and the evaluate at install went to the document it replaced.
