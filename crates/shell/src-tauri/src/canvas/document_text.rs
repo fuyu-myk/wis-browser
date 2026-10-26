@@ -320,6 +320,13 @@ mod native {
         (subpath \"/System\") (subpath \"/usr/lib\") (subpath \"/usr/share\") \
         (subpath \"/Library/Fonts\"))";
 
+    /// A blank PDF to prevent profile denial and aborting by AppKit.
+    const BLANK_PDF: &[u8] = b"%PDF-1.4\n\
+        1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n\
+        2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n\
+        3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 1 1]>>endobj\n\
+        trailer<</Root 1 0 R>>\n%%EOF\n";
+
     #[repr(C)]
     struct NSRange {
         location: usize,
@@ -362,13 +369,18 @@ mod native {
     /// runs, then confines this process for good.
     pub fn confine() -> bool {
         let mut error: *mut c_char = std::ptr::null_mut();
-        // SAFETY: an empty document only loads PDFKit; the profile is a
-        // literal and its error buffer is freed with the matching call.
+        // SAFETY: a known one page document only readies PDFKit; the
+        // profile is a literal and its error buffer is freed with the
+        // matching call.
         unsafe {
             autoreleasepool(|_| {
-                let empty: *mut AnyObject = msg_send![class!(NSData), data];
+                let blank: *mut AnyObject = msg_send![
+                    class!(NSData),
+                    dataWithBytes: BLANK_PDF.as_ptr() as *const c_void,
+                    length: BLANK_PDF.len()
+                ];
                 let doc: *mut AnyObject = msg_send![class!(PDFDocument), alloc];
-                let doc: *mut AnyObject = msg_send![doc, initWithData: empty];
+                let doc: *mut AnyObject = msg_send![doc, initWithData: blank];
                 if !doc.is_null() {
                     let _: () = msg_send![doc, release];
                 }
