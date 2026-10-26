@@ -284,3 +284,106 @@ test('a focus on a card field is reported as a card offer', () => {
   assert.equal(sent[0].form, 'card')
   assert.deepEqual(sent[0].kinds, ['number', 'exp'])
 })
+
+const bare = (attrs, spec = {}) => field(undefined, { ...spec, attrs })
+
+test('untagged card fields are read from their words, the security code kept apart', () => {
+  const number = bare({ name: 'cardnumber', placeholder: 'Card number' })
+  const exp = bare({ name: 'exp-date', placeholder: 'MM / YY' })
+  const cvc = bare({ name: 'cvc', placeholder: 'Card code' })
+  const name = bare({ name: 'ccname', placeholder: 'Name on card' })
+  const env = page([number, exp, cvc, name])
+  const { cardOfferKinds, offerKinds } = classify(env)
+  assert.deepEqual(cardOfferKinds(number), ['number', 'exp', 'name'])
+  assert.deepEqual(cardOfferKinds(name), ['number', 'exp', 'name'])
+  assert.equal(cardOfferKinds(cvc), null)
+  assert.equal(offerKinds(name), null, 'not an address name')
+
+  fill(page([number, exp, cvc, name]))
+  assert.deepEqual(
+    [number.value, exp.value, cvc.value, name.value],
+    ['4242424242424242', '08 / 28', '', 'Ada Lovelace'],
+  )
+})
+
+test('an untagged month list followed by a year list is an expiry pair', () => {
+  const number = bare({ name: 'card_number', 'aria-label': 'Card number' })
+  const month = select(undefined, [['', 'MM'], ['08', '08']])
+  month.attrs = { name: 'exp_month' }
+  const year = select(undefined, [['', 'YYYY'], ['2028', '2028']])
+  year.attrs = { name: 'exp_year' }
+  const env = page([number, month, year])
+  assert.deepEqual(classify(env).cardOfferKinds(number), ['number', 'month', 'year'])
+  fill(env)
+  assert.deepEqual([month.value, year.value], ['08', '2028'])
+})
+
+test('a gift card number, or a form with no card number, is not offered a card', () => {
+  const gift = bare({ name: 'giftcard', placeholder: 'Gift card number' })
+  const pin = bare({ name: 'pin', placeholder: 'PIN' })
+  assert.equal(classify(page([gift, pin])).cardOfferKinds(gift), null)
+
+  const postal = bare({ name: 'zip', placeholder: 'ZIP code' })
+  const city = bare({ name: 'city', placeholder: 'City' })
+  const street = bare({ name: 'address1', placeholder: 'Street address' })
+  const { cardOfferKinds, offerKinds } = classify(page([street, city, postal]))
+  assert.equal(cardOfferKinds(postal), null)
+  assert.ok(offerKinds(postal), 'still an address')
+})
+
+const inLang = (env, lang) => {
+  env.doc.documentElement.lang = lang
+  return env
+}
+
+test('house numbers and tax numbers on address forms are not card numbers', () => {
+  const street = bare({ name: 'rua', placeholder: 'Rua' })
+  const house = bare({ name: 'numero', placeholder: 'Número' })
+  const postal = bare({ name: 'cep', placeholder: 'CEP' })
+  const city = bare({ name: 'cidade', placeholder: 'Cidade' })
+  assert.equal(classify(inLang(page([street, house, postal, city]), 'pt-BR')).cardOfferKinds(house), null)
+
+  const dutch = bare({ name: 'huisnummer', placeholder: 'Huisnummer' })
+  const straat = bare({ name: 'straat', placeholder: 'Straat' })
+  assert.equal(classify(page([straat, dutch])).cardOfferKinds(dutch), null)
+
+  const tax = bare({ name: 'steuernummer', placeholder: 'Steuernummer' })
+  assert.equal(classify(inLang(page([tax]), 'de')).cardOfferKinds(tax), null)
+})
+
+test('only fields next to the card number join it, so a birth date or shipping name stays out', () => {
+  const name = bare({ name: 'shipname', placeholder: '名前' })
+  const street = bare({ name: 'addr', placeholder: '住所' })
+  const number = bare({ name: 'cardno', placeholder: 'カード番号' })
+  const exp = bare({ name: 'expiry', placeholder: 'MM/YY' })
+  const env = inLang(page([name, street, number, exp]), 'ja')
+  const { cardOfferKinds } = classify(env)
+  assert.deepEqual(cardOfferKinds(number), ['number', 'exp'])
+  assert.equal(cardOfferKinds(name), null)
+
+  const card = bare({ name: 'kartennummer', placeholder: 'Kartennummer' })
+  const valid = bare({ name: 'ablaufdatum', placeholder: 'Gültig bis (MM/JJ)' })
+  const strasse = bare({ name: 'strasse', placeholder: 'Straße' })
+  const month = select(undefined, [['', 'Monat'], ['8', '8']])
+  month.attrs = { name: 'geburtsmonat', 'aria-label': 'Geburtsmonat' }
+  const year = select(undefined, [['', 'Jahr'], ['2028', '2028']])
+  year.attrs = { name: 'geburtsjahr', 'aria-label': 'Geburtsjahr' }
+  const de = inLang(page([card, valid, strasse, month, year]), 'de')
+  assert.deepEqual(classify(de).cardOfferKinds(card), ['number', 'exp'])
+})
+
+test('beside a tagged card form nothing is guessed, so a security code box is never a number', () => {
+  const number = field('cc-number')
+  const code = bare({ name: 'f2', placeholder: 'Prüfnummer' })
+  const env = inLang(page([number, code]), 'de')
+  assert.equal(classify(env).cardOfferKinds(code), null)
+  fill(page([number, code]))
+  assert.equal(code.value, '')
+})
+
+test('one expiry date box is not split with the box after it', () => {
+  const number = bare({ name: 'cardnumber', placeholder: 'Card number' })
+  const exp = bare({ name: 'expiry', placeholder: 'Expiration date (MM/YY)' })
+  const promo = bare({ name: 'express_code', placeholder: 'Promo' })
+  assert.deepEqual(classify(page([number, exp, promo])).cardOfferKinds(number), ['number', 'exp'])
+})

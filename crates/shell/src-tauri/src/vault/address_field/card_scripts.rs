@@ -2,9 +2,10 @@
 //! fields take a card, and filling a saved one. The security code is never
 //! filled.
 
-/// Classifies card fields by their `cc-*` autocomplete tokens. Placed after
-/// [`super::scripts::CLASSIFY_JS`], whose helpers it uses. Defines
-/// `cardField`, `cardSection` and `cardOfferKinds`.
+/// Classifies card fields by their `cc-*` autocomplete tokens, or else from
+/// their words with Chromium's patterns. Placed after
+/// [`super::scripts::CLASSIFY_JS`] and guessing, whose helpers it uses.
+/// Defines `cardField`, `cardSection` and `cardOfferKinds`.
 pub(super) const CARD_JS: &str = r#"
 var CARD_KINDS = {
   'cc-number': 'number',
@@ -28,28 +29,107 @@ function cardField(el) {
   return { kind: kind, section: section.join(' ') };
 }
 
-// The card fields in `el`'s group and section.
-function cardSection(el) {
-  var mine = cardField(el);
-  if (!mine) return null;
-  var root = groupOf(el);
+// The card kind `field`'s words name, before any pairing.
+function cardWord(field) {
+  if (matches('GIFT_CARD', field) || matches('DEBIT_GIFT_CARD', field)) return null;
+  if (matchesAnyLanguage('CREDIT_CARD_VERIFICATION_CODE', field)) return 'csc';
+  if (matches('CREDIT_CARD_NUMBER', field)) return 'number';
+  if (matches('NAME_ON_CARD', field)) return 'name';
+  if (field.type !== 32 && (matches('CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR', field) ||
+      matches('CREDIT_CARD_EXP_DATE_4_DIGIT_YEAR', field))) return 'exp';
+  if (matches('CREDIT_CARD_EXP_MONTH', field) || matches('CREDIT_CARD_EXP_MONTH_BEFORE_YEAR', field)) return 'month';
+  if (matches('CREDIT_CARD_EXP_YEAR', field) || matches('CREDIT_CARD_EXP_YEAR_AFTER_MONTH', field)) return 'year';
+  if (field.type !== 32 && matches('CREDIT_CARD_EXP_DATE', field)) return 'exp';
+  return null;
+}
+
+function expiryPair(month, year) {
+  if (!matches('CREDIT_CARD_EXP_YEAR', year) && !matches('CREDIT_CARD_EXP_YEAR_AFTER_MONTH', year)) return false;
+  if (month.type === 32 && year.type === 32) return true;
+  if (month.short && year.short) return true;
+  return matches('CREDIT_CARD_EXP_MONTH_BEFORE_YEAR', month) && matches('CREDIT_CARD_EXP_YEAR_AFTER_MONTH', year);
+}
+
+// The kinds of the untagged `entries` ({ el, at }, `at` its place among the
+// group's controls).
+function guessCardKinds(entries) {
+  var fields = entries.map(function (entry) { return describe(entry.el); });
+  var kinds = fields.map(cardWord);
+  kinds.forEach(function (kind, i) {
+    if (kind !== 'month') return;
+    var paired = i + 1 < kinds.length && entries[i + 1].at === entries[i].at + 1 &&
+      expiryPair(fields[i], fields[i + 1]);
+    if (paired) kinds[i + 1] = 'year';
+    else kinds[i] = matches('CREDIT_CARD_EXP_DATE', fields[i]) && fields[i].type !== 32 ? 'exp' : null;
+  });
+  kinds.forEach(function (kind, i) {
+    if (kind === 'year' && kinds[i - 1] !== 'month') kinds[i] = null;
+  });
+
+  var found = [];
+  var run = [];
+  var close = function () {
+    var count = function (wanted) {
+      return run.filter(function (i) { return wanted.indexOf(kinds[i]) >= 0; }).length;
+    };
+    if (count(['number']) === 1 && count(['exp', 'month', 'csc']) > 0) {
+      run.forEach(function (i) {
+        if (kinds[i] === 'csc') return;
+        found.push({ el: entries[i].el, kind: kinds[i], section: 'guess-card-' + entries[run[0]].at });
+      });
+    }
+    run = [];
+  };
+  kinds.forEach(function (kind, i) {
+    if (run.length && (!kind || entries[i].at !== entries[run[run.length - 1]].at + 1)) close();
+    if (kind) run.push(i);
+  });
+  close();
+  return found;
+}
+
+function maybeCard(el) {
+  return guessable(el) && cardWord(describe(el)) !== null;
+}
+
+function cardFields(root) {
   var all = (root.tagName === 'FORM' && read('HTMLFormElement', 'elements', root)) ||
     query(root, 'input, select, textarea');
   var found = [];
+  var guesses = [];
+  var at = 0;
   for (var i = 0; i < all.length && i < MAX_FIELDS; i++) {
-    if (groupOf(all[i]) !== root) continue;
-    var field = cardField(all[i]);
-    if (field && field.section === mine.section) found.push({ el: all[i], kind: field.kind });
+    if (groupOf(all[i]) !== root || !controlType(all[i])) continue;
+    var tagged = cardField(all[i]);
+    if (tagged) found.push({ el: all[i], kind: tagged.kind, section: tagged.section });
+    else if ((tokensOf(all[i]).pop() || '').indexOf('cc-') === 0) found.push(null);
+    else if (guessable(all[i])) guesses.push({ el: all[i], at: at });
+    at++;
   }
-  return found;
+  return found.length ? found.filter(Boolean) : guessCardKinds(guesses);
+}
+
+function cardSection(el) {
+  if (!controlType(el)) return null;
+  var fields = cardFields(groupOf(el));
+  var mine = null;
+  for (var i = 0; i < fields.length; i++) {
+    if (fields[i].el === el) mine = fields[i];
+  }
+  if (!mine) return null;
+  return fields.filter(function (field) {
+    return field.section === mine.section;
+  });
 }
 
 // The kinds of card field a fill from `el` would reach, or null unless `el`
 // is a shown card field in a section with a shown number field.
 function cardOfferKinds(el) {
-  if (!cardField(el) || !shownField(el, el)) return null;
+  if (!cardField(el) && !maybeCard(el)) return null;
+  var section = cardSection(el);
+  if (!section || !shownField(el, el)) return null;
   var kinds = [];
-  (cardSection(el) || []).forEach(function (field) {
+  section.forEach(function (field) {
     var shown = field.el.tagName === 'SELECT' || shownField(field.el, el);
     if (shown && kinds.indexOf(field.kind) < 0) kinds.push(field.kind);
   });
@@ -120,7 +200,9 @@ try {
         });
       case 'type':
         var names = (V.brand || []).map(plain);
-        return pick(el, function (o) { return names.indexOf(plain(o.text)) >= 0 || names.indexOf(plain(o.value)) >= 0; });
+        return pick(el, function (o) {
+          return names.indexOf(plain(o.text)) >= 0 || names.indexOf(plain(o.value)) >= 0;
+        });
     }
     return null;
   };

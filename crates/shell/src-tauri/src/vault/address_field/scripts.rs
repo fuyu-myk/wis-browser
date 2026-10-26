@@ -588,10 +588,16 @@ function report(el) {
     return;
   }
   var form = 'card';
-  var kinds = cardOfferKinds(el);
-  if (!kinds) {
-    form = 'address';
-    kinds = offerKinds(el);
+  var kinds = null;
+  describedNow = typeof WeakMap === 'function' ? new WeakMap() : null;
+  try {
+    kinds = cardOfferKinds(el);
+    if (!kinds) {
+      form = 'address';
+      kinds = offerKinds(el);
+    }
+  } finally {
+    describedNow = null;
   }
   if (!kinds) return;
   lastReport = performance.now();

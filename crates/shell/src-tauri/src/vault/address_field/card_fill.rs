@@ -12,6 +12,7 @@ use crate::state::AppState;
 use super::card_scripts::{CARD_FILL_JS, CARD_JS};
 use super::scripts::CLASSIFY_JS;
 use super::{invalid, origin_of, take, Form, Offered};
+use super::{GUESS_JS, PATTERNS_JS};
 
 /// Fill saved card `id` into the card field report `token` names, after
 /// Touch ID or the vault password, if that report is still the tab's last and
@@ -144,6 +145,10 @@ fn card_fill_script(offered: &Offered, card: &Card) -> WisResult<Zeroizing<Strin
         ";\nvar V = ",
         json,
         ";\n",
+        PATTERNS_JS,
+        "\n",
+        GUESS_JS,
+        "\n",
         CLASSIFY_JS,
         "\n",
         CARD_JS,
@@ -195,6 +200,10 @@ mod tests {
             assert!(!script.contains(kept_out), "{kept_out}");
         }
         assert!(script.contains("function cardSection("));
+        assert!(
+            script.find("function addressPatterns()").unwrap()
+                < script.find("function guessCardKinds(").unwrap()
+        );
         assert!(
             script.find("var CARD_KINDS").unwrap()
                 < script

@@ -1,4 +1,4 @@
-// Address and contact field patterns from Chromium's
+// Address, contact and payment card field patterns from Chromium's
 // components/autofill/core/browser/form_parsing/resources/legacy_regex_patterns.json
 // at commit 7c4a2eb (2026-08-11), keeping only the keys Wis reads. Written by
 // crates/shell/scripts/port-address-patterns.py.
@@ -15,6 +15,16 @@ function addressPatterns() {
   return {
     NAME_ON_CARD: [["de","karteninhaber","",3,1],["en","card.?(?:holder|owner)|name.*on.*card|(?:card|cc).?name|cc.?full.?name","",3,1],["es","nombre.*tarjeta|nombre.*titular|titular.*tarjeta","",3,1],["fr","nom.*carte","",3,1],["id","nama.*kartu","",3,1],["it","nome.*cart","",3,1],["ja","名前","",3,1],["pt","nome do titular|nome impresso no cartão|titular do cartão","do titular do cartão",3,1],["ru","Имя.*карты","",3,1],["zh-CN","信用卡开户名|开户名|持卡人姓名|持卡人姓名","",3,1]],
     CREDIT_CARD_NUMBER: [["de","nummer","telefon|telefoon|haus|person|fødsels|kunden|post|mobil|mobiel|handy|produkt|sendungs|verfolgungs|artikel|konto",3,141],["de","karten.?nr","sim|kunden|geschenk|freundschafts|benachrichtigungs|service|personal|more|leistungs",3,141],["en","(?:card|cc|acct).?(?:number|#|no|num|field(?!s)|pan)|0000 ?0000 ?0000 ?0000|1234 ?1234 ?1234 ?1234|^xxxx ?xxxx ?xxxx ?xxxx$","",3,141],["es","(numero|número|numéro)","(numero|número|numéro).*(document|fono|phone|réservation)",3,141],["fr","(numero|número|numéro)","(numero|número|numéro).*(document|fono|phone|réservation)",3,141],["id","no.*kartu","",3,141],["ja","カード番号","",3,141],["ko","카드","",3,141],["pt","(numero|número|numéro)","(numero|número|numéro).*(document|fono|phone|réservation)",3,141],["ru","Номер.*карты","",3,141],["zh-CN","信用卡号|信用卡号码","",3,141],["zh-TW","信用卡卡號","",3,141]],
+    CREDIT_CARD_VERIFICATION_CODE: [["br","código de segurança","",3,141],["de","karten.?prüfn","",3,141],["en","verification|card.?identification|security.?code|card.?code|security.?value|security.?number|card.?pin|c-v-v|(?:cvn|cvv|cvc|csc|cvd|ccv)|\\bcid\\b|cccid","",3,141],["es","código de seguridad","",3,141]],
+    CREDIT_CARD_EXP_MONTH: [["de","gueltig|gültig|monat","",3,47],["en","expir|exp.*mo|exp.*date|cc.?month|cardmonth|addmonth","",3,47],["es","fecha","",3,47],["fr","date.*exp","",3,47],["id","masa berlaku|berlaku hingga","",3,47],["it","scadenza","",3,47],["ja","有効期限","",3,47],["pt","validade|\\bmês\\b","",3,47],["ru","Срок действия карты","",3,47],["zh-CN","月","",3,47]],
+    CREDIT_CARD_EXP_YEAR: [["de","ablaufdatum|gueltig|gültig|jahr","",3,47],["en","exp|^/|year","",3,47],["es","fecha|año","",3,47],["id","masa berlaku|berlaku hingga","",3,47],["it","scadenza","",3,47],["ja","有効期限","",3,47],["pt","validade|\\bano\\b","",3,47],["ru","Срок действия карты","",3,47],["zh-CN","年|有效期","",3,47]],
+    CREDIT_CARD_EXP_MONTH_BEFORE_YEAR: [["en","^mm$","",3,47]],
+    CREDIT_CARD_EXP_YEAR_AFTER_MONTH: [["en","^(yy|yyyy)$","",3,47]],
+    CREDIT_CARD_EXP_DATE: [["de","gueltig|gültig","",3,47],["en","expir|exp.*date|^expfield$","",3,47],["es","fecha","",3,47],["fr","date.*exp","",3,47],["it","scadenza","",3,47],["ja","有効期限","",3,47],["pt","validade","",3,47],["ru","Срок действия карты","",3,47]],
+    CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR: [["en","(?:exp.*date[^y\\n\\r]*|mm\\s*[-/]?\\s*)(?:yy(?!y)|aa(?!a)|jj(?!j))","",3,47]],
+    CREDIT_CARD_EXP_DATE_4_DIGIT_YEAR: [["en","(?:exp.*date[^y\\n\\r]*|mm\\s*[-/]?\\s*)(?:yyyy(?!y)|aaaa(?!a)|jjjj(?!j))","",3,47]],
+    GIFT_CARD: [["en","gift.?(card|cert)","",3,143]],
+    DEBIT_GIFT_CARD: [["en","(?:visa|mastercard|discover|amex|american express).*gift.?card","",3,143]],
     ONE_TIME_CODE: [["en","otp|verification.code|2fa|six.digit","",3,9]],
     SEARCH_TERM: [["de","suche.*","",3,67],["en","^q$|search|query|qry","",3,67],["fa","جستجو","",3,67],["fr","recherch.*","",3,67],["ja","探す|検索","",3,67],["pt","busca","",3,67],["ru","искать|найти|поиск","",3,67],["zh-CN","搜索","",3,67]],
     ADDRESS_LOOKUP: [["en","lookup","",3,1]],

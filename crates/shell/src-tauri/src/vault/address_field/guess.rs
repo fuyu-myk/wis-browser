@@ -115,10 +115,16 @@ function labelWords(el) {
   return words || nearbyWords(el);
 }
 
+// Set while one report reads a form, so the card and address passes read
+// each field's words once.
+var describedNow = null;
+
 function describe(el) {
+  var known = describedNow && describedNow.get(el);
+  if (known) return known;
   var label = labelWords(el);
   var placeholder = String(el.getAttribute('placeholder') || '').slice(0, WORDS);
-  return {
+  var described = {
     type: controlType(el),
     label: label,
     placeholder: placeholder,
@@ -126,6 +132,8 @@ function describe(el) {
     short: el.maxLength > 0 && el.maxLength <= 4,
     bare: !/[\p{L}\p{N}]/u.test(label + placeholder)
   };
+  if (describedNow) describedNow.set(el, described);
+  return described;
 }
 
 // The patterns for the page's language with Chromium's English ones for
@@ -169,7 +177,21 @@ function compiled(entry) {
 // Whether a pattern of `key` names `field`: its positive pattern matches one
 // of the words it reads, and its negative pattern none.
 function matches(key, field) {
-  var entries = own(patternSet(), key) || [];
+  return matchesOne(own(patternSet(), key) || [], field);
+}
+
+var everyLanguage = {};
+
+function matchesAnyLanguage(key, field) {
+  if (!own(everyLanguage, key)) {
+    everyLanguage[key] = (own(addressPatterns(), key) || []).map(function (entry) {
+      return { pos: entry[1], neg: entry[2], attrs: entry[3], types: entry[4] };
+    });
+  }
+  return matchesOne(everyLanguage[key], field);
+}
+
+function matchesOne(entries, field) {
   for (var i = 0; i < entries.length; i++) {
     var entry = entries[i];
     if (!(entry.types & field.type) || !compiled(entry)) continue;

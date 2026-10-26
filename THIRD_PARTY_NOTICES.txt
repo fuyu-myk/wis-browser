@@ -5,7 +5,7 @@ Wis includes material from the projects below, under their own licenses.
 
 Chromium
 
-Wis recognises address fields with patterns from Chromium's autofill
+Wis recognises address and payment card fields with patterns from Chromium's autofill
 (components/autofill/core/browser/form_parsing/resources/legacy_regex_patterns.json).
 
 Copyright 2015 The Chromium Authors

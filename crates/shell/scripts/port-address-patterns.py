@@ -12,7 +12,10 @@ import sys
 SOURCE, TARGET = sys.argv[1], sys.argv[2]
 COMMIT = '7c4a2eb (2026-08-11)'
 KEYS = [
-    'NAME_ON_CARD', 'CREDIT_CARD_NUMBER', 'ONE_TIME_CODE',
+    'NAME_ON_CARD', 'CREDIT_CARD_NUMBER', 'CREDIT_CARD_VERIFICATION_CODE',
+    'CREDIT_CARD_EXP_MONTH', 'CREDIT_CARD_EXP_YEAR', 'CREDIT_CARD_EXP_MONTH_BEFORE_YEAR',
+    'CREDIT_CARD_EXP_YEAR_AFTER_MONTH', 'CREDIT_CARD_EXP_DATE', 'CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR',
+    'CREDIT_CARD_EXP_DATE_4_DIGIT_YEAR', 'GIFT_CARD', 'DEBIT_GIFT_CARD', 'ONE_TIME_CODE',
     'SEARCH_TERM', 'ADDRESS_LOOKUP', 'ATTENTION_IGNORED', 'ADDRESS_NAME_IGNORED',
     'PHONE_COUNTRY_CODE', 'EMAIL_ADDRESS', 'PHONE', 'PHONE_AREA_CODE', 'PHONE_PREFIX',
     'PHONE_SUFFIX', 'PHONE_EXTENSION', 'ZIP_4', 'ZIP_CODE', 'COUNTRY', 'STATE',
@@ -49,7 +52,7 @@ for key in KEYS:
     assert rows, key
     lines.append(f'    {key}: {json.dumps(rows, ensure_ascii=False, separators=(",", ":"))}')
 
-header = f"""// Address and contact field patterns from Chromium's
+header = f"""// Address, contact and payment card field patterns from Chromium's
 // components/autofill/core/browser/form_parsing/resources/legacy_regex_patterns.json
 // at commit {COMMIT}, keeping only the keys Wis reads. Written by
 // crates/shell/scripts/port-address-patterns.py.
