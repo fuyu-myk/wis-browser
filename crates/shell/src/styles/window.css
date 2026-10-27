@@ -5803,7 +5803,7 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .kb-window.glass-on .kb-settings-page { background: rgba(255, 255, 255, 0.30); }
 [data-mode="dark"] .kb-window.glass-on .kb-settings-page { background: rgba(16, 16, 22, 0.45); }
 .kb-settings-page.nav-right .kb-settings-nav { order: 2; }
-.kb-settings-page.nav-right .kb-settings-main { order: 1; }
+.kb-settings-page.nav-right .kb-settings-mainwrap { order: 1; }
 
 .kb-settings-nav {
   height: 100%;
@@ -5888,6 +5888,67 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   letter-spacing: -0.01em;
   color: var(--text-primary);
   margin: 0 0 8px;
+}
+/* Section titles over the top strip of the scroll area (usePinnedTitle). */
+.kb-settings-mainwrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.kb-settings-mainwrap > .kb-settings-main { flex: 1 1 auto; }
+.kb-settings-pins {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 54px;
+  overflow: hidden;
+  z-index: 2;
+  pointer-events: none;
+}
+.kb-settings-pinned {
+  position: absolute;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.kb-settings-main {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 44px, #000 54px);
+  mask-image: linear-gradient(to bottom, transparent 0, transparent 44px, #000 54px);
+}
+
+/* Grouped panels (components/SettingsGroup.tsx). */
+.kb-setgroup { display: flex; flex-direction: column; gap: 6px; }
+.kb-setgroup + .kb-setgroup { margin-top: 12px; }
+.kb-setgroup-cap {
+  padding: 0 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.kb-setgroup-box {
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--bg-subtle);
+}
+.kb-setgroup-box > * + .row,
+.kb-setgroup-box > .row + * { border-top: 1px solid var(--border); }
+.kb-setgroup-box > .kb-backup-status,
+.kb-setgroup-box > .kb-filterlists-status { padding: 8px 0; margin: 0; }
+.kb-setgroup-box .row.is-found { margin: 0 -14px; padding-left: 14px; padding-right: 14px; border-radius: 0; }
+.glass-on .kb-setgroup-box {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+[data-mode="dark"].glass-on .kb-setgroup-box {
+  background: rgba(0, 0, 0, 0.28);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 .kb-settings-page .row {
   display: flex;

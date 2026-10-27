@@ -48,6 +48,7 @@ import { AiSection } from '@/features/ai/components/AiSection'
 import { SettingsSearch } from '@/features/settings/components/SettingsSearch'
 import { scrollBehavior } from '@/lib/motion'
 import { firstStop } from '@/lib/tabFocus'
+import { usePinnedTitle } from '@/features/settings/hooks/usePinnedTitle'
 
 interface NavSection {
   id: string
@@ -103,6 +104,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
     [attachScroll],
   )
   const mainEl = useCallback(() => mainRef.current, [])
+  const pinned = usePinnedTitle(mainRef, state !== undefined)
   const [query, setQuery] = useState('')
   const searching = query !== ''
   const [activeSection, setActiveSection] = useState<string>(NAV_SECTIONS[0].id)
@@ -237,61 +239,74 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
             </button>
           ))}
       </nav>
-      <div className="kb-settings-main" ref={setMain}>
-        <AppearanceSection
-          settings={settings}
-          activeWorkspace={activeWorkspace}
-          onUpdate={(patch) => update.mutate(patch)}
-        />
-        <DesignSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
-        <LayoutSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
-        <SearchSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
-        <NewTabSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
-        <SidebarWidgetsSection
-          widgets={settings.sidebar_widgets}
-          onUpdate={(patch) => update.mutate(patch)}
-        />
-        <PerformanceSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
-        <DownloadsSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
-        <PrivacySection
-          settings={settings}
-          activeWorkspace={activeWorkspace}
-          onUpdate={(patch) => update.mutate(patch)}
-        />
-        <NetworkSection workspace={activeWorkspace} settings={settings} />
-        <CompatibilitySection
-          profile={settings.user_agent_profile}
-          overrides={settings.ua_site_overrides}
-          onUpdate={(patch) => update.mutate(patch)}
-        />
-        <SiteDataSection
-          workspaceId={activeWorkspace?.id ?? null}
-          workspaceName={activeWorkspace?.name ?? 'workspace'}
-        />
-        <BookmarksSection
-          workspaceId={activeWorkspace?.id ?? null}
-          ephemeral={activeWorkspace?.ephemeral ?? false}
-        />
-        <ImportSection
-          workspaceId={activeWorkspace?.id ?? null}
-          ephemeral={activeWorkspace?.ephemeral ?? false}
-        />
-        <ExtensionsSection
-          installed={settings.extensions}
-          workspace={activeWorkspace}
-          storeSearch={settings.extension_store_search}
-          onUpdate={(patch) => update.mutate(patch)}
-        />
-        <VaultSection />
-        <PasswordsSection />
-        <AddressesSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
-        <CardsSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
-        <AiSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
-        <KeyboardShortcutsSection
-          keybindings={settings.keybindings}
-          onChange={(patch) => update.mutate({ keybindings: patch })}
-        />
-        <BackupSection settings={settings} />
+      <div className="kb-settings-mainwrap">
+        <div className="kb-settings-pins" aria-hidden>
+          {pinned.map((title) => (
+            <div
+              key={title.key}
+              className="kb-settings-pinned"
+              style={{ left: title.left, top: title.top }}
+            >
+              {title.text}
+            </div>
+          ))}
+        </div>
+        <div className="kb-settings-main" ref={setMain}>
+          <AppearanceSection
+            settings={settings}
+            activeWorkspace={activeWorkspace}
+            onUpdate={(patch) => update.mutate(patch)}
+          />
+          <DesignSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
+          <LayoutSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
+          <SearchSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
+          <NewTabSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
+          <SidebarWidgetsSection
+            widgets={settings.sidebar_widgets}
+            onUpdate={(patch) => update.mutate(patch)}
+          />
+          <PerformanceSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
+          <DownloadsSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
+          <PrivacySection
+            settings={settings}
+            activeWorkspace={activeWorkspace}
+            onUpdate={(patch) => update.mutate(patch)}
+          />
+          <NetworkSection workspace={activeWorkspace} settings={settings} />
+          <CompatibilitySection
+            profile={settings.user_agent_profile}
+            overrides={settings.ua_site_overrides}
+            onUpdate={(patch) => update.mutate(patch)}
+          />
+          <SiteDataSection
+            workspaceId={activeWorkspace?.id ?? null}
+            workspaceName={activeWorkspace?.name ?? 'workspace'}
+          />
+          <BookmarksSection
+            workspaceId={activeWorkspace?.id ?? null}
+            ephemeral={activeWorkspace?.ephemeral ?? false}
+          />
+          <ImportSection
+            workspaceId={activeWorkspace?.id ?? null}
+            ephemeral={activeWorkspace?.ephemeral ?? false}
+          />
+          <ExtensionsSection
+            installed={settings.extensions}
+            workspace={activeWorkspace}
+            storeSearch={settings.extension_store_search}
+            onUpdate={(patch) => update.mutate(patch)}
+          />
+          <VaultSection />
+          <PasswordsSection />
+          <AddressesSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
+          <CardsSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
+          <AiSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
+          <KeyboardShortcutsSection
+            keybindings={settings.keybindings}
+            onChange={(patch) => update.mutate({ keybindings: patch })}
+          />
+          <BackupSection settings={settings} />
+        </div>
       </div>
     </div>
   )

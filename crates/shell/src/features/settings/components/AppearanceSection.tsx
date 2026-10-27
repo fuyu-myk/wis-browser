@@ -4,6 +4,7 @@ import { isFeatureUnavailableHere } from '@/lib/platformSupport'
 import { BackgroundEditor } from '@/features/workspaces/components/BackgroundEditor'
 import { ZoomRows } from '@/features/zoom/ZoomRows'
 import { MonitorIcon, MoonIcon, SunIcon } from '@/lib/icons'
+import { SettingsGroup } from '@/components/SettingsGroup'
 
 const THEME_OPTIONS = [
   { value: 'light' as const, label: 'Light', icon: <SunIcon /> },
@@ -26,88 +27,96 @@ export function AppearanceSection({ settings, activeWorkspace, onUpdate }: Appea
   return (
       <section id="appearance" className="sec">
         <h2 className="sec-h">Appearance</h2>
-        <div className="row">
-          <div className="l">
-            <span>Theme</span>
-            <span>Light, dark, or follow system</span>
-          </div>
-          <Segmented
-            value={settings.theme}
-            onChange={(theme) => onUpdate({ theme })}
-            options={THEME_OPTIONS}
-            ariaLabel="Theme"
-          />
-        </div>
-        {!isFeatureUnavailableHere('canvases') && (
+        <SettingsGroup caption="Theme">
           <div className="row">
             <div className="l">
-              <span>Canvas theme</span>
-              <span>Set the appearance of canvases</span>
+              <span>Theme</span>
+              <span>Light, dark, or follow system</span>
             </div>
             <Segmented
-              value={settings.canvas_theme}
-              onChange={(canvas_theme) => onUpdate({ canvas_theme })}
-              options={CANVAS_THEME_OPTIONS}
-              ariaLabel="Canvas theme"
+              value={settings.theme}
+              onChange={(theme) => onUpdate({ theme })}
+              options={THEME_OPTIONS}
+              ariaLabel="Theme"
             />
           </div>
-        )}
-        <div className="row">
-          <div className="l">
-            <span>Motion</span>
-            <span>
-              Reduced keeps fades but nothing slides, grows or springs; Off
-              disables non-essential animation. Full follows the system Reduce
-              motion setting.
-            </span>
+          {!isFeatureUnavailableHere('canvases') && (
+            <div className="row">
+              <div className="l">
+                <span>Canvas theme</span>
+                <span>Set the appearance of canvases</span>
+              </div>
+              <Segmented
+                value={settings.canvas_theme}
+                onChange={(canvas_theme) => onUpdate({ canvas_theme })}
+                options={CANVAS_THEME_OPTIONS}
+                ariaLabel="Canvas theme"
+              />
+            </div>
+          )}
+        </SettingsGroup>
+        <SettingsGroup caption="Motion and effects">
+          <div className="row">
+            <div className="l">
+              <span>Motion</span>
+              <span>
+                Reduced keeps fades but nothing slides, grows or springs; Off
+                disables non-essential animation. Full follows the system Reduce
+                motion setting.
+              </span>
+            </div>
+            <Segmented
+              value={settings.motion}
+              onChange={(motion) => onUpdate({ motion })}
+              options={[
+                { value: 'full' as const, label: 'Full' },
+                { value: 'reduced' as const, label: 'Reduced' },
+                { value: 'off' as const, label: 'Off' },
+              ]}
+              ariaLabel="Animation level"
+            />
           </div>
-          <Segmented
-            value={settings.motion}
-            onChange={(motion) => onUpdate({ motion })}
-            options={[
-              { value: 'full' as const, label: 'Full' },
-              { value: 'reduced' as const, label: 'Reduced' },
-              { value: 'off' as const, label: 'Off' },
-            ]}
-            ariaLabel="Animation level"
-          />
-        </div>
-        <div className="row">
-          <div className="l">
-            <span>Liquid glass</span>
-            <span>Blur and translucency</span>
+          <div className="row">
+            <div className="l">
+              <span>Liquid glass</span>
+              <span>Blur and translucency</span>
+            </div>
+            <Switch
+              checked={settings.glass_enabled}
+              onChange={(glass_enabled) => onUpdate({ glass_enabled })}
+              label="Liquid glass"
+            />
           </div>
-          <Switch
-            checked={settings.glass_enabled}
-            onChange={(glass_enabled) => onUpdate({ glass_enabled })}
-            label="Liquid glass"
-          />
-        </div>
-        <div className="row">
-          <div className="l">
-            <span>URL bar focus glow</span>
-            <span>Outline the address bar in the accent colour when focused</span>
+          <div className="row">
+            <div className="l">
+              <span>URL bar focus glow</span>
+              <span>Outline the address bar in the accent colour when focused</span>
+            </div>
+            <Switch
+              checked={settings.url_bar_focus_glow}
+              onChange={(url_bar_focus_glow) => onUpdate({ url_bar_focus_glow })}
+              label="URL bar focus glow"
+            />
           </div>
-          <Switch
-            checked={settings.url_bar_focus_glow}
-            onChange={(url_bar_focus_glow) => onUpdate({ url_bar_focus_glow })}
-            label="URL bar focus glow"
-          />
-        </div>
-        <ZoomRows settings={settings} onUpdate={onUpdate} />
-        <div className="row">
-          <div className="l">
-            <span>Workspace background</span>
-            <span>
-              Applies to the current workspace
-              {activeWorkspace ? ` (${activeWorkspace.name})` : ''}. Gradients,
-              images and GIF wallpapers can be set.
-            </span>
+        </SettingsGroup>
+        <SettingsGroup caption="Zoom">
+          <ZoomRows settings={settings} onUpdate={onUpdate} />
+        </SettingsGroup>
+        <SettingsGroup caption="Workspace background">
+          <div className="row">
+            <div className="l">
+              <span>Workspace background</span>
+              <span>
+                Applies to the current workspace
+                {activeWorkspace ? ` (${activeWorkspace.name})` : ''}. Gradients,
+                images and GIF wallpapers can be set.
+              </span>
+            </div>
           </div>
-        </div>
-        {activeWorkspace && !activeWorkspace.ephemeral && (
-          <BackgroundEditor ws={activeWorkspace} />
-        )}
+          {activeWorkspace && !activeWorkspace.ephemeral && (
+            <BackgroundEditor ws={activeWorkspace} />
+          )}
+        </SettingsGroup>
       </section>
   )
 }
