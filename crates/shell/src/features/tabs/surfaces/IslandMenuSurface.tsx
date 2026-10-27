@@ -20,6 +20,7 @@ import {
   ISLAND_MENU_READY,
   type IslandMenuTarget,
 } from '@/features/tabs/hooks/useIslandMenu'
+import { moveFocusByArrow } from '@/lib/arrowNav'
 
 const ACCENTS: AccentColor[] = [
   'primary',
@@ -99,7 +100,7 @@ export function IslandMenuSurface() {
   }
 
   return (
-    <div className={cx('kb-islandmenu', { 'glass-menus': glassMenus })} role="menu">
+    <div className={cx('kb-islandmenu', { 'glass-menus': glassMenus })} role="menu" onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'both')}>
       <IconPicker value={folderIcon} onPick={setIcon} />
       <div className="kb-islandmenu-swatches" role="group" aria-label="Recolor folder">
         {ACCENTS.map((accent) => (

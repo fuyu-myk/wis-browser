@@ -22,6 +22,7 @@ import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
 import { menusGlass } from '@/lib/glass'
 import { useQueryClient } from '@tanstack/react-query'
+import { moveFocusByArrow } from '@/lib/arrowNav'
 
 export function BookmarkPickerSurface() {
   const { data: state } = useBrowserState()
@@ -118,6 +119,7 @@ export function BookmarkPickerSurface() {
       <div
         className={cx('kb-vaultmenu', 'kb-bmpicker', { 'glass-menus': glassMenus })}
         role="menu"
+        onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'vertical')}
         style={{ left: req.x, top: req.y, width: req.width }}
         onMouseDown={(e) => e.stopPropagation()}
       >

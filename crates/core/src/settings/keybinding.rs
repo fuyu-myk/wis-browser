@@ -25,6 +25,8 @@ pub enum KeyAction {
     CloseTab,
     FocusUrlBar,
     FocusUrlBarAlt,
+    FocusNextArea,
+    FocusPreviousArea,
     Reload,
     GoBack,
     GoBackAlt,
@@ -133,6 +135,8 @@ impl KeyAction {
             Self::CloseTab => "close_tab",
             Self::FocusUrlBar => "focus_url_bar",
             Self::FocusUrlBarAlt => "focus_url_bar_alt",
+            Self::FocusNextArea => "focus_next_area",
+            Self::FocusPreviousArea => "focus_previous_area",
             Self::Reload => "reload",
             Self::GoBack => "go_back",
             Self::GoBackAlt => "go_back_alt",
@@ -208,12 +212,14 @@ impl KeyAction {
     }
 }
 
-const ALL_ACTIONS: [KeyAction; 64] = [
+const ALL_ACTIONS: [KeyAction; 66] = [
     KeyAction::NewTab,
     KeyAction::NewWorkspace,
     KeyAction::CloseTab,
     KeyAction::FocusUrlBar,
     KeyAction::FocusUrlBarAlt,
+    KeyAction::FocusNextArea,
+    KeyAction::FocusPreviousArea,
     KeyAction::Reload,
     KeyAction::GoBack,
     KeyAction::GoBackAlt,
@@ -305,6 +311,8 @@ pub fn default_keymap_for(mac: bool) -> HashMap<KeyAction, String> {
         (KeyAction::NewWorkspace, "Alt+Cmd+N"),
         (KeyAction::CloseTab, "Cmd+W"),
         (KeyAction::FocusUrlBar, "Cmd+E"),
+        (KeyAction::FocusNextArea, "F6"),
+        (KeyAction::FocusPreviousArea, "Shift+F6"),
         (KeyAction::Reload, "Cmd+R"),
         (KeyAction::GoBack, "Cmd+["),
         (KeyAction::GoBackAlt, "Cmd+Left"),

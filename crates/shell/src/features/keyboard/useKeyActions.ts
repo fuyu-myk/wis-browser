@@ -34,6 +34,7 @@ import { guardFeatureUnavailable } from '@/lib/platformSupport'
 import { openCanvases } from '@/features/canvas/hooks/openCanvases'
 import { useQueryClient } from '@tanstack/react-query'
 import { WINDOW_PICKER_OPEN_EVENT } from '@/features/workspaces/hooks/useWindowPickerOverlay'
+import { currentArea, focusArea, nextArea } from '@/features/keyboard/lib/focusAreas'
 
 const KEYACTION_EVENT = 'wis-keyaction'
 
@@ -235,6 +236,15 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
       // The URL bar lives in the chrome, so a DOM CustomEvent reaches it.
       await commands.focusSelf()
       window.dispatchEvent(new CustomEvent(FOCUS_URLBAR_EVENT, { detail: { select: true } }))
+      return
+    }
+    case 'focus_next_area':
+    case 'focus_previous_area': {
+      if (isPeekOpen()) return
+      const area = nextArea(currentArea(), action === 'focus_previous_area')
+      await focusArea(area, ctx.activeTab ?? null, () =>
+        window.dispatchEvent(new CustomEvent(FOCUS_URLBAR_EVENT, { detail: { select: true } })),
+      )
       return
     }
     case 'reload':

@@ -12,7 +12,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
   type MutableRefObject,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
@@ -20,6 +19,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { TabId, WorkspaceId } from '@/bindings/types'
+import type { MenuPoint } from '@/features/tabs/lib/tabKeys'
 
 const DRAG_THRESHOLD_PX = 6
 // The tab context menu (split + pin + move-to-folder) self-measures and resizes;
@@ -72,7 +72,7 @@ interface UseTabSplitReturn {
   /** True when the last press became a drag: check it to suppress the click. */
   draggedRef: MutableRefObject<boolean>
   /** Open the directional split popup for `tabId` (the active tab included). */
-  openSplitMenu: (e: ReactMouseEvent, tabId: TabId) => void
+  openSplitMenu: (e: MenuPoint, tabId: TabId) => void
 }
 
 /**
@@ -365,7 +365,7 @@ export function useTabSplit({
     window.addEventListener('pointerup', up)
   }
 
-  const openSplitMenu = (e: ReactMouseEvent, tabId: TabId) => {
+  const openSplitMenu = (e: MenuPoint, tabId: TabId) => {
     if (!activeTabId) return
     e.preventDefault()
     const winH = window.innerHeight

@@ -24,6 +24,7 @@ import { useEscapeKey, useSurfaceFocus } from '@/hooks/useSurfaceFocus'
 import { ExtensionPrompt } from '@/features/extensions/components/ExtensionPrompt'
 import { ExtensionStoreAdd } from '@/features/extensions/components/ExtensionStoreAdd'
 import { ExtensionStoreLink } from '@/features/extensions/components/ExtensionStoreLink'
+import { moveFocusByArrow } from '@/lib/arrowNav'
 
 interface SiteLineProps {
   site: { host: string; allowed: boolean }
@@ -164,7 +165,11 @@ export function ExtensionsMenuSurface() {
   }
 
   return (
-    <div className={cx('kb-extmenu', { 'glass-menus': menusGlass(state?.settings) })} role="menu">
+    <div
+      className={cx('kb-extmenu', { 'glass-menus': menusGlass(state?.settings) })}
+      role="menu"
+      onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'vertical')}
+    >
       {offer && (
         <>
           <div className="kb-extmenu-offer">

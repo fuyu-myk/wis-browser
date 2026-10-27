@@ -13,6 +13,7 @@ import {
   widgetCategory,
   type WidgetCategory,
 } from '@/features/widgets/widgets'
+import { moveFocusByArrow } from '@/lib/arrowNav'
 
 interface WidgetDockProps {
   widgets: Widget[]
@@ -471,6 +472,7 @@ export function WidgetDock({ widgets, variant = 'sidebar' }: WidgetDockProps) {
         })}
         role="toolbar"
         aria-label="Quick launch widgets"
+        onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'both')}
       >
         {visibleGroups.map((category, i) => (
           <Fragment key={category}>

@@ -14,6 +14,7 @@ import { useNavigateOrCreateTab } from '@/hooks/useNavigateOrCreateTab'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { ClosedTabsList } from '@/features/history/ClosedTabsList'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { moveFocusByArrow } from '@/lib/arrowNav'
 
 const HISTORY_KEY = ['history'] as const
 const SEARCH_DEBOUNCE_MS = 250
@@ -177,7 +178,7 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
         <header className="kb-history-head">
           <h1 className="kb-sr-only">History</h1>
           <div className="kb-history-head-row">
-            <div className="kb-history-views" role="tablist" aria-label="History view">
+            <div className="kb-history-views" role="tablist" aria-label="History view" onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}>
               <ViewTab ids={ids} view="history" current={view} onSelect={showView}>
                 History
               </ViewTab>
@@ -232,7 +233,7 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
             )}
           </div>
           <div className="kb-history-head-row">
-            <div className="kb-history-scope" role="tablist" aria-label="History scope">
+            <div className="kb-history-scope" role="tablist" aria-label="History scope" onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}>
               <button
                 type="button"
                 role="tab"

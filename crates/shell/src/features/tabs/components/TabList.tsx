@@ -48,6 +48,10 @@ import { TabFavicon } from '@/features/tabs/components/TabFavicon'
 import { TabFolderHeader } from '@/features/tabs/components/TabFolderHeader'
 import { useDiscardedTabs } from '@/features/tabs/components/DiscardedTabsContext'
 import { useTabAudio } from '@/features/tabs/hooks/useTabAudio'
+import { moveFocusByArrow } from '@/lib/arrowNav'
+import { focusNeighbour, onTabRowKey } from '@/features/tabs/lib/tabKeys'
+
+const TAB_STRIP_ITEMS = '.kb-foldwrap.is-open [data-tab-row], .kb-loose [data-tab-row], .kb-tabfolder-head'
 
 interface TabListProps {
   workspaceId: WorkspaceId
@@ -550,8 +554,9 @@ export function TabList({
             ? { transform: `translateY(${shift * dragPart.size}px)` }
             : undefined
         }
+        data-tab-row={tab.id}
         role="button"
-        tabIndex={0}
+        tabIndex={tab.id === rowStop ? 0 : -1}
         onPointerDown={(e) => startTabDrag(e, tab.id, makeReorder(tab))}
         onClick={() => {
           if (draggedRef.current) {
@@ -570,12 +575,13 @@ export function TabList({
             closeTabAnimated(tab.id)
           }
         }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            setActive.mutate(tab.id)
-          }
-        }}
+        onKeyDown={(e) =>
+          onTabRowKey(e, {
+            activate: () => setActive.mutate(tab.id),
+            close: () => closeTabAnimated(tab.id),
+            menu: (at) => openSplitMenu(at, tab.id),
+          })
+        }
       >
         <TabFavicon tab={tab} />
         <TabAudioButton
@@ -591,6 +597,7 @@ export function TabList({
           aria-label="Close tab"
           onClick={(e) => {
             e.stopPropagation()
+            focusNeighbour(e.currentTarget.closest<HTMLElement>('[data-tab-row]'))
             closeTabAnimated(tab.id)
           }}
         >
@@ -612,8 +619,19 @@ export function TabList({
       ? dragPart.size
       : 0
 
+  const shownIds = [
+    ...sortedFolders.filter((f) => !f.collapsed).flatMap((f) => membersOf(f.id).map((t) => t.id)),
+    ...looseTabs.map((t) => t.id),
+  ]
+  const rowStop = activeTabId && shownIds.includes(activeTabId) ? activeTabId : looseTabs[0]?.id
+
   return (
-    <div className="kb-tabs" ref={rootRef}>
+    <div
+      className="kb-tabs"
+      ref={rootRef}
+      data-tab-strip
+      onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, TAB_STRIP_ITEMS, 'vertical')}
+    >
       <div className="group-label">tabs</div>
       <button
         type="button"

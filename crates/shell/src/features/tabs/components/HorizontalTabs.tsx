@@ -56,6 +56,8 @@ import { TabFavicon } from '@/features/tabs/components/TabFavicon'
 import { useDiscardedTabs } from '@/features/tabs/components/DiscardedTabsContext'
 import { CollapseChevron, UrlContent } from '@/features/tabs/components/HorizontalTabsParts'
 import { motionStill, scrollBehavior } from '@/lib/motion'
+import { moveFocusByArrow } from '@/lib/arrowNav'
+import { focusNeighbour, onTabRowKey } from '@/features/tabs/lib/tabKeys'
 
 /** Marks the close-FLIP glide animations so a rapid re-close can cancel them. */
 const FLIP_ANIM_ID = 'wis-tab-flip'
@@ -549,8 +551,9 @@ export function HorizontalTabs({
         ref={isActive ? activeRef : undefined}
         {...(loose ? { 'data-tab-id': tab.id } : {})}
         {...(member ? { 'data-mtab-id': tab.id } : {})}
+        data-tab-row={tab.id}
         role="button"
-        tabIndex={0}
+        tabIndex={isActive ? 0 : -1}
         className={cx('h-tab', {
           'is-closing': closingIds.has(tab.id),
           active: isActive,
@@ -588,12 +591,13 @@ export function HorizontalTabs({
             closeHere(tab.id)
           }
         }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            setActive.mutate(tab.id)
-          }
-        }}
+        onKeyDown={(e) =>
+          onTabRowKey(e, {
+            activate: () => setActive.mutate(tab.id),
+            close: () => closeHere(tab.id),
+            menu: (at) => openSplitMenu(at, tab.id),
+          })
+        }
         title={tab.title}
       >
         {isActive && integrateUrlBar ? (
@@ -616,6 +620,7 @@ export function HorizontalTabs({
           aria-label="Close tab"
           onClick={(e) => {
             e.stopPropagation()
+            focusNeighbour(e.currentTarget.closest<HTMLElement>('[data-tab-row]'))
             closeHere(tab.id)
           }}
         >
@@ -813,11 +818,14 @@ export function HorizontalTabs({
               onBlur={() => submitRename(folder.id, folder.name)}
               onKeyDown={(e) => {
                 e.stopPropagation()
+                if (e.key !== 'Enter' && e.key !== 'Escape') return
+                const chip = e.currentTarget.closest<HTMLElement>('.h-island-name')
                 if (e.key === 'Enter') submitRename(folder.id, folder.name)
-                else if (e.key === 'Escape') {
+                else {
                   cancelRenameRef.current = true
                   setRenamingId(null)
                 }
+                requestAnimationFrame(() => chip?.focus())
               }}
             />
           ) : (
@@ -870,7 +878,12 @@ export function HorizontalTabs({
       ref={wrapRef}
       onClick={onStripClick}
     >
-      <div className={cx('tabs-h', { compact })} ref={stripRef}>
+      <div
+        className={cx('tabs-h', { compact })}
+        ref={stripRef}
+        data-tab-strip
+        onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, '[data-tab-row], .h-island-name', 'horizontal')}
+      >
         {ordered}
       </div>
     </div>

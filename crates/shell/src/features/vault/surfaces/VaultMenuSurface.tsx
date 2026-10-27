@@ -45,6 +45,7 @@ import { errorMessage } from '@/lib/errors'
 import { menusGlass } from '@/lib/glass'
 import { showRemoteToast } from '@/lib/toast'
 import { unlockProblem } from '@/features/vault/lib/vaultRecovery'
+import { moveFocusByArrow } from '@/lib/arrowNav'
 
 function hostOf(url: string): string {
   try {
@@ -377,6 +378,7 @@ export function VaultMenuSurface() {
         <div
           className={cx('kb-vaultmenu', { 'glass-menus': glassMenus })}
           role={unlocking ? 'dialog' : 'menu'}
+          onKeyDown={(e) => !unlocking && moveFocusByArrow(e, e.currentTarget, 'button', 'vertical')}
           aria-label={unlocking ? 'Unlock your vault' : undefined}
           style={{ left: anchor.x, top: anchor.y, width: anchor.width }}
           onMouseDown={(e) => e.stopPropagation()}

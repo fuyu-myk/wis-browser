@@ -10,6 +10,8 @@ import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { reorderedAmong, useTabSplit } from '@/features/tabs/hooks/useTabSplit'
 
 import { TabFavicon } from '@/features/tabs/components/TabFavicon'
+import { moveFocusByArrow } from '@/lib/arrowNav'
+import { onTabRowKey } from '@/features/tabs/lib/tabKeys'
 
 interface PinnedTabsProps {
   workspaceId: WorkspaceId
@@ -160,14 +162,24 @@ export function PinnedTabs({
     window.addEventListener('pointerup', up)
   }
 
+  const pinStop =
+    activeTabId && pinnedTabs.some((t) => t.id === activeTabId) ? activeTabId : pinnedTabs[0]?.id
   const grid = (
-    <div className="kb-pinned-grid" role="list" aria-label="Pinned tabs" ref={gridRef}>
+    <div
+      className="kb-pinned-grid"
+      role="group"
+      aria-label="Pinned tabs"
+      ref={gridRef}
+      data-tab-strip
+      onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, '[data-tab-row]', 'both')}
+    >
       {pinnedTabs.map((tab, i) => (
         <button
           key={tab.id}
           type="button"
-          role="listitem"
           data-pin-id={tab.id}
+          data-tab-row={tab.id}
+          tabIndex={tab.id === pinStop ? 0 : -1}
           className={cx('kb-pinned-cell', {
             active: tab.id === activeTabId,
             'drop-before': dropIndex === i,
@@ -184,6 +196,12 @@ export function PinnedTabs({
             activate(tab.id)
           }}
           onContextMenu={(e) => openSplitMenu(e, tab.id)}
+          onKeyDown={(e) =>
+            onTabRowKey(e, {
+              activate: () => activate(tab.id),
+              menu: (at) => openSplitMenu(at, tab.id),
+            })
+          }
         >
           <TabFavicon tab={tab} />
         </button>

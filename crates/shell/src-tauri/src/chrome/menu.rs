@@ -287,6 +287,18 @@ fn build_menu(
             KeyAction::FocusUrlBarAlt,
             "Focus Address Bar (alt)",
         )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::FocusNextArea,
+            "Focus Next Area",
+        )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::FocusPreviousArea,
+            "Focus Previous Area",
+        )?)
         .separator()
         .item(&action_item(
             app,

@@ -29,6 +29,7 @@ import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
 import { focusSurface } from '@/hooks/useSurfaceFocus'
 import { menusGlass } from '@/lib/glass'
+import { moveFocusByArrow } from '@/lib/arrowNav'
 
 type Scope = 'workspace' | 'all'
 
@@ -151,7 +152,7 @@ export function ClearDataSurface() {
       >
         <h2 className="kb-modal-title">Clear browsing data</h2>
 
-        <div className="kb-cbd-scope" role="tablist" aria-label="Scope">
+        <div className="kb-cbd-scope" role="tablist" aria-label="Scope" onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}>
           <button
             type="button"
             role="tab"
@@ -172,7 +173,7 @@ export function ClearDataSurface() {
           </button>
         </div>
 
-        <div className="kb-cbd-scope kb-cbd-range" role="tablist" aria-label="Time range">
+        <div className="kb-cbd-scope kb-cbd-range" role="tablist" aria-label="Time range" onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}>
           {CLEAR_RANGES.map((r) => (
             <button
               key={r.value}

@@ -23,6 +23,7 @@ import { menusGlass } from '@/lib/glass'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { BookmarkFavicon } from '@/features/bookmarks/components/BookmarkFavicon'
+import { moveFocusByArrow } from '@/lib/arrowNav'
 
 export function BookmarksMenuSurface() {
   const { data: state } = useBrowserState()
@@ -818,6 +819,7 @@ export function BookmarksMenuSurface() {
             className={cx('kb-bmctx', { 'glass-menus': glassMenus })}
             style={{ left: Math.min(ctx.x, window.innerWidth - 210), top: ctx.y }}
             role="menu"
+            onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'vertical')}
             onMouseDown={(e) => e.stopPropagation()}
           >
             {isPinned(ctx.id) ? (

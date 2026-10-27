@@ -14,6 +14,7 @@ import { MoreIcon } from '@/lib/icons'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { renderIconRef } from '@/features/workspaces/lib/iconGlyphs'
 import { IconPicker } from '@/features/workspaces/components/IconPicker'
+import { moveFocusByArrow } from '@/lib/arrowNav'
 
 const ACCENTS: AccentColor[] = [
   'primary',
@@ -216,11 +217,14 @@ export function TabFolderHeader({
             onBlur={submitName}
             onKeyDown={(e) => {
               e.stopPropagation()
+              if (e.key !== 'Enter' && e.key !== 'Escape') return
+              const head = e.currentTarget.closest<HTMLElement>('.kb-tabfolder-head')
               if (e.key === 'Enter') submitName()
-              else if (e.key === 'Escape') {
+              else {
                 cancelRenameRef.current = true
                 setRenaming(false)
               }
+              requestAnimationFrame(() => head?.focus())
             }}
           />
         ) : (
@@ -251,7 +255,7 @@ export function TabFolderHeader({
       </div>
 
       {menuOpen && (
-        <div className="kb-tabfolder-menu" role="menu">
+        <div className="kb-tabfolder-menu" role="menu" onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'both')}>
           <IconPicker
             value={folder.icon}
             onPick={(icon) => setIcon.mutate(icon)}

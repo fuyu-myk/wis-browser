@@ -13,6 +13,7 @@ import {
 } from 'react'
 
 import { cx } from '@/lib/cx'
+import { arrowStep } from '@/lib/arrowNav'
 
 // ─── Switch ──────────────────────────────────────────────────────────────
 
@@ -52,6 +53,29 @@ interface SegmentedProps<T extends string> {
   disabled?: boolean
 }
 
+/**
+ * A radio group is one Tab stop (the checked option, else the first); the
+ * arrows, Home and End select and focus another option.
+ */
+function onRadioKey<T extends string>(
+  e: React.KeyboardEvent<HTMLElement>,
+  values: readonly T[],
+  value: T,
+  onChange: (next: T) => void,
+) {
+  if (e.altKey || e.ctrlKey || e.metaKey) return
+  const next = arrowStep(e.key, 'both', values.indexOf(value), values.map(() => false))
+  if (next === null) return
+  e.preventDefault()
+  onChange(values[next])
+  e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')[next]?.focus()
+}
+
+function radioTabIndex<T extends string>(values: readonly T[], value: T, option: T): 0 | -1 {
+  const stop = values.includes(value) ? value : values[0]
+  return option === stop ? 0 : -1
+}
+
 export function Segmented<T extends string>({
   value,
   onChange,
@@ -60,6 +84,7 @@ export function Segmented<T extends string>({
   disabled = false,
 }: SegmentedProps<T>) {
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const values = options.map((opt) => opt.value)
   const [thumb, setThumb] = useState<{ left: number; width: number } | null>(null)
 
   // The sliding thumb tracks the checked option's box; measured because
@@ -91,6 +116,7 @@ export function Segmented<T extends string>({
       aria-disabled={disabled || undefined}
       className={`kb-segmented${disabled ? ' is-disabled' : ''}`}
       ref={rootRef}
+      onKeyDown={(e) => onRadioKey(e, values, value, onChange)}
     >
       {thumb && (
         <span
@@ -105,6 +131,7 @@ export function Segmented<T extends string>({
           type="button"
           role="radio"
           aria-checked={value === opt.value}
+          tabIndex={radioTabIndex(values, value, opt.value)}
           disabled={disabled}
           className={cx({ on: value === opt.value })}
           onClick={() => onChange(opt.value)}
@@ -139,18 +166,25 @@ export function SwatchRow<T extends string>({
   options,
   ariaLabel,
 }: SwatchRowProps<T>) {
+  const values = options.map((opt) => opt.value)
   return (
-    <div role="radiogroup" aria-label={ariaLabel} className="kb-swatches">
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      className="kb-swatches"
+      onKeyDown={(e) => onRadioKey(e, values, value, onChange)}
+    >
       {options.map((opt) => (
         <button
           key={opt.value}
           type="button"
           role="radio"
           aria-checked={value === opt.value}
+          tabIndex={radioTabIndex(values, value, opt.value)}
           aria-label={opt.label}
           title={opt.label}
           className={cx('kb-swatch', opt.swatchClass, { on: value === opt.value })}
-        onClick={() => onChange(opt.value)}
+          onClick={() => onChange(opt.value)}
         />
       ))}
     </div>

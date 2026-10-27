@@ -9,6 +9,7 @@ import { useState } from 'react'
 
 import { cx } from '@/lib/cx'
 import { EMOJI_CHOICES, GLYPH_NAMES, GlyphIcon } from '@/features/workspaces/lib/iconGlyphs'
+import { moveFocusByArrow } from '@/lib/arrowNav'
 
 type Tab = 'outline' | 'filled' | 'emoji'
 
@@ -24,7 +25,7 @@ export function IconPicker({ value, onPick }: IconPickerProps) {
 
   return (
     <div className="kb-iconpick" role="group" aria-label="Icon picker">
-      <div className="kb-iconpick-tabs" role="tablist">
+      <div className="kb-iconpick-tabs" role="tablist" onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}>
         {(['outline', 'filled', 'emoji'] as const).map((t) => (
           <button
             key={t}

@@ -25,6 +25,7 @@ import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
 import { focusSurface } from '@/hooks/useSurfaceFocus'
 import { menusGlass } from '@/lib/glass'
+import { moveFocusByArrow } from '@/lib/arrowNav'
 
 const OPEN_EVENT = 'wis-tabmenu-open'
 const READY_EVENT = 'wis-tabmenu-ready'
@@ -178,6 +179,7 @@ export function TabContextMenuSurface() {
       key={openNonce}
       className={cx('kb-tabctx', { 'glass-menus': glassMenus })}
       role="menu"
+      onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'both')}
     >
       <div className="kb-tabctx-split">
         {DIRECTIONS.map(({ dir, split, first, label }) => (

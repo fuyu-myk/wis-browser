@@ -499,8 +499,11 @@ function WorkspaceRow({
             onChange={(e) => setDraft(e.target.value)}
             onBlur={submitName}
             onKeyDown={(e) => {
+              if (e.key !== 'Enter' && e.key !== 'Escape') return
+              const row = e.currentTarget.closest<HTMLElement>('.kb-ws-row')
               if (e.key === 'Enter') submitName()
-              else if (e.key === 'Escape') onRenameSubmit(ws.name)
+              else onRenameSubmit(ws.name)
+              requestAnimationFrame(() => row?.querySelector<HTMLElement>('.kb-ws-row-name')?.focus())
             }}
             onClick={(e) => e.stopPropagation()}
           />

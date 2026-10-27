@@ -124,6 +124,8 @@ export type KeyAction =
   | 'close_tab'
   | 'focus_url_bar'
   | 'focus_url_bar_alt'
+  | 'focus_next_area'
+  | 'focus_previous_area'
   | 'reload'
   | 'go_back'
   | 'go_back_alt'

@@ -83,6 +83,8 @@ const RESERVED_ACTIONS: &[KeyAction] = &[
     KeyAction::PreviousWorkspace,
     KeyAction::FocusUrlBar,
     KeyAction::FocusUrlBarAlt,
+    KeyAction::FocusNextArea,
+    KeyAction::FocusPreviousArea,
     KeyAction::OpenCommandPalette,
 ];
 
