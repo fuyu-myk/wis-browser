@@ -23,6 +23,8 @@ import {
 } from '@/features/vault/hooks/useSignupOffer'
 import { cx } from '@/lib/cx'
 import { menusGlass } from '@/lib/glass'
+import { usePickerKeys } from '@/features/vault/hooks/usePickerKeys'
+import { FIELD_PICK_EVENT } from '@/features/vault/hooks/useAnchoredCard'
 
 export function SignupOfferSurface() {
   const { data: state } = useBrowserState()
@@ -67,6 +69,11 @@ export function SignupOfferSurface() {
     }
   }
 
+  usePickerKeys(FIELD_PICK_EVENT, offer?.tabId ?? null, () => {
+    setOffer(null)
+    void emit(SIGNUP_CLOSE_EVENT, getCurrentWindow().label)
+  })
+
   if (!offer) return null
 
   return (
@@ -79,7 +86,7 @@ export function SignupOfferSurface() {
         <span>Remember this decision</span>
       </div>
       <div className="kb-signup-actions">
-        <button type="button" className="kb-btn" onClick={() => decide(false)}>
+        <button type="button" className="kb-btn" onClick={() => decide(false)} data-autofocus>
           Not now
         </button>
         <button type="button" className="kb-btn is-primary" onClick={() => decide(true)}>

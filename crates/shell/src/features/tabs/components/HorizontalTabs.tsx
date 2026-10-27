@@ -57,7 +57,16 @@ import { useDiscardedTabs } from '@/features/tabs/components/DiscardedTabsContex
 import { CollapseChevron, UrlContent } from '@/features/tabs/components/HorizontalTabsParts'
 import { motionStill, scrollBehavior } from '@/lib/motion'
 import { moveFocusByArrow } from '@/lib/arrowNav'
-import { focusNeighbour, onTabRowKey } from '@/features/tabs/lib/tabKeys'
+import {
+  focusNeighbour,
+  moveByKey,
+  movedOrder,
+  movedTo,
+  onTabRowKey,
+  refocusAfterMove,
+  withGroupOrder,
+} from '@/features/tabs/lib/tabKeys'
+import { announce } from '@/lib/announce'
 
 /** Marks the close-FLIP glide animations so a rapid re-close can cancel them. */
 const FLIP_ANIM_ID = 'wis-tab-flip'
@@ -346,6 +355,27 @@ export function HorizontalTabs({
     .filter((g) => g.members.length > 0)
   const looseTabs = stripTabs.filter((t) => t.folder_id == null)
   const looseIds = new Set(looseTabs.map((t) => t.id))
+  const moveTab = (tab: Tab, delta: -1 | 1) => {
+    const group = (
+      tab.folder_id != null ? stripTabs.filter((t) => t.folder_id === tab.folder_id) : looseTabs
+    ).map((t) => t.id)
+    const next = movedOrder(group, tab.id, delta)
+    if (!next) return
+    reorderTabs(withGroupOrder(tabs.map((t) => t.id), next))
+    refocusAfterMove(`[data-tab-row="${tab.id}"]`)
+    announce(movedTo(next.indexOf(tab.id) + 1, next.length))
+  }
+  const moveIsland = (folderId: TabFolderId, delta: -1 | 1) => {
+    const next = movedOrder(
+      folderGroups.map((g) => g.folder.id),
+      folderId,
+      delta,
+    )
+    if (!next) return
+    reorderFolders(next)
+    refocusAfterMove(`[data-island-id="${folderId}"] .h-island-name`)
+    announce(movedTo(next.indexOf(folderId) + 1, next.length))
+  }
   const sizableTabs: Tab[] = [...looseTabs]
   let collapsedCount = 0
   for (const g of folderGroups) {
@@ -371,6 +401,8 @@ export function HorizontalTabs({
     dragScopeRef,
     folderDropHint,
     pendingGlideRef,
+    reorderTabs,
+    reorderFolders,
   } = useTabStripDrag({
     workspaceId,
     activeTabId,
@@ -593,13 +625,14 @@ export function HorizontalTabs({
             closeHere(tab.id)
           }
         }}
-        onKeyDown={(e) =>
+        onKeyDown={(e) => {
+          if (moveByKey(e, 'horizontal', (delta) => moveTab(tab, delta))) return
           onTabRowKey(e, {
             activate: () => setActive.mutate(tab.id),
             close: () => closeHere(tab.id),
             menu: (at) => openSplitMenu(at, tab.id),
           })
-        }
+        }}
         title={tab.title}
       >
         {hostsUrlBar ? (
@@ -707,7 +740,8 @@ export function HorizontalTabs({
       if (isRenaming) return
       setTarget(isSelected ? null : folder.id)
     }
-    const onFolderKeyDown = (e: ReactKeyboardEvent) => {
+    const onFolderKeyDown = (e: ReactKeyboardEvent<HTMLElement>) => {
+      if (moveByKey(e, 'horizontal', (delta) => moveIsland(folder.id, delta))) return
       if (e.key !== 'Enter') return
       e.preventDefault()
       if (isSelected) beginRename(folder)

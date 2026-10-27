@@ -32,6 +32,7 @@ const CARD_FIELD_EVENT: &str = "wis-card-field";
 const MOVE_EVENT: &str = "wis-address-move";
 const SCROLL_EVENT: &str = "wis-address-scroll";
 const LEAVE_EVENT: &str = "wis-address-leave";
+const PICK_EVENT: &str = "wis-address-pick";
 
 /// The kinds of fields `CLASSIFY_JS` knows.
 const KINDS: [&str; 14] = [
@@ -254,6 +255,12 @@ pub(crate) fn dispatch_message(label: &str, body: &serde_json::Value) {
         }
         Some("leave") => from.app.emit(
             LEAVE_EVENT,
+            TabEvent {
+                tab_id: from.tab_id,
+            },
+        ),
+        Some("pick") => from.app.emit(
+            PICK_EVENT,
             TabEvent {
                 tab_id: from.tab_id,
             },

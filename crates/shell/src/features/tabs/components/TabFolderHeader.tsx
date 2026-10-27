@@ -16,6 +16,7 @@ import { renderIconRef } from '@/features/workspaces/lib/iconGlyphs'
 import { IconPicker } from '@/features/workspaces/components/IconPicker'
 import { moveFocusByArrow } from '@/lib/arrowNav'
 import { accentName } from '@/lib/accents'
+import { moveByKey } from '@/features/tabs/lib/tabKeys'
 
 const ACCENTS: AccentColor[] = [
   'primary',
@@ -48,6 +49,8 @@ interface TabFolderHeaderProps {
   dragRef?: MutableRefObject<boolean>
   /** Reports while the menu or rename is open (keeps the sidebar from collapsing). */
   onEditingChange?: (editing: boolean) => void
+  /** Alt+Up/Down: move the folder one place. */
+  onMove?: (delta: -1 | 1) => void
 }
 
 /**
@@ -67,6 +70,7 @@ export function TabFolderHeader({
   onHeaderPointerDown,
   dragRef,
   onEditingChange,
+  onMove,
 }: TabFolderHeaderProps) {
   const qc = useQueryClient()
   const invalidate = () => qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
@@ -184,6 +188,7 @@ export function TabFolderHeader({
           setMenuOpen((v) => !v)
         }}
         onKeyDown={(e) => {
+          if (moveByKey(e, 'vertical', onMove)) return
           if (e.key === 'Enter') {
             // IDE-style: Enter on the selected folder starts renaming;
             // otherwise it selects it first.

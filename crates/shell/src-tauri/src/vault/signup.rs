@@ -34,6 +34,8 @@ const SIGNUP_GONE_EVENT: &str = "wis-signup-gone";
 const SIGNUP_LEAVE_EVENT: &str = "wis-signup-leave";
 /// The page started scrolling under an open offer; a move follows once it settles.
 const SIGNUP_SCROLL_EVENT: &str = "wis-signup-scroll";
+/// Down in the field: the open card (saved logins, strong password) takes the keyboard.
+const SIGNUP_PICK_EVENT: &str = "wis-signup-pick";
 
 static APP: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
 
@@ -127,6 +129,7 @@ pub(crate) fn field_rect(
 enum Report {
     Leave,
     Scroll,
+    Pick,
     Focus {
         rules: Option<String>,
         max_length: Option<u32>,
@@ -156,6 +159,7 @@ fn read_report(
         Some("login") => return rect.map(Report::Login),
         Some("leave") => return Some(Report::Leave),
         Some("scroll") => return Some(Report::Scroll),
+        Some("pick") => return Some(Report::Pick),
         _ => {}
     }
 
@@ -191,6 +195,7 @@ fn dispatch(label: &str, report: Report) {
         Report::Login(rect) => announce_login(label, rect),
         Report::Leave => announce_tab(label, SIGNUP_LEAVE_EVENT),
         Report::Scroll => announce_tab(label, SIGNUP_SCROLL_EVENT),
+        Report::Pick => announce_tab(label, SIGNUP_PICK_EVENT),
     }
 }
 
@@ -432,7 +437,11 @@ const SIGNUP_JS: &str = r#"(function () {
     }
   }, true);
   document.addEventListener('keydown', function (e) {
-    if (anchored && e.target === anchored && e.key === 'Escape') leave();
+    if (!anchored || e.target !== anchored) return;
+    if (e.key === 'Escape') leave();
+    else if (e.isTrusted && e.key === 'ArrowDown' && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      send({ kind: 'pick' });
+    }
   }, true);
   document.addEventListener('input', function (e) {
     if (anchored && e.target === anchored && e.isTrusted) leave();
@@ -997,6 +1006,14 @@ mod tests {
         let mut fields = RECT.to_vec();
         fields.push(("kind", "move"));
         assert!(matches!(report_from(&fields), Some(Report::Move(_))));
+    }
+
+    #[test]
+    fn a_pick_needs_nothing_else() {
+        assert!(matches!(
+            report_from(&[("kind", "pick")]),
+            Some(Report::Pick)
+        ));
     }
 
     #[test]

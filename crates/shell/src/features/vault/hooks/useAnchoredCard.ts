@@ -22,6 +22,7 @@ import { fieldInWindow, placeOffer, type Rect, type Size } from '@/features/vaul
 const FIELD_MOVE_EVENT = 'wis-signup-move'
 const FIELD_SCROLL_EVENT = 'wis-signup-scroll'
 export const FIELD_LEAVE_EVENT = 'wis-signup-leave'
+export const FIELD_PICK_EVENT = 'wis-signup-pick'
 export const FIELD_GONE_EVENT = 'wis-signup-gone'
 const CARD_WHEEL_EVENT = 'wis-card-wheel'
 export const CARD_PLACED_EVENT = 'wis-card-placed'

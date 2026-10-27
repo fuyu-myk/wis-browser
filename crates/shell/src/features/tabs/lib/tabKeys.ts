@@ -87,3 +87,55 @@ export function onTabRowKey(
     handlers.close?.()
   }
 }
+
+/** Alt with the strip's own arrows moves the focused item. */
+export function moveDelta(e: TabKey, orientation: 'vertical' | 'horizontal'): -1 | 1 | null {
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return null
+  const [back, on] = orientation === 'vertical' ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight']
+  return e.key === back ? -1 : e.key === on ? 1 : null
+}
+
+/** `order` with `id` moved one place by `delta`, or null at an end. */
+export function movedOrder<T>(order: readonly T[], id: T, delta: -1 | 1): T[] | null {
+  const from = order.indexOf(id)
+  const to = from + delta
+  if (from < 0 || to < 0 || to >= order.length) return null
+  const next = [...order]
+  next[from] = next[to]
+  next[to] = id
+  return next
+}
+
+/** `full` with the members of `group` laid out in `groupOrder` instead. */
+export function withGroupOrder<T>(full: readonly T[], groupOrder: readonly T[]): T[] {
+  const members = new Set(groupOrder)
+  let i = 0
+  return full.map((id) => (members.has(id) ? groupOrder[i++] : id))
+}
+
+/** Spoken after a keyboard move. */
+export function movedTo(position: number, count: number): string {
+  return `Moved to ${position} of ${count}`
+}
+
+/**
+ * Run `move` for an Alt+arrow press on the focused row itself. Returns
+ * whether it was one.
+ */
+export function moveByKey(
+  e: TabKey & { currentTarget: HTMLElement; target: EventTarget; preventDefault(): void },
+  orientation: 'vertical' | 'horizontal',
+  move: ((delta: -1 | 1) => void) | undefined,
+): boolean {
+  if (!move || e.target !== e.currentTarget) return false
+  const delta = moveDelta(e, orientation)
+  if (delta === null) return false
+  e.preventDefault()
+  move(delta)
+  return true
+}
+
+/** Put focus back on `selector` once a reorder has re-rendered. */
+export function refocusAfterMove(selector: string): void {
+  requestAnimationFrame(() => document.querySelector<HTMLElement>(selector)?.focus())
+}

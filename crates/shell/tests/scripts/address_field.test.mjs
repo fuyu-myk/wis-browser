@@ -733,3 +733,25 @@ test('a single name field puts the family name first for Chinese, Japanese and K
     assert.equal(name.value, whole, whole)
   }
 })
+
+test('a real Down arrow in the offered field asks for its card, leaving the key to the page', () => {
+  const page = reporter()
+  page.focus(page.postal)
+  let prevented = false
+  const down = (extra = {}) => ({
+    target: page.postal,
+    key: 'ArrowDown',
+    isTrusted: true,
+    preventDefault: () => (prevented = true),
+    ...extra,
+  })
+  page.fire('doc:keydown', down())
+  assert.deepEqual(page.sent.at(-1), { kind: 'pick' })
+  assert.equal(prevented, false, 'the page keeps the key; no card may be showing')
+
+  const before = page.sent.length
+  page.fire('doc:keydown', down({ isTrusted: false }))
+  page.fire('doc:keydown', down({ altKey: true }))
+  page.fire('doc:keydown', down({ target: page.search }))
+  assert.equal(page.sent.length, before, 'made-up, modified or elsewhere presses are ignored')
+})

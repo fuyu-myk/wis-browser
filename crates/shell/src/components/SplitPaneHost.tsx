@@ -3,10 +3,13 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import type { PaneBranch, PaneNode, Tab, TabId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { isChromeUrl } from '@/lib/url'
+import { dividerStep } from '@/lib/paneDivider'
 
 const RATIO_SCALE = 1000
 const MIN_FRACTION = 0.05
 const MAX_FRACTION = 0.95
+const DIVIDER_LIMITS = { min: MIN_FRACTION * RATIO_SCALE, max: MAX_FRACTION * RATIO_SCALE }
+const KEY_COMMIT_MS = 250
 
 /** Duration of the chrome-side pane glide on splits (matches the CSS). */
 export const PANE_GLIDE_MS = 260
@@ -186,6 +189,10 @@ function PaneSplit({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [dragRatio, setDragRatio] = useState<number | null>(null)
   const effRatio = dragRatio ?? ratio
+  const keyCommitRef = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (keyCommitRef.current !== null) window.clearTimeout(keyCommitRef.current)
+  }, [])
 
   // Entrance: a split mounted around a brand-new leaf starts that slot at
   // zero and glides it open (flex-grow transition while .is-entering).
@@ -293,7 +300,24 @@ function PaneSplit({
         className={cx('pane-divider', row ? 'is-vertical' : 'is-horizontal')}
         role="separator"
         aria-orientation={row ? 'vertical' : 'horizontal'}
+        aria-label="Resize panes"
+        aria-valuemin={Math.round(MIN_FRACTION * 100)}
+        aria-valuemax={Math.round(MAX_FRACTION * 100)}
+        aria-valuenow={Math.round((effRatio / RATIO_SCALE) * 100)}
+        tabIndex={0}
         onPointerDown={onDividerDown}
+        onKeyDown={(e) => {
+          const next = dividerStep(e.key, row, effRatio, DIVIDER_LIMITS)
+          if (next === null) return
+          e.preventDefault()
+          setDragRatio(next)
+          if (keyCommitRef.current !== null) window.clearTimeout(keyCommitRef.current)
+          keyCommitRef.current = window.setTimeout(() => {
+            keyCommitRef.current = null
+            onRatioCommit(path, next)
+            setDragRatio(null)
+          }, KEY_COMMIT_MS)
+        }}
       />
       <div className="pane-slot" style={{ flex: `${secondGrow} 1 0%` }}>
         <PaneView node={second} path={[...path, 'second']} {...childProps} />

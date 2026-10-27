@@ -621,7 +621,11 @@ document.addEventListener('pointerdown', function (e) {
   if (addressField(e.target) || guessable(e.target) || cardField(e.target)) report(e.target);
 }, true);
 document.addEventListener('keydown', function (e) {
-  if (anchored && e.target === anchored && e.key === 'Escape') leave();
+  if (!anchored || e.target !== anchored) return;
+  if (e.key === 'Escape') leave();
+  else if (e.isTrusted && e.key === 'ArrowDown' && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    send({ kind: 'pick' });
+  }
 }, true);
 document.addEventListener('input', function (e) {
   if (!e.isTrusted) return;

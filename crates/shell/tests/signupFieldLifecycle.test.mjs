@@ -79,6 +79,7 @@ function loadPage() {
     key: (target, key) => fire('doc:keydown', { target, key }),
     type: (target, isTrusted) => fire('doc:input', { target, isTrusted }),
     click: (target) => fire('doc:pointerdown', { target }),
+    fire,
   }
 }
 
@@ -208,4 +209,25 @@ test('a click on a field without focus waits for its focusin', () => {
   const p = loadPage()
   p.click(p.field)
   assert.deepEqual(p.kinds(), [])
+})
+
+test('a real Down arrow in the field hands the keyboard to its card', () => {
+  const f = loadPage()
+  f.focus(f.field)
+  let prevented = false
+  const down = (extra = {}) =>
+    f.fire('doc:keydown', {
+      target: f.field,
+      key: 'ArrowDown',
+      isTrusted: true,
+      preventDefault: () => (prevented = true),
+      ...extra,
+    })
+  down()
+  assert.equal(f.kinds().at(-1), 'pick')
+  assert.equal(prevented, false)
+  const count = f.sent.length
+  down({ isTrusted: false })
+  down({ metaKey: true })
+  assert.equal(f.sent.length, count)
 })

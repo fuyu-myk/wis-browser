@@ -11,7 +11,16 @@ import { reorderedAmong, useTabSplit } from '@/features/tabs/hooks/useTabSplit'
 
 import { TabFavicon } from '@/features/tabs/components/TabFavicon'
 import { moveFocusByArrow } from '@/lib/arrowNav'
-import { onTabRowKey } from '@/features/tabs/lib/tabKeys'
+import {
+  moveByKey,
+  movedOrder,
+  movedTo,
+  onTabRowKey,
+  refocusAfterMove,
+  withGroupOrder,
+} from '@/features/tabs/lib/tabKeys'
+import { announce } from '@/lib/announce'
+import { patchTabOrder } from '@/features/tabs/lib/tabMotion'
 
 interface PinnedTabsProps {
   workspaceId: WorkspaceId
@@ -61,6 +70,7 @@ export function PinnedTabs({
   })
   const reorder = useMutation({
     mutationFn: (order: TabId[]) => commands.reorderTabs(workspaceId, order),
+    onMutate: (order) => patchTabOrder(qc, workspaceId, order),
     onSuccess: invalidate,
   })
   const { openSplitMenu } = useTabSplit({ workspaceId, activeTabId, onMenuOpenChange })
@@ -162,6 +172,17 @@ export function PinnedTabs({
     window.addEventListener('pointerup', up)
   }
 
+  const movePin = (id: TabId, delta: -1 | 1) => {
+    const next = movedOrder(
+      pinnedTabs.map((t) => t.id),
+      id,
+      delta,
+    )
+    if (!next) return
+    reorder.mutate(withGroupOrder(tabs.map((t) => t.id), next))
+    refocusAfterMove(`[data-pin-id="${id}"]`)
+    announce(movedTo(next.indexOf(id) + 1, next.length))
+  }
   const pinStop =
     activeTabId && pinnedTabs.some((t) => t.id === activeTabId) ? activeTabId : pinnedTabs[0]?.id
   const grid = (
@@ -197,12 +218,13 @@ export function PinnedTabs({
             activate(tab.id)
           }}
           onContextMenu={(e) => openSplitMenu(e, tab.id)}
-          onKeyDown={(e) =>
+          onKeyDown={(e) => {
+            if (moveByKey(e, 'horizontal', (delta) => movePin(tab.id, delta))) return
             onTabRowKey(e, {
               activate: () => activate(tab.id),
               menu: (at) => openSplitMenu(at, tab.id),
             })
-          }
+          }}
         >
           <TabFavicon tab={tab} />
         </button>

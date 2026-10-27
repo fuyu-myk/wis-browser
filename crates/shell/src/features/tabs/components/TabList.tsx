@@ -49,7 +49,16 @@ import { TabFolderHeader } from '@/features/tabs/components/TabFolderHeader'
 import { useDiscardedTabs } from '@/features/tabs/components/DiscardedTabsContext'
 import { useTabAudio } from '@/features/tabs/hooks/useTabAudio'
 import { moveFocusByArrow } from '@/lib/arrowNav'
-import { focusNeighbour, onTabRowKey } from '@/features/tabs/lib/tabKeys'
+import {
+  focusNeighbour,
+  moveByKey,
+  movedOrder,
+  movedTo,
+  onTabRowKey,
+  refocusAfterMove,
+  withGroupOrder,
+} from '@/features/tabs/lib/tabKeys'
+import { announce } from '@/lib/announce'
 
 const TAB_STRIP_ITEMS = '.kb-foldwrap.is-open [data-tab-row], .kb-loose [data-tab-row], .kb-tabfolder-head'
 
@@ -578,13 +587,14 @@ export function TabList({
             closeTabAnimated(tab.id)
           }
         }}
-        onKeyDown={(e) =>
+        onKeyDown={(e) => {
+          if (moveByKey(e, 'vertical', (delta) => moveTab(tab, delta))) return
           onTabRowKey(e, {
             activate: () => setActive.mutate(tab.id),
             close: () => closeTabAnimated(tab.id),
             menu: (at) => openSplitMenu(at, tab.id),
           })
-        }
+        }}
       >
         <TabFavicon tab={tab} />
         <TabAudioButton
@@ -611,6 +621,26 @@ export function TabList({
   }
 
   const looseFrom = dragPart ? looseTabs.findIndex((t) => t.id === dragPart.id) : -1
+
+  const moveTab = (tab: Tab, delta: -1 | 1) => {
+    const group = (tab.folder_id != null ? membersOf(tab.folder_id) : looseTabs).map((t) => t.id)
+    const next = movedOrder(group, tab.id, delta)
+    if (!next) return
+    reorder.mutate(withGroupOrder(tabs.map((t) => t.id), next))
+    refocusAfterMove(`[data-tab-row="${tab.id}"]`)
+    announce(movedTo(next.indexOf(tab.id) + 1, next.length))
+  }
+  const moveFolder = (folderId: TabFolderId, delta: -1 | 1) => {
+    const next = movedOrder(
+      sortedFolders.map((f) => f.id),
+      folderId,
+      delta,
+    )
+    if (!next) return
+    reorderFolders.mutate(next)
+    refocusAfterMove(`.kb-tabfolder-head[data-folder-id="${folderId}"]`)
+    announce(movedTo(next.indexOf(folderId) + 1, next.length))
+  }
 
   // Optimistic expansion.
   const expandFor = (scopeId: string, list: Tab[]): number =>
@@ -691,6 +721,7 @@ export function TabList({
                 dragRef={folderDraggedRef}
                 onHeaderPointerDown={(e) => startFolderDrag(e, folder.id)}
                 onEditingChange={(e) => reportEditing(folder.id, e)}
+                onMove={(delta) => moveFolder(folder.id, delta)}
               />
               <div
                 className={cx('kb-foldwrap', { 'is-open': !folder.collapsed })}

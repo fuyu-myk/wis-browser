@@ -14,6 +14,8 @@ import {
   type WidgetCategory,
 } from '@/features/widgets/widgets'
 import { moveFocusByArrow } from '@/lib/arrowNav'
+import { moveByKey, movedTo, refocusAfterMove } from '@/features/tabs/lib/tabKeys'
+import { announce } from '@/lib/announce'
 
 interface WidgetDockProps {
   widgets: Widget[]
@@ -410,6 +412,18 @@ export function WidgetDock({ widgets, variant = 'sidebar' }: WidgetDockProps) {
   // Only a custom can change rows, so only its drag opens the empty placeholders.
   const dragActive = dragged?.isCustom === true
 
+  const moveWidget = (w: Widget, delta: -1 | 1) => {
+    const category = widgetCategory(w)
+    const row = byCategory(category)
+    const to = row.findIndex((x) => x.id === w.id) + delta
+    if (to < 0 || to >= row.length) return
+    const next = placeWidget(widgetsRef.current, w.id, category, to)
+    if (next === null) return
+    update.mutate({ sidebar_widgets: next })
+    refocusAfterMove(`[data-wid="${w.id}"]`)
+    announce(movedTo(to + 1, row.length))
+  }
+
   const renderButton = (w: Widget, caret: 'before' | 'after' | null) => (
     <button
       key={w.id}
@@ -426,6 +440,7 @@ export function WidgetDock({ widgets, variant = 'sidebar' }: WidgetDockProps) {
       aria-pressed={w.id === activeWidgetId}
       onPointerDown={(e) => onPointerDown(e, w)}
       onClick={(e) => onClick(e, w)}
+      onKeyDown={(e) => moveByKey(e, 'horizontal', (delta) => moveWidget(w, delta))}
     >
       <WidgetFavicon url={w.url} label={w.label} />
     </button>

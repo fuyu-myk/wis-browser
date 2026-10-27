@@ -27,6 +27,9 @@ import { errorMessage } from '@/lib/errors'
 import { showRemoteToast } from '@/lib/toast'
 import { VAULTMENU_FILL_EVENT, type VaultMenuFill } from '@/features/vault/lib/vaultMenu'
 import { unlockProblem } from '@/features/vault/lib/vaultRecovery'
+import { usePickerKeys } from '@/features/vault/hooks/usePickerKeys'
+import { FIELD_PICK_EVENT } from '@/features/vault/hooks/useAnchoredCard'
+import { moveFocusByArrow } from '@/lib/arrowNav'
 
 const EARLY_CLICK_MS = 500
 
@@ -93,10 +96,19 @@ export function SavedLoginsSurface() {
     }
   }
 
+  usePickerKeys(FIELD_PICK_EVENT, pick?.tabId ?? null, () => {
+    setPick(null)
+    void emit(LOGINS_CLOSE_EVENT, getCurrentWindow().label)
+  })
+
   if (!pick) return null
 
   return (
-    <div className={cx('kb-logins-card', { 'glass-menus': menusGlass(state?.settings) })} role="menu">
+    <div
+      className={cx('kb-logins-card', { 'glass-menus': menusGlass(state?.settings) })}
+      role="menu"
+      onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'vertical')}
+    >
       <div className="kb-logins-head">Saved passwords</div>
       <div className="kb-logins-list">
         {pick.logins.map((login) => (

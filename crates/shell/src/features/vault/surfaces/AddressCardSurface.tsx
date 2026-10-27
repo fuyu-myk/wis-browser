@@ -29,6 +29,9 @@ import { LockIcon } from '@/lib/icons'
 import { showRemoteToast } from '@/lib/toast'
 import { VAULTMENU_FILL_EVENT, type VaultMenuFill } from '@/features/vault/lib/vaultMenu'
 import { unlockProblem } from '@/features/vault/lib/vaultRecovery'
+import { usePickerKeys } from '@/features/vault/hooks/usePickerKeys'
+import { moveFocusByArrow } from '@/lib/arrowNav'
+import { ADDRESS_PICK_EVENT } from '@/features/vault/lib/addressCard'
 
 const EARLY_CLICK_MS = 500
 
@@ -112,10 +115,16 @@ export function AddressCardSurface() {
     }
   }
 
+  usePickerKeys(ADDRESS_PICK_EVENT, offer?.tabId ?? null, () => offer && closeCard(offer.tabId, false))
+
   if (!offer) return null
 
   return (
-    <div className={cx('kb-logins-card', { 'glass-menus': menusGlass(state?.settings) })} role="menu">
+    <div
+      className={cx('kb-logins-card', { 'glass-menus': menusGlass(state?.settings) })}
+      role="menu"
+      onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'vertical')}
+    >
       <div className="kb-logins-head">Saved addresses</div>
       <div className="kb-addresses-note">{fillsLine(offer.kinds)}</div>
       <div className="kb-logins-list">
