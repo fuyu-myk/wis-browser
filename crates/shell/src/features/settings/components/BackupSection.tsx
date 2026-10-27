@@ -21,6 +21,7 @@ import { useVaultConfirm } from '@/features/vault/components/VaultPassword'
 import { cx } from '@/lib/cx'
 import { withImportedRoutes } from '@/features/site/lib/linkRoutes'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import { useAnnounce } from '@/hooks/useAnnounce'
 
 interface BackupSectionProps {
   settings: UserSettings
@@ -62,6 +63,7 @@ export function BackupSection({ settings }: BackupSectionProps) {
   const [importPass, setImportPass] = useState('')
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<Status | null>(null)
+  useAnnounce(status?.kind === 'ok' && status.text)
 
   const runExport = async () => {
     setStatus(null)
@@ -293,7 +295,7 @@ export function BackupSection({ settings }: BackupSectionProps) {
       {status && (
         <p
           className={cx('kb-backup-status', { 'is-error': status.kind === 'err' })}
-          role={status.kind === 'err' ? 'alert' : 'status'}
+          role={status.kind === 'err' ? 'alert' : undefined}
         >
           {status.text}
         </p>

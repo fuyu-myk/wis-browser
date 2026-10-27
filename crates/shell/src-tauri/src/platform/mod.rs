@@ -1,5 +1,6 @@
 //! Webview engine glue the features call: per-platform page channels and webview settings.
 
+pub(crate) mod announce;
 pub(crate) mod content_world;
 #[cfg(target_os = "linux")]
 pub(crate) mod gtk_dispatch;

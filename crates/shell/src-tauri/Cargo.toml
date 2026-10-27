@@ -79,8 +79,8 @@ objc2-web-kit = { version = "0.3", default-features = false, features = [
     "WKWebExtensionTab",
     "WKWebExtensionWindow",
 ] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSArray", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSKeyValueCoding", "NSNotification", "NSObject", "NSOperation", "NSSet", "NSString", "NSURL", "NSURLRequest", "NSUUID"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSAppearance", "NSBitmapImageRep", "NSGraphics", "NSImage", "NSImageRep", "NSPopover", "NSResponder", "NSView", "NSWindow"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSArray", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSKeyValueCoding", "NSNotification", "NSObject", "NSOperation", "NSSet", "NSString", "NSURL", "NSURLRequest", "NSUUID", "NSValue"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSAccessibilityConstants", "NSAppearance", "NSApplication", "NSBitmapImageRep", "NSGraphics", "NSImage", "NSImageRep", "NSPopover", "NSResponder", "NSView", "NSWindow"] }
 block2-06 = { package = "block2", version = "0.6" }
 # Unpacking extension .zip files; flate2's Rust backend is already in the tree.
 zip = { version = "9", default-features = false, features = ["deflate-flate2"] }

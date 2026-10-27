@@ -119,3 +119,22 @@ test('the popup events are distinct and spelled only in this contract', () => {
   assert.equal(new Set([...names, dl.DOWNLOADS_CHANGED_EVENT]).size, 4)
   for (const name of names) assert.deepEqual(filesSpelling(name), ['features/downloads/downloads.ts'], name)
 })
+
+test('a download that just finished or failed is announced by name', () => {
+  const item = (id, filename, status) => ({ id, filename, status })
+  const before = new Map([[1, 'in_progress'], [2, 'in_progress'], [3, 'completed']])
+  assert.equal(dl.downloadAnnouncement(before, [item(1, 'a.pdf', 'completed')]), 'Download complete: a.pdf')
+  assert.equal(dl.downloadAnnouncement(before, [item(1, 'a.pdf', 'failed')]), 'Download failed: a.pdf')
+  assert.equal(
+    dl.downloadAnnouncement(before, [item(1, 'a.pdf', 'completed'), item(2, 'b.zip', 'failed')]),
+    'Download complete: a.pdf. Download failed: b.zip',
+  )
+})
+
+test('downloads that did not change, or were never pending, are not announced', () => {
+  const item = (id, filename, status) => ({ id, filename, status })
+  const before = new Map([[1, 'in_progress'], [3, 'completed']])
+  assert.equal(dl.downloadAnnouncement(before, [item(1, 'a.pdf', 'in_progress')]), null)
+  assert.equal(dl.downloadAnnouncement(before, [item(3, 'old.pdf', 'completed')]), null)
+  assert.equal(dl.downloadAnnouncement(before, [item(9, 'quick.txt', 'completed')]), 'Download complete: quick.txt')
+})

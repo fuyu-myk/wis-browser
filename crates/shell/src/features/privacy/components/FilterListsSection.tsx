@@ -13,6 +13,7 @@ import { Switch } from '@/components/controls'
 import { XIcon } from '@/lib/icons'
 import { noticeListsPatch } from '@/features/privacy/lib/noticeLists'
 import { DEFAULT_KEYMAP } from '@/lib/palette'
+import { useAnnounce } from '@/hooks/useAnnounce'
 
 // Element-picker default, host-localized (Cmd on macOS, Ctrl elsewhere).
 const PICKER_SHORTCUT = DEFAULT_KEYMAP.element_picker ?? 'Cmd+Shift+X'
@@ -45,6 +46,7 @@ export function FilterListsSection({
 }: FilterListsSectionProps) {
   const [draft, setDraft] = useState('')
   const [status, setStatus] = useState<string | null>(null)
+  useAnnounce(status)
 
   // Fetches the new list (and anything else) then rebuilds the engine; the
   // page's "Refresh now" row drives the same command for manual updates.
@@ -112,7 +114,7 @@ export function FilterListsSection({
         </div>
       </div>
       {status !== null && (
-        <p className="kb-filterlists-status" role="status">
+        <p className="kb-filterlists-status">
           {status}
         </p>
       )}

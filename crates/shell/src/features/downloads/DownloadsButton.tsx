@@ -5,7 +5,13 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type { DownloadId, DownloadItem, DownloadStatus } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { DownloadIcon } from '@/lib/icons'
-import { DOWNLOADS_OPEN_EVENT, DOWNLOADS_SHOWN_EVENT } from '@/features/downloads/downloads'
+import { announce } from '@/lib/announce'
+import { isWindowFocused } from '@/lib/windowFocus'
+import {
+  DOWNLOADS_OPEN_EVENT,
+  DOWNLOADS_SHOWN_EVENT,
+  downloadAnnouncement,
+} from '@/features/downloads/downloads'
 import { useDownloads } from '@/features/downloads/useDownloads'
 
 /** Aggregate completion of the in-flight set, or null when any item lacks a
@@ -48,6 +54,8 @@ export function DownloadsButton() {
     const prev = prevRef.current
     prevRef.current = new Map(downloads.map((d) => [d.id, d.status]))
     if (prev === null) return
+    const spoken = downloadAnnouncement(prev, downloads)
+    if (spoken && isWindowFocused()) announce(spoken)
     let done = false
     let failed = false
     for (const d of downloads) {

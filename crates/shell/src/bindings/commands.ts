@@ -1528,6 +1528,11 @@ export const commands = {
     return invoke('focus_self')
   },
 
+  /** Ask the screen reader to speak `text` (macOS; a no-op elsewhere). */
+  async announce(text: string, urgent: boolean): Promise<void> {
+    return invoke('announce', { text, urgent })
+  },
+
   /**
    * Lazily create the named overlay webview (loads
    * `index.html?surface=<name>`). Idempotent. The overlay starts hidden

@@ -24,6 +24,7 @@ import {
   TOAST_SHOW_EVENT,
   type ToastRequest,
 } from '@/lib/toast'
+import { announce } from '@/lib/announce'
 
 /** Visible dwell before auto-dismiss, and the dwell after a hover ends. */
 const STAY_MS = 3200
@@ -83,6 +84,7 @@ export function ToastSurface() {
       clearClose()
       setClosing(false)
       setMessage(e.payload.message)
+      announce(e.payload.message)
       setOpen(true)
       armDismiss(STAY_MS)
     }).then((fn) => {

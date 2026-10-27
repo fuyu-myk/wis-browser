@@ -776,6 +776,7 @@ pub fn run() {
             data::usage::usage_summary,
             chrome::overlay::focus_webview,
             chrome::overlay::focus_self,
+            platform::announce::announce,
             chrome::overlay::ensure_overlay,
             chrome::overlay::set_overlay_bounds,
             chrome::overlay::set_overlay_position,

@@ -5,6 +5,7 @@ import { commands } from '@/bindings/commands'
 import { useVaultStatus } from '@/features/vault/hooks/useVaultStatus'
 import { errorMessage } from '@/lib/errors'
 import { newPasswordProblem } from '@/features/vault/lib/vaultPassword'
+import { useAnnounce } from '@/hooks/useAnnounce'
 
 interface PasswordFieldProps {
   value: string
@@ -130,6 +131,7 @@ export function ChangeVaultPassword() {
     onSettled: () => setCurrent(''),
     onSuccess: () => setChosen(NO_NEW_PASSWORD),
   })
+  useAnnounce(change.isSuccess && 'Vault password changed.')
   const ready = current !== '' && newPasswordReady(chosen) && !change.isPending
   const submit = () => {
     if (ready) change.mutate()
@@ -155,7 +157,7 @@ export function ChangeVaultPassword() {
         </button>
       </div>
       {change.isSuccess && (
-        <p className="kb-backup-status" role="status">
+        <p className="kb-backup-status">
           Vault password changed.
         </p>
       )}

@@ -32,6 +32,7 @@ import { useDockWidth } from '@/hooks/useDockWidth'
 import { AiMarkdown } from '@/features/ai/components/AiMarkdown'
 import { AiModelPicker } from '@/features/ai/components/AiModelPicker'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { useAnnounce } from '@/hooks/useAnnounce'
 
 const WIDTH_STORAGE_KEY = 'wis-ai-panel-width'
 
@@ -96,6 +97,7 @@ export function AiPanel({
   onOpenSettings,
 }: AiPanelProps) {
   const chat = useAiChat(workspaceId, webAccess, localData, tabActions)
+  useAnnounce(chat.phase === 'reading' && 'Reading the page')
   const [draft, setDraft] = useState('')
   const [attachPage, setAttachPage] = useState(false)
   const [research, setResearch] = useState(false)
@@ -442,7 +444,7 @@ export function AiPanel({
           )}
         </div>
         {chat.phase === 'reading' && (
-          <div className="kb-ai-status" role="status">
+          <div className="kb-ai-status">
             Reading the page
           </div>
         )}

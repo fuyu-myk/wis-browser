@@ -14,6 +14,7 @@ import { showToast } from '@/lib/toast'
 import { useBrowserState, BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { Segmented } from '@/components/controls'
 import type { PasswordOffer } from '@/bindings/types'
+import { useAnnounce } from '@/hooks/useAnnounce'
 
 const VAULT_LIST_KEY = ['vault-list'] as const
 
@@ -52,6 +53,7 @@ export function PasswordsSection() {
   const [search, setSearch] = useState('')
   const [csvBusy, setCsvBusy] = useState(false)
   const [csvStatus, setCsvStatus] = useState<Status | null>(null)
+  useAnnounce(csvStatus?.kind === 'ok' && csvStatus.text)
   const [confirmExport, setConfirmExport] = useState(false)
   const [adding, setAdding] = useState(false)
   const [openId, setOpenId] = useState<number | null>(null)
@@ -246,7 +248,7 @@ export function PasswordsSection() {
       {csvStatus && (
         <p
           className={cx('kb-backup-status', { 'is-error': csvStatus.kind === 'err' })}
-          role={csvStatus.kind === 'err' ? 'alert' : 'status'}
+          role={csvStatus.kind === 'err' ? 'alert' : undefined}
         >
           {csvStatus.text}
         </p>

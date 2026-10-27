@@ -1,7 +1,7 @@
 /** Shared constants and pure helpers for the downloads UI (button, popup
  * surface, full page). */
 
-import type { DownloadItem } from '@/bindings/types'
+import type { DownloadId, DownloadItem, DownloadStatus } from '@/bindings/types'
 
 /** DOM event the downloads glyph dispatches to toggle the popup overlay. */
 export const DOWNLOADS_OPEN_EVENT = 'wis:downloads-open'
@@ -68,4 +68,22 @@ export function statusLabel(item: DownloadItem): string {
     case 'cancelled':
       return 'Cancelled'
   }
+}
+
+/**
+ * What to say for downloads that finished or failed since `before`. A
+ * download unseen before counts as pending.
+ */
+export function downloadAnnouncement(
+  before: ReadonlyMap<DownloadId, DownloadStatus>,
+  now: ReadonlyArray<Pick<DownloadItem, 'id' | 'filename' | 'status'>>,
+): string | null {
+  const lines = now.flatMap((d) => {
+    const was = before.get(d.id)
+    if ((was !== undefined && was !== 'in_progress') || was === d.status) return []
+    if (d.status === 'completed') return [`Download complete: ${d.filename}`]
+    if (d.status === 'failed') return [`Download failed: ${d.filename}`]
+    return []
+  })
+  return lines.length > 0 ? lines.join('. ') : null
 }

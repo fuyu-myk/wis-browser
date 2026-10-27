@@ -4,6 +4,7 @@ import { commands } from '@/bindings/commands'
 import type { WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { bookmarkImportSummary } from '@/features/data-import/importSummary'
+import { useAnnounce } from '@/hooks/useAnnounce'
 
 interface Status {
   kind: 'ok' | 'err'
@@ -27,6 +28,7 @@ interface BookmarksSectionProps {
 export function BookmarksSection({ workspaceId, ephemeral }: BookmarksSectionProps) {
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<Status | null>(null)
+  useAnnounce(status?.kind === 'ok' && status.text)
 
   const importHtml = async () => {
     if (!workspaceId) return
@@ -100,7 +102,7 @@ export function BookmarksSection({ workspaceId, ephemeral }: BookmarksSectionPro
       {status && (
         <p
           className={cx('kb-backup-status', { 'is-error': status.kind === 'err' })}
-          role={status.kind === 'err' ? 'alert' : 'status'}
+          role={status.kind === 'err' ? 'alert' : undefined}
         >
           {status.text}
         </p>

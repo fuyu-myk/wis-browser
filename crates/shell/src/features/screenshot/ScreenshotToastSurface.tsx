@@ -21,6 +21,7 @@ import {
   SCREENSHOT_TOAST_READY_EVENT,
   SCREENSHOT_TOAST_SHOWN_EVENT,
 } from '@/features/screenshot/screenshot'
+import { announce } from '@/lib/announce'
 
 /** Visible dwell before auto-dismiss, and the dwell after a hover ends. */
 const STAY_MS = 3000
@@ -83,6 +84,7 @@ export function ScreenshotToastSurface() {
       setClosing(false)
       setSaved(false)
       setOpen(true)
+      announce('Screenshot copied to clipboard')
       armDismiss(STAY_MS)
     }).then((fn) => {
       unlisten = fn
@@ -103,6 +105,7 @@ export function ScreenshotToastSurface() {
       const path = await commands.saveLastScreenshot()
       if (path) {
         setSaved(true)
+        announce('Screenshot saved')
         armDismiss(1200)
       } else {
         armDismiss(RESUME_MS)
