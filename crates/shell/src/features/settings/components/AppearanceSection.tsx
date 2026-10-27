@@ -25,7 +25,7 @@ interface AppearanceSectionProps {
 export function AppearanceSection({ settings, activeWorkspace, onUpdate }: AppearanceSectionProps) {
   return (
       <section id="appearance" className="sec">
-        <div className="sec-h">Appearance</div>
+        <h2 className="sec-h">Appearance</h2>
         <div className="row">
           <div className="l">
             <span>Theme</span>

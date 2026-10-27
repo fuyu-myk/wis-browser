@@ -86,7 +86,7 @@ export function AddressesSection({ settings, onUpdate }: AddressesSectionProps) 
 
   return (
     <section id="addresses" className="sec">
-      <div className="sec-h">Addresses</div>
+      <h2 className="sec-h">Addresses</h2>
       <div className="row">
         <div className="l">
           <span>Save and fill addresses</span>

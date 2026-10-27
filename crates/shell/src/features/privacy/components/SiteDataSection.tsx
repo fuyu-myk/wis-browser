@@ -58,7 +58,7 @@ export function SiteDataSection({ workspaceId, workspaceName }: SiteDataSectionP
   if (currentPlatform() === 'linux') {
     return (
       <section id="sitedata" className="sec">
-        <div className="sec-h">Site data</div>
+        <h2 className="sec-h">Site data</h2>
         <p className="kb-vault-msg">
           Per-site data management is not available on Linux yet.
         </p>
@@ -68,7 +68,7 @@ export function SiteDataSection({ workspaceId, workspaceName }: SiteDataSectionP
 
   return (
     <section id="sitedata" className="sec">
-      <div className="sec-h">Site data</div>
+      <h2 className="sec-h">Site data</h2>
       <div className="row">
         <div className="l">
           <span>Stored data ({workspaceName})</span>
@@ -90,6 +90,7 @@ export function SiteDataSection({ workspaceId, workspaceName }: SiteDataSectionP
           <input
             type="text"
             placeholder="Search sites"
+            aria-label="Search sites"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             spellCheck={false}

@@ -154,7 +154,11 @@ export function ChangeVaultPassword() {
           Change password
         </button>
       </div>
-      {change.isSuccess && <p className="kb-backup-status">Vault password changed.</p>}
+      {change.isSuccess && (
+        <p className="kb-backup-status" role="status">
+          Vault password changed.
+        </p>
+      )}
       {change.isError && (
         <p className="kb-backup-status is-error" role="alert">
           {errorMessage(change.error)}

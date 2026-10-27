@@ -78,7 +78,7 @@ export function CompatibilitySection({ profile, overrides, onUpdate }: Compatibi
 
   return (
     <section id="compatibility" className="sec">
-      <div className="sec-h">Compatibility</div>
+      <h2 className="sec-h">Compatibility</h2>
       <div className="row">
         <div className="l">
           <span>Default browser</span>

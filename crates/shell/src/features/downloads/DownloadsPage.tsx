@@ -157,6 +157,7 @@ export function DownloadsPage({ tabId }: { tabId: TabId }) {
               <input
                 type="text"
                 placeholder="Search downloads"
+                aria-label="Search downloads"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus

@@ -217,7 +217,7 @@ export function SearchSection({ settings, onUpdate }: SearchSectionProps) {
 
   return (
     <section id="search" className="sec">
-      <div className="sec-h">Search</div>
+      <h2 className="sec-h">Search</h2>
       <div className="row">
         <div className="l">
           <span>Default engine</span>
@@ -333,7 +333,11 @@ export function SearchSection({ settings, onUpdate }: SearchSectionProps) {
           </button>
         </div>
       )}
-      {status && <p className="kb-backup-status is-error">{status}</p>}
+      {status && (
+        <p className="kb-backup-status is-error" role="alert">
+          {status}
+        </p>
+      )}
     </section>
   )
 }

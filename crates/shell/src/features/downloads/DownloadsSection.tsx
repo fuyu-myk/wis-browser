@@ -9,7 +9,7 @@ interface DownloadsSectionProps {
 export function DownloadsSection({ settings, onUpdate }: DownloadsSectionProps) {
   return (
       <section id="downloads" className="sec">
-        <div className="sec-h">Downloads</div>
+        <h2 className="sec-h">Downloads</h2>
         <div className="row">
           <div className="l">
             <span>Ask where to save each download</span>

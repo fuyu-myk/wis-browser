@@ -29,7 +29,7 @@ interface LayoutSectionProps {
 export function LayoutSection({ settings, onUpdate }: LayoutSectionProps) {
   return (
       <section id="layout" className="sec">
-        <div className="sec-h">Layout</div>
+        <h2 className="sec-h">Layout</h2>
         <div className="row">
           <div className="l">
             <span>Tabs</span>

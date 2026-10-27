@@ -98,7 +98,7 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
   if (!supported) {
     return (
       <section id="ai" className="sec">
-        <div className="sec-h">AI assistant</div>
+        <h2 className="sec-h">AI assistant</h2>
         <p className="kb-vault-msg">
           The assistant is not available on Linux yet as there is no OS key store to seal
           the provider key in.
@@ -109,7 +109,7 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
 
   return (
     <section id="ai" className="sec">
-      <div className="sec-h">AI assistant</div>
+      <h2 className="sec-h">AI assistant</h2>
       <div className="row">
         <div className="l">
           <span>Provider</span>

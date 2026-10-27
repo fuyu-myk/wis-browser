@@ -98,7 +98,7 @@ export function ImportSection({ workspaceId, ephemeral }: ImportSectionProps) {
 
   return (
     <section id="import" className="sec">
-      <div className="sec-h">Import</div>
+      <h2 className="sec-h">Import</h2>
       <div className="row">
         <div className="l">
           <span>Import from another browser</span>
@@ -156,12 +156,15 @@ export function ImportSection({ workspaceId, ephemeral }: ImportSectionProps) {
         </>
       )}
       {error && !ephemeral && (
-        <p className="kb-backup-status is-error">{errorMessage(error)}</p>
+        <p className="kb-backup-status is-error" role="alert">
+          {errorMessage(error)}
+        </p>
       )}
       {status.map((line) => (
         <p
           key={line.text}
           className={cx('kb-backup-status', { 'is-error': line.kind === 'err' })}
+          role={line.kind === 'err' ? 'alert' : 'status'}
         >
           {line.text}
         </p>

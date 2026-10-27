@@ -62,7 +62,7 @@ export function NewTabSection({ settings, onUpdate }: NewTabSectionProps) {
 
   return (
     <section id="newtab" className="sec">
-      <div className="sec-h">New tab</div>
+      <h2 className="sec-h">New tab</h2>
       <div className="row">
         <div className="l">
           <span>New tabs open</span>

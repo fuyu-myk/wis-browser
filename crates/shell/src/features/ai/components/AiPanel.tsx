@@ -441,7 +441,11 @@ export function AiPanel({
             </button>
           )}
         </div>
-        {chat.phase === 'reading' && <div className="kb-ai-status">Reading the page</div>}
+        {chat.phase === 'reading' && (
+          <div className="kb-ai-status" role="status">
+            Reading the page
+          </div>
+        )}
       </div>
       <ConfirmDialog
         open={linkPrompt !== null}
@@ -559,7 +563,11 @@ function TurnRow({
           ))}
         </ol>
       )}
-      {turn.error !== null && <p className="kb-ai-error">{turn.error}</p>}
+      {turn.error !== null && (
+        <p className="kb-ai-error" role="alert">
+          {turn.error}
+        </p>
+      )}
       {turn.truncated && (
         <p className="kb-ai-truncated">Cut short at the provider's output limit.</p>
       )}

@@ -178,7 +178,7 @@ export function BackupSection({ settings }: BackupSectionProps) {
 
   return (
     <section id="backup" className="sec">
-      <div className="sec-h">Backup &amp; restore</div>
+      <h2 className="sec-h">Backup &amp; restore</h2>
 
       <div className="row">
         <div className="l">
@@ -249,6 +249,7 @@ export function BackupSection({ settings }: BackupSectionProps) {
           type="password"
           className="kb-text-input"
           placeholder="passphrase"
+          aria-label="Backup passphrase"
           value={exportPass}
           autoComplete="new-password"
           onChange={(e) => setExportPass(e.currentTarget.value)}
@@ -273,6 +274,7 @@ export function BackupSection({ settings }: BackupSectionProps) {
           type="password"
           className="kb-text-input"
           placeholder="passphrase"
+          aria-label="Restore passphrase"
           value={importPass}
           autoComplete="off"
           onChange={(e) => setImportPass(e.currentTarget.value)}
@@ -289,7 +291,10 @@ export function BackupSection({ settings }: BackupSectionProps) {
       </div>
 
       {status && (
-        <p className={cx('kb-backup-status', { 'is-error': status.kind === 'err' })}>
+        <p
+          className={cx('kb-backup-status', { 'is-error': status.kind === 'err' })}
+          role={status.kind === 'err' ? 'alert' : 'status'}
+        >
           {status.text}
         </p>
       )}

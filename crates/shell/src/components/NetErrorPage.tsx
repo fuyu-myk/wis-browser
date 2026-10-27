@@ -76,8 +76,10 @@ export function NetErrorPage({ tab }: NetErrorPageProps) {
             <path d="M12 16h.01" />
           </svg>
         </div>
-        <h1 className="kb-neterror-title">{title}</h1>
-        <p className="kb-neterror-detail">{detail}</p>
+        <div className="kb-neterror-message" role="alert">
+          <h1 className="kb-neterror-title">{title}</h1>
+          <p className="kb-neterror-detail">{detail}</p>
+        </div>
         <p className="kb-neterror-url">{error.url}</p>
         <button
           type="button"

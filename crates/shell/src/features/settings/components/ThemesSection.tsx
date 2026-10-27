@@ -234,7 +234,12 @@ export function ThemesSection() {
 
       <ul className="kb-themes-list">
         <li className={cx('kb-themes-row', 'is-builtin', { 'is-active': activeId === null })}>
-          <button type="button" className="kb-themes-use" onClick={() => activate.mutate(null)}>
+          <button
+            type="button"
+            className="kb-themes-use"
+            aria-pressed={activeId === null}
+            onClick={() => activate.mutate(null)}
+          >
             <span className={cx('kb-themes-radio', { on: activeId === null })} aria-hidden />
             Built-in
           </button>
@@ -250,6 +255,7 @@ export function ThemesSection() {
                   style={{ background: a.hex }}
                   title={`${a.label} ${a.hex}`}
                   aria-label={a.label}
+                  aria-pressed={state?.settings.accent === a.value}
                   onClick={() => setAccent.mutate(a.value as AccentColor)}
                 />
               ))}
@@ -262,7 +268,12 @@ export function ThemesSection() {
         </li>
         {themes.map((t) => (
           <li key={t.id} className={cx('kb-themes-row', { 'is-active': activeId === t.id })}>
-            <button type="button" className="kb-themes-use" onClick={() => activate.mutate(t.id)}>
+            <button
+              type="button"
+              className="kb-themes-use"
+              aria-pressed={activeId === t.id}
+              onClick={() => activate.mutate(t.id)}
+            >
               <span className={cx('kb-themes-radio', { on: activeId === t.id })} aria-hidden />
               <span
                 className="kb-themes-chip"
@@ -275,6 +286,7 @@ export function ThemesSection() {
               <button
                 type="button"
                 className="kb-btn"
+                aria-label={`${editingId === t.id ? 'Done editing' : 'Edit'} ${t.name}`}
                 onClick={() => {
                   setNameDraft(null)
                   setEditMode(effectiveMode())
@@ -283,22 +295,34 @@ export function ThemesSection() {
               >
                 {editingId === t.id ? 'Done' : 'Edit'}
               </button>
-              <button type="button" className="kb-btn" onClick={() => void duplicate(t)}>
+              <button
+                type="button"
+                className="kb-btn"
+                aria-label={`Duplicate ${t.name}`}
+                onClick={() => void duplicate(t)}
+              >
                 Duplicate
               </button>
               <button
                 type="button"
                 className="kb-btn"
+                aria-label={`Export ${t.name}`}
                 onClick={() => void commands.exportTheme(t).catch(() => undefined)}
               >
                 Export
               </button>
-              <button type="button" className="kb-btn" onClick={() => void copyCode(t)}>
+              <button
+                type="button"
+                className="kb-btn"
+                aria-label={`${copiedId === t.id ? 'Copied code for' : 'Copy code for'} ${t.name}`}
+                onClick={() => void copyCode(t)}
+              >
                 {copiedId === t.id ? 'Copied' : 'Copy code'}
               </button>
               <button
                 type="button"
                 className="kb-btn is-danger"
+                aria-label={`Delete ${t.name}`}
                 onClick={() => setConfirmDelete(t)}
               >
                 Delete

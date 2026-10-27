@@ -39,7 +39,7 @@ export function VaultSection() {
 
   return (
     <section id={VAULT_SECTION} className="sec">
-      <div className="sec-h">Vault</div>
+      <h2 className="sec-h">Vault</h2>
 
       {!supported ? (
         <p className="kb-vault-msg">

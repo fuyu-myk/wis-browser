@@ -23,7 +23,7 @@ interface PerformanceSectionProps {
 export function PerformanceSection({ settings, onUpdate }: PerformanceSectionProps) {
   return (
       <section id="performance" className="sec">
-        <div className="sec-h">Performance</div>
+        <h2 className="sec-h">Performance</h2>
         <div className="row">
           <div className="l">
             <span>Sleep inactive tabs</span>

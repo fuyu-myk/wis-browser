@@ -62,7 +62,7 @@ export function BookmarksSection({ workspaceId, ephemeral }: BookmarksSectionPro
 
   return (
     <section id="bookmarks" className="sec">
-      <div className="sec-h">Bookmarks</div>
+      <h2 className="sec-h">Bookmarks</h2>
       <div className="row">
         <div className="l">
           <span>Import from HTML</span>
@@ -98,7 +98,10 @@ export function BookmarksSection({ workspaceId, ephemeral }: BookmarksSectionPro
         </button>
       </div>
       {status && (
-        <p className={cx('kb-backup-status', { 'is-error': status.kind === 'err' })}>
+        <p
+          className={cx('kb-backup-status', { 'is-error': status.kind === 'err' })}
+          role={status.kind === 'err' ? 'alert' : 'status'}
+        >
           {status.text}
         </p>
       )}

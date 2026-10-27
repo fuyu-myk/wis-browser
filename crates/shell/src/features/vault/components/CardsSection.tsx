@@ -89,7 +89,7 @@ export function CardsSection({ settings, onUpdate }: CardsSectionProps) {
 
   return (
     <section id="cards" className="sec">
-      <div className="sec-h">Payment cards</div>
+      <h2 className="sec-h">Payment cards</h2>
       <div className="row">
         <div className="l">
           <span>Save and fill payment cards</span>

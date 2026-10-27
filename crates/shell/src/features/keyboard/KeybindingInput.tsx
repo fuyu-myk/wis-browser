@@ -29,6 +29,8 @@ interface KeybindingInputProps {
   conflicting?: boolean
   /** Accessible label for the row, e.g. "New tab". */
   ariaLabel?: string
+  /** Id of text explaining the binding, such as a conflict. */
+  describedBy?: string
 }
 
 export function KeybindingInput({
@@ -37,6 +39,7 @@ export function KeybindingInput({
   onChange,
   conflicting,
   ariaLabel,
+  describedBy,
 }: KeybindingInputProps) {
   const [recording, setRecording] = useState(false)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
@@ -77,6 +80,8 @@ export function KeybindingInput({
     : value
       ? prettyAccelerator(value)
       : '—'
+  const binding = recording ? 'press the new keys' : value ? display : 'none'
+  const spokenName = `${ariaLabel ? `${ariaLabel} shortcut` : 'Shortcut'}: ${binding}`
 
   const showReset = !recording && value !== defaultValue
 
@@ -93,7 +98,9 @@ export function KeybindingInput({
         onClick={() => (recording ? stopRecord() : startRecord())}
         onKeyDown={onKeyDown}
         onBlur={() => recording && stopRecord()}
-        aria-label={ariaLabel ? `${ariaLabel} shortcut` : 'Shortcut'}
+        aria-label={spokenName}
+        aria-pressed={recording}
+        aria-describedby={describedBy}
         data-keybind-capture={recording ? '' : undefined}
       >
         {display}
@@ -103,7 +110,7 @@ export function KeybindingInput({
           type="button"
           className="kb-keybind-reset"
           onClick={onReset}
-          aria-label="Reset to default"
+          aria-label={ariaLabel ? `Reset ${ariaLabel} shortcut to default` : 'Reset to default'}
           title="Reset to default"
         >
           ↺

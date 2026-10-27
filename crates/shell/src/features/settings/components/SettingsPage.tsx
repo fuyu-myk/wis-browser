@@ -47,6 +47,7 @@ import { BackupSection } from '@/features/settings/components/BackupSection'
 import { AiSection } from '@/features/ai/components/AiSection'
 import { SettingsSearch } from '@/features/settings/components/SettingsSearch'
 import { scrollBehavior } from '@/lib/motion'
+import { firstStop } from '@/lib/tabFocus'
 
 interface NavSection {
   id: string
@@ -78,6 +79,13 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'shortcuts', label: 'Shortcuts', icon: <KeyboardIcon /> },
   { id: 'backup', label: 'Backup & restore', icon: <LockIcon /> },
 ]
+
+function focusHeading(section: Element | null | undefined): void {
+  const heading = section?.querySelector<HTMLElement>('.sec-h')
+  if (!heading) return
+  heading.tabIndex = -1
+  heading.focus({ preventScroll: true })
+}
 
 export function SettingsPage({ tabId }: { tabId: TabId }) {
   const { data: state } = useBrowserState()
@@ -160,11 +168,12 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
     }, 700)
   }
 
-  const scrollTo = (picked: string) => {
+  const scrollTo = (picked: string, fromKeyboard = false) => {
     const id = navTarget(picked, vaultOpen)
     showSection(id)
     const el = mainRef.current?.querySelector(`#${id}`)
     if (el) el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' })
+    if (fromKeyboard) focusHeading(el)
   }
 
   const reveal = (row: HTMLElement) => {
@@ -175,6 +184,9 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
     void row.offsetWidth
     row.classList.add('is-found')
     row.addEventListener('animationend', () => row.classList.remove('is-found'), { once: true })
+    const control = firstStop(row)
+    if (control) control.focus({ preventScroll: true })
+    else focusHeading(row.closest('.sec'))
   }
 
   return (
@@ -196,8 +208,8 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
         }
       }}
     >
-      <aside className="kb-settings-nav" aria-label="Settings sections" ref={navRef}>
-        <div className="kb-settings-nav-title">Settings</div>
+      <nav className="kb-settings-nav" aria-label="Settings sections" ref={navRef}>
+        <h1 className="kb-settings-nav-title">Settings</h1>
         <SettingsSearch query={query} onQuery={setQuery} root={mainEl} onPick={reveal} />
         {!searching && navInd !== null && (
           <span
@@ -217,13 +229,14 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
               key={s.id}
               type="button"
               className={cx({ 'is-active': activeSection === s.id })}
-              onClick={() => scrollTo(s.id)}
+              aria-current={activeSection === s.id ? 'true' : undefined}
+              onClick={(e) => scrollTo(s.id, e.detail === 0)}
             >
               {s.icon}
               <span>{s.label}</span>
             </button>
           ))}
-      </aside>
+      </nav>
       <div className="kb-settings-main" ref={setMain}>
         <AppearanceSection
           settings={settings}

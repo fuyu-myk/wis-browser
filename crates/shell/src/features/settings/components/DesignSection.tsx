@@ -137,7 +137,7 @@ export function DesignSection({ settings, onUpdate }: DesignSectionProps) {
 
   return (
     <section id="design" className="sec">
-      <div className="sec-h">Design</div>
+      <h2 className="sec-h">Design</h2>
 
       <div className="row">
         <div className="l">
@@ -248,7 +248,7 @@ export function DesignSection({ settings, onUpdate }: DesignSectionProps) {
         </div>
       </div>
 
-      <div className="sec-h">Liquid glass</div>
+      <h2 className="sec-h">Liquid glass</h2>
       <p className="kb-design-note">Takes effect when Liquid glass is on (Appearance).</p>
 
       <div className="row">

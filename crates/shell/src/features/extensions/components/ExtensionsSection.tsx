@@ -137,7 +137,7 @@ export function ExtensionsSection({ installed, workspace, storeSearch, onUpdate 
 
   return (
     <section id="extensions" className="sec">
-      <div className="sec-h">Extensions</div>
+      <h2 className="sec-h">Extensions</h2>
       <div className="row">
         <div className="l">
           <span>Add an extension</span>
@@ -353,7 +353,11 @@ export function ExtensionsSection({ installed, workspace, storeSearch, onUpdate 
           )}
         </div>
       ))}
-      {error && <p className="kb-backup-status is-error">{error}</p>}
+      {error && (
+        <p className="kb-backup-status is-error" role="alert">
+          {error}
+        </p>
+      )}
       <ConfirmDialog
         open={staged !== null}
         title={staged ? `Add ${staged.review.name} ${staged.review.version}?` : ''}

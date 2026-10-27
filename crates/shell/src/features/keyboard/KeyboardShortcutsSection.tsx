@@ -41,7 +41,7 @@ export function KeyboardShortcutsSection({
 
   return (
     <section id="shortcuts" className="sec">
-      <div className="sec-h">Keyboard shortcuts</div>
+      <h2 className="sec-h">Keyboard shortcuts</h2>
       <div className="row">
         <div className="l">
           <span>Apply shortcuts</span>
@@ -71,7 +71,7 @@ export function KeyboardShortcutsSection({
               <div className="kb-keybind-row-main">
                 <span className="kb-keybind-row-label">{actionLabel(action)}</span>
                 {isConflicting && (
-                  <span className="kb-keybind-row-conflict">
+                  <span className="kb-keybind-row-conflict" id={`kb-conflict-${action}`}>
                     Also bound to{' '}
                     {conflicts.map(actionLabel).join(', ')}
                   </span>
@@ -82,6 +82,7 @@ export function KeyboardShortcutsSection({
                 defaultValue={fallback}
                 conflicting={isConflicting}
                 ariaLabel={actionLabel(action)}
+                describedBy={isConflicting ? `kb-conflict-${action}` : undefined}
                 onChange={(next) => {
                   // `null` from the input means "reset to default".
                   onChange({ [action]: next ?? '' })

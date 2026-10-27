@@ -52,8 +52,10 @@ export function TlsErrorPage({ tab }: TlsErrorPageProps) {
             <path d="M12 17.5h.01" />
           </svg>
         </div>
-        <h1 className="kb-neterror-title">Your connection to {host} isn&apos;t private</h1>
-        <p className="kb-neterror-detail">{detailFor(error.tls, host)}</p>
+        <div className="kb-neterror-message" role="alert">
+          <h1 className="kb-neterror-title">Your connection to {host} isn&apos;t private</h1>
+          <p className="kb-neterror-detail">{detailFor(error.tls, host)}</p>
+        </div>
         <p className="kb-neterror-url">{error.url}</p>
         <button
           type="button"

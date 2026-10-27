@@ -78,7 +78,7 @@ export function PrivacySection({ settings, activeWorkspace, onUpdate }: PrivacyS
   })
   return (
       <section id="privacy" className="sec">
-        <div className="sec-h">Privacy</div>
+        <h2 className="sec-h">Privacy</h2>
         {activeWorkspace ? (
           <div className="row">
             <div className="l">

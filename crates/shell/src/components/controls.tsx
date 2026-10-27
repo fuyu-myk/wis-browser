@@ -6,14 +6,36 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type RefObject,
 } from 'react'
 
 import { cx } from '@/lib/cx'
 import { arrowStep } from '@/lib/arrowNav'
+
+/**
+ * Ties a control to its Settings row's explanation (the last line of the
+ * row's `.l` text).
+ */
+function useRowDescription(ref: RefObject<HTMLElement | null>) {
+  const id = useId()
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const lines = el.closest('.row')?.querySelectorAll<HTMLElement>(':scope > .l > span')
+    if (!lines || lines.length < 2) {
+      el.removeAttribute('aria-describedby')
+      return
+    }
+    const description = lines[lines.length - 1]
+    if (!description.id) description.id = id
+    el.setAttribute('aria-describedby', description.id)
+  })
+}
 
 // ─── Switch ──────────────────────────────────────────────────────────────
 
@@ -24,8 +46,11 @@ interface SwitchProps {
 }
 
 export function Switch({ checked, onChange, label }: SwitchProps) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRowDescription(ref)
   return (
     <button
+      ref={ref}
       type="button"
       role="switch"
       aria-checked={checked}
@@ -84,6 +109,7 @@ export function Segmented<T extends string>({
   disabled = false,
 }: SegmentedProps<T>) {
   const rootRef = useRef<HTMLDivElement | null>(null)
+  useRowDescription(rootRef)
   const values = options.map((opt) => opt.value)
   const [thumb, setThumb] = useState<{ left: number; width: number } | null>(null)
 
@@ -220,6 +246,9 @@ export function ColorPicker({
   const [open, setOpen] = useState(autoOpen)
   const [hexDraft, setHexDraft] = useState(value)
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const swatchRef = useRef<HTMLButtonElement | null>(null)
+  const hueRef = useRef<HTMLInputElement | null>(null)
+  const userOpenedRef = useRef(false)
   const norm = normalizeHex(value) ?? '#000000'
   const alpha = norm.length === 9 ? parseInt(norm.slice(7, 9), 16) / 255 : 1
   const hsv = hexToHsv(norm.slice(0, 7)) ?? { h: 0, s: 0, v: 1 }
@@ -233,6 +262,10 @@ export function ColorPicker({
   useEffect(() => setHexDraft(value), [value])
 
   useEffect(() => {
+    if (open && userOpenedRef.current) hueRef.current?.focus()
+  }, [open])
+
+  useEffect(() => {
     if (!open) return
     const dismiss = () => {
       setOpen(false)
@@ -242,13 +275,16 @@ export function ColorPicker({
       if (!rootRef.current?.contains(e.target as Node)) dismiss()
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') dismiss()
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      dismiss()
+      swatchRef.current?.focus()
     }
     document.addEventListener('pointerdown', onDown)
-    document.addEventListener('keydown', onKey)
+    document.addEventListener('keydown', onKey, true)
     return () => {
       document.removeEventListener('pointerdown', onDown)
-      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('keydown', onKey, true)
     }
   }, [open, onCancel])
 
@@ -269,11 +305,17 @@ export function ColorPicker({
     <div className="kb-colorpick" ref={rootRef}>
       <button
         type="button"
+        ref={swatchRef}
         className="kb-colorpick-swatch"
         style={{ background: value }}
         aria-label={label ?? 'Pick colour'}
+        aria-haspopup="dialog"
+        aria-expanded={open}
         title={label ?? value}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          userOpenedRef.current = true
+          setOpen((v) => !v)
+        }}
       />
       {open && (
         <div className="kb-colorpick-pop" role="dialog" aria-label="Colour picker">
@@ -299,8 +341,10 @@ export function ColorPicker({
             className="kb-colorpick-hue"
             min={0}
             max={359}
+            ref={hueRef}
             value={Math.round(hsv.h)}
             aria-label="Hue"
+            aria-valuetext={`${Math.round(hsv.h)} degrees`}
             onChange={(e) => emit({ ...hsv, h: Number(e.target.value) })}
           />
           <input

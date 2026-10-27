@@ -192,7 +192,7 @@ export function NetworkSection({ workspace, settings }: NetworkSectionProps) {
 
   return (
     <section id="network" className="sec">
-      <div className="sec-h">Network</div>
+      <h2 className="sec-h">Network</h2>
       {workspace && (
         <div className="row">
           <div className="l">

@@ -111,7 +111,11 @@ export function FilterListsSection({
           </span>
         </div>
       </div>
-      {status !== null && <p className="kb-filterlists-status">{status}</p>}
+      {status !== null && (
+        <p className="kb-filterlists-status" role="status">
+          {status}
+        </p>
+      )}
       <ul className="kb-taskman-list">
         {BUILTINS.map((b) => (
           <li className="kb-taskman-row" key={b.name}>

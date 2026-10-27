@@ -213,6 +213,7 @@ export function NewTabPage({ activeTab }: NewTabPageProps) {
             ref={inputRef}
             type="text"
             placeholder="Enter search or web address"
+            aria-label="Search or web address"
             value={query}
             onChange={(e) => suggest.onInput(e.target.value)}
             onClick={() => suggest.onFocus()}

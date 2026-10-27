@@ -268,6 +268,7 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
               <input
                 type="text"
                 placeholder={view === 'history' ? 'Search history' : 'Search recently closed'}
+                aria-label={view === 'history' ? 'Search history' : 'Search recently closed'}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus
@@ -421,6 +422,7 @@ function HistoryRow({
       <button
         type="button"
         className="kb-history-link"
+        aria-pressed={selectMode ? selected : undefined}
         data-menu-url={entry.url}
         data-menu-label={title}
         onClick={selectMode ? onToggle : onOpen}

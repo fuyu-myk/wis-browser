@@ -124,7 +124,7 @@ export function SidebarWidgetsSection({ widgets, onUpdate }: SidebarWidgetsSecti
 
   return (
     <section id="widgets" className="sec">
-      <div className="sec-h">Sidebar widgets</div>
+      <h2 className="sec-h">Sidebar widgets</h2>
       <div className="row">
         <div className="l">
           <span>Quick launch</span>

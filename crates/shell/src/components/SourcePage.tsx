@@ -64,7 +64,7 @@ export function SourcePage({ from, target }: SourcePageProps) {
         )}
       </header>
       {source ? (
-        <div className="kb-source-body">
+        <div className="kb-source-body" tabIndex={0} role="region" aria-label="Page source">
           {source.chunks.map((chunk, index) => (
             <pre className="kb-source-chunk" key={index}>
               {chunk}

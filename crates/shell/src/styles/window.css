@@ -5822,9 +5822,10 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   font-size: 18px;
   font-weight: 500;
   letter-spacing: -0.01em;
-  margin-bottom: 12px;
+  margin: 0 0 12px;
   color: var(--text-primary);
 }
+.kb-settings-page .sec-h:focus { outline: none; }
 .kb-settings-nav button {
   display: flex;
   align-items: center;
@@ -5886,7 +5887,7 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--text-primary);
-  margin-bottom: 8px;
+  margin: 0 0 8px;
 }
 .kb-settings-page .row {
   display: flex;
@@ -9658,3 +9659,5 @@ body.motion-off .kb-ai-think-label.is-live {
 
 /* The sidebar tab tree wraps folders and loose tabs for assistive tech only. */
 .kb-tabtree { display: contents; }
+
+.kb-neterror-message { display: flex; flex-direction: column; align-items: center; gap: 10px; }

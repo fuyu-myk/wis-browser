@@ -171,7 +171,7 @@ export function PasswordsSection() {
 
   return (
     <section id="passwords" className="sec">
-      <div className="sec-h">Passwords</div>
+      <h2 className="sec-h">Passwords</h2>
       <div className="row">
         <div className="l">
           <span>Offer a strong password on signup</span>
@@ -244,7 +244,10 @@ export function PasswordsSection() {
       </div>
 
       {csvStatus && (
-        <p className={cx('kb-backup-status', { 'is-error': csvStatus.kind === 'err' })}>
+        <p
+          className={cx('kb-backup-status', { 'is-error': csvStatus.kind === 'err' })}
+          role={csvStatus.kind === 'err' ? 'alert' : 'status'}
+        >
           {csvStatus.text}
         </p>
       )}
@@ -277,6 +280,7 @@ export function PasswordsSection() {
           <input
             type="text"
             placeholder="Search passwords"
+            aria-label="Search passwords"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             spellCheck={false}
