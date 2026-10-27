@@ -381,8 +381,9 @@ export function useTabSplit({
       }
       await commands.setOverlayBounds('tabmenu', x, y, MENU_W, MENU_INITIAL_H)
     }
-    void place().catch(() => undefined)
-    void emit(OPEN_EVENT, payload)
+    void place()
+      .catch(() => undefined)
+      .then(() => emit(OPEN_EVENT, payload))
     setMenuOpen(true)
   }
 

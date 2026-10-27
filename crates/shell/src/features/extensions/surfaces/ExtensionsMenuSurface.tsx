@@ -20,6 +20,7 @@ import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import type { ExtensionsMenuPayload } from '@/features/extensions/hooks/useExtensionsMenu'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { useEscapeKey, useSurfaceFocus } from '@/hooks/useSurfaceFocus'
 import { ExtensionPrompt } from '@/features/extensions/components/ExtensionPrompt'
 import { ExtensionStoreAdd } from '@/features/extensions/components/ExtensionStoreAdd'
 import { ExtensionStoreLink } from '@/features/extensions/components/ExtensionStoreLink'
@@ -76,9 +77,12 @@ export function ExtensionsMenuSurface() {
     }
   }, [])
 
+  useSurfaceFocus(menu)
+  useEscapeKey(menu !== null && menu.kind !== 'prompt' && adding === null && linking === null, close)
+
   if (!menu) return null
 
-  const close = () => {
+  function close() {
     setMenu(null)
     setAdding(null)
     setLinking(null)

@@ -27,6 +27,7 @@ import { currentPlatform } from '@/lib/platform'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { focusSurface } from '@/hooks/useSurfaceFocus'
 import { menusGlass } from '@/lib/glass'
 
 type Scope = 'workspace' | 'all'
@@ -69,7 +70,7 @@ export function ClearDataSurface() {
       setSiteKinds(DEFAULT_KINDS)
       setBusy(false)
       setError(null)
-      void commands.focusSelf().catch(() => undefined)
+      focusSurface()
     }).then((fn) => {
       if (cancelled) fn()
       else unlisten = fn

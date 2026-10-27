@@ -14,6 +14,7 @@ import { cx } from '@/lib/cx'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { useEscapeKey, useSurfaceFocus } from '@/hooks/useSurfaceFocus'
 import { menusGlass } from '@/lib/glass'
 
 const NAV_GUARD_SHOW_EVENT = 'wis-navguard-show'
@@ -92,6 +93,9 @@ export function NavGuardSurface() {
     close()
   }, [close])
 
+  useSurfaceFocus(data)
+  useEscapeKey(data !== null, takeMeBack)
+
   if (!data) return null
 
   const risk = data.assessment.risk
@@ -112,7 +116,7 @@ export function NavGuardSurface() {
           ))}
         </ul>
         <div className="kb-navguard-actions">
-          <button type="button" className="kb-navguard-back" onClick={takeMeBack}>
+          <button type="button" className="kb-navguard-back" onClick={takeMeBack} data-autofocus>
             Take me back
           </button>
           <button type="button" className="kb-navguard-proceed" onClick={proceed}>

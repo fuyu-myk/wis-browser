@@ -16,6 +16,7 @@ import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import type { SitePanelSize } from '@/features/site/hooks/useSitePanel'
 import { useSiteProtection } from '@/features/site/hooks/useSiteProtection'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { useSurfaceFocus } from '@/hooks/useSurfaceFocus'
 import { cx } from '@/lib/cx'
 import { menusGlass } from '@/lib/glass'
 import { XIcon } from '@/lib/icons'
@@ -110,6 +111,8 @@ export function SitePanelSurface() {
     more,
     rules.length,
   ])
+
+  useSurfaceFocus(panel)
 
   if (!panel || !site) return null
 

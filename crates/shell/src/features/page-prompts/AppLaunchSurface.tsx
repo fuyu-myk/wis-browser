@@ -15,6 +15,7 @@ import { Switch } from '@/components/controls'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { useEscapeKey, useSurfaceFocus } from '@/hooks/useSurfaceFocus'
 import { menusGlass } from '@/lib/glass'
 import type { AppLaunchRequest } from '@/features/page-prompts/useAppLaunchOverlay'
 
@@ -51,11 +52,15 @@ export function AppLaunchSurface() {
     }
   }, [])
 
+  useSurfaceFocus(open && req?.requestId)
+  useEscapeKey(open, () => decide(false, false))
+
   if (!req) return null
 
-  const decide = (granted: boolean) => {
-    void commands.appLaunchDecide(req.requestId, granted, remember).catch(() => undefined)
-    if (remember && req.initiatorHost) {
+  function decide(granted: boolean, keep = remember) {
+    if (!req) return
+    void commands.appLaunchDecide(req.requestId, granted, keep).catch(() => undefined)
+    if (keep && req.initiatorHost) {
       const current = state?.settings.app_launch_permissions ?? {}
       const key = `${req.scheme}|${req.initiatorHost}`
       void commands
@@ -76,6 +81,7 @@ export function AppLaunchSurface() {
     <div
       className={cx('kb-perm-card', { 'glass-menus': glassMenus, 'is-open': open })}
       role="alertdialog"
+      aria-modal="true"
       aria-label="Open in app"
     >
       <div className="kb-perm-head">
@@ -103,15 +109,10 @@ export function AppLaunchSurface() {
       <div className="kb-perm-actions">
         {req.hasHandler ? (
           <>
-            <button type="button" className="kb-perm-btn" onClick={() => decide(false)}>
+            <button type="button" className="kb-perm-btn" onClick={() => decide(false)} data-autofocus>
               Cancel
             </button>
-            <button
-              type="button"
-              className="kb-perm-btn is-primary"
-              onClick={() => decide(true)}
-              autoFocus
-            >
+            <button type="button" className="kb-perm-btn is-primary" onClick={() => decide(true)}>
               Open
             </button>
           </>
@@ -120,7 +121,7 @@ export function AppLaunchSurface() {
             type="button"
             className="kb-perm-btn"
             onClick={() => decide(false)}
-            autoFocus
+            data-autofocus
           >
             Close
           </button>

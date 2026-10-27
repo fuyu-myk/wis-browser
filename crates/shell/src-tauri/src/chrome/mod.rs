@@ -6,6 +6,7 @@ pub(crate) mod keybind;
 pub(crate) mod menu;
 pub(crate) mod multi_window;
 pub(crate) mod overlay;
+pub(crate) mod overlay_focus;
 pub(crate) mod pane_container;
 pub(crate) mod pane_focus;
 pub(crate) mod peek;

@@ -29,6 +29,7 @@ import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useDownloads } from '@/features/downloads/useDownloads'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { useSurfaceFocus } from '@/hooks/useSurfaceFocus'
 import { menusGlass } from '@/lib/glass'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
@@ -68,13 +69,9 @@ export function DownloadsMenuSurface() {
     void emit(DOWNLOADS_CLOSED_EVENT).catch(() => undefined)
   }, [])
 
-  // Take focus when first shown (the chrome shows/hides the persistent overlay).
-  useEffect(() => {
-    void commands.focusSelf().catch(() => undefined)
-  }, [])
-
   const [visible, setVisible] = useState(false)
   const [openNonce, setOpenNonce] = useState(0)
+  useSurfaceFocus(visible && openNonce)
   useEffect(() => {
     let unlisten: UnlistenFn | null = null
     let cancelled = false

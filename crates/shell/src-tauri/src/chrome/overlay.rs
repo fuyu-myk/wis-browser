@@ -120,11 +120,17 @@ pub async fn focus_self(webview: tauri::Webview) -> WisResult<()> {
         use objc2::msg_send;
         use objc2::runtime::{AnyObject, Bool};
 
+        let is_overlay = webview.label().starts_with(OVERLAY_PREFIX);
         let (tx, rx) = std::sync::mpsc::channel::<()>();
         webview
             .with_webview(move |w| unsafe {
                 let view: *mut AnyObject = w.inner() as *mut AnyObject;
-                if !view.is_null() {
+                let hidden_overlay =
+                    is_overlay && !view.is_null() && crate::chrome::overlay_focus::is_hidden(view);
+                if !view.is_null() && !hidden_overlay {
+                    if is_overlay {
+                        crate::chrome::overlay_focus::remember(view);
+                    }
                     let window: *mut AnyObject = msg_send![view, window];
                     if !window.is_null() {
                         let _: Bool = msg_send![window, makeFirstResponder: view];
@@ -459,7 +465,25 @@ pub async fn hide_overlay(window: tauri::Window, name: String) -> WisResult<()> 
     let Some(wv) = window.app_handle().webviews().get(&label).cloned() else {
         return Ok(());
     };
+    #[cfg(target_os = "macos")]
+    give_focus_back(&wv);
     wv.hide().map_err(|err| WisError::InvalidInput {
         message: format!("hide for {label}: {err}"),
     })
+}
+
+/// Hand focus back to the webview the overlay took it from. Queued on the
+/// main thread ahead of the hide that follows, so it runs first.
+#[cfg(target_os = "macos")]
+fn give_focus_back(wv: &tauri::Webview) {
+    let queued = wv.with_webview(|w| {
+        let view = w.inner() as *mut objc2::runtime::AnyObject;
+        if !view.is_null() {
+            // SAFETY: main thread (with_webview), `view` is the live overlay.
+            unsafe { crate::chrome::overlay_focus::give_back(view) };
+        }
+    });
+    if let Err(err) = queued {
+        log::warn!("focus return for {}: {err}", wv.label());
+    }
 }

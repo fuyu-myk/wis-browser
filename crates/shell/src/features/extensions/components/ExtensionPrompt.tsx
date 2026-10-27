@@ -55,10 +55,10 @@ export function ExtensionPrompt({ request, glass, onDone }: ExtensionPromptProps
         </ul>
         <span className="kb-extprompt-note">You can take this back in Settings, under Extensions.</span>
         <div className="kb-perm-actions">
-          <button type="button" className="kb-perm-btn" onClick={() => decide(false)}>
+          <button type="button" className="kb-perm-btn" onClick={() => decide(false)} autoFocus>
             Don’t allow
           </button>
-          <button type="button" className="kb-perm-btn is-primary" onClick={() => decide(true)} autoFocus>
+          <button type="button" className="kb-perm-btn is-primary" onClick={() => decide(true)}>
             Allow
           </button>
         </div>

@@ -15,6 +15,7 @@ import { Switch } from '@/components/controls'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { useEscapeKey, useSurfaceFocus } from '@/hooks/useSurfaceFocus'
 import { menusGlass } from '@/lib/glass'
 
 const SHOW_EVENT = 'wis-permission-show'
@@ -70,11 +71,15 @@ export function PermissionSurface() {
     }
   }, [])
 
+  useSurfaceFocus(open && req?.request_id)
+  useEscapeKey(open, () => decide(false, false))
+
   if (!req) return null
 
-  const decide = (granted: boolean) => {
-    void commands.resolveMediaPermission(req.request_id, granted, remember).catch(() => undefined)
-    if (remember) {
+  function decide(granted: boolean, keep = remember) {
+    if (!req) return
+    void commands.resolveMediaPermission(req.request_id, granted, keep).catch(() => undefined)
+    if (keep) {
       const current = state?.settings.media_permissions ?? {}
       const key = `${req.kind}|${req.origin}`
       void commands
@@ -92,6 +97,7 @@ export function PermissionSurface() {
     <div
       className={cx('kb-perm-card', { 'glass-menus': glassMenus, 'is-open': open })}
       role="alertdialog"
+      aria-modal="true"
       aria-label="Permission request"
     >
       <div className="kb-perm-head">
@@ -108,15 +114,10 @@ export function PermissionSurface() {
         <span>Remember this decision</span>
       </div>
       <div className="kb-perm-actions">
-        <button type="button" className="kb-perm-btn" onClick={() => decide(false)}>
+        <button type="button" className="kb-perm-btn" onClick={() => decide(false)} data-autofocus>
           Block
         </button>
-        <button
-          type="button"
-          className="kb-perm-btn is-primary"
-          onClick={() => decide(true)}
-          autoFocus
-        >
+        <button type="button" className="kb-perm-btn is-primary" onClick={() => decide(true)}>
           Allow
         </button>
       </div>

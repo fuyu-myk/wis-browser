@@ -23,6 +23,7 @@ import { NEW_TAB_URL } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
+import { focusSurface } from '@/hooks/useSurfaceFocus'
 import { menusGlass } from '@/lib/glass'
 
 const OPEN_EVENT = 'wis-tabmenu-open'
@@ -74,7 +75,7 @@ export function TabContextMenuSurface() {
       setTarget(e.payload)
       setOpenNonce((n) => n + 1)
       void qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
-      void commands.focusSelf().catch(() => undefined)
+      focusSurface()
     }).then((fn) => {
       if (cancelled) fn()
       else unlisten = fn

@@ -44,6 +44,11 @@ function scope(): ParentNode {
   return modals[modals.length - 1] ?? document
 }
 
+/** The first control Tab would reach inside `root`. */
+export function firstStop(root: ParentNode): HTMLElement | null {
+  return stops(root)[0] ?? null
+}
+
 function stops(root: ParentNode): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter(reachable)
 }
