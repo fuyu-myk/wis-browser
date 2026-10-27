@@ -181,7 +181,7 @@ body[data-platform="linux"] { --radius-scale: 0; }
   --scrollbar-thumb:       rgba(20,20,28,0.40);
   --scrollbar-thumb-hover: rgba(20,20,28,0.60);
   --text-primary:   #1A1916;
-  --text-secondary: #5C5A54;
+  --text-secondary: #45433E;
   --text-tertiary:  #65625B;
   --text-on-accent: #FFFFFF;
   --overlay:        rgba(26,25,22,0.04);
