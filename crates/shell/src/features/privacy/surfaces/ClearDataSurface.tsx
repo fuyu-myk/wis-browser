@@ -152,11 +152,16 @@ export function ClearDataSurface() {
       >
         <h2 className="kb-modal-title">Clear browsing data</h2>
 
-        <div className="kb-cbd-scope" role="tablist" aria-label="Scope" onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}>
+        <div
+          className="kb-cbd-scope"
+          role="radiogroup"
+          aria-label="Scope"
+          onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}
+        >
           <button
             type="button"
-            role="tab"
-            aria-selected={scope === 'workspace'}
+            role="radio"
+            aria-checked={scope === 'workspace'}
             className={cx({ 'is-on': scope === 'workspace' })}
             onClick={() => setScope('workspace')}
           >
@@ -164,8 +169,8 @@ export function ClearDataSurface() {
           </button>
           <button
             type="button"
-            role="tab"
-            aria-selected={scope === 'all'}
+            role="radio"
+            aria-checked={scope === 'all'}
             className={cx({ 'is-on': scope === 'all' })}
             onClick={() => setScope('all')}
           >
@@ -173,13 +178,18 @@ export function ClearDataSurface() {
           </button>
         </div>
 
-        <div className="kb-cbd-scope kb-cbd-range" role="tablist" aria-label="Time range" onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}>
+        <div
+          className="kb-cbd-scope kb-cbd-range"
+          role="radiogroup"
+          aria-label="Time range"
+          onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}
+        >
           {CLEAR_RANGES.map((r) => (
             <button
               key={r.value}
               type="button"
-              role="tab"
-              aria-selected={range === r.value}
+              role="radio"
+              aria-checked={range === r.value}
               className={cx({ 'is-on': range === r.value })}
               onClick={() => setRange(r.value)}
             >

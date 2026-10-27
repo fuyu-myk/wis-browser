@@ -56,7 +56,7 @@ export function SiteButton({ activeTab }: { activeTab: Tab | null }) {
   const kind = connectionKind(url)
   if (kind === 'wis') {
     return (
-      <span className="ico kb-chrome-page" title="Wis page" aria-label="Wis page">
+      <span className="ico kb-chrome-page" title="Wis page" role="img" aria-label="Wis page">
         <WisMark variant="solid-closed" size={14} />
       </span>
     )
@@ -65,7 +65,12 @@ export function SiteButton({ activeTab }: { activeTab: Tab | null }) {
   const connection = CONNECTIONS[kind]
   if (!site) {
     return (
-      <span className={cx('ico', connection.className)} title={connection.title} aria-label={connection.label}>
+      <span
+        className={cx('ico', connection.className)}
+        title={connection.title}
+        role="img"
+        aria-label={connection.label}
+      >
         {connection.glyph}
       </span>
     )

@@ -61,6 +61,7 @@ export function TopTabsRail({
 
   return (
     <aside
+      aria-label="Workspaces and tools"
       className={cx('kb-side', 'kb-rail', `is-${side}`, {
         'is-expanded': expanded,
       })}

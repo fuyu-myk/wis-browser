@@ -418,7 +418,7 @@ export function VaultMenuSurface() {
               </button>
             </div>
           </div>
-          {(candidates.length > 0 || address || card) && <div className="kb-vaultmenu-sep" />}
+          {(candidates.length > 0 || address || card) && <div className="kb-vaultmenu-sep" role="separator" />}
         </>
       )}
 
@@ -432,7 +432,7 @@ export function VaultMenuSurface() {
                 onUpdate={() => void onUpdateAddress()}
                 onDismiss={onDismissAddress}
               />
-              {(candidates.length > 0 || card) && <div className="kb-vaultmenu-sep" />}
+              {(candidates.length > 0 || card) && <div className="kb-vaultmenu-sep" role="separator" />}
             </>
           )}
 
@@ -444,7 +444,7 @@ export function VaultMenuSurface() {
                 onSave={() => void onSaveCard()}
                 onDismiss={onDismissCard}
               />
-              {candidates.length > 0 && <div className="kb-vaultmenu-sep" />}
+              {candidates.length > 0 && <div className="kb-vaultmenu-sep" role="separator" />}
             </>
           )}
 
@@ -485,7 +485,7 @@ export function VaultMenuSurface() {
             </button>
           )}
 
-          {(candidates.length > 0 || passwordField) && <div className="kb-vaultmenu-sep" />}
+          {(candidates.length > 0 || passwordField) && <div className="kb-vaultmenu-sep" role="separator" />}
           <button type="button" className="kb-vaultmenu-manage" role="menuitem" onClick={onManage}>
             Manage passwords
           </button>

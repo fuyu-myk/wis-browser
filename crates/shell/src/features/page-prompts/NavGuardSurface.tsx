@@ -103,14 +103,22 @@ export function NavGuardSurface() {
 
   return (
     <div className={cx('kb-navguard-backdrop', `risk-${risk}`, { 'glass-menus': glassMenus })}>
-      <div className={cx('kb-navguard', { 'glass-menus': glassMenus })} role="alertdialog" aria-modal="true">
+      <div
+        className={cx('kb-navguard', { 'glass-menus': glassMenus })}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="kb-navguard-title"
+        aria-describedby="kb-navguard-host kb-navguard-reasons"
+      >
         <div className="kb-navguard-icon">
           <ShieldGlyph />
         </div>
         <div className={cx('kb-navguard-level', `risk-${risk}`)}>{RISK_LABEL[risk]}</div>
-        <h1 className="kb-navguard-title">Wis stopped this page before it loaded</h1>
-        <p className="kb-navguard-host">{data.host}</p>
-        <ul className="kb-navguard-reasons">
+        <h1 className="kb-navguard-title" id="kb-navguard-title">Wis stopped this page before it loaded</h1>
+        <p className="kb-navguard-host" id="kb-navguard-host">
+          {data.host}
+        </p>
+        <ul className="kb-navguard-reasons" id="kb-navguard-reasons">
           {warnings.map((w) => (
             <li key={w.code}>{w.message}</li>
           ))}

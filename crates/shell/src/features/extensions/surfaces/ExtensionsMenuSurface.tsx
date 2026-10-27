@@ -40,7 +40,7 @@ function SiteLine({ site, removable, onChange }: SiteLineProps) {
         {site.allowed ? 'Runs on' : 'Wants'} {site.host}
       </span>
       {(!site.allowed || removable) && (
-        <button type="button" className="kb-extmenu-site-btn" onClick={() => onChange(!site.allowed)}>
+        <button type="button" role="menuitem" className="kb-extmenu-site-btn" onClick={() => onChange(!site.allowed)}>
           {site.allowed ? 'Remove' : 'Allow'}
         </button>
       )}
@@ -187,7 +187,7 @@ export function ExtensionsMenuSurface() {
               </button>
             </div>
           </div>
-          <div className="kb-extmenu-divider" />
+          <div className="kb-extmenu-divider" role="separator" />
         </>
       )}
       {actions.length === 0 ? (
@@ -216,6 +216,7 @@ export function ExtensionsMenuSurface() {
               </button>
               <button
                 type="button"
+                role="menuitem"
                 className={cx('kb-extmenu-options', { 'is-on': pinned.has(action.id) })}
                 title={pinned.has(action.id) ? 'Unpin from the address bar' : 'Pin to the address bar'}
                 aria-label={`${pinned.has(action.id) ? 'Unpin' : 'Pin'} ${action.name}`}
@@ -229,6 +230,7 @@ export function ExtensionsMenuSurface() {
               {action.has_options && (
                 <button
                   type="button"
+                  role="menuitem"
                   className="kb-extmenu-options"
                   title="Options"
                   aria-label={`${action.name} options`}
@@ -248,7 +250,7 @@ export function ExtensionsMenuSurface() {
           </Fragment>
         ))
       )}
-      <div className="kb-extmenu-divider" />
+      <div className="kb-extmenu-divider" role="separator" />
       <button type="button" role="menuitem" className="kb-extmenu-item" onClick={manage}>
         <span className="kb-extmenu-name">Manage extensions…</span>
       </button>

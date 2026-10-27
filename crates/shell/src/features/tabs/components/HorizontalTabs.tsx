@@ -545,6 +545,7 @@ export function HorizontalTabs({
         shift = partOffset(opts.memberIndex ?? -1, opts.memberFrom ?? -1, dropTarget.index)
       }
     }
+    const hostsUrlBar = isActive && integrateUrlBar
     return (
       <div
         key={tab.id}
@@ -552,7 +553,8 @@ export function HorizontalTabs({
         {...(loose ? { 'data-tab-id': tab.id } : {})}
         {...(member ? { 'data-mtab-id': tab.id } : {})}
         data-tab-row={tab.id}
-        role="button"
+        aria-current={isActive ? 'page' : undefined}
+        aria-keyshortcuts="Delete"
         tabIndex={isActive ? 0 : -1}
         className={cx('h-tab', {
           'is-closing': closingIds.has(tab.id),
@@ -600,7 +602,7 @@ export function HorizontalTabs({
         }
         title={tab.title}
       >
-        {isActive && integrateUrlBar ? (
+        {hostsUrlBar ? (
           <UrlContent tab={tab} />
         ) : (
           <>
@@ -881,6 +883,8 @@ export function HorizontalTabs({
       <div
         className={cx('tabs-h', { compact })}
         ref={stripRef}
+        role="group"
+        aria-label="Tabs"
         data-tab-strip
         onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, '[data-tab-row], .h-island-name', 'horizontal')}
       >

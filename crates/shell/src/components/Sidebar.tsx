@@ -139,6 +139,7 @@ export function Sidebar({
   return (
     <aside
       ref={asideRef}
+      aria-label="Tabs and workspaces"
       className={cx('kb-side', { 'is-expanded': expanded })}
       onMouseLeave={() => collapsible && !keepOpen && setExpanded(false)}
       onClick={handleAsideClick}

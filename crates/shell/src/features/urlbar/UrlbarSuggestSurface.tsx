@@ -19,6 +19,7 @@ import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
 import { menusGlass } from '@/lib/glass'
 import {
+  hostOf,
   isRemovable,
   URLBAR_PICK_EVENT,
   URLBAR_REMOVE_EVENT,
@@ -26,15 +27,6 @@ import {
   type RenderRow,
   type UrlbarRenderPayload,
 } from '@/features/urlbar/urlbarSuggest'
-
-/** Host portion of a URL for the secondary line, www-stripped. */
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host.replace(/^www\./, '')
-  } catch {
-    return url
-  }
-}
 
 // Process-wide (per-webview) favicon cache: url -> data URL (or null if the
 // origin has none cached). Lookups are read-only against the local favicon

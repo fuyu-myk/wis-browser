@@ -825,6 +825,7 @@ export function BookmarksMenuSurface() {
             {isPinned(ctx.id) ? (
               <button
                 type="button"
+                role="menuitem"
                 className="kb-bmctx-row"
                 onClick={() => {
                   setPinned.mutate({ id: ctx.id, pinned: false })
@@ -836,6 +837,7 @@ export function BookmarksMenuSurface() {
             ) : (
               <button
                 type="button"
+                role="menuitem"
                 className="kb-bmctx-row"
                 onClick={() => {
                   setPinned.mutate({ id: ctx.id, pinned: true })
@@ -845,7 +847,7 @@ export function BookmarksMenuSurface() {
                 Pin to top
               </button>
             )}
-            <div className="kb-bmctx-sep" />
+            <div className="kb-bmctx-sep" role="separator" />
             <div className="kb-bmctx-label">Move to</div>
             <button
               type="button"

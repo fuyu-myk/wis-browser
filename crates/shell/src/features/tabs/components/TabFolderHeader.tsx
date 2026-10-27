@@ -15,6 +15,7 @@ import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { renderIconRef } from '@/features/workspaces/lib/iconGlyphs'
 import { IconPicker } from '@/features/workspaces/components/IconPicker'
 import { moveFocusByArrow } from '@/lib/arrowNav'
+import { accentName } from '@/lib/accents'
 
 const ACCENTS: AccentColor[] = [
   'primary',
@@ -163,9 +164,11 @@ export function TabFolderHeader({
           'is-drop': isDropTarget,
         })}
         data-folder-id={folder.id}
-        role="button"
+        role="treeitem"
         tabIndex={0}
-        aria-pressed={selected}
+        aria-level={1}
+        aria-selected={selected}
+        aria-expanded={!folder.collapsed}
         onPointerDown={(e) => onHeaderPointerDown?.(e)}
         onClick={() => {
           if (renaming) return
@@ -190,6 +193,12 @@ export function TabFolderHeader({
           } else if (e.key === ' ') {
             e.preventDefault()
             select.mutate()
+          } else if (e.target === e.currentTarget && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+            const collapsing = e.key === 'ArrowLeft'
+            if (collapsing !== folder.collapsed) {
+              e.preventDefault()
+              collapse.mutate(collapsing)
+            }
           }
         }}
       >
@@ -199,7 +208,8 @@ export function TabFolderHeader({
         <button
           type="button"
           className="kb-tabfolder-chevron-btn"
-          aria-label={folder.collapsed ? 'Expand folder' : 'Collapse folder'}
+          aria-hidden
+          tabIndex={-1}
           onClick={(e) => {
             e.stopPropagation()
             collapse.mutate(!folder.collapsed)
@@ -255,7 +265,12 @@ export function TabFolderHeader({
       </div>
 
       {menuOpen && (
-        <div className="kb-tabfolder-menu" role="menu" onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'both')}>
+        <div
+          className="kb-tabfolder-menu"
+          role="group"
+          aria-label={`Options for ${folder.name}`}
+          onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'both')}
+        >
           <IconPicker
             value={folder.icon}
             onPick={(icon) => setIcon.mutate(icon)}
@@ -268,7 +283,8 @@ export function TabFolderHeader({
                 className={cx('kb-ws-swatch', `accent-${accent}`, {
                   on: accent === folder.accent,
                 })}
-                aria-label={accent}
+                aria-label={accentName(accent)}
+                aria-pressed={accent === folder.accent}
                 onClick={() => {
                   recolor.mutate(accent)
                   setMenuOpen(false)

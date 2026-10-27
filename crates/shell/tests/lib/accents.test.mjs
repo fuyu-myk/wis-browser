@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { ACCENT_ROTATION, FOLDER_ACCENTS, nextAccent } from '../../src/lib/accents.ts'
+import { ACCENT_ROTATION, FOLDER_ACCENTS, accentName, nextAccent } from '../../src/lib/accents.ts'
 
 test('the workspace and folder cycles use the same accents, each once', () => {
   assert.equal(new Set(ACCENT_ROTATION).size, ACCENT_ROTATION.length)
@@ -20,4 +20,11 @@ test('once every accent is taken the cycle continues by workspace count', () => 
   assert.equal(nextAccent([...ACCENT_ROTATION]), 'primary')
   assert.equal(nextAccent([...ACCENT_ROTATION, 'ink']), 'mint')
   assert.equal(nextAccent([...ACCENT_ROTATION, ...ACCENT_ROTATION.slice(0, 3)]), 'sun')
+})
+
+test('every accent has a readable name for assistive tech', () => {
+  assert.equal(accentName('primary'), 'Theme colour')
+  assert.equal(accentName('lila'), 'Lilac')
+  assert.equal(accentName('azur'), 'Azure')
+  for (const accent of ACCENT_ROTATION) assert.notEqual(accentName(accent), accent)
 })

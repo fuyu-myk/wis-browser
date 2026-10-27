@@ -98,15 +98,15 @@ export function PermissionSurface() {
       className={cx('kb-perm-card', { 'glass-menus': glassMenus, 'is-open': open })}
       role="alertdialog"
       aria-modal="true"
-      aria-label="Permission request"
+      aria-labelledby="kb-perm-host kb-perm-sub"
     >
       <div className="kb-perm-head">
         <span className="kb-perm-glyph" aria-hidden>
           {req.kind === 'microphone' ? <MicIcon /> : <CameraIcon />}
         </span>
         <div className="kb-perm-text">
-          <span className="kb-perm-host">{hostOf(req.origin)}</span>
-          <span className="kb-perm-sub">wants to use your {deviceLabel(req.kind)}</span>
+          <span className="kb-perm-host" id="kb-perm-host">{hostOf(req.origin)}</span>
+          <span className="kb-perm-sub" id="kb-perm-sub">wants to use your {deviceLabel(req.kind)}</span>
         </div>
       </div>
       <div className="kb-perm-remember">

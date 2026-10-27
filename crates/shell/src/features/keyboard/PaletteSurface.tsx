@@ -18,7 +18,7 @@
  *     without dismissing the palette so users can sweep stale tabs.
  */
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -384,6 +384,7 @@ export function PaletteSurface() {
         key={openNonce}
         className={cx('kb-palette', { 'glass-menus': glassMenus, 'is-closing': closing })}
         role="dialog"
+        aria-modal="true"
         aria-label="Command palette"
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -399,11 +400,28 @@ export function PaletteSurface() {
             autoCorrect="off"
             autoCapitalize="off"
             autoFocus
+            role="combobox"
+            aria-label="Search tabs, run actions, or paste a URL"
+            aria-autocomplete="list"
+            aria-controls={LIST_ID}
+            aria-expanded={sectioned.flat.length > 0}
+            aria-activedescendant={
+              highlight >= 0 && highlight < sectioned.flat.length ? optionId(highlight) : undefined
+            }
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onInputKeyDown}
           />
         </div>
-        <div className="kb-palette-results" ref={listRef}>
+        <span className="kb-sr-only" role="status">
+          {query.trim() !== '' && sectioned.flat.length === 0 ? 'No results' : ''}
+        </span>
+        <div
+          className="kb-palette-results"
+          ref={listRef}
+          id={LIST_ID}
+          role="listbox"
+          aria-label="Results"
+        >
           {sectioned.tabs.length > 0 && (
             <Section label="Tabs">
               {sectioned.tabs.map((item) => {
@@ -517,7 +535,9 @@ export function PaletteSurface() {
             </Section>
           )}
           {sectioned.flat.length === 0 && (
-            <div className="kb-palette-empty">No results</div>
+            <div className="kb-palette-empty" aria-hidden>
+              No results
+            </div>
           )}
         </div>
       </div>
@@ -532,13 +552,19 @@ function Section({
   label: string
   children: React.ReactNode
 }) {
+  const labelId = useId()
   return (
-    <div className="kb-palette-section">
-      <div className="kb-palette-section-label">{label}</div>
+    <div className="kb-palette-section" role="group" aria-labelledby={labelId}>
+      <div className="kb-palette-section-label" id={labelId}>
+        {label}
+      </div>
       <div className="kb-palette-section-body">{children}</div>
     </div>
   )
 }
+
+const LIST_ID = 'kb-palette-list'
+const optionId = (index: number) => `kb-palette-opt-${index}`
 
 interface RowProps {
   item: PaletteItem
@@ -552,6 +578,10 @@ function ItemRow({ item, index, highlighted, onActivate }: RowProps) {
   return (
     <button
       type="button"
+      id={optionId(index)}
+      role="option"
+      aria-selected={highlighted}
+      tabIndex={-1}
       data-palette-index={index}
       className={cx('kb-palette-row', { highlighted })}
       onMouseDown={(e) => e.preventDefault()}

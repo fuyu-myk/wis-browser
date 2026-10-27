@@ -555,7 +555,10 @@ export function TabList({
             : undefined
         }
         data-tab-row={tab.id}
-        role="button"
+        role="treeitem"
+        aria-selected={tab.id === activeTabId}
+        aria-level={opts.inFolder ? 2 : 1}
+        aria-keyshortcuts="Delete"
         tabIndex={tab.id === rowStop ? 0 : -1}
         onPointerDown={(e) => startTabDrag(e, tab.id, makeReorder(tab))}
         onClick={() => {
@@ -632,7 +635,9 @@ export function TabList({
       data-tab-strip
       onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, TAB_STRIP_ITEMS, 'vertical')}
     >
-      <div className="group-label">tabs</div>
+      <div className="group-label" aria-hidden>
+        tabs
+      </div>
       <button
         type="button"
         className="kb-newtab-row"
@@ -652,72 +657,79 @@ export function TabList({
         <span>New folder</span>
       </button>
 
-      {sortedFolders.map((folder, idx) => {
-        const members = membersOf(folder.id)
-        const folderShift =
-          folderDragPart && folderDropIndex !== null
-            ? partOffset(
-                idx,
-                sortedFolders.findIndex((f) => f.id === folderDragPart.id),
-                folderDropIndex,
-              )
-            : 0
-        return (
-          <div
-            key={folder.id}
-            data-folder-zone={folder.id}
-            className={cx('kb-tabfolder', `accent-${folder.accent}`, {
-              'is-dragsource': folderDragPart?.id === folder.id,
-            })}
-            style={
-              folderShift !== 0 && folderDragPart
-                ? { transform: `translateY(${folderShift * folderDragPart.size}px)` }
-                : undefined
-            }
-          >
-            <TabFolderHeader
-              workspaceId={workspaceId}
-              folder={folder}
-              count={members.length}
-              isDropTarget={folderDropHint === folder.id}
-              selected={selectedFolderId === folder.id}
-              containsActive={activeTabId != null && members.some((m) => m.id === activeTabId)}
-              dragRef={folderDraggedRef}
-              onHeaderPointerDown={(e) => startFolderDrag(e, folder.id)}
-              onEditingChange={(e) => reportEditing(folder.id, e)}
-            />
-            <div className={cx('kb-foldwrap', { 'is-open': !folder.collapsed })}>
-              <div className="kb-foldwrap-inner">
-                <div
-                  className="kb-tabfolder-body"
-                  data-folder-body={folder.id}
-                  style={{ paddingBottom: expandFor(folder.id, members) || undefined }}
-                >
-                  {members.map((tab, mi) =>
-                    renderTab(tab, {
-                      scope: folder.id,
-                      index: mi,
-                      inFolder: true,
-                      fromIndex: dragPart
-                        ? members.findIndex((m) => m.id === dragPart.id)
-                        : -1,
-                    }),
-                  )}
+      <div className="kb-tabtree" role="tree" aria-label="Tabs">
+        {sortedFolders.map((folder, idx) => {
+          const members = membersOf(folder.id)
+          const folderShift =
+            folderDragPart && folderDropIndex !== null
+              ? partOffset(
+                  idx,
+                  sortedFolders.findIndex((f) => f.id === folderDragPart.id),
+                  folderDropIndex,
+                )
+              : 0
+          return (
+            <div
+              key={folder.id}
+              data-folder-zone={folder.id}
+              className={cx('kb-tabfolder', `accent-${folder.accent}`, {
+                'is-dragsource': folderDragPart?.id === folder.id,
+              })}
+              style={
+                folderShift !== 0 && folderDragPart
+                  ? { transform: `translateY(${folderShift * folderDragPart.size}px)` }
+                  : undefined
+              }
+            >
+              <TabFolderHeader
+                workspaceId={workspaceId}
+                folder={folder}
+                count={members.length}
+                isDropTarget={folderDropHint === folder.id}
+                selected={selectedFolderId === folder.id}
+                containsActive={activeTabId != null && members.some((m) => m.id === activeTabId)}
+                dragRef={folderDraggedRef}
+                onHeaderPointerDown={(e) => startFolderDrag(e, folder.id)}
+                onEditingChange={(e) => reportEditing(folder.id, e)}
+              />
+              <div
+                className={cx('kb-foldwrap', { 'is-open': !folder.collapsed })}
+                aria-hidden={folder.collapsed || undefined}
+              >
+                <div className="kb-foldwrap-inner">
+                  <div
+                    className="kb-tabfolder-body"
+                    role="group"
+                    aria-label={folder.name}
+                    data-folder-body={folder.id}
+                    style={{ paddingBottom: expandFor(folder.id, members) || undefined }}
+                  >
+                    {members.map((tab, mi) =>
+                      renderTab(tab, {
+                        scope: folder.id,
+                        index: mi,
+                        inFolder: true,
+                        fromIndex: dragPart
+                          ? members.findIndex((m) => m.id === dragPart.id)
+                          : -1,
+                      }),
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })}
 
-      <div
-        className={cx('kb-loose', { 'is-drop': folderDropHint === 'loose' })}
-        ref={looseRef}
-        style={{ paddingBottom: expandFor('loose', looseTabs) || undefined }}
-      >
-        {looseTabs.map((tab, i) =>
-          renderTab(tab, { scope: 'loose', index: i, fromIndex: looseFrom }),
-        )}
+        <div
+          className={cx('kb-loose', { 'is-drop': folderDropHint === 'loose' })}
+          ref={looseRef}
+          style={{ paddingBottom: expandFor('loose', looseTabs) || undefined }}
+        >
+          {looseTabs.map((tab, i) =>
+            renderTab(tab, { scope: 'loose', index: i, fromIndex: looseFrom }),
+          )}
+        </div>
       </div>
       {barTop !== null && (
         <span

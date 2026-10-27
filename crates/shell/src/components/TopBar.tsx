@@ -62,7 +62,7 @@ export function TopBar({ state }: TopBarProps) {
   })
 
   return (
-    <div className="kb-topbar">
+    <div className="kb-topbar" role="group" aria-label="Toolbar">
       <div className="kb-topbar-row primary" data-tauri-drag-region>
         <NavRow activeTab={activeTab} circular />
         <div className="kb-urlpill-wrap">

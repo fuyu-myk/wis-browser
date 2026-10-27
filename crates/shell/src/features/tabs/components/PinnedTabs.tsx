@@ -179,6 +179,7 @@ export function PinnedTabs({
           type="button"
           data-pin-id={tab.id}
           data-tab-row={tab.id}
+          aria-current={tab.id === activeTabId ? 'page' : undefined}
           tabIndex={tab.id === pinStop ? 0 : -1}
           className={cx('kb-pinned-cell', {
             active: tab.id === activeTabId,

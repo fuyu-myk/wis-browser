@@ -80,3 +80,23 @@ export function estimateHeight(rows: RenderRow[]): number {
   const h = PAD_V * 2 + rows.length * ROW_H + headers * HEAD_H + Math.max(0, groups - 1) * SECTION_GAP
   return Math.min(h, MAX_H)
 }
+
+/** Host portion of a URL for the secondary line, www-stripped. */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).host.replace(/^www\./, '')
+  } catch {
+    return url
+  }
+}
+
+/** How the highlighted row is announced. */
+export function spokenRow(row: RenderRow, index: number, count: number): string {
+  const place = `${index + 1} of ${count}`
+  if (row.kind === 'search') return `${row.query}, search, ${place}`
+  if (row.kind === 'searchQuery') return `${row.query}, search with ${row.engineLabel}, ${place}`
+  const host = hostOf(row.url)
+  const parts = row.title && row.title !== host ? [row.title, host] : [host]
+  if (row.openTabId) parts.push('switch to tab')
+  return [...parts, place].join(', ')
+}

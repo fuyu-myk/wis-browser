@@ -25,7 +25,11 @@ export function IconPicker({ value, onPick }: IconPickerProps) {
 
   return (
     <div className="kb-iconpick" role="group" aria-label="Icon picker">
-      <div className="kb-iconpick-tabs" role="tablist" onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}>
+      <div
+        className="kb-iconpick-tabs"
+        role="tablist"
+        onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}
+      >
         {(['outline', 'filled', 'emoji'] as const).map((t) => (
           <button
             key={t}

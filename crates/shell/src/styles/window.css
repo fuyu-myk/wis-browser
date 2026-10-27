@@ -400,6 +400,7 @@ body.is-overlay-surface:not(.glass-on) {
   border-color: rgba(255, 255, 255, 0.08);
 }
 .kb-tabctx-split { display: flex; align-items: center; justify-content: center; gap: 3px; }
+.kb-tabctx-split:has(> :nth-child(7)) { gap: 2px; }
 .kb-tabctx-sep { height: 1px; margin: 2px 4px; background: var(--border); }
 [data-mode="dark"] .kb-tabctx-sep { background: rgba(255, 255, 255, 0.1); }
 .kb-tabctx-folders {
@@ -9654,3 +9655,6 @@ body.motion-off .kb-ai-think-label.is-live {
 .kb-dlmenu-row:focus-within .kb-dlmenu-del,
 .kb-dl-row:focus-within .kb-dl-reveal,
 .kb-widget-chip-x:focus-visible { opacity: 1; }
+
+/* The sidebar tab tree wraps folders and loose tabs for assistive tech only. */
+.kb-tabtree { display: contents; }

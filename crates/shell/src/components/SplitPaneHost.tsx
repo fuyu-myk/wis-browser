@@ -110,6 +110,7 @@ function PaneLeaf({
             className="kb-popout-placeholder"
             onClick={() => onRestorePopout(tabId)}
             title="Bring the video back"
+            aria-label="Bring the video back"
           >
             <svg
               width="28"

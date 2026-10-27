@@ -82,15 +82,15 @@ export function AppLaunchSurface() {
       className={cx('kb-perm-card', { 'glass-menus': glassMenus, 'is-open': open })}
       role="alertdialog"
       aria-modal="true"
-      aria-label="Open in app"
+      aria-labelledby="kb-perm-host kb-perm-sub"
     >
       <div className="kb-perm-head">
         <span className="kb-perm-glyph" aria-hidden>
           <LaunchIcon />
         </span>
         <div className="kb-perm-text">
-          <span className="kb-perm-host">{req.initiatorHost ?? 'This page'}</span>
-          <span className="kb-perm-sub">
+          <span className="kb-perm-host" id="kb-perm-host">{req.initiatorHost ?? 'This page'}</span>
+          <span className="kb-perm-sub" id="kb-perm-sub">
             {req.hasHandler
               ? `wants to open ${appLabel}`
               : `links to an app that is not installed`}

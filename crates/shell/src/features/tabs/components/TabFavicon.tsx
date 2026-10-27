@@ -180,7 +180,7 @@ export function TabFavicon({ tab, className }: TabFaviconProps) {
     return (
       <span
         className={cx('fav', 'fav-settings', className)}
-        aria-label="settings"
+        aria-hidden
       >
         <SettingsIcon />
       </span>
@@ -189,7 +189,7 @@ export function TabFavicon({ tab, className }: TabFaviconProps) {
 
   if (tab.url === HISTORY_URL) {
     return (
-      <span className={cx('fav', 'fav-history', className)} aria-label="history">
+      <span className={cx('fav', 'fav-history', className)} aria-hidden>
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -208,7 +208,7 @@ export function TabFavicon({ tab, className }: TabFaviconProps) {
 
   if (tab.url === USAGE_URL) {
     return (
-      <span className={cx('fav', 'fav-usage', className)} aria-label="usage">
+      <span className={cx('fav', 'fav-usage', className)} aria-hidden>
         <UsageIcon aria-hidden />
       </span>
     )
@@ -216,7 +216,7 @@ export function TabFavicon({ tab, className }: TabFaviconProps) {
 
   if (isCanvasUrl(tab.url)) {
     return (
-      <span className={cx('fav', 'fav-canvas', className)} aria-label="canvas">
+      <span className={cx('fav', 'fav-canvas', className)} aria-hidden>
         <CanvasIcon aria-hidden />
       </span>
     )
@@ -239,7 +239,8 @@ export function TabFavicon({ tab, className }: TabFaviconProps) {
     return (
       <span
         className={cx('fav', 'fav-wis', 'is-loading', className)}
-        aria-label="loading"
+        role="img"
+        aria-label="Loading"
       >
         <WisMark variant="loading" size="100%" />
       </span>

@@ -178,7 +178,12 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
         <header className="kb-history-head">
           <h1 className="kb-sr-only">History</h1>
           <div className="kb-history-head-row">
-            <div className="kb-history-views" role="tablist" aria-label="History view" onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}>
+            <div
+              className="kb-history-views"
+              role="tablist"
+              aria-label="History view"
+              onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}
+            >
               <ViewTab ids={ids} view="history" current={view} onSelect={showView}>
                 History
               </ViewTab>
@@ -233,11 +238,16 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
             )}
           </div>
           <div className="kb-history-head-row">
-            <div className="kb-history-scope" role="tablist" aria-label="History scope" onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}>
+            <div
+              className="kb-history-scope"
+              role="radiogroup"
+              aria-label="History scope"
+              onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'horizontal')}
+            >
               <button
                 type="button"
-                role="tab"
-                aria-selected={scope === 'workspace'}
+                role="radio"
+                aria-checked={scope === 'workspace'}
                 className={cx({ 'is-on': scope === 'workspace' })}
                 onClick={() => setScope('workspace')}
               >
@@ -245,8 +255,8 @@ export function HistoryPage({ activeTab }: HistoryPageProps) {
               </button>
               <button
                 type="button"
-                role="tab"
-                aria-selected={scope === 'all'}
+                role="radio"
+                aria-checked={scope === 'all'}
                 className={cx({ 'is-on': scope === 'all' })}
                 onClick={() => setScope('all')}
               >

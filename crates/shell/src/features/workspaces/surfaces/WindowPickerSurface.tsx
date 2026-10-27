@@ -140,6 +140,7 @@ export function WindowPickerSurface() {
         tabIndex={-1}
         className={cx('kb-palette', 'kb-winpicker', { 'glass-menus': glassMenus, 'is-closing': closing })}
         role="dialog"
+        aria-modal="true"
         aria-label="Open a workspace in a new window"
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}

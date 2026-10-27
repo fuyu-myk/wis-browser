@@ -32,3 +32,19 @@ export function nextAccent(used: AccentColor[]): AccentColor {
   }
   return ACCENT_ROTATION[used.length % ACCENT_ROTATION.length]
 }
+
+const ACCENT_NAMES: Record<AccentColor, string> = {
+  primary: 'Theme colour',
+  mint: 'Mint',
+  rose: 'Rose',
+  sun: 'Sun',
+  lila: 'Lilac',
+  gray: 'Grey',
+  ink: 'Ink',
+  azur: 'Azure',
+}
+
+/** How an accent swatch is read out. */
+export function accentName(accent: AccentColor): string {
+  return ACCENT_NAMES[accent]
+}

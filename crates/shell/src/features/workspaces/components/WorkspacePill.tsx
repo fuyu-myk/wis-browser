@@ -19,6 +19,7 @@ import { renderIconRef } from '@/features/workspaces/lib/iconGlyphs'
 import { WisMark } from '@/components/WisMark'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { usePendingRename } from '@/features/workspaces/hooks/usePendingRename'
+import { accentName } from '@/lib/accents'
 
 interface WorkspacePillProps {
   state: BrowserState
@@ -465,7 +466,7 @@ function WorkspaceRow({
     <li className={cx('kb-ws-row', { active: isActive, 'is-private': ws.ephemeral })}>
       <div className="kb-ws-row-main">
         {ws.ephemeral ? (
-          <span className="kb-ws-row-private" aria-label="Private workspace" title="Private workspace">
+          <span className="kb-ws-row-private" role="img" aria-label="Private workspace" title="Private workspace">
             <WisMark variant="solid-closed" size={15} />
           </span>
         ) : (
@@ -512,7 +513,9 @@ function WorkspaceRow({
             className="kb-ws-row-name"
             role="button"
             tabIndex={0}
-            title="Right-click to rename"
+            aria-current={isActive ? 'true' : undefined}
+            aria-keyshortcuts="F2"
+            title="Right-click or press F2 to rename"
             onClick={onPick}
             onContextMenu={(e) => {
               e.preventDefault()
@@ -541,7 +544,7 @@ function WorkspaceRow({
         <XIcon />
       </button>
       {isRecoloring && (
-        <div className="kb-ws-editpop" role="menu" aria-label="Customize workspace">
+        <div className="kb-ws-editpop" role="group" aria-label="Customize workspace">
         <div className="kb-ws-swatches">
           {ACCENTS.map((accent) => (
             <button
@@ -550,7 +553,8 @@ function WorkspaceRow({
               className={cx('kb-ws-swatch', `accent-${accent}`, {
                 on: !ws.custom_accent && accent === ws.accent,
               })}
-              aria-label={accent}
+              aria-label={accentName(accent)}
+              aria-pressed={!ws.custom_accent && accent === ws.accent}
               onClick={(e) => {
                 e.stopPropagation()
                 onRecolor(accent)

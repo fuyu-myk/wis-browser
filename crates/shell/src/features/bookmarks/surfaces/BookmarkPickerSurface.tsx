@@ -147,7 +147,7 @@ export function BookmarkPickerSurface() {
             {selected === f.id && <CheckGlyph />}
           </button>
         ))}
-        <div className="kb-vaultmenu-sep" />
+        <div className="kb-vaultmenu-sep" role="separator" />
         {adding ? (
           <input
             className="kb-bmmenu-input"

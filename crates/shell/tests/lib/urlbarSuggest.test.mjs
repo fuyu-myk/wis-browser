@@ -9,6 +9,7 @@ import {
   SECTION_RECENT_SEARCHES,
   SECTION_RECOMMENDATIONS,
   SECTION_TOP,
+  spokenRow,
 } from '../../src/features/urlbar/urlbarSuggest.ts'
 
 const site = (section = SECTION_TOP) => ({ kind: 'site', section, id: 1, url: 'https://a.test/', title: 'A', openTabId: null })
@@ -53,4 +54,16 @@ test('a section that resumes after another counts as a new group', () => {
 test('the dropdown height is capped', () => {
   const rows = Array.from({ length: 30 }, () => site())
   assert.equal(estimateHeight(rows), 460)
+})
+
+test('the highlighted suggestion is read with its kind and place in the list', () => {
+  const site = { kind: 'site', section: 'Top', id: 1, url: 'https://www.example.com/a', title: 'Example', openTabId: null }
+  assert.equal(spokenRow(site, 0, 3), 'Example, example.com, 1 of 3')
+  assert.equal(spokenRow({ ...site, title: '' }, 1, 3), 'example.com, 2 of 3')
+  assert.equal(spokenRow({ ...site, openTabId: 'tab' }, 0, 1), 'Example, example.com, switch to tab, 1 of 1')
+  assert.equal(spokenRow({ kind: 'search', section: 'Recent', query: 'cats' }, 2, 3), 'cats, search, 3 of 3')
+  assert.equal(
+    spokenRow({ kind: 'searchQuery', section: 'Search', query: 'cats', engineLabel: 'Kagi' }, 0, 2),
+    'cats, search with Kagi, 1 of 2',
+  )
 })

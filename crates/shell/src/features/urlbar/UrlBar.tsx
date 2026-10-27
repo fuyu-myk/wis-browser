@@ -720,8 +720,15 @@ export function FloatingUrlBar({
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         placeholder="Enter search or web address"
+        aria-label="Search or web address"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={form.suggest.expanded}
         spellCheck={false}
       />
+      <span className="kb-sr-only" aria-live="polite">
+        {form.suggest.spoken}
+      </span>
       <ZoomIndicator activeTab={activeTab} />
       <AutofillKey activeTab={activeTab} />
       <OpenExternalButton activeTab={activeTab} />

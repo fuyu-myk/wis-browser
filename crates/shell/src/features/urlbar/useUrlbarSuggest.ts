@@ -13,7 +13,7 @@
  * focus is reclaimed on removes so the user can keep typing.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type { KeyboardEvent, RefObject } from 'react'
 
@@ -27,6 +27,7 @@ import {
   SECTION_RECENT_SEARCHES,
   SECTION_RECOMMENDATIONS,
   SECTION_TOP,
+  spokenRow,
   URLBAR_PICK_EVENT,
   URLBAR_REMOVE_EVENT,
   URLBAR_RENDER_EVENT,
@@ -92,6 +93,10 @@ export interface UrlbarSuggestApi {
   close: () => void
   /** Close + forget in-progress text (used by the form on submit). */
   reset: () => void
+  /** Whether the suggestion list is showing, for the input's `aria-expanded`. */
+  expanded: boolean
+  /** The highlighted row as read out; the list itself is in another webview. */
+  spoken: string
 }
 
 export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
@@ -130,7 +135,14 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
     }
   })
 
+  const [expanded, setExpanded] = useState(false)
+  const [spoken, setSpoken] = useState('')
+
   const pushRender = useCallback(() => {
+    const rows = rowsRef.current
+    const h = highlightRef.current
+    setExpanded(rows.length > 0)
+    setSpoken(h >= 0 && h < rows.length ? spokenRow(rows[h], h, rows.length) : '')
     void emit(URLBAR_RENDER_EVENT, {
       rows: rowsRef.current,
       highlight: highlightRef.current,
@@ -143,6 +155,8 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
     openRef.current = false
     highlightRef.current = -1
     rowsRef.current = []
+    setExpanded(false)
+    setSpoken('')
     if (releaseOverlay(idRef.current as symbol)) {
       void overlay.hide().catch(() => undefined)
     }
@@ -485,5 +499,5 @@ export function useUrlbarSuggest(args: UseUrlbarSuggestArgs): UrlbarSuggestApi {
     [close, move, pickRow],
   )
 
-  return { onFocus, onInput, onKeyDown, onBlur, close, reset }
+  return { onFocus, onInput, onKeyDown, onBlur, close, reset, expanded, spoken }
 }

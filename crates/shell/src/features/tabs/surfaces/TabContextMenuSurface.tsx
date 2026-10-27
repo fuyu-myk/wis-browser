@@ -18,7 +18,7 @@ import { commands } from '@/bindings/commands'
 import type { AccentColor, SplitDir, TabFolderId, TabId, WorkspaceId } from '@/bindings/types'
 import { nextAccent } from '@/lib/accents'
 import { cx } from '@/lib/cx'
-import { PinIcon, PinOffIcon } from '@/lib/icons'
+import { PinIcon, PinOffIcon, VolumeOffIcon, VolumeOnIcon } from '@/lib/icons'
 import { NEW_TAB_URL } from '@/lib/url'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
@@ -26,6 +26,7 @@ import { useThemeApply } from '@/hooks/useThemeApply'
 import { focusSurface } from '@/hooks/useSurfaceFocus'
 import { menusGlass } from '@/lib/glass'
 import { moveFocusByArrow } from '@/lib/arrowNav'
+import { useTabAudio } from '@/features/tabs/hooks/useTabAudio'
 
 const OPEN_EVENT = 'wis-tabmenu-open'
 const READY_EVENT = 'wis-tabmenu-ready'
@@ -56,6 +57,7 @@ export function TabContextMenuSurface() {
   useBrowserStateEvents()
   useThemeApply(state?.settings)
   const qc = useQueryClient()
+  const tabAudio = useTabAudio()
 
   const activeWorkspace = state?.workspaces.find((w) => w.id === state.active_workspace_id)
   const activeTabIdRef = useRef<TabId | null>(null)
@@ -139,6 +141,11 @@ export function TabContextMenuSurface() {
   }
 
   const movedPinned = !!movedTab?.pinned
+  const movedMuted = tabAudio.muted.has(target.movedTabId)
+  const toggleMute = () => {
+    tabAudio.toggleMute(target.movedTabId)
+    close()
+  }
   const togglePin = () => {
     void commands.pinTab(target.movedTabId, !movedPinned).catch(() => undefined)
     close()
@@ -181,11 +188,12 @@ export function TabContextMenuSurface() {
       role="menu"
       onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'both')}
     >
-      <div className="kb-tabctx-split">
+      <div className="kb-tabctx-split" role="group" aria-label="Split and pin">
         {DIRECTIONS.map(({ dir, split, first, label }) => (
           <button
             key={dir}
             type="button"
+            role="menuitem"
             className="kb-panemenu-btn"
             aria-label={label}
             title={label}
@@ -194,9 +202,10 @@ export function TabContextMenuSurface() {
             <DirArrow dir={dir} />
           </button>
         ))}
-        <span className="kb-panemenu-sep" aria-hidden />
+        <span className="kb-panemenu-sep" role="separator" />
         <button
           type="button"
+          role="menuitem"
           className="kb-panemenu-btn"
           aria-label={movedPinned ? 'Unpin tab' : 'Pin tab'}
           title={movedPinned ? 'Unpin tab' : 'Pin tab'}
@@ -204,11 +213,23 @@ export function TabContextMenuSurface() {
         >
           {movedPinned ? <PinOffIcon width={16} height={16} /> : <PinIcon width={16} height={16} />}
         </button>
+        {(movedMuted || tabAudio.audible.has(target.movedTabId)) && (
+          <button
+            type="button"
+            role="menuitem"
+            className="kb-panemenu-btn"
+            aria-label={movedMuted ? 'Unmute tab' : 'Mute tab'}
+            title={movedMuted ? 'Unmute tab' : 'Mute tab'}
+            onClick={toggleMute}
+          >
+            {movedMuted ? <VolumeOffIcon width={16} height={16} /> : <VolumeOnIcon width={16} height={16} />}
+          </button>
+        )}
       </div>
 
-      <div className="kb-tabctx-sep" aria-hidden />
+      <div className="kb-tabctx-sep" role="separator" />
 
-      <button type="button" className="kb-tabctx-item" onClick={moveToNewWindow}>
+      <button type="button" role="menuitem" className="kb-tabctx-item" onClick={moveToNewWindow}>
         <span className="kb-tabctx-ico" aria-hidden>
           <svg
             width="15"
@@ -230,13 +251,14 @@ export function TabContextMenuSurface() {
 
       {otherWorkspaces.length > 0 && (
         <>
-          <div className="kb-tabctx-sep" aria-hidden />
+          <div className="kb-tabctx-sep" role="separator" />
           <div className="kb-tabctx-section">Move to workspace</div>
           <div className="kb-tabctx-folders">
             {otherWorkspaces.map((w) => (
               <button
                 key={w.id}
                 type="button"
+                role="menuitem"
                 className="kb-tabctx-item"
                 onClick={() => moveToWorkspace(w.id)}
               >
@@ -252,13 +274,14 @@ export function TabContextMenuSurface() {
         </>
       )}
 
-      <div className="kb-tabctx-sep" aria-hidden />
+      <div className="kb-tabctx-sep" role="separator" />
 
       <div className="kb-tabctx-folders">
         {folders.map((folder) => (
           <button
             key={folder.id}
             type="button"
+            role="menuitem"
             className="kb-tabctx-item"
             disabled={movedTab?.folder_id === folder.id}
             onClick={() => moveTo(folder.id)}
@@ -268,12 +291,12 @@ export function TabContextMenuSurface() {
           </button>
         ))}
         {inFolder && (
-          <button type="button" className="kb-tabctx-item" onClick={() => moveTo(null)}>
+          <button type="button" role="menuitem" className="kb-tabctx-item" onClick={() => moveTo(null)}>
             <span className="kb-tabctx-dot is-none" aria-hidden />
             <span className="kb-tabctx-label">Remove from folder</span>
           </button>
         )}
-        <button type="button" className="kb-tabctx-item" onClick={createAndMove}>
+        <button type="button" role="menuitem" className="kb-tabctx-item" onClick={createAndMove}>
           <span className="kb-tabctx-plus" aria-hidden>
             +
           </span>

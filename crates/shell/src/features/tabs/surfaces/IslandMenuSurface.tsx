@@ -21,6 +21,7 @@ import {
   type IslandMenuTarget,
 } from '@/features/tabs/hooks/useIslandMenu'
 import { moveFocusByArrow } from '@/lib/arrowNav'
+import { accentName } from '@/lib/accents'
 
 const ACCENTS: AccentColor[] = [
   'primary',
@@ -100,7 +101,12 @@ export function IslandMenuSurface() {
   }
 
   return (
-    <div className={cx('kb-islandmenu', { 'glass-menus': glassMenus })} role="menu" onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'both')}>
+    <div
+      className={cx('kb-islandmenu', { 'glass-menus': glassMenus })}
+      role="dialog"
+      aria-label={`Options for ${target.name}`}
+      onKeyDown={(e) => moveFocusByArrow(e, e.currentTarget, 'button', 'both')}
+    >
       <IconPicker value={folderIcon} onPick={setIcon} />
       <div className="kb-islandmenu-swatches" role="group" aria-label="Recolor folder">
         {ACCENTS.map((accent) => (
@@ -108,7 +114,8 @@ export function IslandMenuSurface() {
             key={accent}
             type="button"
             className={cx('kb-ws-swatch', `accent-${accent}`, { on: accent === target.accent })}
-            aria-label={accent}
+            aria-label={accentName(accent)}
+            aria-pressed={accent === target.accent}
             onClick={() => recolor(accent)}
           />
         ))}
@@ -118,6 +125,7 @@ export function IslandMenuSurface() {
         className="kb-islandmenu-input"
         value={draft}
         placeholder="Folder name"
+        aria-label="Folder name"
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') submitName()
@@ -129,7 +137,7 @@ export function IslandMenuSurface() {
         className="kb-islandmenu-item danger"
         onClick={() => (confirming ? remove() : setConfirming(true))}
       >
-        {confirming ? 'Click again to delete' : 'Delete folder'}
+        <span aria-live="polite">{confirming ? 'Click again to delete' : 'Delete folder'}</span>
       </button>
     </div>
   )
