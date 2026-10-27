@@ -1,9 +1,11 @@
-//! Reporting an address a person typed when its form is submitted, for
-//! "Save address?" (`address_save`).
+//! Reporting an address or card a person typed when its form is submitted,
+//! for address (`address_save`) and card (`card_save`) saving.
 
-/// Reports `{kind: 'save', values}` to `wisAddress` on a real submit, a click
-/// on a button that submits, or Enter in an address field. Placed after
-/// `FOCUS_JS`, whose `send` it uses.
+/// Reports `{kind: 'save', values}` for an address, and `{kind: 'card',
+/// values}` for a card whose number the person typed, to `wisAddress` on a
+/// real submit, a click on a button that submits, or Enter in an address or
+/// card field. Never the security code. Placed after `FOCUS_JS`, whose `send`
+/// it uses.
 pub(super) const SUBMIT_JS: &str = r#"
 var COUNTRY_CODES = (
   'AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR ' +
@@ -18,6 +20,7 @@ var COUNTRY_CODES = (
 var SUBMIT_WORDS = /\b(log\s?in|sign\s?in|sign\s?up|register|continue|submit|next|done|confirm|save|order|pay|check\s?out|buy|purchase|proceed|ship|deliver|review)\b/;
 var GESTURE_MS = 1000;
 var lastSave = '';
+var lastCard = '';
 var lastGesture = -Infinity;
 var typed = new WeakSet();
 
@@ -103,8 +106,66 @@ function typedAddress(root) {
   return null;
 }
 
+// The card in the first section of `root` whose number the user typed,
+// with its month and year read from one expiry box or two, or null.
+function typedCard(root) {
+  var bySection = {};
+  var order = [];
+  cardFields(root).forEach(function (field) {
+    if (!own(bySection, field.section)) {
+      bySection[field.section] = [];
+      order.push(field.section);
+    }
+    bySection[field.section].push(field);
+  });
+  for (var i = 0; i < order.length; i++) {
+    var card = { number: '', name: '', month: 0, year: 0 };
+    var given = '';
+    var family = '';
+    var typedNumber = false;
+    bySection[order[i]].forEach(function (field) {
+      var el = field.el;
+      var list = el.tagName === 'SELECT';
+      if (!list && !shownField(el, null)) return;
+      var raw = String(el.value || '').trim();
+      if (!raw) return;
+      var number = parseInt(raw, 10) || parseInt(list && el.options[el.selectedIndex] ?
+        el.options[el.selectedIndex].text : '', 10) || 0;
+      switch (field.kind) {
+        case 'number':
+          card.number = raw;
+          typedNumber = typed.has(el);
+          break;
+        case 'name': card.name = raw; break;
+        case 'given': given = raw; break;
+        case 'family': family = raw; break;
+        case 'month': card.month = number; break;
+        case 'year': card.year = number; break;
+        case 'exp':
+          var parts = /^(\d{1,2})\s*[\/\-.]?\s*(\d{2}|\d{4})$/.exec(raw);
+          if (parts) {
+            card.month = parseInt(parts[1], 10);
+            card.year = parseInt(parts[2], 10);
+          }
+          break;
+      }
+    });
+    if (!card.name) card.name = [given, family].filter(Boolean).join(' ');
+    if (typedNumber && card.month && card.year) return card;
+  }
+  return null;
+}
+
 function offerToSave(root) {
   if (!root || window.top !== window.self) return;
+  var card = typedCard(root);
+  if (card) {
+    var cardKey = [card.number.slice(-4), card.month, card.year, card.name].join(' ');
+    if (cardKey !== lastCard) {
+      lastCard = cardKey;
+      send({ kind: 'card', values: card });
+    }
+  }
   var values = typedAddress(root);
   if (!values) return;
   var key = JSON.stringify(values);
@@ -158,6 +219,6 @@ document.addEventListener('keydown', function (e) {
   if (!e.isTrusted || e.key !== 'Enter' || e.defaultPrevented) return;
   var el = e.target;
   if (!el || el.tagName === 'TEXTAREA') return;
-  if (addressField(el) || guessable(el)) offerToSave(groupOf(el));
+  if (addressField(el) || cardField(el) || guessable(el)) offerToSave(groupOf(el));
 });
 "#;

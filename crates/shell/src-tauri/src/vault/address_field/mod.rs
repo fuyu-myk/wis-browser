@@ -246,6 +246,12 @@ pub(crate) fn dispatch_message(label: &str, body: &serde_json::Value) {
             }
             return;
         }
+        Some("card") => {
+            if origin_of(from.app, label).is_some_and(|origin| card_fill::card_origin(&origin)) {
+                crate::vault::card_save::receive(from.app, from.tab_id, body.get("values"));
+            }
+            return;
+        }
         Some("leave") => from.app.emit(
             LEAVE_EVENT,
             TabEvent {

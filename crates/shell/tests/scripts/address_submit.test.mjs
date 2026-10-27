@@ -1,4 +1,4 @@
-// How `address_field` reports an address a person typed when its form is
+// How `address_field` reports an address a user typed when its form is
 // submitted, for "Save address?".
 
 import assert from 'node:assert/strict'
@@ -95,14 +95,14 @@ function page() {
     )
   const fire = (key, event) => (listeners[key] || []).forEach((fn) => fn(event))
   const saves = () => sent.filter((body) => body.kind === 'save')
-  /** The person types into each of `els`. */
+  /** The user types into each of `els`. */
   const type = (...els) => els.forEach((el) => fire('doc:input', { target: el, isTrusted: true }))
   /** A real submit, right after a click. */
   const submit = () => {
     fire('doc:pointerdown', { target: form, isTrusted: true })
     fire('doc:submit', { target: form, isTrusted: true })
   }
-  return { form, field, list, start, fire, saves, type, submit, window }
+  return { form, field, list, start, fire, saves, type, submit, window, sent }
 }
 
 test('a real submit reports the address typed into the shown fields', () => {
@@ -153,7 +153,7 @@ test('a made-up submit, or a form without a street and a city or postcode, repor
   assert.deepEqual(signIn.saves(), [])
 })
 
-test('only what the person typed counts, and only a submit they set off', () => {
+test('only what the user typed counts, and only a submit they set off', () => {
   const planted = page()
   planted.field('street-address', '1 Road')
   planted.field('address-level2', 'Leeds')
@@ -263,4 +263,66 @@ test('the country codes match the ones Settings offers', () => {
   const script = rawStringConst('vault/address_field/submit.rs', 'SUBMIT_JS')
   const shipped = codes(script.slice(script.indexOf('COUNTRY_CODES'), script.indexOf(".split(' ')")))
   assert.deepEqual(shipped, listed)
+})
+
+const cards = (env) => env.sent.filter((body) => body.kind === 'card')
+
+test('a real submit reports a card number the user typed, never the security code', () => {
+  const env = page()
+  const number = env.field('cc-number', '4242 4242 4242 4242')
+  env.field('cc-name', 'Ada Lovelace')
+  const exp = env.field('cc-exp', '08 / 28')
+  env.field('cc-csc', '123')
+  env.start()
+  env.type(number, exp)
+  env.submit()
+  assert.deepEqual(cards(env), [
+    { kind: 'card', values: { number: '4242 4242 4242 4242', name: 'Ada Lovelace', month: 8, year: 28 } },
+  ])
+  assert.ok(!JSON.stringify(env.sent).includes('123'))
+  env.submit()
+  assert.equal(cards(env).length, 1, 'the same card is reported once')
+})
+
+test('expiry lists and split names are read, and a card Wis filled is not reported', () => {
+  const env = page()
+  const number = env.field('cc-number', '4242424242424242')
+  env.field('cc-given-name', 'Ada')
+  env.field('cc-family-name', 'Lovelace')
+  env.list('cc-exp-month', [['', 'MM'], ['8', '08 - August']], '8')
+  env.list('cc-exp-year', [['', 'YYYY'], ['2028', '2028']], '2028')
+  env.start()
+  env.submit()
+  assert.deepEqual(cards(env), [], 'nobody typed the number')
+  env.type(number)
+  env.submit()
+  assert.deepEqual(cards(env)[0].values, {
+    number: '4242424242424242',
+    name: 'Ada Lovelace',
+    month: 8,
+    year: 2028,
+  })
+})
+
+test('a checkout with a card and an address reports each once', () => {
+  const env = page()
+  const line1 = env.field('address-line1', '12 St James Square')
+  const city = env.field('address-level2', 'London')
+  const number = env.field('cc-number', '4242424242424242')
+  const exp = env.field('cc-exp', '08/28')
+  env.start()
+  env.type(line1, city, number, exp)
+  env.submit()
+  env.submit()
+  assert.equal(cards(env).length, 1)
+  assert.equal(env.saves().length, 1)
+})
+
+test('a card without an expiry is not reported', () => {
+  const env = page()
+  const number = env.field('cc-number', '4242424242424242')
+  env.start()
+  env.type(number)
+  env.submit()
+  assert.deepEqual(cards(env), [])
 })

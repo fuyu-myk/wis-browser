@@ -81,6 +81,7 @@ pub async fn delete_workspace(
         crate::vault::signup::forget_field(&tab.as_uuid().to_string());
         crate::vault::capture::forget(&state, tab).await;
         crate::vault::address_save::forget(&state, tab).await;
+        crate::vault::card_save::forget(&state, tab).await;
         crate::tabs::audio::forget_tab(&app, tab);
         crate::tabs::preview::forget(&app, &state, tab);
     }

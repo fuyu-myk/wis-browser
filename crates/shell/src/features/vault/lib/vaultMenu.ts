@@ -8,7 +8,7 @@
  * close request back.
  */
 
-import type { Address, TabId } from '@/bindings/types'
+import type { Address, CardBrand, TabId } from '@/bindings/types'
 
 /** chrome → surface: (re)load + render, anchoring the card at this rect. */
 export const VAULTMENU_OPEN_EVENT = 'wis-vaultmenu-open'
@@ -44,6 +44,37 @@ export interface PendingAddress {
 
 export interface AddressCaptureEvent extends PendingAddress {
   tab: TabId
+}
+
+/** native → all: a page submitted a card number the user typed. */
+export const CARD_CAPTURE_EVENT = 'wis-card-capture'
+
+/** A submitted card waiting for to be saved. */
+export interface PendingCard {
+  serial: number
+  nickname: string
+  brand: CardBrand
+  last4: string
+  exp_month: number
+  exp_year: number
+  name: string
+  /** One was dismissed in this tab lately: wait to be opened. */
+  quiet: boolean
+}
+
+/** Outcome of a card save operation (mirror of `vault::cards::CardSaved`). */
+export type CardSaved = 'added' | 'updated' | 'already_saved'
+
+export const CARD_SAVED_TOASTS: Record<CardSaved, string> = {
+  added: 'Card saved',
+  updated: 'Card updated',
+  already_saved: 'This card is already saved',
+}
+
+export interface CardCaptureEvent {
+  tab: TabId
+  serial: number
+  quiet: boolean
 }
 
 /** surface → chrome: the menu unlocked the vault a card handed. */

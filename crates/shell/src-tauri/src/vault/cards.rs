@@ -236,6 +236,80 @@ fn listed_as(card: &Card, row: &CardRecord) -> bool {
     summary(row).summary == card.summary()
 }
 
+/// What saving a submitted card does.
+#[derive(Debug, PartialEq)]
+enum Saving {
+    Add(Card),
+    Update(i64, Card),
+    Known,
+}
+
+fn saving(known: &[(i64, Card)], stored: usize, card: Card) -> WisResult<Saving> {
+    let Some((id, saved)) = known.iter().find(|(_, saved)| saved.number == card.number) else {
+        if stored >= MAX_CARDS {
+            return Err(invalid(&format!("Wis keeps up to {MAX_CARDS} cards")));
+        }
+        return Ok(Saving::Add(card));
+    };
+    let renewed = Card {
+        name: if card.name.is_empty() {
+            saved.name.clone()
+        } else {
+            card.name
+        },
+        exp_month: card.exp_month,
+        exp_year: card.exp_year,
+        ..saved.clone()
+    };
+    Ok(if renewed == *saved {
+        Saving::Known
+    } else {
+        Saving::Update(*id, renewed)
+    })
+}
+
+/// Outcome of saving a card.
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum CardSaved {
+    Added,
+    Updated,
+    AlreadySaved,
+}
+
+/// What `row` shows without the vault key.
+pub(crate) fn summary_of(row: &CardRecord) -> CardSummary {
+    summary(row).summary
+}
+
+/// Seal and store a captured card: as a new one, as the renewal of a saved
+/// card with its number, or not at all when it is already saved. Needs the
+/// vault unlocked.
+pub(crate) async fn save_captured(state: &AppState, card: Card) -> WisResult<CardSaved> {
+    let guard = state.vault_key.lock().await;
+    let key = guard.as_ref().ok_or_else(locked)?;
+    let storage = state.storage.clone();
+    let rows = blocking(move || storage.list_cards().map_err(persist_err)).await?;
+    let stored = rows.len();
+    let known: Vec<(i64, Card)> = readable(key, rows).collect();
+    let (id, card, outcome) = match saving(&known, stored, card)? {
+        Saving::Known => return Ok(CardSaved::AlreadySaved),
+        Saving::Add(card) => (None, card, CardSaved::Added),
+        Saving::Update(id, card) => (Some(id), card, CardSaved::Updated),
+    };
+    let sealed = seal(key, &card)?;
+    let summary = card.summary();
+    let storage = state.storage.clone();
+    let saved = blocking(move || {
+        storage
+            .save_card(id, &row(&summary, &sealed))
+            .map_err(persist_err)
+    })
+    .await;
+    drop(guard);
+    saved.map(|_| outcome)
+}
+
 fn summary(row: &CardRecord) -> SavedCard {
     SavedCard {
         id: row.id,
@@ -392,6 +466,40 @@ mod tests {
         assert_eq!(kept, vec![mastercard()]);
         assert!(to_add(&[], MAX_CARDS, vec![visa()]).unwrap().is_empty());
         assert!(to_add(&[], 0, vec![Card::default()]).is_err());
+    }
+
+    #[test]
+    fn a_submitted_card_is_added_known_or_renews_the_saved_one() {
+        assert_eq!(saving(&[], 0, visa()).unwrap(), Saving::Add(visa()));
+        let saved = Card {
+            nickname: "Travel".into(),
+            ..visa()
+        };
+        assert_eq!(
+            saving(&[(7, saved.clone())], 1, visa()).unwrap(),
+            Saving::Known
+        );
+        let renewed = Card {
+            exp_year: 2031,
+            name: String::new(),
+            ..visa()
+        };
+        assert_eq!(
+            saving(&[(7, saved.clone())], 1, renewed).unwrap(),
+            Saving::Update(
+                7,
+                Card {
+                    exp_year: 2031,
+                    ..saved
+                }
+            ),
+            "the nickname and a name the page left out stay as saved"
+        );
+        let err = saving(&[], MAX_CARDS, visa()).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            invalid(&format!("Wis keeps up to {MAX_CARDS} cards")).to_string()
+        );
     }
 
     #[test]

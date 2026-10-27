@@ -243,6 +243,7 @@ pub async fn close_tab(
     })
     .await;
     crate::vault::address_save::forget(&state, id).await;
+    crate::vault::card_save::forget(&state, id).await;
     closed
 }
 
@@ -260,6 +261,7 @@ pub(crate) async fn forget_tab_state(app: &AppHandle, state: &AppState, id: TabI
     crate::protection::uncloak::forget(state, &label);
     crate::vault::capture::forget(state, id).await;
     crate::vault::address_save::forget(state, id).await;
+    crate::vault::card_save::forget(state, id).await;
     crate::tabs::audio::forget_tab(app, id);
     crate::tabs::preview::forget(app, state, id);
 }

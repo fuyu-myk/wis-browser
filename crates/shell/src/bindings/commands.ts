@@ -6,7 +6,7 @@
 // side. Passing snake_case from JS silently fails to deserialise.
 
 import { Channel, invoke } from '@tauri-apps/api/core'
-import type { CaptureInfo, PendingAddress } from '@/features/vault/lib/vaultMenu'
+import type { CaptureInfo, CardSaved, PendingAddress, PendingCard } from '@/features/vault/lib/vaultMenu'
 import type {
   Address,
   SavedAddress,
@@ -268,6 +268,25 @@ export const commands = {
 
   async cardDelete(id: number): Promise<void> {
     return invoke('card_delete', { id })
+  },
+
+  /** The card the tab's page submitted, waiting for user confirmation; never its number. */
+  async cardCapturePending(tabId: TabId): Promise<PendingCard | null> {
+    return invoke('card_capture_pending', { tabId })
+  },
+
+  /** Save the card `serial` names, or renew the saved one with its number. Needs the vault unlocked. */
+  async cardCaptureSave(tabId: TabId, serial: number): Promise<CardSaved> {
+    return invoke('card_capture_save', { tabId, serial })
+  },
+
+  async cardCaptureDismiss(tabId: TabId, serial: number): Promise<void> {
+    return invoke('card_capture_dismiss', { tabId, serial })
+  },
+
+  /** The prompt closed unanswered; the tab's next one waits to be opened. */
+  async cardCaptureHush(tabId: TabId): Promise<void> {
+    return invoke('card_capture_hush', { tabId })
   },
 
   /** Fill saved card `id` into the card field report `token` names; asks Touch ID or the vault password. */

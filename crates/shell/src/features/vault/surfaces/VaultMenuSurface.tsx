@@ -4,6 +4,7 @@
  * Shows, for the active tab's host:
  *  - a "Save password?" block when a login was just captured;
  *  - a "Save address?" block when the page submitted an address;
+ *  - a "Save card?" block when the page submitted a card number the user typed;
  *  - the saved-account picker (fill on click; Touch ID on demand);
  *  - a "Manage passwords" row.
  *
@@ -19,16 +20,20 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { commands } from '@/bindings/commands'
 import type { CredentialSummary, SavedAddress, SignupFieldInfo, TabId } from '@/bindings/types'
 import { AddressSavePrompt } from '@/features/vault/components/AddressSavePrompt'
+import { CardSavePrompt } from '@/features/vault/components/CardSavePrompt'
 import { LockIcon } from '@/lib/icons'
 import { cx } from '@/lib/cx'
 import { SETTINGS_URL } from '@/lib/url'
 import {
   ADDRESS_CAPTURE_EVENT,
   CAPTURE_LOGIN_EVENT,
+  CARD_CAPTURE_EVENT,
+  CARD_SAVED_TOASTS,
   VAULTMENU_CLOSE_EVENT,
   VAULTMENU_OPEN_EVENT,
   type CaptureInfo,
   type PendingAddress,
+  type PendingCard,
   type VaultMenuAnchor,
   type VaultUnlocked,
   VAULT_UNLOCKED_EVENT,
@@ -77,6 +82,10 @@ export function VaultMenuSurface() {
   const addressTabRef = useRef<TabId | null>(null)
   const addressRef = useRef<TabId | null>(null)
   addressRef.current = address ? addressTabRef.current : null
+  const [card, setCard] = useState<PendingCard | null>(null)
+  const cardTabRef = useRef<TabId | null>(null)
+  const cardRef = useRef<TabId | null>(null)
+  cardRef.current = card ? cardTabRef.current : null
   const [candidates, setCandidates] = useState<CredentialSummary[]>([])
   const [passwordField, setPasswordField] = useState<SignupFieldInfo | null>(null)
   const [busy, setBusy] = useState(false)
@@ -90,14 +99,17 @@ export function VaultMenuSurface() {
   const unlockOnlyRef = useRef<(forTab: TabId) => Promise<void>>(async () => undefined)
 
   const load = useCallback(async () => {
-    const [cands, pend, field, typed] = await Promise.all([
+    const [cands, pend, field, typed, submittedCard] = await Promise.all([
       host
         ? commands.autofillCandidates(host).catch(() => [] as CredentialSummary[])
         : Promise.resolve([] as CredentialSummary[]),
       tabId ? commands.capturePending(tabId).catch(() => null) : Promise.resolve(null),
       tabId ? commands.signupField(tabId).catch(() => null) : Promise.resolve(null),
       tabId ? commands.addressCapturePending(tabId).catch(() => null) : Promise.resolve(null),
+      tabId ? commands.cardCapturePending(tabId).catch(() => null) : Promise.resolve(null),
     ])
+    cardTabRef.current = submittedCard ? tabId : null
+    setCard(submittedCard)
     setCandidates(cands)
     setPending(pend)
     setPasswordField(field)
@@ -120,6 +132,7 @@ export function VaultMenuSurface() {
     let unOpen: UnlistenFn | null = null
     let unCapture: UnlistenFn | null = null
     let unAddress: UnlistenFn | null = null
+    let unCard: UnlistenFn | null = null
     let cancelled = false
     void listen<VaultMenuAnchor>(VAULTMENU_OPEN_EVENT, (e) => {
       setAnchor(e.payload)
@@ -134,17 +147,21 @@ export function VaultMenuSurface() {
     void listen(ADDRESS_CAPTURE_EVENT, () => void load()).then((fn) =>
       cancelled ? fn() : (unAddress = fn),
     )
+    void listen(CARD_CAPTURE_EVENT, () => void load()).then((fn) => (cancelled ? fn() : (unCard = fn)))
     return () => {
       cancelled = true
       unOpen?.()
       unCapture?.()
       unAddress?.()
+      unCard?.()
     }
   }, [load])
 
   const close = useCallback(() => {
     const unanswered = addressRef.current
     if (unanswered) void commands.addressCaptureHush(unanswered).catch(() => undefined)
+    const unansweredCard = cardRef.current
+    if (unansweredCard) void commands.cardCaptureHush(unansweredCard).catch(() => undefined)
     const asking = unlockRef.current
     unlockRef.current = null
     setUnlocking(false)
@@ -220,7 +237,7 @@ export function VaultMenuSurface() {
       if (!tabId || !(await ensureUnlocked(tabId))) return
       await commands.captureSave(tabId).catch(() => undefined)
       setPending(null)
-      if (!address) close()
+      if (!address && !card) close()
     } finally {
       setBusy(false)
     }
@@ -229,7 +246,7 @@ export function VaultMenuSurface() {
   const onDismiss = () => {
     if (tabId) void commands.captureDismiss(tabId).catch(() => undefined)
     setPending(null)
-    if (candidates.length === 0 && !address) close()
+    if (candidates.length === 0 && !address && !card) close()
   }
 
   const onSaveAddress = async () => {
@@ -250,7 +267,7 @@ export function VaultMenuSurface() {
       void showRemoteToast(label, saved ? 'Address saved' : 'This address is already saved')
       addressRef.current = null
       setAddress(null)
-      if (!pending) close()
+      if (!pending && !card) close()
     } catch (error: unknown) {
       void showRemoteToast(label, errorMessage(error))
     } finally {
@@ -283,7 +300,34 @@ export function VaultMenuSurface() {
     }
     addressRef.current = null
     setAddress(null)
-    if (!pending && candidates.length === 0) close()
+    if (!pending && !card && candidates.length === 0) close()
+  }
+
+  const onSaveCard = async () => {
+    const cardTab = cardTabRef.current
+    if (!cardTab || !card) return
+    setBusy(true)
+    const label = getCurrentWindow().label
+    try {
+      if (!(await ensureUnlocked(cardTab))) return
+      const saved = await commands.cardCaptureSave(cardTab, card.serial)
+      void showRemoteToast(label, CARD_SAVED_TOASTS[saved])
+      cardRef.current = null
+      setCard(null)
+      if (!pending && !address) close()
+    } catch (error: unknown) {
+      void showRemoteToast(label, errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onDismissCard = () => {
+    const cardTab = cardTabRef.current
+    if (cardTab && card) void commands.cardCaptureDismiss(cardTab, card.serial).catch(() => undefined)
+    cardRef.current = null
+    setCard(null)
+    if (!pending && !address && candidates.length === 0) close()
   }
 
   // Generated to the field's own rules, the same as the offer would have been.
@@ -323,6 +367,7 @@ export function VaultMenuSurface() {
     !!unlocking ||
     !!pending ||
     !!address ||
+    !!card ||
     (!!host && candidates.length > 0) ||
     !!passwordField
 
@@ -371,7 +416,7 @@ export function VaultMenuSurface() {
               </button>
             </div>
           </div>
-          {(candidates.length > 0 || address) && <div className="kb-vaultmenu-sep" />}
+          {(candidates.length > 0 || address || card) && <div className="kb-vaultmenu-sep" />}
         </>
       )}
 
@@ -384,6 +429,18 @@ export function VaultMenuSurface() {
                 onSave={() => void onSaveAddress()}
                 onUpdate={() => void onUpdateAddress()}
                 onDismiss={onDismissAddress}
+              />
+              {(candidates.length > 0 || card) && <div className="kb-vaultmenu-sep" />}
+            </>
+          )}
+
+          {card && (
+            <>
+              <CardSavePrompt
+                card={card}
+                busy={busy}
+                onSave={() => void onSaveCard()}
+                onDismiss={onDismissCard}
               />
               {candidates.length > 0 && <div className="kb-vaultmenu-sep" />}
             </>

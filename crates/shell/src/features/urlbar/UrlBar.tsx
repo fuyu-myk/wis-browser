@@ -28,11 +28,13 @@ import { BMPICKER_OPEN_EVENT, BOOKMARK_PAGE_EVENT, lastFolderKey, PIN_CAP } from
 import {
   ADDRESS_CAPTURE_EVENT,
   CAPTURE_LOGIN_EVENT,
+  CARD_CAPTURE_EVENT,
   VAULTMENU_CLOSE_EVENT,
   VAULTMENU_FILL_EVENT,
   VAULTMENU_OPEN_EVENT,
   type AddressCaptureEvent,
   type CaptureEvent,
+  type CardCaptureEvent,
   type VaultMenuFill,
 } from '@/features/vault/lib/vaultMenu'
 import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
@@ -82,6 +84,7 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
   const [autoOpen, setAutoOpen] = useState(false)
   const [pendingHost, setPendingHost] = useState<string | null>(null)
   const [addressPending, setAddressPending] = useState(false)
+  const [cardPending, setCardPending] = useState(false)
 
   const { data: hasCreds } = useQuery({
     queryKey: [VAULT_HAS_KEY, host],
@@ -102,7 +105,7 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
   })
 
   // A pending capture keeps the prompt alive regardless of the current page host.
-  const hasPending = pendingHost !== null || addressPending
+  const hasPending = pendingHost !== null || addressPending || cardPending
   const visible = hasPending || (host != null && hasCreds === true) || passwordField != null
 
   const anchorRect = useCallback(() => {
@@ -150,6 +153,7 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
     }
     setPendingHost(null)
     setAddressPending(false)
+    setCardPending(false)
     void qc.invalidateQueries({ queryKey: [VAULT_HAS_KEY] })
   }, [overlay, qc])
 
@@ -180,6 +184,7 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
     if (!tabId) {
       setPendingHost(null)
       setAddressPending(false)
+      setCardPending(false)
       return
     }
     let cancelled = false
@@ -194,6 +199,14 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
         if (cancelled) return
         setAddressPending(address !== null)
         if (address && !address.quiet && !openRef.current) setAutoOpen(true)
+      })
+      .catch(() => undefined)
+    void commands
+      .cardCapturePending(tabId)
+      .then((card) => {
+        if (cancelled) return
+        setCardPending(card !== null)
+        if (card && !card.quiet && !openRef.current) setAutoOpen(true)
       })
       .catch(() => undefined)
     return () => {
@@ -221,6 +234,20 @@ function AutofillKey({ activeTab }: { activeTab: Tab | null }) {
     void listen<AddressCaptureEvent>(ADDRESS_CAPTURE_EVENT, (e) => {
       if (e.payload.tab !== tabIdRef.current) return
       setAddressPending(true)
+      if (!e.payload.quiet) setAutoOpen(true)
+    }).then((fn) => (cancelled ? fn() : (un = fn)))
+    return () => {
+      cancelled = true
+      un?.()
+    }
+  }, [])
+
+  useEffect(() => {
+    let un: UnlistenFn | null = null
+    let cancelled = false
+    void listen<CardCaptureEvent>(CARD_CAPTURE_EVENT, (e) => {
+      if (e.payload.tab !== tabIdRef.current) return
+      setCardPending(true)
       if (!e.payload.quiet) setAutoOpen(true)
     }).then((fn) => (cancelled ? fn() : (un = fn)))
     return () => {
