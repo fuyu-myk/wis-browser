@@ -27,17 +27,17 @@ export function AppearanceSection({ settings, activeWorkspace, onUpdate }: Appea
   return (
       <section id="appearance" className="sec">
         <h2 className="sec-h">Appearance</h2>
-        <SettingsGroup caption="Theme">
+        <SettingsGroup caption="Colour mode">
           <div className="row">
             <div className="l">
-              <span>Theme</span>
+              <span>Colour mode</span>
               <span>Light, dark, or follow system</span>
             </div>
             <Segmented
               value={settings.theme}
               onChange={(theme) => onUpdate({ theme })}
               options={THEME_OPTIONS}
-              ariaLabel="Theme"
+              ariaLabel="Colour mode"
             />
           </div>
           {!isFeatureUnavailableHere('canvases') && (

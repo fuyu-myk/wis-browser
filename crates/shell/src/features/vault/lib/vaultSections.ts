@@ -17,3 +17,15 @@ export interface VaultField {
 export function revealBlock(itemHeight: number, viewHeight: number): 'nearest' | 'start' {
   return itemHeight > viewHeight ? 'start' : 'nearest'
 }
+
+/** How long after an unlock its sections still grow in as they appear. */
+const GROW_WINDOW_MS = 1000
+let unlockedAt = -Infinity
+
+export function noteUnlocked(now = performance.now()): void {
+  unlockedAt = now
+}
+
+export function growsIn(now = performance.now()): boolean {
+  return now - unlockedAt < GROW_WINDOW_MS
+}

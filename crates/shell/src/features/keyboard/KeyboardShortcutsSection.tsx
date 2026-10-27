@@ -4,6 +4,7 @@ import { commands } from '@/bindings/commands'
 import type { KeyAction } from '@/bindings/types'
 import { DEFAULT_KEYMAP, actionLabel, allActions, effectiveKeymap } from '@/lib/palette'
 import { KeybindingInput } from '@/features/keyboard/KeybindingInput'
+import { SettingsGroup } from '@/components/SettingsGroup'
 
 interface KeyboardShortcutsSectionProps {
   keybindings: Partial<Record<KeyAction, string>>
@@ -42,56 +43,58 @@ export function KeyboardShortcutsSection({
   return (
     <section id="shortcuts" className="sec">
       <h2 className="sec-h">Keyboard shortcuts</h2>
-      <div className="row">
-        <div className="l">
-          <span>Apply shortcuts</span>
-          <span>
-            Edits apply as you make them; click to re-apply if a new shortcut
-            isn&apos;t firing yet.
-          </span>
+      <SettingsGroup>
+        <div className="row">
+          <div className="l">
+            <span>Apply shortcuts</span>
+            <span>
+              Edits apply as you make them; click to re-apply if a new shortcut
+              isn&apos;t firing yet.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="kb-btn"
+            onClick={apply}
+            disabled={applyState === 'applying'}
+          >
+            {applyState === 'applied' ? 'Applied' : 'Apply shortcuts'}
+          </button>
         </div>
-        <button
-          type="button"
-          className="kb-btn"
-          onClick={apply}
-          disabled={applyState === 'applying'}
-        >
-          {applyState === 'applied' ? 'Applied' : 'Apply shortcuts'}
-        </button>
-      </div>
-      <div className="kb-keybind-list">
-        {allActions().map((action) => {
-          const current = effective[action] ?? null
-          const fallback = DEFAULT_KEYMAP[action] ?? null
-          const conflictGroup = current ? accelToActions.get(current) ?? [] : []
-          const conflicts = conflictGroup.filter((a) => a !== action)
-          const isConflicting = conflicts.length > 0
-          return (
-            <div className="kb-keybind-row" key={action}>
-              <div className="kb-keybind-row-main">
-                <span className="kb-keybind-row-label">{actionLabel(action)}</span>
-                {isConflicting && (
-                  <span className="kb-keybind-row-conflict" id={`kb-conflict-${action}`}>
-                    Also bound to{' '}
-                    {conflicts.map(actionLabel).join(', ')}
-                  </span>
-                )}
+        <div className="kb-keybind-list">
+          {allActions().map((action) => {
+            const current = effective[action] ?? null
+            const fallback = DEFAULT_KEYMAP[action] ?? null
+            const conflictGroup = current ? accelToActions.get(current) ?? [] : []
+            const conflicts = conflictGroup.filter((a) => a !== action)
+            const isConflicting = conflicts.length > 0
+            return (
+              <div className="kb-keybind-row" key={action}>
+                <div className="kb-keybind-row-main">
+                  <span className="kb-keybind-row-label">{actionLabel(action)}</span>
+                  {isConflicting && (
+                    <span className="kb-keybind-row-conflict" id={`kb-conflict-${action}`}>
+                      Also bound to{' '}
+                      {conflicts.map(actionLabel).join(', ')}
+                    </span>
+                  )}
+                </div>
+                <KeybindingInput
+                  value={current}
+                  defaultValue={fallback}
+                  conflicting={isConflicting}
+                  ariaLabel={actionLabel(action)}
+                  describedBy={isConflicting ? `kb-conflict-${action}` : undefined}
+                  onChange={(next) => {
+                    // `null` from the input means "reset to default".
+                    onChange({ [action]: next ?? '' })
+                  }}
+                />
               </div>
-              <KeybindingInput
-                value={current}
-                defaultValue={fallback}
-                conflicting={isConflicting}
-                ariaLabel={actionLabel(action)}
-                describedBy={isConflicting ? `kb-conflict-${action}` : undefined}
-                onChange={(next) => {
-                  // `null` from the input means "reset to default".
-                  onChange({ [action]: next ?? '' })
-                }}
-              />
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      </SettingsGroup>
     </section>
   )
 }

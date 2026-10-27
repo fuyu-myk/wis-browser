@@ -22,6 +22,7 @@ import { cx } from '@/lib/cx'
 import { withImportedRoutes } from '@/features/site/lib/linkRoutes'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { useAnnounce } from '@/hooks/useAnnounce'
+import { SettingsGroup } from '@/components/SettingsGroup'
 
 interface BackupSectionProps {
   settings: UserSettings
@@ -182,125 +183,131 @@ export function BackupSection({ settings }: BackupSectionProps) {
     <section id="backup" className="sec">
       <h2 className="sec-h">Backup &amp; restore</h2>
 
-      <div className="row">
-        <div className="l">
-          <span>Settings, shortcuts &amp; themes</span>
-          <span>Layout, keyboard shortcuts, new-tab setup, and custom themes.</span>
+      <SettingsGroup caption="Include">
+        <div className="row">
+          <div className="l">
+            <span>Settings, shortcuts &amp; themes</span>
+            <span>Layout, keyboard shortcuts, new-tab setup, and custom themes.</span>
+          </div>
+          <Switch
+            checked={includeSettings}
+            onChange={setIncludeSettings}
+            label="Include settings and themes"
+          />
         </div>
-        <Switch
-          checked={includeSettings}
-          onChange={setIncludeSettings}
-          label="Include settings and themes"
-        />
-      </div>
 
-      <div className="row">
-        <div className="l">
-          <span>Workspaces, tabs &amp; bookmarks</span>
-          <span>Your workspaces with their tabs, split layout, folders, and bookmarks. Imported as new workspaces; same-named ones are skipped.</span>
+        <div className="row">
+          <div className="l">
+            <span>Workspaces, tabs &amp; bookmarks</span>
+            <span>Your workspaces with their tabs, split layout, folders, and bookmarks. Imported as new workspaces; same-named ones are skipped.</span>
+          </div>
+          <Switch
+            checked={includeProfile}
+            onChange={setIncludeProfile}
+            label="Include workspaces, tabs and bookmarks"
+          />
         </div>
-        <Switch
-          checked={includeProfile}
-          onChange={setIncludeProfile}
-          label="Include workspaces, tabs and bookmarks"
-        />
-      </div>
 
-      <div className="row">
-        <div className="l">
-          <span>Browsing history</span>
-          <span>Visited URLs for the workspaces above (travels only with them).</span>
+        <div className="row">
+          <div className="l">
+            <span>Browsing history</span>
+            <span>Visited URLs for the workspaces above (travels only with them).</span>
+          </div>
+          <Switch
+            checked={includeHistory}
+            onChange={setIncludeHistory}
+            label="Include browsing history"
+          />
         </div>
-        <Switch
-          checked={includeHistory}
-          onChange={setIncludeHistory}
-          label="Include browsing history"
-        />
-      </div>
 
-      <div className="row">
-        <div className="l">
-          <span>Canvases</span>
-          <span>The canvases of the workspaces above, with their elements.</span>
+        <div className="row">
+          <div className="l">
+            <span>Canvases</span>
+            <span>The canvases of the workspaces above, with their elements.</span>
+          </div>
+          <Switch
+            checked={includeCanvases}
+            onChange={setIncludeCanvases}
+            label="Include canvases"
+          />
         </div>
-        <Switch
-          checked={includeCanvases}
-          onChange={setIncludeCanvases}
-          label="Include canvases"
-        />
-      </div>
 
-      <div className="row">
-        <div className="l">
-          <span>Saved passwords, addresses and cards</span>
-          <span>Everything in your vault, re-encrypted under your backup passphrase. Unlocking your vault is required to include or restore them.</span>
+        <div className="row">
+          <div className="l">
+            <span>Saved passwords, addresses and cards</span>
+            <span>Everything in your vault, re-encrypted under your backup passphrase. Unlocking your vault is required to include or restore them.</span>
+          </div>
+          <Switch
+            checked={includeVault}
+            onChange={setIncludeVault}
+            label="Include saved passwords, addresses and cards"
+          />
         </div>
-        <Switch
-          checked={includeVault}
-          onChange={setIncludeVault}
-          label="Include saved passwords, addresses and cards"
-        />
-      </div>
+      </SettingsGroup>
 
-      <div className="row">
-        <div className="l">
-          <span>Backup passphrase</span>
-          <span>Encrypts the file (Argon2id + ChaCha20-Poly1305). It cannot be recovered.</span>
+      <SettingsGroup caption="Export">
+        <div className="row">
+          <div className="l">
+            <span>Backup passphrase</span>
+            <span>Encrypts the file (Argon2id + ChaCha20-Poly1305). It cannot be recovered.</span>
+          </div>
+          <input
+            type="password"
+            className="kb-text-input"
+            placeholder="passphrase"
+            aria-label="Backup passphrase"
+            value={exportPass}
+            autoComplete="new-password"
+            onChange={(e) => setExportPass(e.currentTarget.value)}
+          />
         </div>
-        <input
-          type="password"
-          className="kb-text-input"
-          placeholder="passphrase"
-          aria-label="Backup passphrase"
-          value={exportPass}
-          autoComplete="new-password"
-          onChange={(e) => setExportPass(e.currentTarget.value)}
-        />
-      </div>
-      <div className="row">
-        <div className="l">
-          <span>Export backup</span>
-          <span>Save an encrypted .wisbackup file to move your profile elsewhere.</span>
+        <div className="row">
+          <div className="l">
+            <span>Export backup</span>
+            <span>Save an encrypted .wisbackup file to move your profile elsewhere.</span>
+          </div>
+          <button type="button" className="kb-btn" onClick={() => void runExport()} disabled={busy}>
+            Export backup…
+          </button>
         </div>
-        <button type="button" className="kb-btn" onClick={() => void runExport()} disabled={busy}>
-          Export backup…
-        </button>
-      </div>
+      </SettingsGroup>
 
-      <div className="row">
-        <div className="l">
-          <span>Restore passphrase</span>
-          <span>The passphrase the backup file was created with.</span>
+      <SettingsGroup caption="Restore">
+        <div className="row">
+          <div className="l">
+            <span>Restore passphrase</span>
+            <span>The passphrase the backup file was created with.</span>
+          </div>
+          <input
+            type="password"
+            className="kb-text-input"
+            placeholder="passphrase"
+            aria-label="Restore passphrase"
+            value={importPass}
+            autoComplete="off"
+            onChange={(e) => setImportPass(e.currentTarget.value)}
+          />
         </div>
-        <input
-          type="password"
-          className="kb-text-input"
-          placeholder="passphrase"
-          aria-label="Restore passphrase"
-          value={importPass}
-          autoComplete="off"
-          onChange={(e) => setImportPass(e.currentTarget.value)}
-        />
-      </div>
-      <div className="row">
-        <div className="l">
-          <span>Restore backup</span>
-          <span>Open a .wisbackup file and merge it in. Imported items get fresh ids, your existing data is kept.</span>
+        <div className="row">
+          <div className="l">
+            <span>Restore backup</span>
+            <span>Open a .wisbackup file and merge it in. Imported items get fresh ids, your existing data is kept.</span>
+          </div>
+          <button type="button" className="kb-btn" onClick={() => void runImport()} disabled={busy}>
+            Restore backup…
+          </button>
         </div>
-        <button type="button" className="kb-btn" onClick={() => void runImport()} disabled={busy}>
-          Restore backup…
-        </button>
-      </div>
 
-      {status && (
-        <p
-          className={cx('kb-backup-status', { 'is-error': status.kind === 'err' })}
-          role={status.kind === 'err' ? 'alert' : undefined}
-        >
-          {status.text}
-        </p>
-      )}
-      {prompt}
+        {status && (
+          <p
+            className={cx('kb-backup-status', { 'is-error': status.kind === 'err' })}
+            role={status.kind === 'err' ? 'alert' : undefined}
+          >
+            {status.text}
+          </p>
+        )}
+        {prompt}
+      </SettingsGroup>
     </section>
   )
 }

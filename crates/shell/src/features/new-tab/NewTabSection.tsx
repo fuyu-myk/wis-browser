@@ -7,6 +7,7 @@ import { GripIcon, XIcon } from '@/lib/icons'
 import { isSearchQuery, normaliseUrl } from '@/lib/url'
 import { usePointerReorder } from '@/features/new-tab/usePointerReorder'
 import { reorderByKeys } from '@/features/new-tab/shortcuts'
+import { SettingsGroup } from '@/components/SettingsGroup'
 
 /** Mirrors `wis_core::tabs::new_tab::MAX_SHORTCUTS`. */
 const MAX_SHORTCUTS = 8
@@ -63,104 +64,108 @@ export function NewTabSection({ settings, onUpdate }: NewTabSectionProps) {
   return (
     <section id="newtab" className="sec">
       <h2 className="sec-h">New tab</h2>
-      <div className="row">
-        <div className="l">
-          <span>New tabs open</span>
-          <span>The launchpad (search and shortcuts) or your homepage.</span>
-        </div>
-        <Segmented
-          value={settings.new_tab_target}
-          onChange={(new_tab_target) => onUpdate({ new_tab_target })}
-          options={TARGET_OPTIONS}
-          ariaLabel="New tab destination"
-        />
-      </div>
-      <div className="row">
-        <div className="l">
-          <span>Homepage</span>
-          <span>Loaded for new tabs while "Homepage" is selected above.</span>
-        </div>
-        <input
-          type="text"
-          className="kb-text-input"
-          placeholder="example.com"
-          value={homepageDraft}
-          onChange={(e) => setHomepageDraft(e.currentTarget.value)}
-          onBlur={commitHomepage}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur()
-          }}
-          aria-label="Homepage URL"
-        />
-      </div>
-      <div className="row">
-        <div className="l">
-          <span>Launchpad shortcuts</span>
-          <span>Tiles on the launchpad, up to {MAX_SHORTCUTS}.</span>
-        </div>
-      </div>
-      {shortcuts.length > 0 && (
-        <ul className="kb-shortcut-list">
-          {shortcuts.map((tile, i) => (
-            <li
-              key={tile.url}
-              data-key={tile.url}
-              className={cx('kb-shortcut-item', {
-                'is-dragsource': reorder.draggedKey === tile.url,
-              })}
-              style={{ transform: reorder.itemTransform(i) }}
-            >
-              <span
-                className="kb-shortcut-grip"
-                aria-label={`Drag to reorder ${tile.label}`}
-                {...reorder.dragHandlers(tile.url)}
-              >
-                <GripIcon />
-              </span>
-              <span className="kb-shortcut-label">{tile.label}</span>
-              <span className="kb-shortcut-url">{tile.url}</span>
-              <div className="kb-shortcut-actions">
-                <button
-                  type="button"
-                  className="kb-iconbtn"
-                  onClick={() => removeShortcut(tile.url)}
-                  aria-label={`Remove ${tile.label}`}
-                >
-                  <XIcon />
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      {atCap ? (
-        <div className="kb-shortcut-hint">Remove a shortcut to add another.</div>
-      ) : (
-        <div className="kb-shortcut-add">
-          <input
-            type="text"
-            className="kb-text-input"
-            placeholder="Label (optional)"
-            value={label}
-            onChange={(e) => setLabel(e.currentTarget.value)}
-            aria-label="Shortcut label"
+      <SettingsGroup caption="New tabs">
+        <div className="row">
+          <div className="l">
+            <span>New tabs open</span>
+            <span>The launchpad (search and shortcuts) or your homepage.</span>
+          </div>
+          <Segmented
+            value={settings.new_tab_target}
+            onChange={(new_tab_target) => onUpdate({ new_tab_target })}
+            options={TARGET_OPTIONS}
+            ariaLabel="New tab destination"
           />
+        </div>
+        <div className="row">
+          <div className="l">
+            <span>Homepage</span>
+            <span>Loaded for new tabs while "Homepage" is selected above.</span>
+          </div>
           <input
             type="text"
             className="kb-text-input"
             placeholder="example.com"
-            value={url}
-            onChange={(e) => setUrl(e.currentTarget.value)}
+            value={homepageDraft}
+            onChange={(e) => setHomepageDraft(e.currentTarget.value)}
+            onBlur={commitHomepage}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') addShortcut()
+              if (e.key === 'Enter') e.currentTarget.blur()
             }}
-            aria-label="Shortcut URL"
+            aria-label="Homepage URL"
           />
-          <button type="button" className="kb-btn" onClick={addShortcut} disabled={!url.trim()}>
-            Add
-          </button>
         </div>
-      )}
+      </SettingsGroup>
+      <SettingsGroup>
+        <div className="row">
+          <div className="l">
+            <span>Launchpad shortcuts</span>
+            <span>Tiles on the launchpad, up to {MAX_SHORTCUTS}.</span>
+          </div>
+        </div>
+        {shortcuts.length > 0 && (
+          <ul className="kb-shortcut-list">
+            {shortcuts.map((tile, i) => (
+              <li
+                key={tile.url}
+                data-key={tile.url}
+                className={cx('kb-shortcut-item', {
+                  'is-dragsource': reorder.draggedKey === tile.url,
+                })}
+                style={{ transform: reorder.itemTransform(i) }}
+              >
+                <span
+                  className="kb-shortcut-grip"
+                  aria-label={`Drag to reorder ${tile.label}`}
+                  {...reorder.dragHandlers(tile.url)}
+                >
+                  <GripIcon />
+                </span>
+                <span className="kb-shortcut-label">{tile.label}</span>
+                <span className="kb-shortcut-url">{tile.url}</span>
+                <div className="kb-shortcut-actions">
+                  <button
+                    type="button"
+                    className="kb-iconbtn"
+                    onClick={() => removeShortcut(tile.url)}
+                    aria-label={`Remove ${tile.label}`}
+                  >
+                    <XIcon />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {atCap ? (
+          <div className="kb-shortcut-hint">Remove a shortcut to add another.</div>
+        ) : (
+          <div className="kb-shortcut-add">
+            <input
+              type="text"
+              className="kb-text-input"
+              placeholder="Label (optional)"
+              value={label}
+              onChange={(e) => setLabel(e.currentTarget.value)}
+              aria-label="Shortcut label"
+            />
+            <input
+              type="text"
+              className="kb-text-input"
+              placeholder="example.com"
+              value={url}
+              onChange={(e) => setUrl(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') addShortcut()
+              }}
+              aria-label="Shortcut URL"
+            />
+            <button type="button" className="kb-btn" onClick={addShortcut} disabled={!url.trim()}>
+              Add
+            </button>
+          </div>
+        )}
+      </SettingsGroup>
     </section>
   )
 }

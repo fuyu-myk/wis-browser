@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
+import { growsIn } from '@/features/vault/lib/vaultSections'
+import { cx } from '@/lib/cx'
 import type { Card, UserSettings, UserSettingsPatch } from '@/bindings/types'
 import { CardForm } from '@/features/vault/components/CardForm'
 import { Revealed, VaultActions, VaultFields, VaultRow } from '@/features/vault/components/VaultRow'
@@ -9,6 +11,7 @@ import { Switch } from '@/components/controls'
 import { useVaultStatus } from '@/features/vault/hooks/useVaultStatus'
 import { cardFields, cardSummary, emptyCard } from '@/features/vault/lib/cards'
 import { errorMessage } from '@/lib/errors'
+import { SettingsGroup } from '@/components/SettingsGroup'
 
 const CARD_LIST_KEY = ['card-list'] as const
 
@@ -85,88 +88,94 @@ export function CardsSection({ settings, onUpdate }: CardsSectionProps) {
     />
   )
 
+  const grow = useMemo(() => unlocked && growsIn(), [unlocked])
+
   if (!unlocked) return null
 
   return (
-    <section id="cards" className="sec">
+    <section id="cards" className={cx('sec', { 'kb-vault-grow': grow })}>
       <h2 className="sec-h">Payment cards</h2>
-      <div className="row">
-        <div className="l">
-          <span>Save and fill payment cards</span>
-          <span>
-            Offer your saved cards at card fields on secure pages. Each fill asks for Touch ID or your vault password,
-            and security codes are never saved.
-          </span>
-        </div>
-        <Switch
-          checked={settings.card_autofill}
-          onChange={(on) => onUpdate({ card_autofill: on })}
-          label="Save and fill payment cards"
-        />
-      </div>
-
-      {editing?.id === null ? (
-        <Revealed>{form}</Revealed>
-      ) : (
+      <SettingsGroup caption="Options">
         <div className="row">
           <div className="l">
-            <span>{saved.length === 0 ? 'No saved cards yet' : 'Another card'}</span>
-            <span>Add one for easier checkout.</span>
+            <span>Save and fill payment cards</span>
+            <span>
+              Offer your saved cards at card fields on secure pages. Each fill asks for Touch ID or your vault password,
+              and security codes are never saved.
+            </span>
           </div>
-          <button
-            type="button"
-            className="kb-btn"
-            onClick={() => setEditing({ id: null, last4: null, card: emptyCard(now) })}
-          >
-            Add card
-          </button>
+          <Switch
+            checked={settings.card_autofill}
+            onChange={(on) => onUpdate({ card_autofill: on })}
+            label="Save and fill payment cards"
+          />
         </div>
-      )}
-      {saved.length > 0 && (
-        <div className="kb-vault-panel">
-          <ul className="kb-vault-list">
-            {saved.map((card) => {
-              const { title, detail } = cardSummary(card, now)
-              return (
-                <VaultRow
-                  key={card.id}
-                  title={title}
-                  detail={detail}
-                  open={openId === card.id}
-                  onToggle={() => toggle(card.id)}
-                >
-                  {editing?.id === card.id ? (
-                    form
-                  ) : (
-                    <>
-                      <VaultFields fields={cardFields(card, now)} />
-                      <VaultActions
-                        removeLabel={`Remove ${title}`}
-                        removing={remove.isPending}
-                        onRemove={() => remove.mutate(card.id)}
-                      >
-                        <button
-                          type="button"
-                          className="kb-vault-action"
-                          onClick={() => details.mutate({ id: card.id, last4: card.last4 })}
-                          disabled={details.isPending}
+      </SettingsGroup>
+
+      <SettingsGroup caption="Saved cards">
+        {editing?.id === null ? (
+          <Revealed>{form}</Revealed>
+        ) : (
+          <div className="row">
+            <div className="l">
+              <span>{saved.length === 0 ? 'No saved cards yet' : 'Another card'}</span>
+              <span>Add one for easier checkout.</span>
+            </div>
+            <button
+              type="button"
+              className="kb-btn"
+              onClick={() => setEditing({ id: null, last4: null, card: emptyCard(now) })}
+            >
+              Add card
+            </button>
+          </div>
+        )}
+        {saved.length > 0 && (
+          <div className="kb-vault-panel">
+            <ul className="kb-vault-list">
+              {saved.map((card) => {
+                const { title, detail } = cardSummary(card, now)
+                return (
+                  <VaultRow
+                    key={card.id}
+                    title={title}
+                    detail={detail}
+                    open={openId === card.id}
+                    onToggle={() => toggle(card.id)}
+                  >
+                    {editing?.id === card.id ? (
+                      form
+                    ) : (
+                      <>
+                        <VaultFields fields={cardFields(card, now)} />
+                        <VaultActions
+                          removeLabel={`Remove ${title}`}
+                          removing={remove.isPending}
+                          onRemove={() => remove.mutate(card.id)}
                         >
-                          Edit
-                        </button>
-                      </VaultActions>
-                    </>
-                  )}
-                </VaultRow>
-              )
-            })}
-          </ul>
-        </div>
-      )}
-      {failure ? (
-        <p className="kb-backup-status is-error" role="alert">
-          {errorMessage(failure)}
-        </p>
-      ) : null}
+                          <button
+                            type="button"
+                            className="kb-vault-action"
+                            onClick={() => details.mutate({ id: card.id, last4: card.last4 })}
+                            disabled={details.isPending}
+                          >
+                            Edit
+                          </button>
+                        </VaultActions>
+                      </>
+                    )}
+                  </VaultRow>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+        {failure ? (
+          <p className="kb-backup-status is-error" role="alert">
+            {errorMessage(failure)}
+          </p>
+        ) : null}
+      </SettingsGroup>
     </section>
   )
 }

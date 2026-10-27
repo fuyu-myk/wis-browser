@@ -3647,6 +3647,7 @@ body.glass-chrome .kb-content {
 .kb-ext-warn { color: var(--text-primary); }
 .kb-ext-actions { display: flex; flex: none; gap: 6px; }
 .kb-settings-page .row.kb-ext-sub { padding: 4px 0 4px 16px; }
+.kb-vault-body > .row.kb-ext-sub { padding: 4px 0; }
 .kb-modal-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
 .kb-modal-btn {
   padding: 8px 16px;
@@ -3814,16 +3815,6 @@ body.glass-chrome .kb-content {
 
 /* ─── Settings → Passwords (vault) ────────────────────────────── */
 .kb-vault-msg { color: var(--text-tertiary); font-size: 13px; padding: 12px 4px; }
-.kb-vault-locked {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-top: 8px;
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  background: var(--bg-subtle);
-}
 .kb-vault-lock-icon {
   flex-shrink: 0;
   width: 36px;
@@ -3835,10 +3826,27 @@ body.glass-chrome .kb-content {
   background: color-mix(in oklab, var(--primary-500) 18%, transparent);
   color: var(--primary-400);
 }
-.kb-vault-lock-icon svg { width: 18px; height: 18px; }
-.kb-vault-locked-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.kb-vault-locked-text span:first-child { font-size: 13.5px; color: var(--text-primary); }
-.kb-vault-locked-text span:last-child { font-size: 12px; color: var(--text-tertiary); }
+.kb-vault-lock-icon svg { width: 18px; height: 18px; overflow: visible; }
+.kb-vault-status { justify-content: flex-start; }
+.kb-vault-status > .l { flex: 1; }
+.kb-vault-shackle {
+  transform-box: fill-box;
+  transform-origin: 0 100%;
+  transition: transform var(--dur-slow) var(--ease-emphasized);
+}
+.kb-vault-lockglyph.is-open .kb-vault-shackle { transform: translateY(-2px) rotate(-28deg); }
+
+@keyframes kb-vault-grow {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-12px * var(--motion-move)));
+    clip-path: inset(0 0 calc(100% * var(--motion-move)) 0);
+  }
+  to { opacity: 1; transform: none; clip-path: inset(0); }
+}
+.kb-settings-page .sec.kb-vault-grow { animation: kb-vault-grow var(--dur-slow) var(--ease-emphasized) both; }
+#addresses.kb-vault-grow { animation-delay: 70ms; }
+#cards.kb-vault-grow { animation-delay: 140ms; }
 
 .kb-password-secret { display: flex; align-items: center; gap: 6px; }
 .kb-password-secret .kb-text-input { flex: 1; min-width: 0; }
@@ -3955,13 +3963,11 @@ body.glass-chrome .kb-content {
 
 /* Liquid glass for the vault rectangles, matching the site-data / shortcuts
    lists (translucent over the window glass; follows the glass toggle). */
-.glass-on .kb-vault-locked,
 .glass-on .kb-vault-panel {
   background: rgba(0, 0, 0, 0.06);
   border-color: rgba(0, 0, 0, 0.08);
 }
 .glass-on .kb-vault-row { border-bottom-color: rgba(0, 0, 0, 0.06); }
-[data-mode="dark"].glass-on .kb-vault-locked,
 [data-mode="dark"].glass-on .kb-vault-panel {
   background: rgba(0, 0, 0, 0.28);
   border-color: rgba(255, 255, 255, 0.08);
@@ -4334,6 +4340,14 @@ body.has-custom-img .kb-launch-mark {
   padding: 8px 0 4px;
 }
 .kb-shortcut-add .kb-text-input:first-child { flex: 0 0 30%; }
+.kb-key-entry {
+  flex: 1 1 260px;
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.kb-key-entry .kb-text-input { flex: 1 1 auto; min-width: 0; }
 .kb-shortcut-add .kb-text-input:nth-child(2) { flex: 1 1 auto; }
 .kb-shortcut-hint {
   padding: 8px 0 4px;
@@ -5924,7 +5938,8 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .kb-setgroup { display: flex; flex-direction: column; gap: 6px; }
 .kb-setgroup + .kb-setgroup { margin-top: 12px; }
 .kb-setgroup-cap {
-  padding: 0 14px;
+  margin: 0;
+  padding: 0 var(--setgroup-pad);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -5932,16 +5947,25 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   color: var(--text-tertiary);
 }
 .kb-setgroup-box {
-  padding: 0 14px;
+  padding: 0 var(--setgroup-pad);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   background: var(--bg-subtle);
 }
-.kb-setgroup-box > * + .row,
-.kb-setgroup-box > .row + * { border-top: 1px solid var(--border); }
-.kb-setgroup-box > .kb-backup-status,
-.kb-setgroup-box > .kb-filterlists-status { padding: 8px 0; margin: 0; }
-.kb-setgroup-box .row.is-found { margin: 0 -14px; padding-left: 14px; padding-right: 14px; border-radius: 0; }
+.kb-setgroup { --setgroup-pad: 12px; }
+.kb-setgroup-box > .row { padding: var(--setgroup-pad) 0; }
+.kb-setgroup-box > :not(.row) { margin: var(--setgroup-pad) 0; }
+.kb-setgroup-box > .row + .row { border-top: 1px solid var(--border); }
+.kb-setgroup-box > .row + :not(.row) { margin-top: 0; }
+.kb-setgroup-box > :not(.row) + .row { padding-top: 0; }
+.kb-setgroup-box > .kb-themes-list { max-width: none; }
+.kb-setgroup-box:has(.kb-suggest-list) { position: relative; z-index: 1; }
+.kb-setgroup-box .row.is-found {
+  margin: 0 calc(-1 * var(--setgroup-pad));
+  padding-left: var(--setgroup-pad);
+  padding-right: var(--setgroup-pad);
+  border-radius: 0;
+}
 .glass-on .kb-setgroup-box {
   background: rgba(0, 0, 0, 0.06);
   border-color: rgba(0, 0, 0, 0.08);
@@ -5977,6 +6001,41 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   flex: 1 1 220px;
   min-width: 180px;
 }
+.kb-settings-page .row > .kb-suggest {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+.kb-suggest { position: relative; display: flex; }
+.kb-suggest-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+}
+.kb-suggest-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.kb-suggest-list li span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-suggest-list li span + span { flex-shrink: 0; font-size: 11.5px; color: var(--text-tertiary); }
+.kb-suggest-list li.is-active { background: color-mix(in oklab, var(--primary-400) 18%, transparent); }
 .kb-settings-page .row > .kb-shortcut-add {
   flex: 1 1 260px;
   min-width: 220px;

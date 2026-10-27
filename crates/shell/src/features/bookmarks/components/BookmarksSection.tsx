@@ -5,6 +5,7 @@ import type { WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { bookmarkImportSummary } from '@/features/data-import/importSummary'
 import { useAnnounce } from '@/hooks/useAnnounce'
+import { SettingsGroup } from '@/components/SettingsGroup'
 
 interface Status {
   kind: 'ok' | 'err'
@@ -65,48 +66,50 @@ export function BookmarksSection({ workspaceId, ephemeral }: BookmarksSectionPro
   return (
     <section id="bookmarks" className="sec">
       <h2 className="sec-h">Bookmarks</h2>
-      <div className="row">
-        <div className="l">
-          <span>Import from HTML</span>
-          <span>
-            {ephemeral
-              ? 'Bookmarks are disabled in private workspaces.'
-              : 'Bring bookmarks from another browser: export them there as an HTML ' +
-                'file, then pick it here. Nested folders are combined into one level; ' +
-                'duplicates are skipped.'}
-          </span>
+      <SettingsGroup>
+        <div className="row">
+          <div className="l">
+            <span>Import from HTML</span>
+            <span>
+              {ephemeral
+                ? 'Bookmarks are disabled in private workspaces.'
+                : 'Bring bookmarks from another browser: export them there as an HTML ' +
+                  'file, then pick it here. Nested folders are combined into one level; ' +
+                  'duplicates are skipped.'}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="kb-btn"
+            onClick={() => void importHtml()}
+            disabled={busy || ephemeral || !workspaceId}
+          >
+            Import…
+          </button>
         </div>
-        <button
-          type="button"
-          className="kb-btn"
-          onClick={() => void importHtml()}
-          disabled={busy || ephemeral || !workspaceId}
-        >
-          Import…
-        </button>
-      </div>
-      <div className="row">
-        <div className="l">
-          <span>Export to HTML</span>
-          <span>Save this workspace&apos;s bookmarks as a file any browser can import.</span>
+        <div className="row">
+          <div className="l">
+            <span>Export to HTML</span>
+            <span>Save this workspace&apos;s bookmarks as a file any browser can import.</span>
+          </div>
+          <button
+            type="button"
+            className="kb-btn"
+            onClick={() => void exportHtml()}
+            disabled={busy || !workspaceId}
+          >
+            Export…
+          </button>
         </div>
-        <button
-          type="button"
-          className="kb-btn"
-          onClick={() => void exportHtml()}
-          disabled={busy || !workspaceId}
-        >
-          Export…
-        </button>
-      </div>
-      {status && (
-        <p
-          className={cx('kb-backup-status', { 'is-error': status.kind === 'err' })}
-          role={status.kind === 'err' ? 'alert' : undefined}
-        >
-          {status.text}
-        </p>
-      )}
+        {status && (
+          <p
+            className={cx('kb-backup-status', { 'is-error': status.kind === 'err' })}
+            role={status.kind === 'err' ? 'alert' : undefined}
+          >
+            {status.text}
+          </p>
+        )}
+      </SettingsGroup>
     </section>
   )
 }

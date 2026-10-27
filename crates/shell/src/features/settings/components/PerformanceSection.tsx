@@ -6,6 +6,7 @@ import { commands } from '@/bindings/commands'
 import type { TabArchiveAfter, UserSettings, UserSettingsPatch, Widget } from '@/bindings/types'
 import { Segmented, Switch } from '@/components/controls'
 import { TaskManagerSection } from '@/features/settings/components/TaskManagerSection'
+import { SettingsGroup } from '@/components/SettingsGroup'
 
 const ARCHIVE_OPTIONS = [
   { value: 'off' as const, label: 'Off' },
@@ -24,162 +25,168 @@ export function PerformanceSection({ settings, onUpdate }: PerformanceSectionPro
   return (
       <section id="performance" className="sec">
         <h2 className="sec-h">Performance</h2>
-        <div className="row">
-          <div className="l">
-            <span>Sleep inactive tabs</span>
-            <span>
-              Discard background tabs after a while to free memory. They reload
-              when you switch back. The active tab never sleeps.
-            </span>
+        <SettingsGroup caption="Tabs">
+          <div className="row">
+            <div className="l">
+              <span>Sleep inactive tabs</span>
+              <span>
+                Discard background tabs after a while to free memory. They reload
+                when you switch back. The active tab never sleeps.
+              </span>
+            </div>
+            <Switch
+              checked={settings.tab_sleep_enabled}
+              onChange={(tab_sleep_enabled) => onUpdate({ tab_sleep_enabled })}
+              label="Sleep inactive tabs"
+            />
           </div>
-          <Switch
-            checked={settings.tab_sleep_enabled}
-            onChange={(tab_sleep_enabled) => onUpdate({ tab_sleep_enabled })}
-            label="Sleep inactive tabs"
-          />
-        </div>
-        <div className="row">
-          <div className="l">
-            <span>Sleep after</span>
-            <span>Idle minutes a background tab waits before sleeping.</span>
+          <div className="row">
+            <div className="l">
+              <span>Sleep after</span>
+              <span>Idle minutes a background tab waits before sleeping.</span>
+            </div>
+            <input
+              type="number"
+              className="kb-num-input"
+              min={1}
+              max={1440}
+              step={1}
+              value={settings.tab_sleep_minutes}
+              disabled={!settings.tab_sleep_enabled}
+              onChange={(e) => {
+                const n = Math.round(Number(e.currentTarget.value))
+                if (!Number.isFinite(n)) return
+                onUpdate({ tab_sleep_minutes: Math.min(1440, Math.max(1, n)) })
+              }}
+              aria-label="Sleep after minutes"
+            />
           </div>
-          <input
-            type="number"
-            className="kb-num-input"
-            min={1}
-            max={1440}
-            step={1}
-            value={settings.tab_sleep_minutes}
-            disabled={!settings.tab_sleep_enabled}
-            onChange={(e) => {
-              const n = Math.round(Number(e.currentTarget.value))
-              if (!Number.isFinite(n)) return
-              onUpdate({ tab_sleep_minutes: Math.min(1440, Math.max(1, n)) })
-            }}
-            aria-label="Sleep after minutes"
-          />
-        </div>
-        <div className="row">
-          <div className="l">
-            <span>Archive idle tabs</span>
-            <span>
-              Close tabs you haven't opened in this long into Recently closed.
-              Pinned tabs, tabs in folders and private workspaces' tabs are unaffected.
-            </span>
+          <div className="row">
+            <div className="l">
+              <span>Archive idle tabs</span>
+              <span>
+                Close tabs you haven't opened in this long into Recently closed.
+                Pinned tabs, tabs in folders and private workspaces' tabs are unaffected.
+              </span>
+            </div>
+            <Segmented
+              value={settings.tab_archive_after}
+              onChange={(tab_archive_after) => onUpdate({ tab_archive_after })}
+              options={ARCHIVE_OPTIONS}
+              ariaLabel="Archive idle tabs after"
+            />
           </div>
-          <Segmented
-            value={settings.tab_archive_after}
-            onChange={(tab_archive_after) => onUpdate({ tab_archive_after })}
-            options={ARCHIVE_OPTIONS}
-            ariaLabel="Archive idle tabs after"
-          />
-        </div>
-        <div className="row">
-          <div className="l">
-            <span>Keep widget panels loaded</span>
-            <span>
-              Dismissed widget panels stay loaded for instant reopening. Turn
-              off to free each panel's memory the moment it closes; logins
-              persist either way.
-            </span>
+        </SettingsGroup>
+        <SettingsGroup caption="Widget panels">
+          <div className="row">
+            <div className="l">
+              <span>Keep widget panels loaded</span>
+              <span>
+                Dismissed widget panels stay loaded for instant reopening. Turn
+                off to free each panel's memory the moment it closes; logins
+                persist either way.
+              </span>
+            </div>
+            <Switch
+              checked={settings.widget_keep_loaded}
+              onChange={(widget_keep_loaded) => onUpdate({ widget_keep_loaded })}
+              label="Keep widget panels loaded"
+            />
           </div>
-          <Switch
-            checked={settings.widget_keep_loaded}
-            onChange={(widget_keep_loaded) => onUpdate({ widget_keep_loaded })}
-            label="Keep widget panels loaded"
-          />
-        </div>
-        <div className="row">
-          <div className="l">
-            <span>Reclaim hidden panels after</span>
-            <span>Minutes a hidden widget panel stays loaded before it is closed.</span>
+          <div className="row">
+            <div className="l">
+              <span>Reclaim hidden panels after</span>
+              <span>Minutes a hidden widget panel stays loaded before it is closed.</span>
+            </div>
+            <input
+              type="number"
+              className="kb-num-input"
+              min={1}
+              max={1440}
+              step={1}
+              value={settings.widget_sleep_minutes}
+              disabled={!settings.widget_keep_loaded}
+              onChange={(e) => {
+                const n = Math.round(Number(e.currentTarget.value))
+                if (!Number.isFinite(n)) return
+                onUpdate({ widget_sleep_minutes: Math.min(1440, Math.max(1, n)) })
+              }}
+              aria-label="Widget panel reclaim minutes"
+            />
           </div>
-          <input
-            type="number"
-            className="kb-num-input"
-            min={1}
-            max={1440}
-            step={1}
-            value={settings.widget_sleep_minutes}
-            disabled={!settings.widget_keep_loaded}
-            onChange={(e) => {
-              const n = Math.round(Number(e.currentTarget.value))
-              if (!Number.isFinite(n)) return
-              onUpdate({ widget_sleep_minutes: Math.min(1440, Math.max(1, n)) })
-            }}
-            aria-label="Widget panel reclaim minutes"
-          />
-        </div>
-        <div className="row">
-          <div className="l">
-            <span>Cap hidden panel memory</span>
-            <span>
-              Reclaim hidden widget panels oldest-first when together they
-              hold more memory than the cap.
-            </span>
+          <div className="row">
+            <div className="l">
+              <span>Cap hidden panel memory</span>
+              <span>
+                Reclaim hidden widget panels oldest-first when together they
+                hold more memory than the cap.
+              </span>
+            </div>
+            <Switch
+              checked={settings.widget_memory_cap_enabled}
+              onChange={(widget_memory_cap_enabled) =>
+                onUpdate({ widget_memory_cap_enabled })
+              }
+              label="Cap hidden panel memory"
+            />
           </div>
-          <Switch
-            checked={settings.widget_memory_cap_enabled}
-            onChange={(widget_memory_cap_enabled) =>
-              onUpdate({ widget_memory_cap_enabled })
-            }
-            label="Cap hidden panel memory"
-          />
-        </div>
-        <div className="row">
-          <div className="l">
-            <span>Memory cap</span>
-            <span>Combined footprint (MB) hidden panels may hold.</span>
+          <div className="row">
+            <div className="l">
+              <span>Memory cap</span>
+              <span>Combined footprint (MB) hidden panels may hold.</span>
+            </div>
+            <MemoryCapInput
+              value={settings.widget_memory_cap_mb}
+              disabled={!settings.widget_keep_loaded || !settings.widget_memory_cap_enabled}
+              onCommit={(widget_memory_cap_mb) => onUpdate({ widget_memory_cap_mb })}
+            />
           </div>
-          <MemoryCapInput
-            value={settings.widget_memory_cap_mb}
-            disabled={!settings.widget_keep_loaded || !settings.widget_memory_cap_enabled}
-            onCommit={(widget_memory_cap_mb) => onUpdate({ widget_memory_cap_mb })}
-          />
-        </div>
-        <div className="row">
-          <div className="l">
-            <span>Limit loaded widget panels</span>
-            <span>
-              Cap how many recently used widget panels stay loaded for instant
-              reopening; the oldest is reclaimed first. Turn off for no limit.
-            </span>
+          <div className="row">
+            <div className="l">
+              <span>Limit loaded widget panels</span>
+              <span>
+                Cap how many recently used widget panels stay loaded for instant
+                reopening; the oldest is reclaimed first. Turn off for no limit.
+              </span>
+            </div>
+            <Switch
+              checked={settings.widget_panel_limit_enabled}
+              onChange={(widget_panel_limit_enabled) =>
+                onUpdate({ widget_panel_limit_enabled })
+              }
+              label="Limit loaded widget panels"
+            />
           </div>
-          <Switch
-            checked={settings.widget_panel_limit_enabled}
-            onChange={(widget_panel_limit_enabled) =>
-              onUpdate({ widget_panel_limit_enabled })
-            }
-            label="Limit loaded widget panels"
-          />
-        </div>
-        <div className="row">
-          <div className="l">
-            <span>Keep at most</span>
-            <span>Loaded widget panels kept before the oldest is reclaimed.</span>
+          <div className="row">
+            <div className="l">
+              <span>Keep at most</span>
+              <span>Loaded widget panels kept before the oldest is reclaimed.</span>
+            </div>
+            <input
+              type="number"
+              className="kb-num-input"
+              min={1}
+              max={50}
+              step={1}
+              value={settings.widget_panel_limit}
+              disabled={!settings.widget_panel_limit_enabled}
+              onChange={(e) => {
+                const n = Math.round(Number(e.currentTarget.value))
+                if (!Number.isFinite(n)) return
+                onUpdate({ widget_panel_limit: Math.min(50, Math.max(1, n)) })
+              }}
+              aria-label="Loaded widget panel limit"
+            />
           </div>
-          <input
-            type="number"
-            className="kb-num-input"
-            min={1}
-            max={50}
-            step={1}
-            value={settings.widget_panel_limit}
-            disabled={!settings.widget_panel_limit_enabled}
-            onChange={(e) => {
-              const n = Math.round(Number(e.currentTarget.value))
-              if (!Number.isFinite(n)) return
-              onUpdate({ widget_panel_limit: Math.min(50, Math.max(1, n)) })
-            }}
-            aria-label="Loaded widget panel limit"
+          <LiveWidgetPanelsRow
+            widgets={settings.sidebar_widgets}
+            limitEnabled={settings.widget_panel_limit_enabled}
+            limit={settings.widget_panel_limit}
           />
-        </div>
-        <LiveWidgetPanelsRow
-          widgets={settings.sidebar_widgets}
-          limitEnabled={settings.widget_panel_limit_enabled}
-          limit={settings.widget_panel_limit}
-        />
-        <TaskManagerSection />
+        </SettingsGroup>
+        <SettingsGroup>
+          <TaskManagerSection />
+        </SettingsGroup>
       </section>
   )
 }

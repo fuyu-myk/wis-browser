@@ -7,6 +7,7 @@ import { Switch } from '@/components/controls'
 import { cx } from '@/lib/cx'
 import { errorMessage } from '@/lib/errors'
 import { bookmarkImportSummary, historyImportSummary } from '@/features/data-import/importSummary'
+import { SettingsGroup } from '@/components/SettingsGroup'
 
 interface Status {
   kind: 'ok' | 'err'
@@ -99,76 +100,78 @@ export function ImportSection({ workspaceId, ephemeral }: ImportSectionProps) {
   return (
     <section id="import" className="sec">
       <h2 className="sec-h">Import</h2>
-      <div className="row">
-        <div className="l">
-          <span>Import from another browser</span>
-          <span>{intro}</span>
+      <SettingsGroup>
+        <div className="row">
+          <div className="l">
+            <span>Import from another browser</span>
+            <span>{intro}</span>
+          </div>
         </div>
-      </div>
-      {!ephemeral && (
-        <>
-          <div className="row">
-            <div className="l">
-              <span>Bookmarks</span>
-              <span>Nested folders are combined into one level; duplicates are skipped.</span>
-            </div>
-            <Switch
-              checked={kinds.bookmarks}
-              onChange={(bookmarks) => setKinds({ ...kinds, bookmarks })}
-              label="Import bookmarks"
-            />
-          </div>
-          <div className="row">
-            <div className="l">
-              <span>History</span>
-              <span>
-                The last 180 days. Pages already in this workspace keep their own title.
-              </span>
-            </div>
-            <Switch
-              checked={kinds.history}
-              onChange={(history) => setKinds({ ...kinds, history })}
-              label="Import history"
-            />
-          </div>
-          {sources.map((source) => {
-            const take = wanted(source)
-            return (
-              <div className="row" key={source.id}>
-                <div className="l">
-                  <span>{sourceLabel(source, sources)}</span>
-                  <span>{availableKinds(source)}</span>
-                </div>
-                <button
-                  type="button"
-                  className="kb-btn"
-                  onClick={() => void importFrom(source)}
-                  disabled={
-                    busyId !== null || !workspaceId || !(take.bookmarks || take.history)
-                  }
-                  aria-label={`Import from ${sourceLabel(source, sources)}`}
-                >
-                  {busyId === source.id ? 'Importing…' : 'Import'}
-                </button>
+        {!ephemeral && (
+          <>
+            <div className="row">
+              <div className="l">
+                <span>Bookmarks</span>
+                <span>Nested folders are combined into one level; duplicates are skipped.</span>
               </div>
-            )
-          })}
-        </>
-      )}
-      {error && !ephemeral && (
-        <p className="kb-backup-status is-error" role="alert">
-          {errorMessage(error)}
-        </p>
-      )}
-      {status.map((line) => (
-        <p
-          key={line.text}
-          className={cx('kb-backup-status', { 'is-error': line.kind === 'err' })}
-          role={line.kind === 'err' ? 'alert' : 'status'}
-        >
-          {line.text}
-        </p>
-      ))}
+              <Switch
+                checked={kinds.bookmarks}
+                onChange={(bookmarks) => setKinds({ ...kinds, bookmarks })}
+                label="Import bookmarks"
+              />
+            </div>
+            <div className="row">
+              <div className="l">
+                <span>History</span>
+                <span>
+                  The last 180 days. Pages already in this workspace keep their own title.
+                </span>
+              </div>
+              <Switch
+                checked={kinds.history}
+                onChange={(history) => setKinds({ ...kinds, history })}
+                label="Import history"
+              />
+            </div>
+            {sources.map((source) => {
+              const take = wanted(source)
+              return (
+                <div className="row" key={source.id}>
+                  <div className="l">
+                    <span>{sourceLabel(source, sources)}</span>
+                    <span>{availableKinds(source)}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="kb-btn"
+                    onClick={() => void importFrom(source)}
+                    disabled={
+                      busyId !== null || !workspaceId || !(take.bookmarks || take.history)
+                    }
+                    aria-label={`Import from ${sourceLabel(source, sources)}`}
+                  >
+                    {busyId === source.id ? 'Importing…' : 'Import'}
+                  </button>
+                </div>
+              )
+            })}
+          </>
+        )}
+        {error && !ephemeral && (
+          <p className="kb-backup-status is-error" role="alert">
+            {errorMessage(error)}
+          </p>
+        )}
+        {status.map((line) => (
+          <p
+            key={line.text}
+            className={cx('kb-backup-status', { 'is-error': line.kind === 'err' })}
+            role={line.kind === 'err' ? 'alert' : 'status'}
+          >
+            {line.text}
+          </p>
+        ))}
+      </SettingsGroup>
     </section>
   )
 }

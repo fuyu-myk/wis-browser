@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
+import { growsIn } from '@/features/vault/lib/vaultSections'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { PasswordForm } from '@/features/vault/components/PasswordForm'
 import { Revealed, VaultActions, VaultRow } from '@/features/vault/components/VaultRow'
@@ -15,6 +16,7 @@ import { useBrowserState, BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { Segmented } from '@/components/controls'
 import type { PasswordOffer } from '@/bindings/types'
 import { useAnnounce } from '@/hooks/useAnnounce'
+import { SettingsGroup } from '@/components/SettingsGroup'
 
 const VAULT_LIST_KEY = ['vault-list'] as const
 
@@ -169,147 +171,155 @@ export function PasswordsSection() {
     )
   }, [creds, search])
 
+  const grow = useMemo(() => unlocked && growsIn(), [unlocked])
+
   if (!unlocked) return null
 
   return (
-    <section id="passwords" className="sec">
+    <section id="passwords" className={cx('sec', { 'kb-vault-grow': grow })}>
       <h2 className="sec-h">Passwords</h2>
-      <div className="row">
-        <div className="l">
-          <span>Offer a strong password on signup</span>
-          <span>
-            {offer === 'always'
-              ? 'Filled into empty password fields without asking.'
-              : offer === 'never'
-                ? 'Never offered. Generate one here instead.'
-                : 'Offered when a signup form takes focus.'}
-          </span>
-        </div>
-        <Segmented
-          value={offer}
-          onChange={(next) => setOffer.mutate(next)}
-          options={OFFER_OPTIONS}
-          ariaLabel="Offer a strong password on signup"
-        />
-      </div>
-
-      <div className="row">
-        <div className="l">
-          <span>Check for breaches</span>
-          <span className={cx({ 'is-error': breachStatus?.kind === 'err' })}>
-            {breachStatus?.text ??
-              `Looks your passwords up in public breach data without revealing them. Each is hashed here and only the first five characters of the hash are sent. Requests follow this workspace\u2019s network route, and ${BIOMETRIC_NAME} is asked for first.`}
-          </span>
-        </div>
-        <button
-          type="button"
-          className="kb-btn"
-          onClick={() => checkBreaches.mutate()}
-          disabled={checkBreaches.isPending || workspaceId === null}
-        >
-          {checkBreaches.isPending ? 'Checking\u2026' : 'Check'}
-        </button>
-      </div>
-
-      <div className="row">
-        <div className="l">
-          <span>Import from CSV</span>
-          <span>
-            Bring passwords from another browser or password manager (a
-            Chrome, Firefox or Safari CSV export). Existing entries for the
-            same site and username are updated.
-          </span>
-        </div>
-        <button
-          type="button"
-          className="kb-btn"
-          onClick={() => void importCsv()}
-          disabled={csvBusy}
-        >
-          Import…
-        </button>
-      </div>
-
-      <div className="row">
-        <div className="l">
-          <span>Export to CSV</span>
-          <span>Save every password as a plain, unencrypted CSV file.</span>
-        </div>
-        <button
-          type="button"
-          className="kb-btn"
-          onClick={() => setConfirmExport(true)}
-          disabled={csvBusy}
-        >
-          Export…
-        </button>
-      </div>
-
-      {csvStatus && (
-        <p
-          className={cx('kb-backup-status', { 'is-error': csvStatus.kind === 'err' })}
-          role={csvStatus.kind === 'err' ? 'alert' : undefined}
-        >
-          {csvStatus.text}
-        </p>
-      )}
-
-      {adding ? (
-        <Revealed>
-          <PasswordForm
-            onSaved={() => {
-              setAdding(false)
-              void qc.invalidateQueries({ queryKey: VAULT_LIST_KEY })
-            }}
-            onCancel={() => setAdding(false)}
-          />
-        </Revealed>
-      ) : (
+      <SettingsGroup caption="Options">
         <div className="row">
           <div className="l">
-            <span>{creds.length === 0 ? 'No saved passwords yet' : 'Another password'}</span>
-            <span>Add one for more convenient sign-ins.</span>
+            <span>Offer a strong password on signup</span>
+            <span>
+              {offer === 'always'
+                ? 'Filled into empty password fields without asking.'
+                : offer === 'never'
+                  ? 'Never offered. Generate one here instead.'
+                  : 'Offered when a signup form takes focus.'}
+            </span>
           </div>
-          <button type="button" className="kb-btn" onClick={() => setAdding(true)}>
-            Add password
-          </button>
-        </div>
-      )}
-
-      <div className="kb-vault-panel">
-        <div className="kb-vault-search">
-          <SearchIcon />
-          <input
-            type="text"
-            placeholder="Search passwords"
-            aria-label="Search passwords"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            spellCheck={false}
+          <Segmented
+            value={offer}
+            onChange={(next) => setOffer.mutate(next)}
+            options={OFFER_OPTIONS}
+            ariaLabel="Offer a strong password on signup"
           />
         </div>
-        {filtered.length === 0 ? (
-          <p className="kb-vault-empty">
-            {creds.length === 0 ? 'No saved passwords yet.' : 'No matches.'}
+
+        <div className="row">
+          <div className="l">
+            <span>Check for breaches</span>
+            <span className={cx({ 'is-error': breachStatus?.kind === 'err' })}>
+              {breachStatus?.text ??
+                `Looks your passwords up in public breach data without revealing them. Each is hashed here and only the first five characters of the hash are sent. Requests follow this workspace\u2019s network route, and ${BIOMETRIC_NAME} is asked for first.`}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="kb-btn"
+            onClick={() => checkBreaches.mutate()}
+            disabled={checkBreaches.isPending || workspaceId === null}
+          >
+            {checkBreaches.isPending ? 'Checking\u2026' : 'Check'}
+          </button>
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup caption="Import and export">
+        <div className="row">
+          <div className="l">
+            <span>Import from CSV</span>
+            <span>
+              Bring passwords from another browser or password manager (a
+              Chrome, Firefox or Safari CSV export). Existing entries for the
+              same site and username are updated.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="kb-btn"
+            onClick={() => void importCsv()}
+            disabled={csvBusy}
+          >
+            Import…
+          </button>
+        </div>
+
+        <div className="row">
+          <div className="l">
+            <span>Export to CSV</span>
+            <span>Save every password as a plain, unencrypted CSV file.</span>
+          </div>
+          <button
+            type="button"
+            className="kb-btn"
+            onClick={() => setConfirmExport(true)}
+            disabled={csvBusy}
+          >
+            Export…
+          </button>
+        </div>
+
+        {csvStatus && (
+          <p
+            className={cx('kb-backup-status', { 'is-error': csvStatus.kind === 'err' })}
+            role={csvStatus.kind === 'err' ? 'alert' : undefined}
+          >
+            {csvStatus.text}
           </p>
-        ) : (
-          <ul className="kb-vault-list">
-            {filtered.map((c) => (
-              <CredentialRow
-                key={c.id}
-                id={c.id}
-                host={c.host}
-                username={c.username}
-                breachCount={breaches?.get(c.id) ?? null}
-                open={openId === c.id}
-                onToggle={() => setOpenId(openId === c.id ? null : c.id)}
-                removing={del.isPending}
-                onDelete={() => del.mutate(c.id)}
-              />
-            ))}
-          </ul>
         )}
-      </div>
+      </SettingsGroup>
+
+      <SettingsGroup caption="Saved passwords">
+        {adding ? (
+          <Revealed>
+            <PasswordForm
+              onSaved={() => {
+                setAdding(false)
+                void qc.invalidateQueries({ queryKey: VAULT_LIST_KEY })
+              }}
+              onCancel={() => setAdding(false)}
+            />
+          </Revealed>
+        ) : (
+          <div className="row">
+            <div className="l">
+              <span>{creds.length === 0 ? 'No saved passwords yet' : 'Another password'}</span>
+              <span>Add one for more convenient sign-ins.</span>
+            </div>
+            <button type="button" className="kb-btn" onClick={() => setAdding(true)}>
+              Add password
+            </button>
+          </div>
+        )}
+
+        <div className="kb-vault-panel">
+          <div className="kb-vault-search">
+            <SearchIcon />
+            <input
+              type="text"
+              placeholder="Search passwords"
+              aria-label="Search passwords"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              spellCheck={false}
+            />
+          </div>
+          {filtered.length === 0 ? (
+            <p className="kb-vault-empty">
+              {creds.length === 0 ? 'No saved passwords yet.' : 'No matches.'}
+            </p>
+          ) : (
+            <ul className="kb-vault-list">
+              {filtered.map((c) => (
+                <CredentialRow
+                  key={c.id}
+                  id={c.id}
+                  host={c.host}
+                  username={c.username}
+                  breachCount={breaches?.get(c.id) ?? null}
+                  open={openId === c.id}
+                  onToggle={() => setOpenId(openId === c.id ? null : c.id)}
+                  removing={del.isPending}
+                  onDelete={() => del.mutate(c.id)}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      </SettingsGroup>
 
       <ConfirmDialog
         open={confirmExport}

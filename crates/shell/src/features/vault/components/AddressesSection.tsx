@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
+import { growsIn } from '@/features/vault/lib/vaultSections'
+import { cx } from '@/lib/cx'
 import type { Address, UserSettings, UserSettingsPatch } from '@/bindings/types'
 import { AddressForm } from '@/features/vault/components/AddressForm'
 import { Revealed, VaultActions, VaultFields, VaultRow } from '@/features/vault/components/VaultRow'
@@ -10,6 +12,7 @@ import { useVaultStatus } from '@/features/vault/hooks/useVaultStatus'
 import { addressFields, addressMatches, addressSummary, emptyAddress } from '@/features/vault/lib/addresses'
 import { errorMessage } from '@/lib/errors'
 import { SearchIcon } from '@/lib/icons'
+import { SettingsGroup } from '@/components/SettingsGroup'
 
 const ADDRESS_LIST_KEY = ['address-list'] as const
 
@@ -64,6 +67,8 @@ export function AddressesSection({ settings, onUpdate }: AddressesSectionProps) 
   })
   const failure = save.error ?? remove.error
 
+  const grow = useMemo(() => unlocked && growsIn(), [unlocked])
+
   if (!unlocked) return null
 
   const cancel = () => {
@@ -85,89 +90,93 @@ export function AddressesSection({ settings, onUpdate }: AddressesSectionProps) 
   )
 
   return (
-    <section id="addresses" className="sec">
+    <section id="addresses" className={cx('sec', { 'kb-vault-grow': grow })}>
       <h2 className="sec-h">Addresses</h2>
-      <div className="row">
-        <div className="l">
-          <span>Save and fill addresses</span>
-          <span>Offer your saved addresses at address fields. They are encrypted in your password vault.</span>
-        </div>
-        <Switch
-          checked={settings.address_autofill}
-          onChange={(on) => onUpdate({ address_autofill: on })}
-          label="Save and fill addresses"
-        />
-      </div>
-
-      {editing?.id === null ? (
-        <Revealed>{form}</Revealed>
-      ) : (
+      <SettingsGroup caption="Options">
         <div className="row">
           <div className="l">
-            <span>{saved.length === 0 ? 'No saved addresses yet' : 'Another address'}</span>
-            <span>Add one to have it offered at address fields.</span>
+            <span>Save and fill addresses</span>
+            <span>Offer your saved addresses at address fields. They are encrypted in your password vault.</span>
           </div>
-          <button
-            type="button"
-            className="kb-btn"
-            onClick={() => setEditing({ id: null, address: emptyAddress() })}
-          >
-            Add address
-          </button>
+          <Switch
+            checked={settings.address_autofill}
+            onChange={(on) => onUpdate({ address_autofill: on })}
+            label="Save and fill addresses"
+          />
         </div>
-      )}
-      {saved.length > 0 && (
-        <div className="kb-vault-panel">
-          <div className="kb-vault-search">
-            <SearchIcon />
-            <input
-              type="text"
-              placeholder="Search addresses"
-              aria-label="Search addresses"
-              value={search}
-              onChange={(e) => setSearch(e.currentTarget.value)}
-              spellCheck={false}
-            />
+      </SettingsGroup>
+
+      <SettingsGroup caption="Saved addresses">
+        {editing?.id === null ? (
+          <Revealed>{form}</Revealed>
+        ) : (
+          <div className="row">
+            <div className="l">
+              <span>{saved.length === 0 ? 'No saved addresses yet' : 'Another address'}</span>
+              <span>Add one to have it offered at address fields.</span>
+            </div>
+            <button
+              type="button"
+              className="kb-btn"
+              onClick={() => setEditing({ id: null, address: emptyAddress() })}
+            >
+              Add address
+            </button>
           </div>
-          {shown.length === 0 && <p className="kb-vault-empty">No matches.</p>}
-          <ul className="kb-vault-list">
-            {shown.map(({ id, address }) => {
-              const { title, detail } = addressSummary(address, navigator.language)
-              return (
-                <VaultRow
-                  key={id}
-                  title={title}
-                  detail={detail}
-                  open={openId === id}
-                  onToggle={() => toggle(id)}
-                >
-                  {editing?.id === id ? (
-                    form
-                  ) : (
-                    <>
-                      <VaultFields fields={addressFields(address, navigator.language)} />
-                      <VaultActions
-                        removeLabel={`Remove ${title}`}
-                        removing={remove.isPending}
-                        onRemove={() => remove.mutate(id)}
-                      >
-                        <button type="button" className="kb-vault-action" onClick={() => setEditing({ id, address })}>
-                          Edit
-                        </button>
-                      </VaultActions>
-                    </>
-                  )}
-                </VaultRow>
-              )
-            })}
-          </ul>
-        </div>
-      )}
-      {failure ? (
-        <p className="kb-backup-status is-error" role="alert">
-          {errorMessage(failure)}
-        </p>
-      ) : null}
+        )}
+        {saved.length > 0 && (
+          <div className="kb-vault-panel">
+            <div className="kb-vault-search">
+              <SearchIcon />
+              <input
+                type="text"
+                placeholder="Search addresses"
+                aria-label="Search addresses"
+                value={search}
+                onChange={(e) => setSearch(e.currentTarget.value)}
+                spellCheck={false}
+              />
+            </div>
+            {shown.length === 0 && <p className="kb-vault-empty">No matches.</p>}
+            <ul className="kb-vault-list">
+              {shown.map(({ id, address }) => {
+                const { title, detail } = addressSummary(address, navigator.language)
+                return (
+                  <VaultRow
+                    key={id}
+                    title={title}
+                    detail={detail}
+                    open={openId === id}
+                    onToggle={() => toggle(id)}
+                  >
+                    {editing?.id === id ? (
+                      form
+                    ) : (
+                      <>
+                        <VaultFields fields={addressFields(address, navigator.language)} />
+                        <VaultActions
+                          removeLabel={`Remove ${title}`}
+                          removing={remove.isPending}
+                          onRemove={() => remove.mutate(id)}
+                        >
+                          <button type="button" className="kb-vault-action" onClick={() => setEditing({ id, address })}>
+                            Edit
+                          </button>
+                        </VaultActions>
+                      </>
+                    )}
+                  </VaultRow>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+        {failure ? (
+          <p className="kb-backup-status is-error" role="alert">
+            {errorMessage(failure)}
+          </p>
+        ) : null}
+      </SettingsGroup>
     </section>
   )
 }

@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { commands } from '@/bindings/commands'
 import type { InstalledExtension, SiteAccess, StagedExtension, UserSettingsPatch, Workspace } from '@/bindings/types'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { SettingsGroup } from '@/components/SettingsGroup'
+import { VaultActions, VaultRow } from '@/features/vault/components/VaultRow'
 import { Segmented, Switch } from '@/components/controls'
 import { errorMessage } from '@/lib/errors'
 import { describeLinked, describeUpdates } from '@/features/extensions/lib/extensionUpdates'
@@ -89,6 +91,13 @@ function GrantedRow({ ext, busy, onTakeBack }: GrantedRowProps) {
   )
 }
 
+function extensionDetail(ext: InstalledExtension): string {
+  const parts = [`Version ${ext.version}`]
+  if (ext.store_id) parts.push('From the Chrome Web Store')
+  if (ext.pending_update) parts.push('Update waiting')
+  return parts.join(' · ')
+}
+
 export function ExtensionsSection({ installed, workspace, storeSearch, onUpdate }: ExtensionsSectionProps) {
   const { data: supported } = useQuery({
     queryKey: ['extensions-supported'],
@@ -97,6 +106,7 @@ export function ExtensionsSection({ installed, workspace, storeSearch, onUpdate 
   })
   const [staged, setStaged] = useState<StagedExtension | null>(null)
   const [removing, setRemoving] = useState<InstalledExtension | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [updateNote, setUpdateNote] = useState<string | null>(null)
@@ -138,221 +148,224 @@ export function ExtensionsSection({ installed, workspace, storeSearch, onUpdate 
   return (
     <section id="extensions" className="sec">
       <h2 className="sec-h">Extensions</h2>
-      <div className="row">
-        <div className="l">
-          <span>Add an extension</span>
-          <span>
-            {supported === false
-              ? 'Extensions need macOS 15.4 or later, and are not available on Windows or Linux yet.'
-              : 'From a Chrome Web Store page through the extensions menu, or from an unpacked folder or a .zip here. They run in your regular workspaces, and open pages reload with them.'}
-          </span>
-        </div>
-        <button
-          type="button"
-          className="kb-btn"
-          onClick={() => void choose()}
-          disabled={busy || supported !== true}
-        >
-          Add extension…
-        </button>
-      </div>
-      {installed.length > 0 && (
+      <SettingsGroup caption="Add and update">
         <div className="row">
           <div className="l">
-            <span>Updates</span>
+            <span>Add an extension</span>
             <span>
-              {updateNote ??
-                'Extensions from the Chrome Web Store are checked for updates about once a day.'}
+              {supported === false
+                ? 'Extensions need macOS 15.4 or later, and are not available on Windows or Linux yet.'
+                : 'From a Chrome Web Store page through the extensions menu, or from an unpacked folder or a .zip here. They run in your regular workspaces, and open pages reload with them.'}
             </span>
           </div>
           <button
             type="button"
             className="kb-btn"
-            onClick={() =>
-              void run(async () => setUpdateNote(describeUpdates(await commands.extensionCheckUpdates())))
-            }
-            disabled={busy}
+            onClick={() => void choose()}
+            disabled={busy || supported !== true}
           >
-            Check now
+            Add extension…
           </button>
         </div>
-      )}
-      {installed.some((ext) => !ext.store_id) && (
-        <div className="row">
-          <div className="l">
-            <span>Find store listings</span>
-            <span>
-              Looks for the Chrome Web Store listing of each extension added from a folder, so it can update
-              too. Sends their names to the store about once a week.
-            </span>
-          </div>
-          <Switch
-            checked={storeSearch}
-            onChange={(on) => onUpdate({ extension_store_search: on })}
-            label="Find store listings for extensions added from a folder"
-          />
-        </div>
-      )}
-      {installed.map((ext) => (
-        <div key={ext.id}>
+        {installed.length > 0 && (
           <div className="row">
             <div className="l">
-              <span>{ext.name}</span>
+              <span>Updates</span>
               <span>
-                Version {ext.version}
-                {ext.store_id && ' · From the Chrome Web Store'}
+                {updateNote ??
+                  'Extensions from the Chrome Web Store are checked for updates about once a day.'}
               </span>
             </div>
             <button
               type="button"
               className="kb-btn"
-              onClick={() => setRemoving(ext)}
+              onClick={() =>
+                void run(async () => setUpdateNote(describeUpdates(await commands.extensionCheckUpdates())))
+              }
               disabled={busy}
-              aria-label={`Remove ${ext.name}`}
             >
-              Remove
+              Check now
             </button>
           </div>
-          {ext.store_suggestion && !ext.store_id && (
-            <div className="row kb-ext-sub">
-              <div className="l">
-                <span>Get its updates from the Chrome Web Store?</span>
-                <span>
-                  {ext.store_suggestion.same_files
-                    ? 'A store listing has this extension with the same files.'
-                    : 'A store listing has an extension of this name at another version.'}{' '}
-                  Open it to check if it is the one you use.
-                </span>
-              </div>
-              <div className="kb-ext-actions">
-                <button
-                  type="button"
-                  className="kb-btn"
-                  onClick={() =>
-                    workspace &&
-                    void commands
-                      .createTab(workspace.id, `${STORE_ITEM_URL}${ext.store_suggestion?.store_id}`)
-                      .catch(() => undefined)
-                  }
-                  disabled={!workspace}
-                >
-                  Open listing
-                </button>
-                <button
-                  type="button"
-                  className="kb-btn"
-                  onClick={() => {
-                    const storeId = ext.store_suggestion?.store_id
-                    if (!storeId) return
-                    void run(async () =>
-                      setUpdateNote(describeLinked(ext.name, await commands.extensionLinkStore(ext.id, storeId))),
-                    )
-                  }}
-                  disabled={busy}
-                >
-                  Link
-                </button>
-                <button
-                  type="button"
-                  className="kb-btn"
-                  onClick={() => {
-                    const storeId = ext.store_suggestion?.store_id
-                    if (storeId) void run(() => commands.extensionDeclineListing(ext.id, storeId))
-                  }}
-                  disabled={busy}
-                >
-                  Not this one
-                </button>
-              </div>
-            </div>
-          )}
-          {ext.pending_update && (
-            <div className="row kb-ext-sub">
-              <div className="l">
-                <span>Update to {ext.pending_update.version} is pending for approval</span>
-                <span>It also asks to:</span>
-                {ext.pending_update.abilities.map((ability) => (
-                  <span key={ability}>{ability}</span>
-                ))}
-              </div>
-              <button
-                type="button"
-                className="kb-btn"
-                onClick={() => void run(() => commands.extensionApproveUpdate(ext.id))}
-                disabled={busy}
-              >
-                Update
-              </button>
-            </div>
-          )}
-          {regular && (
-            <div className="row kb-ext-sub">
-              <div className="l">
-                <span>Run in {regular.name}</span>
-                <span>Other workspaces keep their own setting.</span>
-              </div>
-              <Switch
-                checked={!ext.disabled_in.includes(regular.id)}
-                onChange={(on) => void run(() => commands.extensionSetWorkspace(ext.id, regular.id, on))}
-                label={`Run ${ext.name} in ${regular.name}`}
-              />
-            </div>
-          )}
-          <div className="row kb-ext-sub">
+        )}
+        {installed.some((ext) => !ext.store_id) && (
+          <div className="row">
             <div className="l">
-              <span>Allow in private workspaces</span>
-              <span>It can then see what you do in private browsing.</span>
-            </div>
-            <Switch
-              checked={ext.allow_private}
-              onChange={(allowed) => void run(() => commands.extensionSetPrivate(ext.id, allowed))}
-              label={`Allow ${ext.name} in private workspaces`}
-            />
-          </div>
-          <div className="row kb-ext-sub">
-            <div className="l">
-              <span>Site access</span>
+              <span>Find store listings</span>
               <span>
-                {ext.site_access === 'all'
-                  ? 'Every site it asks for.'
-                  : 'Only sites you allow from the extensions menu while on them.'}{' '}
-                Open pages follow when they reload.
+                Looks for the Chrome Web Store listing of each extension added from a folder, so it can update
+                too. Sends their names to the store about once a week.
               </span>
             </div>
-            <Segmented
-              value={ext.site_access}
-              onChange={(access) => void run(() => commands.extensionSetSiteAccess(ext.id, access))}
-              options={SITE_ACCESS}
-              ariaLabel={`Where ${ext.name} runs`}
-              disabled={busy}
+            <Switch
+              checked={storeSearch}
+              onChange={(on) => onUpdate({ extension_store_search: on })}
+              label="Find store listings for extensions added from a folder"
             />
           </div>
-          {ext.site_access === 'allowed' &&
-            ext.allowed_sites.map((host) => (
-              <div key={host} className="row kb-ext-sub">
-                <div className="l">
-                  <span>{host}</span>
-                </div>
-                <button
-                  type="button"
-                  className="kb-btn"
-                  onClick={() => void run(() => commands.extensionSetSite(ext.id, host, false))}
-                  disabled={busy}
-                  aria-label={`Stop ${ext.name} on ${host}`}
+        )}
+      </SettingsGroup>
+      <SettingsGroup caption="Installed">
+        {installed.length > 0 && (
+          <div className="kb-vault-panel">
+            <ul className="kb-vault-list">
+              {installed.map((ext) => (
+                <VaultRow
+                  key={ext.id}
+                  title={ext.name}
+                  detail={extensionDetail(ext)}
+                  open={openId === ext.id}
+                  onToggle={() => setOpenId(openId === ext.id ? null : ext.id)}
                 >
-                  Remove
-                </button>
-              </div>
-            ))}
-          {ext.granted.length > 0 && (
-            <GrantedRow
-              ext={ext}
-              busy={busy}
-              onTakeBack={() => void run(() => commands.extensionRevokeGranted(ext.id))}
-            />
-          )}
-        </div>
-      ))}
+                  {ext.store_suggestion && !ext.store_id && (
+                    <div className="row kb-ext-sub">
+                      <div className="l">
+                        <span>Get its updates from the Chrome Web Store?</span>
+                        <span>
+                          {ext.store_suggestion.same_files
+                            ? 'A store listing has this extension with the same files.'
+                            : 'A store listing has an extension of this name at another version.'}{' '}
+                          Open it to check if it is the one you use.
+                        </span>
+                      </div>
+                      <div className="kb-ext-actions">
+                        <button
+                          type="button"
+                          className="kb-btn"
+                          onClick={() =>
+                            workspace &&
+                            void commands
+                              .createTab(workspace.id, `${STORE_ITEM_URL}${ext.store_suggestion?.store_id}`)
+                              .catch(() => undefined)
+                          }
+                          disabled={!workspace}
+                        >
+                          Open listing
+                        </button>
+                        <button
+                          type="button"
+                          className="kb-btn"
+                          onClick={() => {
+                            const storeId = ext.store_suggestion?.store_id
+                            if (!storeId) return
+                            void run(async () =>
+                              setUpdateNote(describeLinked(ext.name, await commands.extensionLinkStore(ext.id, storeId))),
+                            )
+                          }}
+                          disabled={busy}
+                        >
+                          Link
+                        </button>
+                        <button
+                          type="button"
+                          className="kb-btn"
+                          onClick={() => {
+                            const storeId = ext.store_suggestion?.store_id
+                            if (storeId) void run(() => commands.extensionDeclineListing(ext.id, storeId))
+                          }}
+                          disabled={busy}
+                        >
+                          Not this one
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {ext.pending_update && (
+                    <div className="row kb-ext-sub">
+                      <div className="l">
+                        <span>Update to {ext.pending_update.version} is pending for approval</span>
+                        <span>It also asks to:</span>
+                        {ext.pending_update.abilities.map((ability) => (
+                          <span key={ability}>{ability}</span>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        className="kb-btn"
+                        onClick={() => void run(() => commands.extensionApproveUpdate(ext.id))}
+                        disabled={busy}
+                      >
+                        Update
+                      </button>
+                    </div>
+                  )}
+                  {regular && (
+                    <div className="row kb-ext-sub">
+                      <div className="l">
+                        <span>Run in {regular.name}</span>
+                        <span>Other workspaces keep their own setting.</span>
+                      </div>
+                      <Switch
+                        checked={!ext.disabled_in.includes(regular.id)}
+                        onChange={(on) => void run(() => commands.extensionSetWorkspace(ext.id, regular.id, on))}
+                        label={`Run ${ext.name} in ${regular.name}`}
+                      />
+                    </div>
+                  )}
+                  <div className="row kb-ext-sub">
+                    <div className="l">
+                      <span>Allow in private workspaces</span>
+                      <span>It can then see what you do in private browsing.</span>
+                    </div>
+                    <Switch
+                      checked={ext.allow_private}
+                      onChange={(allowed) => void run(() => commands.extensionSetPrivate(ext.id, allowed))}
+                      label={`Allow ${ext.name} in private workspaces`}
+                    />
+                  </div>
+                  <div className="row kb-ext-sub">
+                    <div className="l">
+                      <span>Site access</span>
+                      <span>
+                        {ext.site_access === 'all'
+                          ? 'Every site it asks for.'
+                          : 'Only sites you allow from the extensions menu while on them.'}{' '}
+                        Open pages follow when they reload.
+                      </span>
+                    </div>
+                    <Segmented
+                      value={ext.site_access}
+                      onChange={(access) => void run(() => commands.extensionSetSiteAccess(ext.id, access))}
+                      options={SITE_ACCESS}
+                      ariaLabel={`Where ${ext.name} runs`}
+                      disabled={busy}
+                    />
+                  </div>
+                  {ext.site_access === 'allowed' &&
+                    ext.allowed_sites.map((host) => (
+                      <div key={host} className="row kb-ext-sub">
+                        <div className="l">
+                          <span>{host}</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="kb-btn"
+                          onClick={() => void run(() => commands.extensionSetSite(ext.id, host, false))}
+                          disabled={busy}
+                          aria-label={`Stop ${ext.name} on ${host}`}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  {ext.granted.length > 0 && (
+                    <GrantedRow
+                      ext={ext}
+                      busy={busy}
+                      onTakeBack={() => void run(() => commands.extensionRevokeGranted(ext.id))}
+                    />
+                  )}
+                  <VaultActions
+                    removeLabel={`Remove ${ext.name}`}
+                    removing={busy}
+                    onRemove={() => setRemoving(ext)}
+                  />
+                </VaultRow>
+              ))}
+            </ul>
+          </div>
+        )}
+      </SettingsGroup>
       {error && (
         <p className="kb-backup-status is-error" role="alert">
           {error}

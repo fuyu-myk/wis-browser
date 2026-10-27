@@ -34,6 +34,7 @@ import {
   SIDEBAR_WIDTH_MIN,
 } from '@/features/settings/lib/design'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import { SettingsGroup } from '@/components/SettingsGroup'
 
 const CORNER_OPTIONS = [
   { value: 'round' as const, label: 'Round' },
@@ -139,165 +140,173 @@ export function DesignSection({ settings, onUpdate }: DesignSectionProps) {
     <section id="design" className="sec">
       <h2 className="sec-h">Design</h2>
 
-      <div className="row">
-        <div className="l">
-          <span>Corners</span>
-          <span>
-            {isLinux
-              ? 'Linux native webviews render square corners, so the chrome is squared to match. Pills and circles stay round.'
-              : 'Rounding of chrome surfaces. Sharp squares the UI; pills and circles stay round.'}
-          </span>
-        </div>
-        <Segmented
-          value={isLinux ? 'sharp' : design.corners}
-          onChange={(corners) => setDesign({ corners })}
-          options={CORNER_OPTIONS}
-          disabled={isLinux}
-          ariaLabel="Corner rounding"
-        />
-      </div>
-
-      <div className="row">
-        <div className="l">
-          <span>Tab shape</span>
-          <span>Rounded keeps each strip's native shape; Pill and Square force all tabs.</span>
-        </div>
-        <Segmented
-          value={design.tab_shape}
-          onChange={(tab_shape) => setDesign({ tab_shape })}
-          options={TAB_SHAPE_OPTIONS}
-          ariaLabel="Tab shape"
-        />
-      </div>
-
-      <div className="row">
-        <div className="l">
-          <span>Folder style</span>
-          <span>How a tab folder's label renders: accent pill, outline, or plain text.</span>
-        </div>
-        <Segmented
-          value={design.folder_style}
-          onChange={(folder_style) => setDesign({ folder_style })}
-          options={FOLDER_STYLE_OPTIONS}
-          ariaLabel="Folder style"
-        />
-      </div>
-
-      <div className="row">
-        <div className="l">
-          <span>Active tab indicator</span>
-          <span>How the active tab is marked in the sidebar.</span>
-        </div>
-        <Segmented
-          value={design.tab_indicator}
-          onChange={(tab_indicator) => setDesign({ tab_indicator })}
-          options={INDICATOR_OPTIONS}
-          ariaLabel="Active tab indicator"
-        />
-      </div>
-
-      <div className="row">
-        <div className="l">
-          <span>Density</span>
-          <span>Overall chrome spacing.</span>
-        </div>
-        <Segmented
-          value={densityValue}
-          onChange={setDensity}
-          options={DENSITY_OPTIONS}
-          ariaLabel="Density"
-        />
-      </div>
-
-      <div className="row">
-        <div className="l">
-          <span>Tab close button</span>
-          <span>When the per-tab close button is shown.</span>
-        </div>
-        <Segmented
-          value={design.close_button}
-          onChange={(close_button) => setDesign({ close_button })}
-          options={CLOSE_OPTIONS}
-          ariaLabel="Tab close button"
-        />
-      </div>
-
-      <div className="row">
-        <div className="l">
-          <span>Sidebar width</span>
-          <span>Applies to sidebar layouts. {width}px</span>
-        </div>
-        <div className="kb-design-slider">
-          <input
-            type="range"
-            className="kb-design-range"
-            min={SIDEBAR_WIDTH_MIN}
-            max={SIDEBAR_WIDTH_MAX}
-            value={width}
-            onChange={(e) => onWidth(Number(e.target.value))}
-            aria-label="Sidebar width"
+      <SettingsGroup caption="Shape">
+        <div className="row">
+          <div className="l">
+            <span>Corners</span>
+            <span>
+              {isLinux
+                ? 'Linux native webviews render square corners, so the chrome is squared to match. Pills and circles stay round.'
+                : 'Rounding of chrome surfaces. Sharp squares the UI; pills and circles stay round.'}
+            </span>
+          </div>
+          <Segmented
+            value={isLinux ? 'sharp' : design.corners}
+            onChange={(corners) => setDesign({ corners })}
+            options={CORNER_OPTIONS}
+            disabled={isLinux}
+            ariaLabel="Corner rounding"
           />
-          <button
-            type="button"
-            className="kb-btn"
-            onClick={resetWidth}
-            disabled={width === SIDEBAR_WIDTH_DEFAULT}
-          >
-            Reset
-          </button>
         </div>
-      </div>
+
+        <div className="row">
+          <div className="l">
+            <span>Tab shape</span>
+            <span>Rounded keeps each strip's native shape; Pill and Square force all tabs.</span>
+          </div>
+          <Segmented
+            value={design.tab_shape}
+            onChange={(tab_shape) => setDesign({ tab_shape })}
+            options={TAB_SHAPE_OPTIONS}
+            ariaLabel="Tab shape"
+          />
+        </div>
+
+        <div className="row">
+          <div className="l">
+            <span>Folder style</span>
+            <span>How a tab folder's label renders: accent pill, outline, or plain text.</span>
+          </div>
+          <Segmented
+            value={design.folder_style}
+            onChange={(folder_style) => setDesign({ folder_style })}
+            options={FOLDER_STYLE_OPTIONS}
+            ariaLabel="Folder style"
+          />
+        </div>
+
+        <div className="row">
+          <div className="l">
+            <span>Active tab indicator</span>
+            <span>How the active tab is marked in the sidebar.</span>
+          </div>
+          <Segmented
+            value={design.tab_indicator}
+            onChange={(tab_indicator) => setDesign({ tab_indicator })}
+            options={INDICATOR_OPTIONS}
+            ariaLabel="Active tab indicator"
+          />
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup caption="Spacing">
+        <div className="row">
+          <div className="l">
+            <span>Density</span>
+            <span>Overall chrome spacing.</span>
+          </div>
+          <Segmented
+            value={densityValue}
+            onChange={setDensity}
+            options={DENSITY_OPTIONS}
+            ariaLabel="Density"
+          />
+        </div>
+
+        <div className="row">
+          <div className="l">
+            <span>Tab close button</span>
+            <span>When the per-tab close button is shown.</span>
+          </div>
+          <Segmented
+            value={design.close_button}
+            onChange={(close_button) => setDesign({ close_button })}
+            options={CLOSE_OPTIONS}
+            ariaLabel="Tab close button"
+          />
+        </div>
+
+        <div className="row">
+          <div className="l">
+            <span>Sidebar width</span>
+            <span>Applies to sidebar layouts. {width}px</span>
+          </div>
+          <div className="kb-design-slider">
+            <input
+              type="range"
+              className="kb-design-range"
+              min={SIDEBAR_WIDTH_MIN}
+              max={SIDEBAR_WIDTH_MAX}
+              value={width}
+              onChange={(e) => onWidth(Number(e.target.value))}
+              aria-label="Sidebar width"
+            />
+            <button
+              type="button"
+              className="kb-btn"
+              onClick={resetWidth}
+              disabled={width === SIDEBAR_WIDTH_DEFAULT}
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+      </SettingsGroup>
 
       <h2 className="sec-h">Liquid glass</h2>
       <p className="kb-design-note">Takes effect when Liquid glass is on (Appearance).</p>
 
-      <div className="row">
-        <div className="l">
-          <span>Glass intensity</span>
-          <span>Backdrop blur strength.</span>
+      <SettingsGroup>
+        <div className="row">
+          <div className="l">
+            <span>Glass intensity</span>
+            <span>Backdrop blur strength.</span>
+          </div>
+          <Segmented
+            value={design.glass_intensity}
+            onChange={(glass_intensity) => setDesign({ glass_intensity })}
+            options={INTENSITY_OPTIONS}
+            ariaLabel="Glass intensity"
+          />
         </div>
-        <Segmented
-          value={design.glass_intensity}
-          onChange={(glass_intensity) => setDesign({ glass_intensity })}
-          options={INTENSITY_OPTIONS}
-          ariaLabel="Glass intensity"
-        />
-      </div>
-      <div className="row">
-        <div className="l">
-          <span>Glass on chrome</span>
-          <span>Sidebar, top bar, and address bar.</span>
+        <div className="row">
+          <div className="l">
+            <span>Glass on chrome</span>
+            <span>Sidebar, top bar, and address bar.</span>
+          </div>
+          <Switch
+            checked={design.glass_scopes.chrome}
+            onChange={(v) => setScope('chrome', v)}
+            label="Glass on chrome"
+          />
         </div>
-        <Switch
-          checked={design.glass_scopes.chrome}
-          onChange={(v) => setScope('chrome', v)}
-          label="Glass on chrome"
-        />
-      </div>
-      <div className="row">
-        <div className="l">
-          <span>Glass on menus</span>
-          <span>Popovers, the command palette, context menus, and dialogs.</span>
+        <div className="row">
+          <div className="l">
+            <span>Glass on menus</span>
+            <span>Popovers, the command palette, context menus, and dialogs.</span>
+          </div>
+          <Switch
+            checked={design.glass_scopes.menus}
+            onChange={(v) => setScope('menus', v)}
+            label="Glass on menus"
+          />
         </div>
-        <Switch
-          checked={design.glass_scopes.menus}
-          onChange={(v) => setScope('menus', v)}
-          label="Glass on menus"
-        />
-      </div>
-      <div className="row">
-        <div className="l">
-          <span>Glass on tabs</span>
-          <span>Tab chips, folder islands, and pinned tabs.</span>
+        <div className="row">
+          <div className="l">
+            <span>Glass on tabs</span>
+            <span>Tab chips, folder islands, and pinned tabs.</span>
+          </div>
+          <Switch
+            checked={design.glass_scopes.tabs}
+            onChange={(v) => setScope('tabs', v)}
+            label="Glass on tabs"
+          />
         </div>
-        <Switch
-          checked={design.glass_scopes.tabs}
-          onChange={(v) => setScope('tabs', v)}
-          label="Glass on tabs"
-        />
-      </div>
+      </SettingsGroup>
 
-      <ThemesSection />
+      <SettingsGroup>
+        <ThemesSection />
+      </SettingsGroup>
     </section>
   )
 }

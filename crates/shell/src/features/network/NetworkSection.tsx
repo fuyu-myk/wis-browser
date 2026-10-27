@@ -15,6 +15,7 @@ import {
   type UpstreamMode,
 } from '@/features/network/upstream'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import { SettingsGroup } from '@/components/SettingsGroup'
 
 /** How often an active upstream is re-checked while this page is open. */
 const PROBE_INTERVAL_MS = 30_000
@@ -193,140 +194,146 @@ export function NetworkSection({ workspace, settings }: NetworkSectionProps) {
   return (
     <section id="network" className="sec">
       <h2 className="sec-h">Network</h2>
-      {workspace && (
+      <SettingsGroup caption="Route">
+        {workspace && (
+          <div className="row">
+            <div className="l">
+              <span>Route this workspace</span>
+              <span className={cx({ 'is-error': applyError !== null })}>
+                {applyError !== null
+                  ? applyError
+                  : unapplied
+                  ? `Not applied yet: this workspace still routes ${
+                      mode === 'tor' ? 'through Tor' : 'directly'
+                    }.`
+                  : mode === 'tor'
+                    ? 'Through the built-in Tor network. The first connection bootstraps and can take a few seconds. Lockdown Mode below hardens it further.'
+                    : mode === 'socks5'
+                      ? 'Through the SOCKS5 proxy below, which resolves its own DNS.'
+                      : torAvailable
+                        ? 'Straight out, with no proxy in between.'
+                        : 'Straight out. Built-in Tor is not included in this build.'}
+              </span>
+            </div>
+            <Segmented
+              value={showManual ? 'socks5' : mode}
+              onChange={chooseRoute}
+              options={ROUTE_OPTIONS.filter((o) => o.value !== 'tor' || torAvailable)}
+              ariaLabel="Upstream route"
+            />
+          </div>
+        )}
+        {workspace && showManual && (
+          <div className="row">
+            <div className="l">
+              <span>SOCKS5 proxy</span>
+              <span
+                id={problemId}
+                aria-live="polite"
+                className={cx({ 'is-error': manualProblem !== null })}
+              >
+                {manualProblem ?? 'The host and port of a proxy running on your machine or network.'}
+              </span>
+            </div>
+            <div className="kb-shortcut-add">
+              <input
+                type="text"
+                className="kb-text-input"
+                placeholder="127.0.0.1"
+                value={hostDraft}
+                aria-invalid={hostProblem !== null}
+                aria-describedby={problemId}
+                onChange={(e) => setHostDraft(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') applyManual()
+                }}
+                aria-label="SOCKS5 proxy host"
+              />
+              <input
+                type="text"
+                inputMode="numeric"
+                className="kb-text-input kb-port-input"
+                placeholder={String(DEFAULT_SOCKS5_PORT)}
+                value={portDraft}
+                aria-invalid={portProblem !== null}
+                aria-describedby={problemId}
+                onChange={(e) => setPortDraft(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') applyManual()
+                }}
+                aria-label="SOCKS5 proxy port"
+              />
+              <button
+                type="button"
+                className="kb-btn is-primary"
+                onClick={applyManual}
+                disabled={manualProblem !== null}
+                aria-describedby={problemId}
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        )}
+        {workspace && on && (
+          <div className="row">
+            <div className="l">
+              <span>Connection</span>
+              <span className={cx({ 'is-error': status.kind === 'fail' })}>
+                {status.kind === 'fail'
+                  ? status.msg
+                  : mode === 'tor'
+                    ? 'Status of the Tor connection for this workspace.'
+                    : 'Whether the proxy answers and speaks SOCKS5.'}
+              </span>
+            </div>
+            <ProbeBadge status={status} />
+          </div>
+        )}
+      </SettingsGroup>
+      <SettingsGroup caption="Hardening">
+        {workspace && !isFeatureUnavailableHere('lockdown_mode') && (
+          <div className="row">
+            <div className="l">
+              <span>Lockdown Mode</span>
+              <span className={cx({ 'is-error': lockdownError !== null })}>
+                {lockdownError ??
+                  'Turns off what attacks most often exploit: the JavaScript compiler, WebAssembly, WebGL, WebRTC, service workers, and camera and microphone access. Some sites break. Open tabs reload.'}
+              </span>
+            </div>
+            <Switch checked={workspace.lockdown} onChange={setLockdown} label="Lockdown Mode" />
+          </div>
+        )}
+      </SettingsGroup>
+      <SettingsGroup caption="DNS">
         <div className="row">
           <div className="l">
-            <span>Route this workspace</span>
-            <span className={cx({ 'is-error': applyError !== null })}>
-              {applyError !== null
-                ? applyError
-                : unapplied
-                ? `Not applied yet: this workspace still routes ${
-                    mode === 'tor' ? 'through Tor' : 'directly'
-                  }.`
-                : mode === 'tor'
-                  ? 'Through the built-in Tor network. The first connection bootstraps and can take a few seconds. Lockdown Mode below hardens it further.'
-                  : mode === 'socks5'
-                    ? 'Through the SOCKS5 proxy below, which resolves its own DNS.'
-                    : torAvailable
-                      ? 'Straight out, with no proxy in between.'
-                      : 'Straight out. Built-in Tor is not included in this build.'}
+            <span>Encrypted DNS</span>
+            <span>
+              {dnsNote}
             </span>
           </div>
           <Segmented
-            value={showManual ? 'socks5' : mode}
-            onChange={chooseRoute}
-            options={ROUTE_OPTIONS.filter((o) => o.value !== 'tor' || torAvailable)}
-            ariaLabel="Upstream route"
+            value={provider}
+            onChange={chooseProvider}
+            options={DOH_PROVIDERS.map((p) => ({ value: p.id, label: p.label }))}
+            ariaLabel="Encrypted DNS provider"
           />
         </div>
-      )}
-      {workspace && showManual && (
-        <div className="row">
-          <div className="l">
-            <span>SOCKS5 proxy</span>
-            <span
-              id={problemId}
-              aria-live="polite"
-              className={cx({ 'is-error': manualProblem !== null })}
-            >
-              {manualProblem ?? 'The host and port of a proxy running on your machine or network.'}
-            </span>
+        {dns.kind !== 'idle' && (
+          <div className="row">
+            <div className="l">
+              <span>Lookup test</span>
+              <span>
+                {dns.kind === 'fail'
+                  ? 'This provider did not answer. Pages will not load until you pick one that does.'
+                  : 'A test lookup through the provider you picked.'}
+              </span>
+            </div>
+            <ProbeBadge status={dns} />
           </div>
-          <div className="kb-shortcut-add">
-            <input
-              type="text"
-              className="kb-text-input"
-              placeholder="127.0.0.1"
-              value={hostDraft}
-              aria-invalid={hostProblem !== null}
-              aria-describedby={problemId}
-              onChange={(e) => setHostDraft(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') applyManual()
-              }}
-              aria-label="SOCKS5 proxy host"
-            />
-            <input
-              type="text"
-              inputMode="numeric"
-              className="kb-text-input kb-port-input"
-              placeholder={String(DEFAULT_SOCKS5_PORT)}
-              value={portDraft}
-              aria-invalid={portProblem !== null}
-              aria-describedby={problemId}
-              onChange={(e) => setPortDraft(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') applyManual()
-              }}
-              aria-label="SOCKS5 proxy port"
-            />
-            <button
-              type="button"
-              className="kb-btn is-primary"
-              onClick={applyManual}
-              disabled={manualProblem !== null}
-              aria-describedby={problemId}
-            >
-              Apply
-            </button>
-          </div>
-        </div>
-      )}
-      {workspace && on && (
-        <div className="row">
-          <div className="l">
-            <span>Connection</span>
-            <span className={cx({ 'is-error': status.kind === 'fail' })}>
-              {status.kind === 'fail'
-                ? status.msg
-                : mode === 'tor'
-                  ? 'Status of the Tor connection for this workspace.'
-                  : 'Whether the proxy answers and speaks SOCKS5.'}
-            </span>
-          </div>
-          <ProbeBadge status={status} />
-        </div>
-      )}
-      {workspace && !isFeatureUnavailableHere('lockdown_mode') && (
-        <div className="row">
-          <div className="l">
-            <span>Lockdown Mode</span>
-            <span className={cx({ 'is-error': lockdownError !== null })}>
-              {lockdownError ??
-                'Turns off what attacks most often exploit: the JavaScript compiler, WebAssembly, WebGL, WebRTC, service workers, and camera and microphone access. Some sites break. Open tabs reload.'}
-            </span>
-          </div>
-          <Switch checked={workspace.lockdown} onChange={setLockdown} label="Lockdown Mode" />
-        </div>
-      )}
-      <div className="row">
-        <div className="l">
-          <span>Encrypted DNS</span>
-          <span>
-            {dnsNote}
-          </span>
-        </div>
-        <Segmented
-          value={provider}
-          onChange={chooseProvider}
-          options={DOH_PROVIDERS.map((p) => ({ value: p.id, label: p.label }))}
-          ariaLabel="Encrypted DNS provider"
-        />
-      </div>
-      {dns.kind !== 'idle' && (
-        <div className="row">
-          <div className="l">
-            <span>Lookup test</span>
-            <span>
-              {dns.kind === 'fail'
-                ? 'This provider did not answer. Pages will not load until you pick one that does.'
-                : 'A test lookup through the provider you picked.'}
-            </span>
-          </div>
-          <ProbeBadge status={dns} />
-        </div>
-      )}
+        )}
+      </SettingsGroup>
     </section>
   )
 }

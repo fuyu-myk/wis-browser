@@ -6,6 +6,7 @@ import type {
   UserSettingsPatch,
 } from '@/bindings/types'
 import { SEARCH_ENGINES } from '@/lib/url'
+import { SettingsGroup } from '@/components/SettingsGroup'
 
 /** Mirrors `wis_core::navigation::search::MAX_CUSTOM_ENGINES`. */
 const MAX_CUSTOM_ENGINES = 16
@@ -218,126 +219,130 @@ export function SearchSection({ settings, onUpdate }: SearchSectionProps) {
   return (
     <section id="search" className="sec">
       <h2 className="sec-h">Search</h2>
-      <div className="row">
-        <div className="l">
-          <span>Default engine</span>
-          <span>
-            Used for address-bar searches and suggestions. Any engine with a
-            keyword can also be triggered anytime by typing it before a query.
-          </span>
+      <SettingsGroup caption="Default">
+        <div className="row">
+          <div className="l">
+            <span>Default engine</span>
+            <span>
+              Used for address-bar searches and suggestions. Any engine with a
+              keyword can also be triggered anytime by typing it before a query.
+            </span>
+          </div>
         </div>
-      </div>
-      <ul className="kb-ua-list">
-        {BUILTINS.map((engine) => (
-          <li key={engine} className="kb-ua-item">
-            <span className="kb-ua-host">{SEARCH_ENGINES[engine].label}</span>
-            <KeywordField
-              label={SEARCH_ENGINES[engine].label}
-              value={builtinKeywords[engine] ?? ''}
-              onCommit={(raw) => commitBuiltinKeyword(engine, raw)}
-            />
-            {!customDefault && settings.search_engine === engine ? (
-              <span className="kb-ua-prof">Default</span>
-            ) : (
+        <ul className="kb-ua-list">
+          {BUILTINS.map((engine) => (
+            <li key={engine} className="kb-ua-item">
+              <span className="kb-ua-host">{SEARCH_ENGINES[engine].label}</span>
+              <KeywordField
+                label={SEARCH_ENGINES[engine].label}
+                value={builtinKeywords[engine] ?? ''}
+                onCommit={(raw) => commitBuiltinKeyword(engine, raw)}
+              />
+              {!customDefault && settings.search_engine === engine ? (
+                <span className="kb-ua-prof">Default</span>
+              ) : (
+                <button
+                  type="button"
+                  className="kb-ua-remove"
+                  onClick={() => chooseBuiltin(engine)}
+                  aria-label={`Make ${SEARCH_ENGINES[engine].label} the default engine`}
+                >
+                  Make default
+                </button>
+              )}
+            </li>
+          ))}
+          {engines.map((engine) => (
+            <li key={engine.keyword} className="kb-ua-item">
+              <span className="kb-ua-host">{engine.name}</span>
+              <KeywordField
+                label={engine.name}
+                value={engine.keyword}
+                onCommit={(raw) => commitCustomKeyword(engine.keyword, raw)}
+              />
+              {engine.is_default ? (
+                <span className="kb-ua-prof">Default</span>
+              ) : (
+                <button
+                  type="button"
+                  className="kb-ua-remove"
+                  onClick={() => chooseCustom(engine.keyword)}
+                  aria-label={`Make ${engine.name} the default engine`}
+                >
+                  Make default
+                </button>
+              )}
               <button
                 type="button"
                 className="kb-ua-remove"
-                onClick={() => chooseBuiltin(engine)}
-                aria-label={`Make ${SEARCH_ENGINES[engine].label} the default engine`}
+                onClick={() => removeEngine(engine.keyword)}
+                aria-label={`Remove ${engine.name}`}
               >
-                Make default
+                Remove
               </button>
-            )}
-          </li>
-        ))}
-        {engines.map((engine) => (
-          <li key={engine.keyword} className="kb-ua-item">
-            <span className="kb-ua-host">{engine.name}</span>
-            <KeywordField
-              label={engine.name}
-              value={engine.keyword}
-              onCommit={(raw) => commitCustomKeyword(engine.keyword, raw)}
+            </li>
+          ))}
+        </ul>
+      </SettingsGroup>
+      <SettingsGroup caption="Custom engines">
+        <div className="row">
+          <div className="l">
+            <span>Add a custom engine</span>
+            <span>
+              Paste the site&apos;s search URL with %s in place of the query, e.g.
+              https://kagi.com/search?q=%s.
+            </span>
+          </div>
+        </div>
+        {atCap ? (
+          <p className="kb-backup-status">Up to {MAX_CUSTOM_ENGINES} custom engines.</p>
+        ) : (
+          <div className="kb-ua-add">
+            <input
+              type="text"
+              className="kb-text-input"
+              placeholder="Name (optional)"
+              value={name}
+              onChange={(e) => setName(e.currentTarget.value)}
+              aria-label="Engine name"
             />
-            {engine.is_default ? (
-              <span className="kb-ua-prof">Default</span>
-            ) : (
-              <button
-                type="button"
-                className="kb-ua-remove"
-                onClick={() => chooseCustom(engine.keyword)}
-                aria-label={`Make ${engine.name} the default engine`}
-              >
-                Make default
-              </button>
-            )}
+            <input
+              type="text"
+              className="kb-text-input"
+              placeholder="keyword"
+              value={keyword}
+              onChange={(e) => setKeyword(e.currentTarget.value)}
+              spellCheck={false}
+              aria-label="Engine keyword"
+            />
+            <input
+              type="text"
+              className="kb-text-input"
+              placeholder="https://example.com/search?q=%s"
+              value={template}
+              onChange={(e) => setTemplate(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') addEngine()
+              }}
+              spellCheck={false}
+              aria-label="Search URL template"
+            />
             <button
               type="button"
-              className="kb-ua-remove"
-              onClick={() => removeEngine(engine.keyword)}
-              aria-label={`Remove ${engine.name}`}
+              className="kb-btn"
+              onClick={addEngine}
+              disabled={!keyword.trim() || !template.trim()}
             >
-              Remove
+              Add
             </button>
-          </li>
-        ))}
-      </ul>
-      <div className="row">
-        <div className="l">
-          <span>Add a custom engine</span>
-          <span>
-            Paste the site&apos;s search URL with %s in place of the query, e.g.
-            https://kagi.com/search?q=%s.
-          </span>
-        </div>
-      </div>
-      {atCap ? (
-        <p className="kb-backup-status">Up to {MAX_CUSTOM_ENGINES} custom engines.</p>
-      ) : (
-        <div className="kb-ua-add">
-          <input
-            type="text"
-            className="kb-text-input"
-            placeholder="Name (optional)"
-            value={name}
-            onChange={(e) => setName(e.currentTarget.value)}
-            aria-label="Engine name"
-          />
-          <input
-            type="text"
-            className="kb-text-input"
-            placeholder="keyword"
-            value={keyword}
-            onChange={(e) => setKeyword(e.currentTarget.value)}
-            spellCheck={false}
-            aria-label="Engine keyword"
-          />
-          <input
-            type="text"
-            className="kb-text-input"
-            placeholder="https://example.com/search?q=%s"
-            value={template}
-            onChange={(e) => setTemplate(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') addEngine()
-            }}
-            spellCheck={false}
-            aria-label="Search URL template"
-          />
-          <button
-            type="button"
-            className="kb-btn"
-            onClick={addEngine}
-            disabled={!keyword.trim() || !template.trim()}
-          >
-            Add
-          </button>
-        </div>
-      )}
-      {status && (
-        <p className="kb-backup-status is-error" role="alert">
-          {status}
-        </p>
-      )}
+          </div>
+        )}
+        {status && (
+          <p className="kb-backup-status is-error" role="alert">
+            {status}
+          </p>
+        )}
+      </SettingsGroup>
     </section>
   )
 }
