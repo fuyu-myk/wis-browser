@@ -27,7 +27,6 @@ interface Editing {
 export function CardsSection({ settings, onUpdate }: CardsSectionProps) {
   const qc = useQueryClient()
   const { data: status } = useVaultStatus()
-  const supported = status?.supported ?? false
   const unlocked = status?.unlocked ?? false
   const [editing, setEditing] = useState<Editing | null>(null)
 
@@ -66,6 +65,8 @@ export function CardsSection({ settings, onUpdate }: CardsSectionProps) {
   const failure = open.error ?? save.error ?? remove.error
   const now = new Date()
 
+  if (!unlocked) return null
+
   return (
     <section id="cards" className="sec">
       <div className="sec-h">Payment cards</div>
@@ -84,82 +85,74 @@ export function CardsSection({ settings, onUpdate }: CardsSectionProps) {
         />
       </div>
 
-      {!supported ? (
-        <p className="kb-vault-msg">The password vault is not available on this platform.</p>
-      ) : !unlocked ? (
-        <p className="kb-vault-msg">Unlock your vault under Passwords to see your cards.</p>
+      {editing ? (
+        <CardForm
+          value={editing.card}
+          last4={editing.last4}
+          busy={save.isPending}
+          onChange={(card) => setEditing({ ...editing, card })}
+          onSave={() => save.mutate(editing)}
+          onCancel={() => {
+            setEditing(null)
+            save.reset()
+          }}
+        />
       ) : (
-        <>
-          {saved.length > 0 && (
-            <div className="kb-vault-panel">
-              <ul className="kb-vault-list">
-                {saved.map((card) => {
-                  const { title, detail } = cardSummary(card, now)
-                  return (
-                    <li key={card.id} className="kb-vault-row">
-                      <div className="kb-vault-id">
-                        <span className="kb-vault-host">{title}</span>
-                        <span className="kb-vault-user">{detail}</span>
-                      </div>
-                      <button
-                        type="button"
-                        className="kb-vault-action"
-                        onClick={() => open.mutate({ id: card.id, last4: card.last4 })}
-                        disabled={open.isPending}
-                        aria-label={`Edit ${title}`}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="kb-vault-del"
-                        onClick={() => remove.mutate(card.id)}
-                        disabled={remove.isPending}
-                        aria-label={`Remove ${title}`}
-                        title="Remove"
-                      >
-                        <XIcon />
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          )}
-          {editing ? (
-            <CardForm
-              value={editing.card}
-              last4={editing.last4}
-              busy={save.isPending}
-              onChange={(card) => setEditing({ ...editing, card })}
-              onSave={() => save.mutate(editing)}
-              onCancel={() => {
-                setEditing(null)
-                save.reset()
-              }}
-            />
-          ) : (
-            <div className="row">
-              <div className="l">
-                <span>{saved.length === 0 ? 'No saved cards yet' : 'Another card'}</span>
-                <span>Add one for easier checkout.</span>
-              </div>
-              <button
-                type="button"
-                className="kb-btn"
-                onClick={() => setEditing({ id: null, last4: null, card: emptyCard(now) })}
-              >
-                Add card
-              </button>
-            </div>
-          )}
-          {failure ? (
-            <p className="kb-backup-status is-error" role="alert">
-              {errorMessage(failure)}
-            </p>
-          ) : null}
-        </>
+        <div className="row">
+          <div className="l">
+            <span>{saved.length === 0 ? 'No saved cards yet' : 'Another card'}</span>
+            <span>Add one for easier checkout.</span>
+          </div>
+          <button
+            type="button"
+            className="kb-btn"
+            onClick={() => setEditing({ id: null, last4: null, card: emptyCard(now) })}
+          >
+            Add card
+          </button>
+        </div>
       )}
+      {saved.length > 0 && (
+        <div className="kb-vault-panel">
+          <ul className="kb-vault-list">
+            {saved.map((card) => {
+              const { title, detail } = cardSummary(card, now)
+              return (
+                <li key={card.id} className="kb-vault-row">
+                  <div className="kb-vault-id">
+                    <span className="kb-vault-host">{title}</span>
+                    <span className="kb-vault-user">{detail}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="kb-vault-action"
+                    onClick={() => open.mutate({ id: card.id, last4: card.last4 })}
+                    disabled={open.isPending}
+                    aria-label={`Edit ${title}`}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="kb-vault-del"
+                    onClick={() => remove.mutate(card.id)}
+                    disabled={remove.isPending}
+                    aria-label={`Remove ${title}`}
+                    title="Remove"
+                  >
+                    <XIcon />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+      {failure ? (
+        <p className="kb-backup-status is-error" role="alert">
+          {errorMessage(failure)}
+        </p>
+      ) : null}
     </section>
   )
 }

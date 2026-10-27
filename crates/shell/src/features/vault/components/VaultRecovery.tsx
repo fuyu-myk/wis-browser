@@ -194,7 +194,7 @@ export function RecoveryKeyRow() {
           <span>
             {recoveryKey
               ? `Sealed to ${shortKey(recoveryKey)}. If this device can't open your vault, its private key brings your passwords back.`
-              : "Paste an age or SSH public key whose private half you keep off this device or behind a passphrase. If this device ever can't open your vault, that key brings your passwords back."}
+              : "Paste an age or SSH public key whose private half you keep off this device or behind a passphrase. If this device is ever unable to open your vault, that key brings your passwords back."}
           </span>
         </div>
         {recoveryKey && (

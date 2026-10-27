@@ -26,7 +26,6 @@ interface Editing {
 export function AddressesSection({ settings, onUpdate }: AddressesSectionProps) {
   const qc = useQueryClient()
   const { data: status } = useVaultStatus()
-  const supported = status?.supported ?? false
   const unlocked = status?.unlocked ?? false
   const [editing, setEditing] = useState<Editing | null>(null)
   const [search, setSearch] = useState('')
@@ -63,6 +62,8 @@ export function AddressesSection({ settings, onUpdate }: AddressesSectionProps) 
   })
   const failure = save.error ?? remove.error
 
+  if (!unlocked) return null
+
   return (
     <section id="addresses" className="sec">
       <div className="sec-h">Addresses</div>
@@ -78,92 +79,84 @@ export function AddressesSection({ settings, onUpdate }: AddressesSectionProps) 
         />
       </div>
 
-      {!supported ? (
-        <p className="kb-vault-msg">The password vault is not available on this platform.</p>
-      ) : !unlocked ? (
-        <p className="kb-vault-msg">Unlock your vault under Passwords to see your addresses.</p>
+      {editing ? (
+        <AddressForm
+          value={editing.address}
+          busy={save.isPending}
+          onChange={(address) => setEditing({ ...editing, address })}
+          onSave={() => save.mutate(editing)}
+          onCancel={() => {
+            setEditing(null)
+            save.reset()
+          }}
+        />
       ) : (
-        <>
-          {saved.length > 0 && (
-            <div className="kb-vault-panel">
-              <div className="kb-vault-search">
-                <SearchIcon />
-                <input
-                  type="text"
-                  placeholder="Search addresses"
-                  aria-label="Search addresses"
-                  value={search}
-                  onChange={(e) => setSearch(e.currentTarget.value)}
-                  spellCheck={false}
-                />
-              </div>
-              {shown.length === 0 && <p className="kb-vault-empty">No matches.</p>}
-              <ul className="kb-vault-list">
-                {shown.map(({ id, address }) => {
-                  const { title, detail } = addressSummary(address, navigator.language)
-                  return (
-                    <li key={id} className="kb-vault-row">
-                      <div className="kb-vault-id">
-                        <span className="kb-vault-host">{title}</span>
-                        {detail && <span className="kb-vault-user">{detail}</span>}
-                      </div>
-                      <button
-                        type="button"
-                        className="kb-vault-action"
-                        onClick={() => setEditing({ id, address })}
-                        aria-label={`Edit ${title}`}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="kb-vault-del"
-                        onClick={() => remove.mutate(id)}
-                        disabled={remove.isPending}
-                        aria-label={`Remove ${title}`}
-                        title="Remove"
-                      >
-                        <XIcon />
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          )}
-          {editing ? (
-            <AddressForm
-              value={editing.address}
-              busy={save.isPending}
-              onChange={(address) => setEditing({ ...editing, address })}
-              onSave={() => save.mutate(editing)}
-              onCancel={() => {
-                setEditing(null)
-                save.reset()
-              }}
-            />
-          ) : (
-            <div className="row">
-              <div className="l">
-                <span>{saved.length === 0 ? 'No saved addresses yet' : 'Another address'}</span>
-                <span>Add one to have it offered at address fields.</span>
-              </div>
-              <button
-                type="button"
-                className="kb-btn"
-                onClick={() => setEditing({ id: null, address: emptyAddress() })}
-              >
-                Add address
-              </button>
-            </div>
-          )}
-          {failure ? (
-            <p className="kb-backup-status is-error" role="alert">
-              {errorMessage(failure)}
-            </p>
-          ) : null}
-        </>
+        <div className="row">
+          <div className="l">
+            <span>{saved.length === 0 ? 'No saved addresses yet' : 'Another address'}</span>
+            <span>Add one to have it offered at address fields.</span>
+          </div>
+          <button
+            type="button"
+            className="kb-btn"
+            onClick={() => setEditing({ id: null, address: emptyAddress() })}
+          >
+            Add address
+          </button>
+        </div>
       )}
+      {saved.length > 0 && (
+        <div className="kb-vault-panel">
+          <div className="kb-vault-search">
+            <SearchIcon />
+            <input
+              type="text"
+              placeholder="Search addresses"
+              aria-label="Search addresses"
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+              spellCheck={false}
+            />
+          </div>
+          {shown.length === 0 && <p className="kb-vault-empty">No matches.</p>}
+          <ul className="kb-vault-list">
+            {shown.map(({ id, address }) => {
+              const { title, detail } = addressSummary(address, navigator.language)
+              return (
+                <li key={id} className="kb-vault-row">
+                  <div className="kb-vault-id">
+                    <span className="kb-vault-host">{title}</span>
+                    {detail && <span className="kb-vault-user">{detail}</span>}
+                  </div>
+                  <button
+                    type="button"
+                    className="kb-vault-action"
+                    onClick={() => setEditing({ id, address })}
+                    aria-label={`Edit ${title}`}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="kb-vault-del"
+                    onClick={() => remove.mutate(id)}
+                    disabled={remove.isPending}
+                    aria-label={`Remove ${title}`}
+                    title="Remove"
+                  >
+                    <XIcon />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+      {failure ? (
+        <p className="kb-backup-status is-error" role="alert">
+          {errorMessage(failure)}
+        </p>
+      ) : null}
     </section>
   )
 }

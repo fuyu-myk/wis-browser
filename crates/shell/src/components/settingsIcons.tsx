@@ -155,6 +155,26 @@ export function KeyIcon() {
   )
 }
 
+export function VaultIcon() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3" y="4" width="18" height="15" rx="2.5" />
+      <circle cx="12" cy="11.5" r="3" />
+      <path d="M12 8.5v1M12 13.5v1M7 19v1.5M17 19v1.5" />
+    </svg>
+  )
+}
+
 export function GridIcon() {
   return (
     <svg

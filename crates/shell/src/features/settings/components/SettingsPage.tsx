@@ -18,6 +18,7 @@ import {
   PuzzleIcon,
   ShieldIcon,
   SparkleIcon,
+  VaultIcon,
   WifiIcon,
 } from '@/components/settingsIcons'
 import { BookmarksSection } from '@/features/bookmarks/components/BookmarksSection'
@@ -35,7 +36,10 @@ import { PrivacySection } from '@/features/privacy/components/PrivacySection'
 import { NetworkSection } from '@/features/network/NetworkSection'
 import { CompatibilitySection } from '@/features/site/components/CompatibilitySection'
 import { SiteDataSection } from '@/features/privacy/components/SiteDataSection'
+import { VaultSection } from '@/features/vault/components/VaultSection'
 import { PasswordsSection } from '@/features/vault/components/PasswordsSection'
+import { useVaultStatus } from '@/features/vault/hooks/useVaultStatus'
+import { navTarget } from '@/features/vault/lib/vaultSections'
 import { AddressesSection } from '@/features/vault/components/AddressesSection'
 import { CardsSection } from '@/features/vault/components/CardsSection'
 import { KeyboardShortcutsSection } from '@/features/keyboard/KeyboardShortcutsSection'
@@ -65,6 +69,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: 'bookmarks', label: 'Bookmarks', icon: <BookmarkIcon /> },
   { id: 'import', label: 'Import', icon: <ImportIcon /> },
   { id: 'extensions', label: 'Extensions', icon: <PuzzleIcon /> },
+  { id: 'vault', label: 'Vault', icon: <VaultIcon /> },
   { id: 'passwords', label: 'Passwords', icon: <KeyIcon /> },
   { id: 'addresses', label: 'Addresses', icon: <MapPinIcon /> },
   { id: 'cards', label: 'Payment cards', icon: <CardIcon /> },
@@ -77,6 +82,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
   const { data: state } = useBrowserState()
   const update = useUpdateSettings()
   const activeWorkspace = state?.workspaces.find((w) => w.id === state.active_workspace_id)
+  const vaultOpen = useVaultStatus().data?.unlocked ?? false
 
   const mainRef = useRef<HTMLDivElement | null>(null)
   const attachScroll = useScrollMemory(tabId)
@@ -136,7 +142,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
     )
     for (const el of observed) obs.observe(el)
     return () => obs.disconnect()
-  }, [])
+  }, [vaultOpen])
 
   if (!state) return null
   const settings = state.settings
@@ -153,7 +159,8 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
     }, 700)
   }
 
-  const scrollTo = (id: string) => {
+  const scrollTo = (picked: string) => {
+    const id = navTarget(picked, vaultOpen)
     showSection(id)
     const el = mainRef.current?.querySelector(`#${id}`)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -261,6 +268,7 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
           storeSearch={settings.extension_store_search}
           onUpdate={(patch) => update.mutate(patch)}
         />
+        <VaultSection />
         <PasswordsSection />
         <AddressesSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />
         <CardsSection settings={settings} onUpdate={(patch) => update.mutate(patch)} />

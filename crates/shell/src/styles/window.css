@@ -3839,24 +3839,12 @@ body.glass-chrome .kb-content {
 .kb-vault-locked-text span:first-child { font-size: 13.5px; color: var(--text-primary); }
 .kb-vault-locked-text span:last-child { font-size: 12px; color: var(--text-tertiary); }
 
-.kb-vault-add { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
-.kb-vault-input {
-  flex: 1;
-  min-width: 120px;
-  padding: 8px 12px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: var(--bg-subtle);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 13px;
-  outline: 0;
-}
-.kb-vault-input:focus { border-color: var(--primary-400); }
-.kb-vault-input::placeholder { color: var(--text-tertiary); }
+.kb-password-secret { display: flex; align-items: center; gap: 6px; }
+.kb-password-secret .kb-text-input { flex: 1; min-width: 0; }
+.kb-address-form > .kb-backup-status { grid-column: 1 / -1; margin: 0; }
 
 /* Password generator. */
-.kb-vault-gen { flex: 1 0 100%; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.kb-vault-gen { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .kb-vault-gen-label { font-size: 12px; color: var(--text-tertiary); }
 .kb-vault-gen-label.is-weak { color: var(--danger); }
 .kb-vault-len {
@@ -3952,15 +3940,13 @@ body.glass-chrome .kb-content {
 /* Liquid glass for the vault rectangles, matching the site-data / shortcuts
    lists (translucent over the window glass; follows the glass toggle). */
 .glass-on .kb-vault-locked,
-.glass-on .kb-vault-panel,
-.glass-on .kb-vault-input {
+.glass-on .kb-vault-panel {
   background: rgba(0, 0, 0, 0.06);
   border-color: rgba(0, 0, 0, 0.08);
 }
 .glass-on .kb-vault-row { border-bottom-color: rgba(0, 0, 0, 0.06); }
 [data-mode="dark"].glass-on .kb-vault-locked,
-[data-mode="dark"].glass-on .kb-vault-panel,
-[data-mode="dark"].glass-on .kb-vault-input {
+[data-mode="dark"].glass-on .kb-vault-panel {
   background: rgba(0, 0, 0, 0.28);
   border-color: rgba(255, 255, 255, 0.08);
 }

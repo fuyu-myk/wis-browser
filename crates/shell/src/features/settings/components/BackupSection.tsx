@@ -160,7 +160,7 @@ export function BackupSection({ settings }: BackupSectionProps) {
       await qc.invalidateQueries({ queryKey: BROWSER_STATE_KEY })
       setImportPass('')
       const skipped = summary.vault_skipped
-        ? ' Saved passwords, addresses and cards were left out: set up your vault under Passwords, then restore again.'
+        ? ' Saved passwords, addresses and cards were left out: set up your vault under Vault, then restore again.'
         : ''
       setStatus({
         kind: 'ok',
