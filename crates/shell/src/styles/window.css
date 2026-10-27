@@ -469,7 +469,7 @@ body.is-overlay-surface:not(.glass-on) {
   max-width: calc(100% - 32px);
 }
 @keyframes kb-findbar-in {
-  from { opacity: 0; transform: translate(-50%, 8px); }
+  from { opacity: 0; transform: translate(-50%, calc(8px * var(--motion-move))); }
   to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
@@ -1343,7 +1343,7 @@ body.is-overlay-surface:not(.glass-on) {
   to { opacity: 1; }
 }
 @keyframes kb-palette-scale-in {
-  from { opacity: 0; transform: scale(0.96); }
+  from { opacity: 0; transform: scale(calc(1 - 0.04 * var(--motion-move))); }
   to { opacity: 1; transform: scale(1); }
 }
 
@@ -1387,7 +1387,7 @@ body[data-platform="linux"].glass-chrome .kb-window {
      the muted theme default. */
 [data-mode="light"].glass-chrome {
   --text-secondary: rgba(20,20,28,0.78);
-  --text-tertiary:  rgba(20,20,28,0.55);
+  --text-tertiary:  rgba(20,20,28,0.62);
 }
 [data-mode="dark"].glass-chrome {
   --text-secondary: rgba(255,255,255,0.72);
@@ -3615,7 +3615,7 @@ body.glass-chrome .kb-content {
   animation: kb-modal-pop 140ms var(--ease-emphasized);
 }
 @keyframes kb-modal-pop {
-  from { opacity: 0; transform: scale(0.96); }
+  from { opacity: 0; transform: scale(calc(1 - 0.04 * var(--motion-move))); }
   to   { opacity: 1; transform: scale(1); }
 }
 [data-mode="dark"] .kb-modal { background: var(--surface-raised, var(--surface)); }
@@ -4531,7 +4531,7 @@ body.has-custom-img .kb-launch-mark {
 }
 .kb-wpanel-backdrop.is-right { --wpanel-slide: 48px; }
 @keyframes kb-wpanel-slide {
-  from { transform: translateX(var(--wpanel-slide)); opacity: 0.5; }
+  from { transform: translateX(calc(var(--wpanel-slide) * var(--motion-move))); opacity: 0.5; }
   to { transform: translateX(0); opacity: 1; }
 }
 body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
@@ -6883,7 +6883,7 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
   animation: kb-badge-pop var(--dur-slow) var(--ease-emphasized);
 }
 @keyframes kb-badge-pop {
-  from { transform: scale(0.2); opacity: 0; }
+  from { transform: scale(calc(1 - 0.8 * var(--motion-move))); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
 
@@ -6988,12 +6988,12 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 .kb-shot-toast-x svg { width: 15px; height: 15px; }
 
 @keyframes kb-shot-toast-in {
-  from { opacity: 0; transform: translateY(-130%); }
+  from { opacity: 0; transform: translateY(calc(-130% * var(--motion-move))); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes kb-shot-toast-out {
   from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0; transform: translateY(-130%); }
+  to { opacity: 0; transform: translateY(calc(-130% * var(--motion-move))); }
 }
 
 /* General message toast (overlay-toast): a short transient notice dropped in at
@@ -7737,16 +7737,28 @@ body.motion-off .kb-wpanel-backdrop { animation-duration: 0s !important; }
 }
 
 /* -- Motion tiers ---------------------------------------------------------
-   Reduced: identical durations, springiness flattened (no overshoot).
-   Off: non-essential motion disabled outright. */
+   Reduced: fades and colour changes only. Keyframe movement scales by
+   --motion-move, so entrances keep their fade without sliding, growing or
+   springing; loading spinners still turn.
+   Off: non-essential motion disabled outright. Unscoped, so the overlay
+   webviews follow it too. */
 body.motion-reduced {
+  --motion-move: 0;
   --ease-emphasized: var(--ease-standard);
 }
-body.motion-off .kb-window *,
-body.motion-off .kb-window *::before,
-body.motion-off .kb-window *::after {
+body.motion-reduced *,
+body.motion-reduced *::before,
+body.motion-reduced *::after {
+  transition-property: opacity, color, background-color, border-color, outline-color, box-shadow,
+    fill, stroke, filter, backdrop-filter, visibility !important;
+  scroll-behavior: auto !important;
+}
+body.motion-off *,
+body.motion-off *::before,
+body.motion-off *::after {
   transition-duration: 0s !important;
   animation-duration: 0s !important;
+  scroll-behavior: auto !important;
 }
 
 /* -- expansion, spawn, control, palette motion --------------- */
@@ -7790,12 +7802,12 @@ body.motion-off .kb-window *::after {
 
 /* Top-tabs island grows out of (and shrinks back into) its header. */
 @keyframes kb-island-grow {
-  from { clip-path: inset(0 calc(100% - 40px) 0 0 round 14px); opacity: 0.6; }
+  from { clip-path: inset(0 calc((100% - 40px) * var(--motion-move)) 0 0 round 14px); opacity: 0.6; }
   to { clip-path: inset(0 0 0 0 round 14px); opacity: 1; }
 }
 @keyframes kb-island-shrink {
   from { clip-path: inset(0 0 0 0 round 14px); opacity: 1; }
-  to { clip-path: inset(0 calc(100% - 40px) 0 0 round 14px); opacity: 0; }
+  to { clip-path: inset(0 calc((100% - 40px) * var(--motion-move)) 0 0 round 14px); opacity: 0; }
 }
 .h-island { animation: kb-island-grow var(--dur-med) var(--ease-standard); }
 .h-island.is-closing {
@@ -7804,12 +7816,12 @@ body.motion-off .kb-window *::after {
 }
 /* Rail on the right: the island sweeps out of (and into) its rail-side edge. */
 @keyframes kb-island-grow-r {
-  from { clip-path: inset(0 0 0 calc(100% - 40px) round 14px); opacity: 0.6; }
+  from { clip-path: inset(0 0 0 calc((100% - 40px) * var(--motion-move)) round 14px); opacity: 0.6; }
   to { clip-path: inset(0 0 0 0 round 14px); opacity: 1; }
 }
 @keyframes kb-island-shrink-r {
   from { clip-path: inset(0 0 0 0 round 14px); opacity: 1; }
-  to { clip-path: inset(0 0 0 calc(100% - 40px) round 14px); opacity: 0; }
+  to { clip-path: inset(0 0 0 calc((100% - 40px) * var(--motion-move)) round 14px); opacity: 0; }
 }
 .kb-window.rail-right .h-island {
   animation-name: kb-island-grow-r;
@@ -7819,14 +7831,14 @@ body.motion-off .kb-window *::after {
 }
 .h-island-circle { animation: kb-scale-pop var(--dur-fast) var(--ease-standard); }
 @keyframes kb-scale-pop {
-  from { transform: scale(0.6); opacity: 0; }
+  from { transform: scale(calc(1 - 0.4 * var(--motion-move))); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
 
 /* Tab spawn/close: new rows grow in with elasticity, closing rows collapse
    with the exit curve while siblings take the space. */
 @keyframes kb-tab-in {
-  from { max-height: 0; opacity: 0; transform: scaleY(0.7); }
+  from { max-height: calc(40px * (1 - var(--motion-move))); opacity: 0; transform: scaleY(calc(1 - 0.3 * var(--motion-move))); }
   to { max-height: 40px; opacity: 1; transform: scaleY(1); }
 }
 .kb-tab.is-new {
@@ -7836,7 +7848,7 @@ body.motion-off .kb-window *::after {
 }
 @keyframes kb-tab-out {
   from { max-height: 40px; opacity: 1; }
-  to { max-height: 0; opacity: 0; }
+  to { max-height: calc(40px * (1 - var(--motion-move))); opacity: 0; }
 }
 .kb-tab.is-closing {
   animation: kb-tab-out 180ms var(--ease-exit) forwards;
@@ -7850,12 +7862,12 @@ body.motion-off .kb-window *::after {
 
 /* Palette + find bar rise from the bottom edge and sink back on dismiss. */
 @keyframes kb-rise-in {
-  from { transform: translateY(80vh); opacity: 0.4; }
+  from { transform: translateY(calc(80vh * var(--motion-move))); opacity: 0.4; }
   to { transform: translateY(0); opacity: 1; }
 }
 @keyframes kb-sink-out {
   from { transform: translateY(0); opacity: 1; }
-  to { transform: translateY(80vh); opacity: 0; }
+  to { transform: translateY(calc(80vh * var(--motion-move))); opacity: 0; }
 }
 .kb-palette { animation: kb-rise-in var(--dur-slow) var(--ease-standard); }
 .kb-palette.is-closing {
@@ -7880,7 +7892,7 @@ body.motion-off .kb-window *::after {
 
 /* Dropdown/popover standard enter for the cards that lacked one. */
 @keyframes kb-drop-in {
-  from { transform: translateY(-10px) scale(0.94); opacity: 0; }
+  from { transform: translateY(calc(-10px * var(--motion-move))) scale(calc(1 - 0.06 * var(--motion-move))); opacity: 0; }
   to { transform: translateY(0) scale(1); opacity: 1; }
 }
 .kb-tabfolder-menu,
@@ -7891,7 +7903,7 @@ body.motion-off .kb-window *::after {
 }
 /* The editpop centers via translateX; its enter keyframes must carry it. */
 @keyframes kb-drop-in-centered {
-  from { transform: translateX(-50%) translateY(-10px) scale(0.94); opacity: 0; }
+  from { transform: translateX(-50%) translateY(calc(-10px * var(--motion-move))) scale(calc(1 - 0.06 * var(--motion-move))); opacity: 0; }
   to { transform: translateX(-50%) translateY(0) scale(1); opacity: 1; }
 }
 .kb-ws-editpop { animation: kb-drop-in-centered var(--dur-med) var(--ease-standard); }
@@ -8031,7 +8043,7 @@ body.is-tab-dragging .kb-loose {
 /* Reload icon spins once per press (keyed remount replays it). */
 @keyframes kb-spin-once {
   from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  to { transform: rotate(calc(360deg * var(--motion-move))); }
 }
 .kb-reload-spin {
   display: flex;
@@ -8177,7 +8189,7 @@ body[data-close-btn="hidden"] .kb-topbar .h-tab .close { display: none; }
 }
 .kb-tabprev.glass-menus .kb-tabprev-shot { background: transparent; }
 @keyframes kb-tabprev-in {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(calc(4px * var(--motion-move))); }
   to { opacity: 1; transform: translateY(0); }
 }
 .kb-tabprev-shot {
@@ -8284,12 +8296,12 @@ body[data-close-btn="hidden"] .kb-topbar .h-tab .close { display: none; }
 }
 .kb-ai-panel .kb-modal-backdrop { position: absolute; }
 @keyframes kb-ai-in {
-  from { opacity: 0; transform: translateX(8px); }
+  from { opacity: 0; transform: translateX(calc(8px * var(--motion-move))); }
   to { opacity: 1; transform: translateX(0); }
 }
 .kb-ai-panel.is-left { animation-name: kb-ai-in-left; }
 @keyframes kb-ai-in-left {
-  from { opacity: 0; transform: translateX(-8px); }
+  from { opacity: 0; transform: translateX(calc(-8px * var(--motion-move))); }
   to { opacity: 1; transform: translateX(0); }
 }
 
@@ -8994,11 +9006,11 @@ body.motion-off .kb-ai-think-label.is-live {
 }
 .kb-zoom-char.is-falling { animation-name: kb-zoom-fall; }
 @keyframes kb-zoom-rise {
-  from { transform: translateY(100%); opacity: 0; }
+  from { transform: translateY(calc(100% * var(--motion-move))); opacity: 0; }
   to { transform: none; opacity: 1; }
 }
 @keyframes kb-zoom-fall {
-  from { transform: translateY(-100%); opacity: 0; }
+  from { transform: translateY(calc(-100% * var(--motion-move))); opacity: 0; }
   to { transform: none; opacity: 1; }
 }
 
@@ -9615,3 +9627,30 @@ body.motion-off .kb-ai-think-label.is-live {
 .kb-usage-table tbody td { color: var(--text-secondary); }
 .kb-usage-table tr.is-now th { font-weight: 650; }
 .kb-usage-table tbody tr:last-child > * { border-bottom: none; }
+
+/* Keyboard focus. */
+:where(button, a[href], summary, select, [tabindex]:not([tabindex="-1"]),
+  input[type="checkbox"], input[type="radio"], input[type="range"],
+  [role="button"], [role="tab"], [role="switch"], [role="radio"], [role="checkbox"],
+  [role="option"], [role^="menuitem"], [role="treeitem"]):focus-visible {
+  outline: 2px solid var(--primary-400);
+  outline-offset: 2px;
+}
+:where(.kb-tab, .kb-topbar .h-tab, .kb-tabfolder-head, [role="option"], [role^="menuitem"],
+  .kb-settings-nav button, .kb-segmented button, .kb-pinned-grid button):focus-visible {
+  outline-offset: -2px;
+}
+.kb-select select:focus-visible { outline: 2px solid var(--primary-400); outline-offset: 2px; }
+
+/* Controls that appear on hover appear on keyboard focus too. */
+.kb-tab:focus-within .close,
+.kb-topbar .h-tab:focus-within .close,
+.kb-tabfolder-head:focus-within .kb-tabfolder-more,
+.kb-bm-fav-wrap:focus-within .kb-bm-fav-remove,
+.kb-bmmenu-bubble-wrap:focus-within .kb-bmmenu-bubble-x { display: inline-flex; }
+.kb-history-row:focus-within .kb-history-del,
+.kb-bmmenu-row:focus-within .kb-bmmenu-row-x,
+.kb-ws-row:focus-within .kb-ws-row-delete,
+.kb-dlmenu-row:focus-within .kb-dlmenu-del,
+.kb-dl-row:focus-within .kb-dl-reveal,
+.kb-widget-chip-x:focus-visible { opacity: 1; }

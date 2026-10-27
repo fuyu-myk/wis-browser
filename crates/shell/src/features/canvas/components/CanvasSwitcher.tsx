@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 
 import { matchCanvases, type CanvasSummary } from '@/features/canvas/lib/canvas'
 import { cx } from '@/lib/cx'
+import { motionStill } from '@/lib/motion'
 
 interface CanvasSwitcherProps {
   name: string
@@ -20,7 +21,6 @@ type Mode =
   | { kind: 'rename'; from: number }
   | { kind: 'menu'; x: number; y: number; confirming: boolean }
 
-const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 /** Longest the resize transition (`canvas.css`) can take, plus a frame. */
 const RESIZE_MS = 320
 
@@ -36,7 +36,7 @@ export function CanvasSwitcher(props: CanvasSwitcherProps) {
   // Start at the field's width and ease to the pill's own after a rename.
   useLayoutEffect(() => {
     const el = pillRef.current
-    if (!el || shrinkFrom === undefined || reducedMotion()) return
+    if (!el || shrinkFrom === undefined || motionStill()) return
     const natural = el.getBoundingClientRect().width
     if (Math.abs(natural - shrinkFrom) < 1) return
     el.style.width = `${shrinkFrom}px`
@@ -254,7 +254,7 @@ function RenameField({ name, from, onDone }: RenameFieldProps) {
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    if (from > 0 && !reducedMotion()) {
+    if (from > 0 && !motionStill()) {
       el.style.width = `${from}px`
       void el.offsetWidth
       el.style.width = ''

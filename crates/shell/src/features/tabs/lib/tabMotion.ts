@@ -9,6 +9,7 @@ import type { QueryClient } from '@tanstack/react-query'
 
 import type { BrowserState, TabFolderId, TabId, WorkspaceId } from '@/bindings/types'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
+import { motionOff, motionStill } from '@/lib/motion'
 
 /**
  * Slots a sibling shifts by while the element at `from` is dragged over
@@ -36,24 +37,21 @@ export function partOffset(
 
 /**
  * Animate `el` from the floating ghost's final rect into its committed
- * layout slot: a glide with a small settle pop on Full motion, the same
- * glide without the pop on Reduced, nothing on Off.
+ * layout slot: a glide with a small settle pop on Full motion, nothing on
+ * Reduced or Off.
  */
 export function glideIntoPlace(el: HTMLElement, from: DOMRect): void {
-  const body = document.body
-  if (body.classList.contains('motion-off')) return
+  if (motionStill()) return
   const to = el.getBoundingClientRect()
   const dx = from.left - to.left
   const dy = from.top - to.top
   if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return
   const move = `translate(${dx}px, ${dy}px)`
-  const frames = body.classList.contains('motion-reduced')
-    ? [{ transform: move }, { transform: 'translate(0, 0)' }]
-    : [
-        { transform: `${move} scale(1)` },
-        { transform: 'translate(0, 0) scale(1.04)', offset: 0.75 },
-        { transform: 'translate(0, 0) scale(1)' },
-      ]
+  const frames = [
+    { transform: `${move} scale(1)` },
+    { transform: 'translate(0, 0) scale(1.04)', offset: 0.75 },
+    { transform: 'translate(0, 0) scale(1)' },
+  ]
   el.animate(frames, { duration: 280, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' })
 }
 
@@ -119,8 +117,8 @@ export function patchTabFolder(
  * WAAPI, so no remount or layout changes are needed.
  */
 export function workspaceSlideIn(el: HTMLElement | null, dir: 'left' | 'right'): void {
-  if (!el || document.body.classList.contains('motion-off')) return
-  const dx = dir === 'right' ? 44 : -44
+  if (!el || motionOff()) return
+  const dx = motionStill() ? 0 : dir === 'right' ? 44 : -44
   el.animate(
     [
       { transform: `translateX(${dx}px)`, opacity: 0 },

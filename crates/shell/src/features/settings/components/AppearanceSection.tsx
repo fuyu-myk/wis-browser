@@ -56,9 +56,9 @@ export function AppearanceSection({ settings, activeWorkspace, onUpdate }: Appea
           <div className="l">
             <span>Motion</span>
             <span>
-              Reduced keeps the same timings without the springiness; Off
-              disables non-essential animation. Follows the OS reduce-motion
-              preference when set to Full.
+              Reduced keeps fades but nothing slides, grows or springs; Off
+              disables non-essential animation. Full follows the system Reduce
+              motion setting.
             </span>
           </div>
           <Segmented

@@ -16,6 +16,7 @@ import { useEffect } from 'react'
 
 import type { UserSettings } from '@/bindings/types'
 import { themeVars, THEME_VAR_KEYS } from '@/lib/theme'
+import { effectiveMotion } from '@/lib/motion'
 
 export function useThemeApply(settings: UserSettings | undefined) {
   useEffect(() => {
@@ -69,11 +70,9 @@ export function useThemeApply(settings: UserSettings | undefined) {
     body.classList.toggle('compact', settings.compact)
     body.classList.toggle('url-glow-on', settings.url_bar_focus_glow)
 
-    // Motion tier: the OS reduce-motion preference caps Full at Reduced.
     const reduceMedia = window.matchMedia('(prefers-reduced-motion: reduce)')
     const applyMotion = () => {
-      const effective =
-        settings.motion === 'full' && reduceMedia.matches ? 'reduced' : settings.motion
+      const effective = effectiveMotion(settings.motion, reduceMedia.matches)
       body.classList.toggle('motion-reduced', effective === 'reduced')
       body.classList.toggle('motion-off', effective === 'off')
     }

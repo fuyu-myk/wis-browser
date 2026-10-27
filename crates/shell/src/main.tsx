@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from '@/App'
 import { OverlayRoot } from '@/overlay/OverlayRoot'
 import { currentPlatform } from '@/lib/platform'
+import { installTabFocus } from '@/lib/tabFocus'
 
 import '@/styles/fonts.css'
 import '@/styles/tokens.css'
@@ -12,6 +13,7 @@ import '@/styles/window.css'
 
 // Host OS for platform-conditional styling. Static for the session.
 document.body.setAttribute('data-platform', currentPlatform())
+installTabFocus()
 
 // Queries and mutations are IPC to the backend, never the network.
 const queryClient = new QueryClient({

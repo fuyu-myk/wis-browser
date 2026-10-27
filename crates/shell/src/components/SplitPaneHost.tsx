@@ -189,7 +189,7 @@ function PaneSplit({
   // Entrance: a split mounted around a brand-new leaf starts that slot at
   // zero and glides it open (flex-grow transition while .is-entering).
   const [enterFrom] = useState<'first' | 'second' | null>(() => {
-    if (document.body.classList.contains('motion-off')) return null
+    if (motionStill()) return null
     if (first.kind === 'leaf' && newLeafIds.has(first.tab)) return 'first'
     if (second.kind === 'leaf' && newLeafIds.has(second.tab)) return 'second'
     return null
@@ -310,6 +310,7 @@ import { NetErrorPage } from '@/components/NetErrorPage'
 import { TlsErrorPage } from '@/components/TlsErrorPage'
 import { DOWNLOADS_URL, HISTORY_URL, SETTINGS_URL, sourceTargetOf, USAGE_URL } from '@/lib/url'
 import { SourcePage } from '@/components/SourcePage'
+import { motionStill } from '@/lib/motion'
 
 function ChromePane({ tab }: { tab: Tab }) {
   if (tab.load_error) {

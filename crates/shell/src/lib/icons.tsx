@@ -20,6 +20,8 @@ function Icon({ children, ...props }: Props & { children: React.ReactNode }) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
+      aria-hidden={props['aria-label'] ? undefined : true}
+      focusable="false"
       {...props}
     >
       {children}

@@ -46,6 +46,7 @@ import { KeyboardShortcutsSection } from '@/features/keyboard/KeyboardShortcutsS
 import { BackupSection } from '@/features/settings/components/BackupSection'
 import { AiSection } from '@/features/ai/components/AiSection'
 import { SettingsSearch } from '@/features/settings/components/SettingsSearch'
+import { scrollBehavior } from '@/lib/motion'
 
 interface NavSection {
   id: string
@@ -163,13 +164,13 @@ export function SettingsPage({ tabId }: { tabId: TabId }) {
     const id = navTarget(picked, vaultOpen)
     showSection(id)
     const el = mainRef.current?.querySelector(`#${id}`)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (el) el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' })
   }
 
   const reveal = (row: HTMLElement) => {
     const section = row.closest<HTMLElement>('.sec')?.id
     if (section) showSection(section)
-    row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    row.scrollIntoView({ behavior: scrollBehavior(), block: 'center' })
     row.classList.remove('is-found')
     void row.offsetWidth
     row.classList.add('is-found')

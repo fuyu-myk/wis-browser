@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react'
 
 import { revealBlock } from '@/features/vault/lib/vaultSections'
+import { scrollBehavior } from '@/lib/motion'
 
 function scrollParent(el: HTMLElement): HTMLElement | null {
   for (let node = el.parentElement; node; node = node.parentElement) {
@@ -31,7 +32,7 @@ export function useRevealWhole<T extends HTMLElement>(): (el: T | null) => void 
       }
       height = next
       const view = scrollParent(el)?.clientHeight ?? window.innerHeight
-      el.scrollIntoView({ behavior: 'smooth', block: revealBlock(next, view) })
+      el.scrollIntoView({ behavior: scrollBehavior(), block: revealBlock(next, view) })
     })
     observer.current.observe(el)
   }, [])

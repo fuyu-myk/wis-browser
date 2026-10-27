@@ -20,6 +20,7 @@ import { useVideoPopout } from '@/features/video-popout/useVideoPopout'
 
 import { FOCUS_LAUNCHPAD_SEARCH_EVENT } from '@/features/new-tab/NewTabPage'
 import { PANE_GLIDE_MS, PaneView, type PaneSide } from '@/components/SplitPaneHost'
+import { motionStill } from '@/lib/motion'
 
 const KEYACTION_EVENT = 'wis-keyaction'
 const FIND_FOCUS_EVENT = 'wis-overlay-find-focus'
@@ -123,9 +124,8 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     }
     return { added, removed, persisting }
   }, [leaves, prevLeaves])
-  const motionOff = document.body.classList.contains('motion-off')
   const newLeafIds =
-    !motionOff && paneDiff.persisting && paneDiff.added.size > 0 && paneDiff.removed.size === 0
+    !motionStill() && paneDiff.persisting && paneDiff.added.size > 0 && paneDiff.removed.size === 0
       ? paneDiff.added
       : EMPTY_LEAVES
   const [paneAnim, setPaneAnim] = useState(false)
@@ -139,7 +139,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
     closing: ReadonlySet<TabId>
   } | null>(null)
   const wantExit =
-    !motionOff &&
+    !motionStill() &&
     paneDiff.persisting &&
     paneDiff.removed.size > 0 &&
     paneDiff.added.size === 0 &&

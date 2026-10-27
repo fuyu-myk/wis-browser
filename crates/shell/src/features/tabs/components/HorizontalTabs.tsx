@@ -55,6 +55,7 @@ import { TabAudioButton } from '@/features/tabs/components/TabAudioButton'
 import { TabFavicon } from '@/features/tabs/components/TabFavicon'
 import { useDiscardedTabs } from '@/features/tabs/components/DiscardedTabsContext'
 import { CollapseChevron, UrlContent } from '@/features/tabs/components/HorizontalTabsParts'
+import { motionStill, scrollBehavior } from '@/lib/motion'
 
 /** Marks the close-FLIP glide animations so a rapid re-close can cancel them. */
 const FLIP_ANIM_ID = 'wis-tab-flip'
@@ -272,7 +273,7 @@ export function HorizontalTabs({
       : durRaw.endsWith('s')
         ? parseFloat(durRaw) * 1000
         : 0
-    if (!(dur > 0)) return // motion off: the snap is intended
+    if (!(dur > 0) || motionStill()) return // reduced or off: the snap is intended
     for (const { el, dx, sx } of moves) {
       const anim = el.animate(
         [
@@ -457,7 +458,7 @@ export function HorizontalTabs({
   }, [])
 
   useLayoutEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+    activeRef.current?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: scrollBehavior() })
   }, [activeTabId])
 
   const minActive = compact ? COMPACT_MINIMUM_CURRENT_TAB_SIZE : MINIMUM_CURRENT_TAB_SIZE

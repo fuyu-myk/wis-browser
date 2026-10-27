@@ -11,6 +11,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { commands } from '@/bindings/commands'
 import type { AccentColor, BrowserState, Workspace, WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
+import { motionStill } from '@/lib/motion'
 import { PlusIcon, XIcon } from '@/lib/icons'
 import { ColorPicker } from '@/components/controls'
 import { IconPicker } from '@/features/workspaces/components/IconPicker'
@@ -37,6 +38,10 @@ const ACCENTS: AccentColor[] = [
 ]
 
 const POP_MIN_WIDTH = 210
+/** Past the sidebar's expand transition (`--dur-slow`), plus a frame. */
+const PLACE_FALLBACK_MS = 320
+/** Long enough for an instant expand to lay out. */
+const STILL_PLACE_MS = 32
 
 export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
   const [open, setOpen] = useState(false)
@@ -94,6 +99,13 @@ export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
     place()
 
     if (!startsCollapsed) setPlaced(true)
+    const settle = () => {
+      place()
+      setPlaced(true)
+    }
+    const fallback = startsCollapsed
+      ? window.setTimeout(settle, motionStill() ? STILL_PLACE_MS : PLACE_FALLBACK_MS)
+      : 0
     window.addEventListener('resize', place)
     window.addEventListener('scroll', place, true)
 
@@ -110,6 +122,7 @@ export function WorkspacePill({ state, onOpenChange }: WorkspacePillProps) {
       sidebar.addEventListener('transitionend', onTransitionEnd)
     }
     return () => {
+      window.clearTimeout(fallback)
       window.removeEventListener('resize', place)
       window.removeEventListener('scroll', place, true)
       observer?.disconnect()

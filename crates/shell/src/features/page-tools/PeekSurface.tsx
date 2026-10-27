@@ -23,6 +23,7 @@ import { useBrowserState } from '@/hooks/useBrowserState'
 import { useBrowserStateEvents } from '@/hooks/useBrowserStateEvents'
 import { useThemeApply } from '@/hooks/useThemeApply'
 import { menusGlass } from '@/lib/glass'
+import { motionOff, motionStill } from '@/lib/motion'
 
 const PEEK_SHOW_EVENT = 'wis-peek-show'
 const PEEK_CLOSE_EVENT = 'wis-peek-close'
@@ -184,7 +185,7 @@ export function PeekSurface() {
   useLayoutEffect(() => {
     if (!open) return
     const card = cardRef.current
-    if (!card || document.body.classList.contains('motion-off')) {
+    if (!card || motionOff()) {
       setGrown(true)
       return
     }
@@ -195,7 +196,7 @@ export function PeekSurface() {
       : '50% 50%'
     const anim = card.animate(
       [
-        { transform: 'scale(0.3)', opacity: 0.4 },
+        { transform: motionStill() ? 'none' : 'scale(0.3)', opacity: 0.4 },
         { transform: 'scale(1)', opacity: 1 },
       ],
       { duration: 260, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' },

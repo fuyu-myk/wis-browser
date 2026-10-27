@@ -108,14 +108,12 @@ describe('landing a drop', () => {
     assert.equal(options.duration, 280)
   })
 
-  test('reduced motion glides without the pop', () => {
+  test('reduced motion lands in place without moving', () => {
     bodyClasses.add('motion-reduced')
     const el = fakeElement({ left: 20, top: 30 })
     glideIntoPlace(el, ghost)
-    assert.deepEqual(el.animations[0].frames, [
-      { transform: 'translate(100px, 10px)' },
-      { transform: 'translate(0, 0)' },
-    ])
+    assert.equal(el.animations.length, 0)
+    assert.equal(el.measured, 0)
   })
 
   test('motion off does not animate or even measure', () => {

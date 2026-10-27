@@ -41,8 +41,9 @@
   --transition-speed: 220ms;
 
   /* Motion tokens: every chrome transition draws from these, so the motion
-     setting can retune the whole app in one place. Reduced motion keeps the
-     durations and flattens the springy easings to standard. */
+     setting can retune the whole app in one place. --motion-move scales
+     keyframe movement; Reduced sets it to 0 (window.css, Motion tiers). */
+  --motion-move: 1;
   --dur-fast: 120ms;
   --dur-med: 200ms;
   --dur-slow: 280ms;
@@ -181,7 +182,7 @@ body[data-platform="linux"] { --radius-scale: 0; }
   --scrollbar-thumb-hover: rgba(20,20,28,0.60);
   --text-primary:   #1A1916;
   --text-secondary: #5C5A54;
-  --text-tertiary:  #9B9890;
+  --text-tertiary:  #65625B;
   --text-on-accent: #FFFFFF;
   --overlay:        rgba(26,25,22,0.04);
   --popover:        var(--chrome-bg);
@@ -207,7 +208,7 @@ body[data-platform="linux"] { --radius-scale: 0; }
   --scrollbar-thumb-hover: rgba(235,234,240,0.65);
   --text-primary:   #EEEDF0;
   --text-secondary: #A4A3B2;
-  --text-tertiary:  #6E6D7E;
+  --text-tertiary:  #9B9AA8;
   --text-on-accent: #FFFFFF;
   --overlay:        rgba(238,237,240,0.06);
   --popover:        #1F1F26;

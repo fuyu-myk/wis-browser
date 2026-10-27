@@ -16,6 +16,7 @@ import {
   WRESIZE_START_EVENT,
   type WPanelNavPayload,
 } from '@/features/widgets/widgetResize'
+import { motionStill } from '@/lib/motion'
 
 /** Native event fired when a click lands inside any tab webview. */
 const PANE_FOCUS_EVENT = 'wis-pane-focus'
@@ -476,7 +477,7 @@ export function useWidgetPanel(): {
           // panel.
           hideGrip()
         }
-        const off = document.body.classList.contains('motion-off')
+        const off = motionStill()
         const dir = sideRef.current === 'left' ? -1 : 1
         // Opening a closed widget and switching to another both enter the same way.
         const startX = off ? panel.x : panel.x + dir * panelSlideDistance(panel.width)
