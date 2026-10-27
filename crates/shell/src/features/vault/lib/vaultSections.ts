@@ -7,3 +7,13 @@ export const LOCKED_SECTIONS: ReadonlySet<string> = new Set(['passwords', 'addre
 export function navTarget(id: string, vaultOpen: boolean): string {
   return !vaultOpen && LOCKED_SECTIONS.has(id) ? VAULT_SECTION : id
 }
+
+/** One labelled value in an open vault row. */
+export interface VaultField {
+  label: string
+  value: string
+}
+
+export function revealBlock(itemHeight: number, viewHeight: number): 'nearest' | 'start' {
+  return itemHeight > viewHeight ? 'start' : 'nearest'
+}

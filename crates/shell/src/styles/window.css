@@ -3893,26 +3893,48 @@ body.glass-chrome .kb-content {
 .kb-vault-search input::placeholder { color: var(--text-tertiary); }
 .kb-vault-empty { color: var(--text-tertiary); font-size: 13px; padding: 4px 14px 14px; }
 .kb-vault-list { list-style: none; max-height: 320px; overflow-y: auto; }
-.kb-vault-row {
+.kb-vault-list:has(> .kb-vault-row > .kb-vault-body) { max-height: none; }
+.kb-vault-row { border-bottom: 1px solid var(--border); }
+.kb-vault-row:last-child { border-bottom: 0; }
+.kb-vault-head {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   padding: 9px 14px;
-  border-bottom: 1px solid var(--border);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast);
 }
-.kb-vault-row:last-child { border-bottom: 0; }
+.kb-vault-head:hover { background: var(--overlay); }
+.kb-vault-head:focus-visible { outline: 2px solid var(--primary-400); outline-offset: -2px; }
+.kb-vault-chevron {
+  width: 14px; height: 14px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: transform var(--dur-fast);
+}
+.kb-vault-head[aria-expanded="true"] .kb-vault-chevron { transform: rotate(90deg); }
+.kb-vault-body { padding: 2px 14px 12px; display: flex; flex-direction: column; gap: 10px; }
+.kb-vault-fields { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; font-size: 12.5px; }
+.kb-vault-fields > div { display: contents; }
+.kb-vault-fields dt { color: var(--text-tertiary); }
+.kb-vault-fields dd { margin: 0; min-width: 0; color: var(--text-primary); white-space: pre-line; overflow-wrap: anywhere; }
+.kb-vault-fields dd.is-error { color: var(--danger); }
+.kb-vault-acts { display: flex; align-items: center; gap: 6px; }
+.kb-vault-acts .is-danger { margin-left: auto; }
 .kb-vault-id { flex: 1 1 40%; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .kb-vault-host { font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kb-vault-user { font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kb-vault-secret {
-  flex: 1 1 26%;
-  min-width: 0;
   font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-all;
 }
 .kb-vault-action {
   flex-shrink: 0;
@@ -3926,16 +3948,9 @@ body.glass-chrome .kb-content {
   transition: background var(--dur-fast), color var(--dur-fast);
 }
 .kb-vault-action:hover { background: var(--overlay); color: var(--text-primary); }
-.kb-vault-del {
-  flex-shrink: 0;
-  width: 26px; height: 26px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 0; border-radius: var(--radius-sm); background: transparent;
-  color: var(--text-tertiary); cursor: pointer;
-  transition: background var(--dur-fast), color var(--dur-fast);
-}
-.kb-vault-del:hover { background: color-mix(in oklab, var(--danger) 14%, transparent); color: var(--danger); }
-.kb-vault-del svg { width: 13px; height: 13px; }
+.kb-vault-action:disabled { opacity: 0.5; cursor: default; }
+.kb-vault-action.is-danger { color: var(--danger); }
+.kb-vault-action.is-danger:hover { background: color-mix(in oklab, var(--danger) 14%, transparent); }
 
 /* Liquid glass for the vault rectangles, matching the site-data / shortcuts
    lists (translucent over the window glass; follows the glass toggle). */

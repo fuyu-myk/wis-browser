@@ -1,4 +1,5 @@
 import type { Card, CardBrand, SavedCard } from '@/bindings/types'
+import type { VaultField } from '@/features/vault/lib/vaultSections'
 
 const BRAND_LABELS: Record<CardBrand, string> = {
   visa: 'Visa',
@@ -28,6 +29,17 @@ export function cardSummary(card: SavedCard, now: Date): CardSummaryText {
   const expiry = `${expired ? 'Expired' : 'Expires'} ${twoDigits(card.exp_month)}/${twoDigits(card.exp_year)}`
   if (!card.nickname) return { title: masked, detail: expiry, expired }
   return { title: card.nickname, detail: `${masked} · ${expiry}`, expired }
+}
+
+/** The fields an open card row shows: only what is kept unsealed. */
+export function cardFields(card: SavedCard, now: Date): VaultField[] {
+  const { expired } = cardSummary(card, now)
+  const fields: VaultField[] = [
+    { label: 'Network', value: BRAND_LABELS[card.brand] },
+    { label: 'Number', value: `•••• ${card.last4}` },
+    { label: expired ? 'Expired' : 'Expires', value: `${twoDigits(card.exp_month)}/${twoDigits(card.exp_year)}` },
+  ]
+  return card.nickname ? [...fields, { label: 'Nickname', value: card.nickname }] : fields
 }
 
 export function emptyCard(now: Date): Card {

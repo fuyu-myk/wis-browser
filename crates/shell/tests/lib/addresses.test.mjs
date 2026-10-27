@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { addressMatches, addressSummary, countryOptions, emptyAddress } from '../../src/features/vault/lib/addresses.ts'
+import { addressFields, addressMatches, addressSummary, countryOptions, emptyAddress } from '../../src/features/vault/lib/addresses.ts'
 
 test('an address is shown by its name, or what it has instead, and where it is', () => {
   const home = {
@@ -54,4 +54,26 @@ test('a search finds an address by any of its fields or its country, ignoring ca
   for (const query of ['paris', 'babbage', 'france']) {
     assert.equal(addressMatches(home, query, 'en'), false, query)
   }
+})
+
+test('an open address lists only the fields it has, street lines kept', () => {
+  const address = {
+    ...emptyAddress(),
+    given_name: 'Ada',
+    family_name: 'Lovelace',
+    street_address: '12 St James Sq\nFlat 3',
+    city: 'London',
+    postal_code: 'SW1Y 4JH',
+    country: 'GB',
+    email: 'ada@example.com',
+  }
+  assert.deepEqual(addressFields(address, 'en'), [
+    { label: 'Name', value: 'Ada Lovelace' },
+    { label: 'Street', value: '12 St James Sq\nFlat 3' },
+    { label: 'City', value: 'London' },
+    { label: 'Postal code', value: 'SW1Y 4JH' },
+    { label: 'Country', value: 'United Kingdom' },
+    { label: 'Email', value: 'ada@example.com' },
+  ])
+  assert.deepEqual(addressFields(emptyAddress(), 'en'), [])
 })

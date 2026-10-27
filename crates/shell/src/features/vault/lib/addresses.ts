@@ -1,4 +1,5 @@
 import type { Address } from '@/bindings/types'
+import type { VaultField } from '@/features/vault/lib/vaultSections'
 
 const COUNTRY_CODES = (
   'AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR ' +
@@ -62,6 +63,22 @@ export function addressSummary(address: Address, locale?: string): { title: stri
     .filter(Boolean)
     .join(', ')
   return { title, detail }
+}
+
+/** The fields an open address row shows, skipping empty ones. */
+export function addressFields(address: Address, locale?: string): VaultField[] {
+  const fields: VaultField[] = [
+    { label: 'Name', value: [address.given_name, address.family_name].filter(Boolean).join(' ') },
+    { label: 'Organization', value: address.organization },
+    { label: 'Street', value: address.street_address.trim() },
+    { label: 'City', value: address.city },
+    { label: 'Region', value: address.region },
+    { label: 'Postal code', value: address.postal_code },
+    { label: 'Country', value: address.country ? regionName(address.country, locale) : '' },
+    { label: 'Phone', value: address.tel },
+    { label: 'Email', value: address.email },
+  ]
+  return fields.filter((field) => field.value !== '')
 }
 
 /** Whether `query` appears in any field of `address` or its country's name. */

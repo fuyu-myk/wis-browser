@@ -4,11 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands } from '@/bindings/commands'
 import type { Card, UserSettings, UserSettingsPatch } from '@/bindings/types'
 import { CardForm } from '@/features/vault/components/CardForm'
+import { Revealed, VaultActions, VaultFields, VaultRow } from '@/features/vault/components/VaultRow'
 import { Switch } from '@/components/controls'
 import { useVaultStatus } from '@/features/vault/hooks/useVaultStatus'
-import { cardSummary, emptyCard } from '@/features/vault/lib/cards'
+import { cardFields, cardSummary, emptyCard } from '@/features/vault/lib/cards'
 import { errorMessage } from '@/lib/errors'
-import { XIcon } from '@/lib/icons'
 
 const CARD_LIST_KEY = ['card-list'] as const
 
@@ -29,6 +29,7 @@ export function CardsSection({ settings, onUpdate }: CardsSectionProps) {
   const { data: status } = useVaultStatus()
   const unlocked = status?.unlocked ?? false
   const [editing, setEditing] = useState<Editing | null>(null)
+  const [openId, setOpenId] = useState<number | null>(null)
 
   const { data: saved = [] } = useQuery({
     queryKey: CARD_LIST_KEY,
@@ -44,7 +45,7 @@ export function CardsSection({ settings, onUpdate }: CardsSectionProps) {
   }, [unlocked, qc])
 
   const refresh = () => qc.invalidateQueries({ queryKey: CARD_LIST_KEY })
-  const open = useMutation({
+  const details = useMutation({
     mutationFn: async ({ id, last4 }: { id: number; last4: string }) => {
       const details = await commands.cardDetails(id)
       return { id, last4, card: { ...details, number: '' } }
@@ -62,8 +63,27 @@ export function CardsSection({ settings, onUpdate }: CardsSectionProps) {
     mutationFn: (id: number) => commands.cardDelete(id),
     onSuccess: () => void refresh(),
   })
-  const failure = open.error ?? save.error ?? remove.error
+  const failure = details.error ?? save.error ?? remove.error
   const now = new Date()
+
+  const cancel = () => {
+    setEditing(null)
+    save.reset()
+  }
+  const toggle = (id: number) => {
+    if (editing && editing.id !== null) cancel()
+    setOpenId(openId === id ? null : id)
+  }
+  const form = editing && (
+    <CardForm
+      value={editing.card}
+      last4={editing.last4}
+      busy={save.isPending}
+      onChange={(card) => setEditing({ ...editing, card })}
+      onSave={() => save.mutate(editing)}
+      onCancel={cancel}
+    />
+  )
 
   if (!unlocked) return null
 
@@ -85,18 +105,8 @@ export function CardsSection({ settings, onUpdate }: CardsSectionProps) {
         />
       </div>
 
-      {editing ? (
-        <CardForm
-          value={editing.card}
-          last4={editing.last4}
-          busy={save.isPending}
-          onChange={(card) => setEditing({ ...editing, card })}
-          onSave={() => save.mutate(editing)}
-          onCancel={() => {
-            setEditing(null)
-            save.reset()
-          }}
-        />
+      {editing?.id === null ? (
+        <Revealed>{form}</Revealed>
       ) : (
         <div className="row">
           <div className="l">
@@ -118,31 +128,35 @@ export function CardsSection({ settings, onUpdate }: CardsSectionProps) {
             {saved.map((card) => {
               const { title, detail } = cardSummary(card, now)
               return (
-                <li key={card.id} className="kb-vault-row">
-                  <div className="kb-vault-id">
-                    <span className="kb-vault-host">{title}</span>
-                    <span className="kb-vault-user">{detail}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="kb-vault-action"
-                    onClick={() => open.mutate({ id: card.id, last4: card.last4 })}
-                    disabled={open.isPending}
-                    aria-label={`Edit ${title}`}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className="kb-vault-del"
-                    onClick={() => remove.mutate(card.id)}
-                    disabled={remove.isPending}
-                    aria-label={`Remove ${title}`}
-                    title="Remove"
-                  >
-                    <XIcon />
-                  </button>
-                </li>
+                <VaultRow
+                  key={card.id}
+                  title={title}
+                  detail={detail}
+                  open={openId === card.id}
+                  onToggle={() => toggle(card.id)}
+                >
+                  {editing?.id === card.id ? (
+                    form
+                  ) : (
+                    <>
+                      <VaultFields fields={cardFields(card, now)} />
+                      <VaultActions
+                        removeLabel={`Remove ${title}`}
+                        removing={remove.isPending}
+                        onRemove={() => remove.mutate(card.id)}
+                      >
+                        <button
+                          type="button"
+                          className="kb-vault-action"
+                          onClick={() => details.mutate({ id: card.id, last4: card.last4 })}
+                          disabled={details.isPending}
+                        >
+                          Edit
+                        </button>
+                      </VaultActions>
+                    </>
+                  )}
+                </VaultRow>
               )
             })}
           </ul>

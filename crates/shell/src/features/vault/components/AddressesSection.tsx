@@ -4,11 +4,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands } from '@/bindings/commands'
 import type { Address, UserSettings, UserSettingsPatch } from '@/bindings/types'
 import { AddressForm } from '@/features/vault/components/AddressForm'
+import { Revealed, VaultActions, VaultFields, VaultRow } from '@/features/vault/components/VaultRow'
 import { Switch } from '@/components/controls'
 import { useVaultStatus } from '@/features/vault/hooks/useVaultStatus'
-import { addressMatches, addressSummary, emptyAddress } from '@/features/vault/lib/addresses'
+import { addressFields, addressMatches, addressSummary, emptyAddress } from '@/features/vault/lib/addresses'
 import { errorMessage } from '@/lib/errors'
-import { SearchIcon, XIcon } from '@/lib/icons'
+import { SearchIcon } from '@/lib/icons'
 
 const ADDRESS_LIST_KEY = ['address-list'] as const
 
@@ -28,6 +29,7 @@ export function AddressesSection({ settings, onUpdate }: AddressesSectionProps) 
   const { data: status } = useVaultStatus()
   const unlocked = status?.unlocked ?? false
   const [editing, setEditing] = useState<Editing | null>(null)
+  const [openId, setOpenId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
 
   const { data: saved = [] } = useQuery({
@@ -64,6 +66,24 @@ export function AddressesSection({ settings, onUpdate }: AddressesSectionProps) 
 
   if (!unlocked) return null
 
+  const cancel = () => {
+    setEditing(null)
+    save.reset()
+  }
+  const toggle = (id: number) => {
+    if (editing && editing.id !== null) cancel()
+    setOpenId(openId === id ? null : id)
+  }
+  const form = editing && (
+    <AddressForm
+      value={editing.address}
+      busy={save.isPending}
+      onChange={(address) => setEditing({ ...editing, address })}
+      onSave={() => save.mutate(editing)}
+      onCancel={cancel}
+    />
+  )
+
   return (
     <section id="addresses" className="sec">
       <div className="sec-h">Addresses</div>
@@ -79,17 +99,8 @@ export function AddressesSection({ settings, onUpdate }: AddressesSectionProps) 
         />
       </div>
 
-      {editing ? (
-        <AddressForm
-          value={editing.address}
-          busy={save.isPending}
-          onChange={(address) => setEditing({ ...editing, address })}
-          onSave={() => save.mutate(editing)}
-          onCancel={() => {
-            setEditing(null)
-            save.reset()
-          }}
-        />
+      {editing?.id === null ? (
+        <Revealed>{form}</Revealed>
       ) : (
         <div className="row">
           <div className="l">
@@ -123,30 +134,30 @@ export function AddressesSection({ settings, onUpdate }: AddressesSectionProps) 
             {shown.map(({ id, address }) => {
               const { title, detail } = addressSummary(address, navigator.language)
               return (
-                <li key={id} className="kb-vault-row">
-                  <div className="kb-vault-id">
-                    <span className="kb-vault-host">{title}</span>
-                    {detail && <span className="kb-vault-user">{detail}</span>}
-                  </div>
-                  <button
-                    type="button"
-                    className="kb-vault-action"
-                    onClick={() => setEditing({ id, address })}
-                    aria-label={`Edit ${title}`}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className="kb-vault-del"
-                    onClick={() => remove.mutate(id)}
-                    disabled={remove.isPending}
-                    aria-label={`Remove ${title}`}
-                    title="Remove"
-                  >
-                    <XIcon />
-                  </button>
-                </li>
+                <VaultRow
+                  key={id}
+                  title={title}
+                  detail={detail}
+                  open={openId === id}
+                  onToggle={() => toggle(id)}
+                >
+                  {editing?.id === id ? (
+                    form
+                  ) : (
+                    <>
+                      <VaultFields fields={addressFields(address, navigator.language)} />
+                      <VaultActions
+                        removeLabel={`Remove ${title}`}
+                        removing={remove.isPending}
+                        onRemove={() => remove.mutate(id)}
+                      >
+                        <button type="button" className="kb-vault-action" onClick={() => setEditing({ id, address })}>
+                          Edit
+                        </button>
+                      </VaultActions>
+                    </>
+                  )}
+                </VaultRow>
               )
             })}
           </ul>

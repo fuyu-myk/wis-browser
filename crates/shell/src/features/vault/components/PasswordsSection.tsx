@@ -4,10 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands } from '@/bindings/commands'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { PasswordForm } from '@/features/vault/components/PasswordForm'
+import { Revealed, VaultActions, VaultRow } from '@/features/vault/components/VaultRow'
 import { useVaultConfirm } from '@/features/vault/components/VaultPassword'
 import { useVaultStatus, VAULT_STATUS_KEY } from '@/features/vault/hooks/useVaultStatus'
 import { cx } from '@/lib/cx'
-import { SearchIcon, XIcon } from '@/lib/icons'
+import { SearchIcon } from '@/lib/icons'
 import { isMacOS } from '@/lib/platform'
 import { showToast } from '@/lib/toast'
 import { useBrowserState, BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
@@ -53,6 +54,7 @@ export function PasswordsSection() {
   const [csvStatus, setCsvStatus] = useState<Status | null>(null)
   const [confirmExport, setConfirmExport] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [openId, setOpenId] = useState<number | null>(null)
 
   const { data: status } = useVaultStatus()
   const unlocked = status?.unlocked ?? false
@@ -248,13 +250,15 @@ export function PasswordsSection() {
       )}
 
       {adding ? (
-        <PasswordForm
-          onSaved={() => {
-            setAdding(false)
-            void qc.invalidateQueries({ queryKey: VAULT_LIST_KEY })
-          }}
-          onCancel={() => setAdding(false)}
-        />
+        <Revealed>
+          <PasswordForm
+            onSaved={() => {
+              setAdding(false)
+              void qc.invalidateQueries({ queryKey: VAULT_LIST_KEY })
+            }}
+            onCancel={() => setAdding(false)}
+          />
+        </Revealed>
       ) : (
         <div className="row">
           <div className="l">
@@ -291,6 +295,9 @@ export function PasswordsSection() {
                 host={c.host}
                 username={c.username}
                 breachCount={breaches?.get(c.id) ?? null}
+                open={openId === c.id}
+                onToggle={() => setOpenId(openId === c.id ? null : c.id)}
+                removing={del.isPending}
                 onDelete={() => del.mutate(c.id)}
               />
             ))}
@@ -321,6 +328,9 @@ interface CredentialRowProps {
   username: string
   /** Times this password appears in known breaches, or null when unchecked. */
   breachCount: number | null
+  open: boolean
+  onToggle: () => void
+  removing: boolean
   onDelete: () => void
 }
 
@@ -329,7 +339,29 @@ function revealProblem(error: unknown): null {
   return null
 }
 
-function CredentialRow({ id, host, username, breachCount, onDelete }: CredentialRowProps) {
+function CredentialRow({ host, username, breachCount, open, onToggle, ...rest }: CredentialRowProps) {
+  return (
+    <VaultRow
+      title={host}
+      detail={username}
+      badge={breachCount !== null && <span className="kb-vault-breach">Breached</span>}
+      open={open}
+      onToggle={onToggle}
+    >
+      <CredentialBody host={host} username={username} breachCount={breachCount} {...rest} />
+    </VaultRow>
+  )
+}
+
+/** Mounted only while the row is open. */
+function CredentialBody({
+  id,
+  host,
+  username,
+  breachCount,
+  removing,
+  onDelete,
+}: Omit<CredentialRowProps, 'open' | 'onToggle'>) {
   const [revealed, setRevealed] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -355,35 +387,39 @@ function CredentialRow({ id, host, username, breachCount, onDelete }: Credential
   }
 
   return (
-    <li className="kb-vault-row">
-      <div className="kb-vault-id">
-        <span className="kb-vault-host">{host}</span>
-        <span className="kb-vault-user">{username}</span>
-      </div>
-      <code className="kb-vault-secret">{revealed ?? '••••••••'}</code>
-      {breachCount !== null && (
-        <span
-          className="kb-vault-breach"
-          title={`This password appears ${breachCount.toLocaleString()} times in known breaches. Consider changing it.`}
-        >
-          Breached
-        </span>
-      )}
-      <button type="button" className="kb-vault-action" onClick={() => void reveal()}>
-        {revealed !== null ? 'Hide' : 'Show'}
-      </button>
-      <button type="button" className="kb-vault-action" onClick={() => void copy()}>
-        {copied ? 'Copied' : 'Copy'}
-      </button>
-      <button
-        type="button"
-        className="kb-vault-del"
-        aria-label={`Delete password for ${host}`}
-        title="Delete"
-        onClick={onDelete}
+    <>
+      <dl className="kb-vault-fields">
+        <div>
+          <dt>Username</dt>
+          <dd>{username}</dd>
+        </div>
+        <div>
+          <dt>Password</dt>
+          <dd>
+            <code className="kb-vault-secret">{revealed ?? '••••••••'}</code>
+          </dd>
+        </div>
+        {breachCount !== null && (
+          <div>
+            <dt>Breaches</dt>
+            <dd className="is-error">
+              Seen {breachCount.toLocaleString()} times in known breaches. Consider changing it.
+            </dd>
+          </div>
+        )}
+      </dl>
+      <VaultActions
+        removeLabel={`Remove the password for ${host}`}
+        removing={removing}
+        onRemove={onDelete}
       >
-        <XIcon />
-      </button>
-    </li>
+        <button type="button" className="kb-vault-action" onClick={() => void reveal()}>
+          {revealed !== null ? 'Hide' : 'Show'}
+        </button>
+        <button type="button" className="kb-vault-action" onClick={() => void copy()}>
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </VaultActions>
+    </>
   )
 }
