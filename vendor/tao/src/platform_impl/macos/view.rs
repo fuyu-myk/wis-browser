@@ -691,8 +691,18 @@ extern "C" fn key_down(this: &mut Object, _sel: Sel, event: &NSEvent) {
       // Some keys (and only *some*, with no known reason) don't trigger `insertText`, while others do...
       // So, we don't give repeats the opportunity to trigger that, since otherwise our hack will cause some
       // keys to generate twice as many characters.
-      let array: id = msg_send![class!(NSArray), arrayWithObject: event];
-      let () = msg_send![&*this, interpretKeyEvents: array];
+      //
+      // Wis patch (WIS-PATCH.md): interpret only when this view holds focus.
+      // A key a focused child webview declined (an arrow at the edge of an
+      // empty field) bubbles up here, and interpreting it again types its
+      // private-use character into that webview's field (tauri#10194).
+      let window: id = msg_send![&*this, window];
+      let first_responder: id = msg_send![window, firstResponder];
+      let this_ptr = &*this as *const Object as *mut Object;
+      if first_responder == this_ptr {
+        let array: id = msg_send![class!(NSArray), arrayWithObject: event];
+        let () = msg_send![&*this, interpretKeyEvents: array];
+      }
     }
     // The `interpretKeyEvents` above, may invoke `set_marked_text` or `insert_text`,
     // if the event corresponds to an IME event.

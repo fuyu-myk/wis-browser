@@ -1,7 +1,7 @@
 # Vendored tao 0.35.2 (patched)
 
 Verbatim copy of tao 0.35.2 from crates.io, applied via `[patch.crates-io]`
-in the workspace `Cargo.toml`, with one feature added.
+in the workspace `Cargo.toml`, with one feature added and one macOS input fix.
 
 One addition beyond the verbatim crate: a `rustfmt.toml` (copied from the
 sibling vendored wry, which ships one; the published tao crate does not). It
@@ -39,3 +39,21 @@ and `vendor/wry` (wry#1745, makes `set_bounds` persist in a `gtk::Fixed`).
 Removal checklist: a tao release containing #1232 exists -> delete `vendor/tao`
 and the `[patch.crates-io]` entry, `cargo update -p tao`, and re-test Linux
 multi-webview positioning (tabs/overlays/peek land on their rectangles).
+
+## Patch: no stray characters from keys a child webview declined (macOS)
+
+- `src/platform_impl/macos/view.rs`, `key_down`: tao's content view ran
+  `interpretKeyEvents:` on every key it received. Wis's webviews are child
+  views of that content view, so a key a focused webview does not use (Left
+  at the start of an empty field, Right at its end, Up/Down, Home/End at the
+  edges) travels up the responder chain to it, and interpreting it again
+  typed the key's private-use character (U+F702, U+F703 and so on, drawn as
+  boxes) into that webview's field, in Wis's own fields and in web pages
+  alike. The patch interprets only when the content view itself is the
+  window's first responder, the same check tao's `insert_tab` uses. The
+  `KeyboardInput` window event is still queued for every key.
+- Upstream: tauri-apps/tauri#10194 (open). wry#769 once guarded arrow keys on
+  the parent view; wry#798 removed that path.
+
+Removal checklist: upstream tao or wry fixes tauri#10194 -> drop this hunk,
+and check that Left/Right in an empty field types nothing.
