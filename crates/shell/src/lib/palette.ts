@@ -23,7 +23,7 @@ import type {
   UserSettingsPatch,
 } from '@/bindings/types'
 import { localizeAccelerator, prettyAccelerator } from '@/lib/keybindings'
-import { resolveInput, type SearchSettings } from '@/lib/url'
+import { isCanvasUrl, isChromeUrl, resolveInput, tabDisplayName, type SearchSettings } from '@/lib/url'
 
 export type PaletteSection =
   | 'tabs'
@@ -452,6 +452,12 @@ export function historyKey(url: string): string {
 /** How many recently closed tabs the palette lists with no query typed. */
 const CLOSED_BROWSE_LIMIT = 5
 
+/** A Wis page or canvas by the name its tab showed, a web page by its title. */
+function closedName(entry: { title: string; url: string }): string {
+  if (isChromeUrl(entry.url) || isCanvasUrl(entry.url)) return tabDisplayName(entry)
+  return entry.title.trim() || entry.url
+}
+
 /** A stored page a page source can rank. */
 interface RankablePage {
   id: string
@@ -564,7 +570,7 @@ export function makeClosedTabsSource({ entries, onReopen }: ClosedTabsSourceArgs
         section: 'closed' as const,
         // Descending.
         score: CLOSED_BROWSE_LIMIT - index,
-        title: entry.title.trim() === '' ? entry.url : entry.title,
+        title: closedName(entry),
         subtitle: entry.url,
         activate: () => onReopen(entry.id),
       }))
@@ -572,7 +578,7 @@ export function makeClosedTabsSource({ entries, onReopen }: ClosedTabsSourceArgs
     const pages = entries.map((entry) => ({
       id: `closed:${entry.id}`,
       url: entry.url,
-      title: entry.title,
+      title: closedName(entry),
       visits: 0,
       open: () => onReopen(entry.id),
     }))

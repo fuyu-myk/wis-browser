@@ -171,7 +171,7 @@ pub async fn close_tab(
                     .and_then(|slot| i64::try_from(slot).ok())
                     .unwrap_or(APPEND_POSITION);
 
-                let recordable = matches!(tab.url.scheme(), "http" | "https");
+                let recordable = wis_core::tabs::tab::reopenable_after_close(&tab.url);
 
                 (!ephemeral && recordable).then_some((
                     wis_storage::ClosedTabRecord {

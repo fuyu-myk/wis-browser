@@ -1,5 +1,6 @@
 import type { ClosedTabRecord } from '@/bindings/types'
 import { type DayGroup, formatTime, hostOf } from '@/features/history/dayGroups'
+import { closedTabTitle } from '@/features/history/closedTabs'
 import { XIcon } from '@/lib/icons'
 
 interface ClosedTabsListProps {
@@ -49,7 +50,7 @@ interface ClosedTabRowProps {
 
 function ClosedTabRow({ entry, workspaceLabel, onReopen, onForget }: ClosedTabRowProps) {
   const host = hostOf(entry.url)
-  const title = entry.title.trim() || host || entry.url
+  const title = closedTabTitle(entry)
   return (
     <li className="kb-history-row">
       <button

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { CLOSED_TABS_CHANGED_EVENT, visibleClosedTabs } from '../../src/features/history/closedTabs.ts'
+import { CLOSED_TABS_CHANGED_EVENT, closedTabTitle, visibleClosedTabs } from '../../src/features/history/closedTabs.ts'
 import { CLOSED_TAB_LIMIT } from '../../src/lib/palette.ts'
 import { readSource } from '../support/l3-harness.mjs'
 
@@ -43,4 +43,11 @@ test('the page hears the event the backend sends when the list changes', () => {
 test('the palette asks for as many closed tabs as Recently closed keeps', () => {
   const rust = readSource('src-tauri/src/commands/tab.rs')
   assert.match(rust, new RegExp(`pub const CLOSED_TAB_CAP: u32 = ${CLOSED_TAB_LIMIT};`))
+})
+
+test('a closed Wis page or canvas is named as its tab was, a web page by its title', () => {
+  assert.equal(closedTabTitle({ title: 'about:settings', url: 'about:settings' }), 'Settings')
+  assert.equal(closedTabTitle({ title: '', url: 'wis-canvas://localhost/?canvas=1' }), 'Canvas')
+  assert.equal(closedTabTitle({ title: 'Docs | Example', url: 'https://example.com/docs' }), 'Docs | Example')
+  assert.equal(closedTabTitle({ title: '  ', url: 'https://www.example.com/a' }), 'example.com')
 })

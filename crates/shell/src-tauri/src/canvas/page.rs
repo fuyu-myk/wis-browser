@@ -2,6 +2,7 @@
 //! writing its workspace's canvases over `wisCanvas`, one message at a time.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -14,7 +15,7 @@ use wis_core::{CanvasId, WisError, WisResult};
 use wis_storage::Storage;
 
 use crate::canvas::health::{CardHealth, Pulse};
-use crate::canvas::store::{CanvasMemory, CanvasTab};
+use crate::canvas::store::{forget_closed_tabs, CanvasMemory, CanvasTab};
 use crate::state::AppState;
 
 pub use wis_core::canvas::board::SCHEME;
@@ -117,6 +118,8 @@ fn ground_of(label: &str) -> Ground {
         .unwrap_or_default()
 }
 static WORKER: OnceLock<tokio::sync::mpsc::Sender<(String, String)>> = OnceLock::new();
+/// Set when a request removed Recently closed rows, for the worker to announce.
+static CLOSED_TABS_CHANGED: AtomicBool = AtomicBool::new(false);
 const QUEUE: usize = 32;
 
 /// The side a canvas's props panel takes: away from the sidebar, or from the
@@ -365,6 +368,9 @@ pub fn start(app: AppHandle) {
                 Ok(reply) => deliver(&worker_app, &label, &reply),
                 Err(err) => log::warn!("canvas message panicked: {err}"),
             }
+            if CLOSED_TABS_CHANGED.swap(false, Ordering::Relaxed) {
+                crate::commands::closed_tabs_changed(&worker_app);
+            }
             let mut health = HEALTH.lock().expect("canvas health poisoned");
             if health.take_changed() {
                 save_health(&worker_app, health.stuck_canvases());
@@ -515,6 +521,16 @@ fn run(storage: &dyn Storage, label: &str, request: Request, now: i64) -> WisRes
         }
         Request::Delete { canvas } => {
             memory.delete(storage, tab, canvas)?;
+            let forgot = if tab.ephemeral {
+                Ok(false)
+            } else {
+                forget_closed_tabs(storage, canvas)
+            };
+            match forgot {
+                Ok(true) => CLOSED_TABS_CHANGED.store(true, Ordering::Relaxed),
+                Ok(false) => {}
+                Err(err) => log::warn!("forgetting a deleted canvas's closed tabs: {err}"),
+            }
             Value::Null
         }
         Request::Pulse { .. } | Request::Ground => Value::Null,

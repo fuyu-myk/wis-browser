@@ -63,6 +63,16 @@ pub fn placeholder_title(url: &Url) -> String {
         .unwrap_or_else(|| url.as_str().to_string())
 }
 
+/// Whether a closed tab at `url` goes to Recently closed: web pages, Wis pages
+/// and canvases, but not a blank new tab.
+pub fn reopenable_after_close(url: &Url) -> bool {
+    match url.scheme() {
+        "http" | "https" => true,
+        "about" => url.path() != "blank",
+        scheme => scheme == crate::canvas::board::SCHEME,
+    }
+}
+
 impl Tab {
     pub fn new(workspace_id: WorkspaceId, url: Url) -> Self {
         let now = Utc::now();
@@ -185,6 +195,32 @@ mod tests {
     fn placeholder_title_falls_back_to_the_url_without_a_host() {
         let url = Url::parse("about:blank").unwrap();
         assert_eq!(placeholder_title(&url), "about:blank");
+    }
+
+    #[test]
+    fn web_pages_wis_pages_and_canvases_can_be_reopened() {
+        for url in [
+            "https://example.com/",
+            "http://localhost:8080/",
+            "about:settings",
+            "about:history",
+            "wis-canvas://localhost/?canvas=0b9f5d6e-8f43-4a5e-9d8c-3c2f1d7a6b5e",
+        ] {
+            assert!(reopenable_after_close(&Url::parse(url).unwrap()), "{url}");
+        }
+    }
+
+    #[test]
+    fn blank_tabs_and_other_schemes_are_not_reopened() {
+        for url in [
+            "about:blank",
+            "about:blank#top",
+            "about:blank?x",
+            "file:///etc/hosts",
+            "data:text/plain,hi",
+        ] {
+            assert!(!reopenable_after_close(&Url::parse(url).unwrap()), "{url}");
+        }
     }
 
     #[test]

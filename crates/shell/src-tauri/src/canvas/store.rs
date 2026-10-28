@@ -246,6 +246,31 @@ impl CanvasMemory {
     }
 }
 
+/// Drop the Recently closed tabs that open `canvas`, once it is deleted.
+/// Returns `true` if any closed tabs were dropped, `false` otherwise.
+pub fn forget_closed_tabs(storage: &dyn Storage, canvas: CanvasId) -> WisResult<bool> {
+    let urls: Vec<String> = storage
+        .list_closed_tabs(crate::commands::CLOSED_TAB_CAP)
+        .map_err(persistence)?
+        .into_iter()
+        .map(|row| row.url)
+        .filter(|url| {
+            // Older Windows builds stored WebView2's form of the address.
+            url::Url::parse(url).is_ok_and(|url| {
+                let stored = wis_core::canvas::board::from_engine_url(&url).unwrap_or(url);
+                wis_core::canvas::board::canvas_in_url(&stored) == Some(canvas)
+            })
+        })
+        .collect();
+    if urls.is_empty() {
+        return Ok(false);
+    }
+    storage
+        .delete_closed_tabs_by_urls(&urls)
+        .map_err(persistence)?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,6 +283,58 @@ mod tests {
             ephemeral: false,
         };
         (storage, CanvasMemory::default(), tab)
+    }
+
+    fn closed(workspace: WorkspaceId, url: &str) -> wis_storage::ClosedTabRecord {
+        wis_storage::ClosedTabRecord {
+            id: 0,
+            workspace_id: workspace,
+            url: url.into(),
+            title: String::new(),
+            folder_id: None,
+            position: 0,
+            pinned: false,
+            closed_at: chrono::Utc::now(),
+            archived: false,
+        }
+    }
+
+    #[test]
+    fn a_deleted_canvas_leaves_recently_closed() {
+        let (storage, mut memory, tab) = setup();
+        let gone = memory.create(&storage, tab, None, 1).unwrap();
+        let kept = memory.create(&storage, tab, None, 2).unwrap();
+        let kept_url = wis_core::canvas::board::canvas_url(kept.id).to_string();
+        storage
+            .record_closed_tabs(&[
+                closed(
+                    tab.workspace,
+                    wis_core::canvas::board::canvas_url(gone.id).as_str(),
+                ),
+                closed(tab.workspace, &kept_url),
+                closed(
+                    tab.workspace,
+                    &format!("http://wis-canvas.localhost/?canvas={}", gone.id.as_uuid()),
+                ),
+                closed(tab.workspace, "https://example.com/"),
+            ])
+            .unwrap();
+
+        memory.delete(&storage, tab, gone.id).unwrap();
+        assert!(forget_closed_tabs(&storage, gone.id).unwrap());
+        assert!(
+            !forget_closed_tabs(&storage, gone.id).unwrap(),
+            "nothing left"
+        );
+
+        let mut left: Vec<String> = storage
+            .list_closed_tabs(10)
+            .unwrap()
+            .into_iter()
+            .map(|row| row.url)
+            .collect();
+        left.sort();
+        assert_eq!(left, vec![String::from("https://example.com/"), kept_url]);
     }
 
     #[test]
