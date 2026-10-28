@@ -26,6 +26,47 @@ pub struct WebContextImpl {
   context: WebContext,
   automation: bool,
   app_info: Option<ApplicationInfo>,
+  /// WIS patch: the proxy URI last applied to the context's data manager.
+  proxy_uri: Option<String>,
+  /// WIS patch: each webview's download handlers, served by one
+  /// `download-started` handler on the context.
+  downloads: Option<Downloads>,
+}
+
+type DownloadStarted = Rc<RefCell<Option<Box<dyn FnMut(String, &mut PathBuf) -> bool>>>>;
+type DownloadCompleted = Rc<dyn Fn(String, Option<PathBuf>, bool) + 'static>;
+
+#[derive(Clone)]
+struct DownloadHandlers {
+  started: DownloadStarted,
+  completed: Option<DownloadCompleted>,
+}
+
+/// Download handlers by the webview that registered them.
+#[derive(Clone, Default)]
+struct Downloads(Rc<RefCell<Vec<(glib::WeakRef<WebView>, DownloadHandlers)>>>);
+
+impl std::fmt::Debug for Downloads {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str("Downloads")
+  }
+}
+
+impl Downloads {
+  /// The downloading webview's handlers, or for one without any (a popup wry
+  /// built from its opener, or a webview already gone).
+  fn handlers_for(&self, webview: Option<&WebView>) -> Option<DownloadHandlers> {
+    let mut entries = self.0.borrow_mut();
+    entries.retain(|(weak, _)| weak.upgrade().is_some());
+    let own = webview.and_then(|webview| {
+      entries
+        .iter()
+        .find(|(weak, _)| weak.upgrade().as_ref() == Some(webview))
+    });
+    own
+      .or_else(|| entries.first())
+      .map(|(_, handlers)| handlers.clone())
+  }
 }
 
 impl WebContextImpl {
@@ -57,6 +98,15 @@ impl WebContextImpl {
     Self::create_context(context)
   }
 
+  /// WIS patch: whether `uri` differs from the proxy last applied, noting it.
+  pub fn take_proxy_uri(&mut self, uri: &str) -> bool {
+    if self.proxy_uri.as_deref() == Some(uri) {
+      return false;
+    }
+    self.proxy_uri = Some(uri.to_string());
+    true
+  }
+
   pub fn create_context(context: WebContext) -> Self {
     let automation = false;
     context.set_automation_allowed(automation);
@@ -80,6 +130,8 @@ impl WebContextImpl {
       context,
       automation,
       app_info: Some(app_info),
+      proxy_uri: None,
+      downloads: None,
     }
   }
 
@@ -117,6 +169,7 @@ pub trait WebContextExt {
 
   fn register_download_handler(
     &mut self,
+    webview: &WebView,
     download_started_callback: Option<Box<dyn FnMut(String, &mut PathBuf) -> bool>>,
     download_completed_callback: Option<Rc<dyn Fn(String, Option<PathBuf>, bool) + 'static>>,
   );
@@ -306,89 +359,114 @@ impl WebContextExt for super::WebContext {
 
   fn register_download_handler(
     &mut self,
+    webview: &WebView,
     download_started_handler: Option<Box<dyn FnMut(String, &mut PathBuf) -> bool>>,
     download_completed_handler: Option<Rc<dyn Fn(String, Option<PathBuf>, bool) + 'static>>,
   ) {
-    let context = &self.os.context;
+    // WIS patch: one context handler, dispatching to the downloading
+    // webview's own handlers.
+    let handlers = DownloadHandlers {
+      started: Rc::new(RefCell::new(download_started_handler)),
+      completed: download_completed_handler,
+    };
+    if let Some(downloads) = &self.os.downloads {
+      downloads
+        .0
+        .borrow_mut()
+        .push((webview.downgrade(), handlers));
+      return;
+    }
+    let downloads = Downloads::default();
+    downloads
+      .0
+      .borrow_mut()
+      .push((webview.downgrade(), handlers));
+    self.os.downloads = Some(downloads.clone());
 
-    let download_started_handler = Rc::new(RefCell::new(download_started_handler));
-    let failed = Rc::new(RefCell::new(false));
+    self
+      .os
+      .context
+      .connect_download_started(move |_context, download| {
+        let Some(handlers) = downloads.handlers_for(download.web_view().as_ref()) else {
+          return;
+        };
+        let download_started_handler = handlers.started;
+        let download_completed_handler = handlers.completed;
+        let failed = Rc::new(RefCell::new(false));
+        download.connect_decide_destination(move |download, suggested_filename| {
+          if let Some(uri) = download.request().and_then(|req| req.uri()) {
+            let uri = uri.to_string();
 
-    context.connect_download_started(move |_context, download| {
-      let download_started_handler = download_started_handler.clone();
-      download.connect_decide_destination(move |download, suggested_filename| {
-        if let Some(uri) = download.request().and_then(|req| req.uri()) {
-          let uri = uri.to_string();
+            if let Some(download_started_handler) = download_started_handler.borrow_mut().as_mut() {
+              let mut download_destination =
+                dirs::download_dir().unwrap_or_else(|| current_dir().unwrap_or_default());
 
-          if let Some(download_started_handler) = download_started_handler.borrow_mut().as_mut() {
-            let mut download_destination =
-              dirs::download_dir().unwrap_or_else(|| current_dir().unwrap_or_default());
+              let (mut suggested_filename, ext) = suggested_filename
+                .split_once('.')
+                .map(|(base, ext)| (base, format!(".{ext}")))
+                .unwrap_or((suggested_filename, "".to_string()));
 
-            let (mut suggested_filename, ext) = suggested_filename
-              .split_once('.')
-              .map(|(base, ext)| (base, format!(".{ext}")))
-              .unwrap_or((suggested_filename, "".to_string()));
-
-            // For `data:` downloads, webkitgtk will suggest to use the raw data as the filename if the dev provided no name,
-            // for example `"data:attachment/text,sometext"` will result in `text,sometext` but longer data URLs will
-            // result in a cut-off filename, which makes it hard to predict reliably.
-            // TODO: If this keeps causing problems, just remove it and use whatever file name webkitgtk suggests.
-            if uri.starts_with("data:") {
-              if let Some((_, uri_stripped)) = uri.split_once('/') {
-                if let Some((uri_stripped, _)) = uri_stripped.split_once(',') {
-                  if suggested_filename.starts_with(&format!("{uri_stripped},")) {
-                    suggested_filename = "Unknown";
+              // For `data:` downloads, webkitgtk will suggest to use the raw data as the filename if the dev provided no name,
+              // for example `"data:attachment/text,sometext"` will result in `text,sometext` but longer data URLs will
+              // result in a cut-off filename, which makes it hard to predict reliably.
+              // TODO: If this keeps causing problems, just remove it and use whatever file name webkitgtk suggests.
+              if uri.starts_with("data:") {
+                if let Some((_, uri_stripped)) = uri.split_once('/') {
+                  if let Some((uri_stripped, _)) = uri_stripped.split_once(',') {
+                    if suggested_filename.starts_with(&format!("{uri_stripped},")) {
+                      suggested_filename = "Unknown";
+                    }
                   }
                 }
               }
-            }
 
-            download_destination.push(format!("{suggested_filename}{ext}"));
+              download_destination.push(format!("{suggested_filename}{ext}"));
 
-            // WebView2 does not overwrite files but appends numbers
-            let mut counter = 1;
-            while download_destination.exists() {
-              download_destination.set_file_name(format!("{suggested_filename} ({counter}){ext}"));
-              counter += 1;
-            }
+              // WebView2 does not overwrite files but appends numbers
+              let mut counter = 1;
+              while download_destination.exists() {
+                download_destination
+                  .set_file_name(format!("{suggested_filename} ({counter}){ext}"));
+                counter += 1;
+              }
 
-            if download_started_handler(uri, &mut download_destination) {
-              download.set_destination(&download_destination.to_string_lossy());
-            } else {
-              download.cancel();
+              if download_started_handler(uri, &mut download_destination) {
+                download.set_destination(&download_destination.to_string_lossy());
+              } else {
+                download.cancel();
+              }
             }
           }
-        }
-        // TODO: check if we may also need `false`
-        true
-      });
+          // TODO: check if we may also need `false`
+          true
+        });
 
-      download.connect_failed({
-        let failed = failed.clone();
-        move |_, _error| {
-          *failed.borrow_mut() = true;
-        }
-      });
-
-      if let Some(download_completed_handler) = download_completed_handler.clone() {
-        download.connect_finished({
+        download.connect_failed({
           let failed = failed.clone();
-          move |download| {
-            if let Some(uri) = download.request().and_then(|req| req.uri()) {
-              let failed = *failed.borrow();
-              let uri = uri.to_string();
-              download_completed_handler(
-                uri,
-                (!failed)
-                  .then(|| download.destination().map(PathBuf::from))
-                  .flatten(),
-                !failed,
-              )
-            }
+          move |_, _error| {
+            *failed.borrow_mut() = true;
           }
         });
-      }
-    });
+
+        if let Some(download_completed_handler) = download_completed_handler.clone() {
+          download.connect_finished({
+            let failed = failed.clone();
+            move |download| {
+              if let Some(uri) = download.request().and_then(|req| req.uri()) {
+                let failed = *failed.borrow();
+                let uri = uri.to_string();
+                download_completed_handler(
+                  uri,
+                  (!failed)
+                    .then(|| download.destination().map(PathBuf::from))
+                    .flatten(),
+                  !failed,
+                )
+              }
+            }
+          });
+        }
+      });
   }
 }
 

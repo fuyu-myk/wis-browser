@@ -532,3 +532,34 @@ overwrites the cancel flag with its own decision.
   cancelled start's `NavigationCompleted` (matched by navigation id) emits no
   `PageLoadEvent::Finished`, since it loaded nothing.
 - `src/lib.rs`: re-exports the setter and `NavigationStart` on Windows.
+
+## Nineteenth patch: incognito webviews can share an ephemeral context (Linux) (Wis-original)
+
+`new_gtk` gave every incognito webview its own new ephemeral `WebKitWebContext`,
+discarding the context it was handed, so each private tab had its own cookie
+jar and signing in did not carry across a private workspace's tabs.
+
+- `src/webkitgtk/mod.rs`: an incognito webview uses the context it was handed
+  when that context is ephemeral (`webkit_web_context_is_ephemeral`), and makes
+  its own as before otherwise.
+- `src/web_context.rs`: `WebContext::new_ephemeral` is public on GTK, so the
+  runtime can create one to share.
+
+Two upstream behaviours assumed one webview per context, which every regular
+Linux workspace (one context per data directory) already broke:
+
+- `src/webkitgtk/mod.rs`: `new_gtk` applied the proxy settings for every
+  webview, and WebKitGTK answers each call on a live network session with
+  `soup_session_abort()`, cancelling every request of the context's other
+  webviews. The context now remembers the proxy URI it last applied
+  (`WebContextImpl::take_proxy_uri`) and applies a different one only.
+- `src/webkitgtk/web_context.rs`: each webview connected its own
+  `download-started` handler on the shared context, and `decide-destination`
+  stops at the first that handles it, so the context's first webview decided
+  every download and, once closed, cancelled them. One handler per context now
+  looks up the downloading webview's own handlers (`Downloads`, weak
+  references, pruned as webviews go), falling back to the first live
+  registration for a webview with none, such as a popup wry builds from its
+  opener; each download has its own failed
+  flag; the old one was shared and never reset, so one failure marked every
+  later download failed. `register_download_handler` takes the webview.

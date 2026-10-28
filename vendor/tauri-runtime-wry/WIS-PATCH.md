@@ -50,3 +50,15 @@ and they leave a page a way to tell the app apart.
   initialization scripts include it, the runtime drops it and every script
   before it, which are Tauri's when it is the webview's first own script.
   Without the marker nothing changes.
+
+## Third patch: one ephemeral context per incognito data directory (Linux) (Wis-original)
+
+The pair of wry's nineteenth patch. Webview contexts are stored by data
+directory; an incognito webview that names one now creates that entry with
+`WryWebContext::new_ephemeral()`, so every incognito webview naming the same
+directory shares one in-memory context and nothing is written there. Without a
+data directory an incognito webview still gets its own. Linux keeps stored
+contexts for the app's lifetime (tauri#14626), so the embedder clears the
+shared context's data when it is done with it.
+
+- `src/lib.rs`: the vacant arm of `create_webview`'s context lookup.

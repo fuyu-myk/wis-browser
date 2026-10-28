@@ -250,16 +250,17 @@ impl InnerWebView {
   {
     // default_context allows us to create a scoped context on-demand
     let mut default_context;
-    let web_context = if attributes.incognito {
-      default_context = WebContext::new_ephemeral();
-      &mut default_context
-    } else {
-      match attributes.context.take() {
-        Some(w) => w,
-        None => {
-          default_context = Default::default();
-          &mut default_context
-        }
+    // WIS patch: an incognito webview may share an ephemeral context it was
+    // handed, so a private workspace's webviews share one cookie jar.
+    let web_context = match attributes.context.take() {
+      Some(w) if !attributes.incognito || w.context().is_ephemeral() => w,
+      _ if attributes.incognito => {
+        default_context = WebContext::new_ephemeral();
+        &mut default_context
+      }
+      _ => {
+        default_context = Default::default();
+        &mut default_context
       }
     };
     if let Some(proxy_setting) = &attributes.proxy_config {
@@ -269,10 +270,15 @@ impl InnerWebView {
           format!("socks5://{}:{}", endpoint.host, endpoint.port)
         }
       };
-      if let Some(website_data_manager) = web_context.context().website_data_manager() {
-        let mut settings = NetworkProxySettings::new(Some(proxy_uri.as_str()), &[]);
-        website_data_manager
-          .set_network_proxy_settings(NetworkProxyMode::Custom, Some(&mut settings));
+      // WIS patch: applying proxy settings aborts every request on the
+      // context's network session, so a context shared by several webviews
+      // only takes them when they change.
+      if web_context.os.take_proxy_uri(&proxy_uri) {
+        if let Some(website_data_manager) = web_context.context().website_data_manager() {
+          let mut settings = NetworkProxySettings::new(Some(proxy_uri.as_str()), &[]);
+          website_data_manager
+            .set_network_proxy_settings(NetworkProxyMode::Custom, Some(&mut settings));
+        }
       }
     }
 
@@ -582,6 +588,7 @@ impl InnerWebView {
       || attributes.download_completed_handler.is_some()
     {
       web_context.register_download_handler(
+        webview,
         attributes.download_started_handler.take(),
         attributes.download_completed_handler.take(),
       )

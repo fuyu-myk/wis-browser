@@ -50,8 +50,10 @@ impl WebContext {
     }
   }
 
+  /// WIS patch: public, so the embedder can keep one ephemeral context for
+  /// several incognito webviews.
   #[cfg(gtk)]
-  pub(crate) fn new_ephemeral() -> Self {
+  pub fn new_ephemeral() -> Self {
     Self {
       os: WebContextImpl::new_ephemeral(),
       data_directory: None,

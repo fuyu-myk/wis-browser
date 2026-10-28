@@ -1,9 +1,13 @@
-//! One in-memory WebKit data store per private workspace (macOS).
+//! One in-memory WebKit data store per private workspace (macOS and Linux).
 //!
 //! Private tabs and widget panels build from a configuration carrying their
 //! workspace's store: created on first use, released when the workspace's
 //! window closes or the workspace is deleted. WebKit then drops the data
 //! with the last webview still using it.
+//!
+//! On Linux they share one ephemeral context named by the workspace's
+//! ephemeral data directory (wry's nineteenth patch). Tauri keeps that
+//! context for the app's lifetime, so releasing clears its data instead.
 
 #[cfg(any(target_os = "macos", test))]
 use std::collections::HashMap;
@@ -13,8 +17,11 @@ use wis_core::WorkspaceId;
 #[cfg(target_os = "macos")]
 pub use imp::{release, store_for, with_workspace_store};
 
-/// Elsewhere private webviews keep the engine's incognito handling.
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+pub use gtk_store::{release, remember};
+
+/// On Windows private webviews keep WebView2's InPrivate handling.
+#[cfg(windows)]
 pub fn release(_app: &tauri::AppHandle, _workspace_id: WorkspaceId) {}
 
 /// The per-workspace store table.
@@ -177,5 +184,75 @@ mod tests {
     fn releasing_an_unknown_workspace_is_a_no_op() {
         let mut registry: Registry<Rc<u32>> = Registry::new();
         assert!(!registry.release(WorkspaceId::new()));
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod gtk_store {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    use webkit2gtk::{
+        WebViewExt, WebsiteDataManager, WebsiteDataManagerExtManual, WebsiteDataTypes,
+    };
+
+    use super::WorkspaceId;
+
+    thread_local! {
+        // Main thread only, like the GObjects it holds.
+        static MANAGERS: RefCell<HashMap<WorkspaceId, WebsiteDataManager>> =
+            RefCell::default();
+    }
+
+    /// Note the data manager a private webview of `workspace_id` shares, so
+    /// releasing the workspace can clear it.
+    pub fn remember(webview: &tauri::Webview, workspace_id: WorkspaceId) {
+        let noted = webview.with_webview(move |platform| {
+            let Some(manager) = platform.inner().website_data_manager() else {
+                return;
+            };
+            MANAGERS.with(|managers| {
+                managers.borrow_mut().entry(workspace_id).or_insert(manager);
+            });
+        });
+        if let Err(err) = noted {
+            log::warn!("private store: noting a private webview's data failed: {err}");
+        }
+    }
+
+    pub fn release(app: &tauri::AppHandle, workspace_id: WorkspaceId) {
+        let posted = app.run_on_main_thread(move || {
+            let Some(manager) =
+                MANAGERS.with(|managers| managers.borrow_mut().remove(&workspace_id))
+            else {
+                return;
+            };
+            clear_all(&manager);
+            let _ = webkit2gtk::glib::timeout_add_local_once(SECOND_CLEAR, move || {
+                let shown_again =
+                    MANAGERS.with(|managers| managers.borrow().contains_key(&workspace_id));
+                if !shown_again {
+                    clear_all(&manager);
+                }
+            });
+        });
+        if let Err(err) = posted {
+            log::warn!("private store: clearing a private workspace failed: {err}");
+        }
+    }
+
+    const SECOND_CLEAR: std::time::Duration = std::time::Duration::from_secs(2);
+
+    fn clear_all(manager: &WebsiteDataManager) {
+        manager.clear(
+            WebsiteDataTypes::ALL,
+            webkit2gtk::glib::TimeSpan(0),
+            None::<&webkit2gtk::gio::Cancellable>,
+            |cleared| {
+                if let Err(err) = cleared {
+                    log::warn!("private store: clearing a private workspace failed: {err}");
+                }
+            },
+        );
     }
 }

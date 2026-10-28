@@ -4804,6 +4804,27 @@ You may have it installed on another user account, but it is not available for t
       occupied
     }
     Vacant(vacant) => {
+      // WIS patch: incognito webviews keyed by a data directory share one
+      // ephemeral context there, rather than one each.
+      #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+      ))]
+      let mut web_context = if webview_attributes.incognito && web_context_key.is_some() {
+        WryWebContext::new_ephemeral()
+      } else {
+        WryWebContext::new(web_context_key.clone())
+      };
+      #[cfg(not(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+      )))]
       let mut web_context = WryWebContext::new(web_context_key.clone());
       web_context.set_allows_automation(if automation_enabled {
         is_first_context

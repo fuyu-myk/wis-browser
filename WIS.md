@@ -123,7 +123,7 @@ Each group maps to a `docs/architecture/` doc that carries the mechanism details
 
 ### Chrome shell & layouts (`docs/architecture/chrome-shell-and-layouts.md`)
 
-- **Workspaces**: color-accented profiles, each with its own WebView data store, proxy, and privacy mode; **private browsing** is an ephemeral workspace (excluded from save, wiped on close) whose tabs and widget panels share one in-memory data store (`private_store`, macOS).
+- **Workspaces**: color-accented profiles, each with its own WebView data store, proxy, and privacy mode; **private browsing** is an ephemeral workspace (excluded from save, wiped on close) whose tabs and widget panels share one in-memory data store (`private_store`, macOS and Linux).
 - **Multi-window**: one OS window per workspace, free-workspace picker, move-tab-to-new-window/workspace, session + geometry restore.
 - **Split panes**: per-workspace binary `PaneNode` tree, resizable, focused-leaf highlight, native click-to-focus.
 - **Pinned tabs & tab folders**: docked quick-access pins; per-workspace named/recolorable/icon-bearing folders of live tabs, rendered as a sidebar tree or top-tabs islands, with drag-reorder and selection-targeted new tabs; link-opened tabs land beside their opener in link order.

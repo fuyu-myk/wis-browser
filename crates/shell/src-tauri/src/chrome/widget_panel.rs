@@ -462,15 +462,9 @@ pub async fn open_widget_panel(
 
         #[cfg(not(target_os = "macos"))]
         {
-            builder = builder.incognito(true);
-        }
-
-        #[cfg(windows)]
-        {
-            builder = builder.data_directory(crate::commands::ephemeral_webview_data_dir(
-                &app,
-                workspace_id,
-            ));
+            builder = builder.incognito(true).data_directory(
+                crate::commands::ephemeral_webview_data_dir(&app, workspace_id),
+            );
         }
     } else {
         builder = builder.data_store_identifier(crate::commands::workspace_id_to_data_store_bytes(
@@ -548,6 +542,11 @@ pub async fn open_widget_panel(
                 message: format!("widget panel add_child failed: {err}"),
             }
         })?;
+
+    #[cfg(target_os = "linux")]
+    if ephemeral {
+        crate::protection::private_store::remember(&child, workspace_id);
+    }
 
     // Apply the grey backing while the panel stays hidden.
     let _ = child.hide();
