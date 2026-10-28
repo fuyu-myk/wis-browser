@@ -111,8 +111,10 @@ export function useIslandMenu(): {
       }
       await commands.setOverlayBounds('islandmenu', x, y, MENU_W, MENU_H)
     }
-    void place().catch(() => undefined)
-    void emit(ISLAND_MENU_OPEN, target)
+    // Opened once shown: a hidden overlay cannot take keyboard focus.
+    void place()
+      .catch(() => undefined)
+      .then(() => emit(ISLAND_MENU_OPEN, target))
     setOpen(true)
   }
 
