@@ -17,6 +17,7 @@ import type { SitePanelSize } from '@/features/site/hooks/useSitePanel'
 import { useSiteProtection } from '@/features/site/hooks/useSiteProtection'
 import { useThemeApply } from '@/hooks/useThemeApply'
 import { useSurfaceFocus } from '@/hooks/useSurfaceFocus'
+import { moveFocusByArrow } from '@/lib/arrowNav'
 import { cx } from '@/lib/cx'
 import { menusGlass } from '@/lib/glass'
 import { XIcon } from '@/lib/icons'
@@ -152,6 +153,7 @@ export function SitePanelSurface() {
       aria-label={`Settings for ${site}`}
       onKeyDown={(e) => {
         if (e.key === 'Escape') close()
+        else moveFocusByArrow(e, e.currentTarget, 'button', 'vertical')
       }}
     >
       <div ref={bodyRef} className="kb-sitepanel-body">
