@@ -48,6 +48,7 @@ import { TabFavicon } from '@/features/tabs/components/TabFavicon'
 import { TabFolderHeader } from '@/features/tabs/components/TabFolderHeader'
 import { useDiscardedTabs } from '@/features/tabs/components/DiscardedTabsContext'
 import { useTabAudio } from '@/features/tabs/hooks/useTabAudio'
+import { useClosingGhosts } from '@/features/tabs/hooks/useClosingGhosts'
 import { moveFocusByArrow } from '@/lib/arrowNav'
 import {
   crossedGroup,
@@ -238,31 +239,7 @@ export function TabList({
     onFolderEditingChange?.(editingFolders.size > 0)
   }, [editingFolders, onFolderEditingChange])
 
-  // Optimistic close: the backend removes the tab immediately, while the
-  // strip keeps a ghost row in place until the exit animation finishes.
-  const prevTabsRef = useRef<Tab[]>(tabs)
-  const displayTabs = (() => {
-    if (closingIds.size === 0) return tabs
-    const have = new Set(tabs.map((t) => t.id))
-    const prev = prevTabsRef.current
-    const ghosts = prev.filter((t) => closingIds.has(t.id) && !have.has(t.id))
-    if (ghosts.length === 0) return tabs
-    const merged = [...tabs]
-    for (const g of ghosts) {
-      merged.splice(
-        Math.min(
-          prev.findIndex((t) => t.id === g.id),
-          merged.length,
-        ),
-        0,
-        g,
-      )
-    }
-    return merged
-  })()
-  useEffect(() => {
-    prevTabsRef.current = displayTabs
-  })
+  const displayTabs = useClosingGhosts(tabs, closingIds)
 
   const pinnedSet = new Set(pinnedTabIds)
   const looseTabs = displayTabs.filter((t) => !pinnedSet.has(t.id) && t.folder_id == null)

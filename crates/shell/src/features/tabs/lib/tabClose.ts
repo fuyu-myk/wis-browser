@@ -51,3 +51,30 @@ export function onTabClosing(cb: (id: TabId) => void): () => void {
     unlisten?.()
   }
 }
+
+/**
+ * `tabs` with each closing tab the backend has already removed put back at its
+ * slot in `prev`.
+ */
+export function withClosingGhosts<T extends { id: TabId }>(
+  tabs: T[],
+  prev: readonly T[],
+  closingIds: ReadonlySet<TabId>,
+): T[] {
+  if (closingIds.size === 0) return tabs
+  const have = new Set(tabs.map((t) => t.id))
+  const ghosts = prev.filter((t) => closingIds.has(t.id) && !have.has(t.id))
+  if (ghosts.length === 0) return tabs
+  const merged = [...tabs]
+  for (const g of ghosts) {
+    merged.splice(
+      Math.min(
+        prev.findIndex((t) => t.id === g.id),
+        merged.length,
+      ),
+      0,
+      g,
+    )
+  }
+  return merged
+}

@@ -1,5 +1,4 @@
-import { useCallback,
-  useEffect,
+import {
   useLayoutEffect,
   useRef,
   useState,
@@ -9,7 +8,6 @@ import { useCallback,
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
-import { onTabClosing, TAB_EXIT_MS } from '@/features/tabs/lib/tabClose'
 import { closeReturnTarget, noteTabClosed, recentTabs } from '@/features/tabs/lib/tabMru'
 import {
   COMPACT_MEMBER_TAB_MAX,
@@ -17,7 +15,6 @@ import {
   COMPACT_MINIMUM_TAB_SIZE,
   GAP_PX,
   ISLAND_CIRCLE_W,
-  ISLAND_EXIT_MS,
   ISLAND_PILL_PAD,
   MEMBER_TAB_MAX,
   MINIMUM_CURRENT_TAB_SIZE,
@@ -29,7 +26,6 @@ import {
 } from '@/features/tabs/lib/tabStripLayout'
 import type {
   AccentColor,
-  BrowserState,
   PaneNode,
   RailSide,
   Tab,
@@ -47,6 +43,10 @@ import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { partOffset, runPendingGlide } from '@/features/tabs/lib/tabMotion'
 import { useWorkspaceSlide } from '@/features/tabs/hooks/useWorkspaceSlide'
 import { useTabStripDrag } from '@/features/tabs/hooks/useTabStripDrag'
+import { useClosingGhosts } from '@/features/tabs/hooks/useClosingGhosts'
+import { useIslandAccordion } from '@/features/tabs/hooks/useIslandAccordion'
+import { useStripWidth } from '@/features/tabs/hooks/useStripWidth'
+import { useTabCloseFlip } from '@/features/tabs/hooks/useTabCloseFlip'
 
 import { useFolderTarget } from '@/features/tabs/hooks/useFolderTarget'
 import { useIslandMenu } from '@/features/tabs/hooks/useIslandMenu'
@@ -55,7 +55,7 @@ import { TabAudioButton } from '@/features/tabs/components/TabAudioButton'
 import { TabFavicon } from '@/features/tabs/components/TabFavicon'
 import { useDiscardedTabs } from '@/features/tabs/components/DiscardedTabsContext'
 import { CollapseChevron, UrlContent } from '@/features/tabs/components/HorizontalTabsParts'
-import { motionStill, scrollBehavior } from '@/lib/motion'
+import { scrollBehavior } from '@/lib/motion'
 import { insertedAmong } from '@/features/tabs/hooks/useTabSplit'
 import { moveFocusByArrow } from '@/lib/arrowNav'
 import {
@@ -70,9 +70,6 @@ import {
   withGroupOrder,
 } from '@/features/tabs/lib/tabKeys'
 import { announce } from '@/lib/announce'
-
-/** Marks the close-FLIP glide animations so a rapid re-close can cancel them. */
-const FLIP_ANIM_ID = 'wis-tab-flip'
 
 interface HorizontalTabsProps {
   workspaceId: WorkspaceId
@@ -144,32 +141,6 @@ export function HorizontalTabs({
     },
     onSuccess: invalidate,
   })
-  const setCollapsed = useMutation({
-    mutationFn: (a: { folderId: TabFolderId; collapsed: boolean }) =>
-      commands.setTabFolderCollapsed(workspaceId, a.folderId, a.collapsed),
-    // Optimistic: the island and the strip reflow on this frame instead of
-    // after the IPC round trip.
-    onMutate: (a) => {
-      qc.setQueryData<BrowserState>([...BROWSER_STATE_KEY], (old) =>
-        old
-          ? {
-              ...old,
-              workspaces: old.workspaces.map((ws) =>
-                ws.id === workspaceId
-                  ? {
-                      ...ws,
-                      tab_folders: ws.tab_folders.map((f) =>
-                        f.id === a.folderId ? { ...f, collapsed: a.collapsed } : f,
-                      ),
-                    }
-                  : ws,
-              ),
-            }
-          : old,
-      )
-    },
-    onSuccess: invalidate,
-  })
   const { setTarget } = useFolderTarget(workspaceId)
   const renameFolder = useMutation({
     mutationFn: (a: { folderId: TabFolderId; name: string }) =>
@@ -184,121 +155,9 @@ export function HorizontalTabs({
   useWorkspaceSlide('top-strip', workspaceId, workspaceOrder, wrapRef)
   const stripRef = useRef<HTMLDivElement>(null)
   const activeRef = useRef<HTMLDivElement>(null)
-  const [stripWidth, setStripWidth] = useState(0)
-  const [stripResizing, setStripResizing] = useState(false)
+  const { stripWidth, stripResizing } = useStripWidth(stripRef)
   const [renamingId, setRenamingId] = useState<TabFolderId | null>(null)
-  const [closingIslandId, setClosingIslandId] = useState<TabFolderId | null>(null)
-  const [openingIslandId, setOpeningIslandId] = useState<TabFolderId | null>(null)
-  const [openingArmed, setOpeningArmed] = useState(false)
-  const [closingIds, setClosingIds] = useState<ReadonlySet<TabId>>(new Set())
-  useLayoutEffect(() => {
-    if (openingIslandId === null || openingArmed) return
-    const raf = requestAnimationFrame(() => setOpeningArmed(true))
-    return () => cancelAnimationFrame(raf)
-  }, [openingIslandId, openingArmed])
-  useEffect(() => {
-    if (openingIslandId === null || !openingArmed) return
-    const t = window.setTimeout(() => {
-      setOpeningIslandId(null)
-      setOpeningArmed(false)
-    }, 240)
-    return () => window.clearTimeout(t)
-  }, [openingIslandId, openingArmed])
-  // FLIP close: snapshot every sizable tab's left edge before the close lands,
-  // so the layout effect can glide each survivor from its old slot to its new
-  // one once the closing tab has been pulled out of layout instantly.
-  const flipFromRef = useRef<Map<string, { left: number; width: number }>>(new Map())
-  const captureFlip = useCallback(() => {
-    const strip = stripRef.current
-    if (!strip) return
-    const map = new Map<string, { left: number; width: number }>()
-    strip
-      .querySelectorAll<HTMLElement>('[data-tab-id], [data-mtab-id]')
-      .forEach((el) => {
-        const id = el.dataset.tabId ?? el.dataset.mtabId
-        if (!id) return
-        const r = el.getBoundingClientRect()
-        map.set(id, { left: r.left, width: r.width })
-      })
-    flipFromRef.current = map
-  }, [])
-  // Dedupe a single close.
-  const handledRef = useRef<Set<TabId>>(new Set())
-  const markClosing = useCallback((id: TabId) => {
-    setClosingIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)))
-    window.setTimeout(() => {
-      handledRef.current.delete(id)
-      setClosingIds((prev) => {
-        if (!prev.has(id)) return prev
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
-    }, TAB_EXIT_MS + 400)
-  }, [])
-  const beginClose = useCallback(
-    (id: TabId) => {
-      if (handledRef.current.has(id)) return
-      handledRef.current.add(id)
-      captureFlip()
-      markClosing(id)
-    },
-    [captureFlip, markClosing],
-  )
-  const closeHere = useCallback(
-    (id: TabId) => {
-      beginClose(id)
-      const returnTo = closeReturnTarget(id)
-      noteTabClosed(id)
-      void commands.closeTab(id, returnTo, recentTabs()).catch(() => undefined)
-    },
-    [beginClose],
-  )
-  useEffect(() => onTabClosing(beginClose), [beginClose])
-  useLayoutEffect(() => {
-    const from = flipFromRef.current
-    if (from.size === 0) return
-    flipFromRef.current = new Map()
-    const strip = stripRef.current
-    if (!strip) return
-    const els = Array.from(
-      strip.querySelectorAll<HTMLElement>('[data-tab-id], [data-mtab-id]'),
-    )
-    // Prevent stacking animations.
-    for (const el of els) {
-      for (const a of el.getAnimations()) if (a.id === FLIP_ANIM_ID) a.cancel()
-    }
-    const moves: Array<{ el: HTMLElement; dx: number; sx: number }> = []
-    for (const el of els) {
-      const id = el.dataset.tabId ?? el.dataset.mtabId
-      if (id === undefined || closingIds.has(id as TabId)) continue
-      const old = from.get(id)
-      if (old === undefined) continue
-      const now = el.getBoundingClientRect()
-      const dx = old.left - now.left
-      const sx = now.width > 0.5 ? old.width / now.width : 1
-      if (Math.abs(dx) > 0.5 || Math.abs(sx - 1) > 0.005) moves.push({ el, dx, sx })
-    }
-    if (moves.length === 0) return
-    const cs = getComputedStyle(els[0])
-    const durRaw = cs.getPropertyValue('--reflow-dur').trim()
-    const dur = durRaw.endsWith('ms')
-      ? parseFloat(durRaw)
-      : durRaw.endsWith('s')
-        ? parseFloat(durRaw) * 1000
-        : 0
-    if (!(dur > 0) || motionStill()) return // reduced or off: the snap is intended
-    for (const { el, dx, sx } of moves) {
-      const anim = el.animate(
-        [
-          { transform: `translateX(${dx}px) scaleX(${sx})`, transformOrigin: 'left center' },
-          { transform: 'translateX(0px) scaleX(1)', transformOrigin: 'left center' },
-        ],
-        { duration: dur, easing: 'linear' },
-      )
-      anim.id = FLIP_ANIM_ID
-    }
-  }, [closingIds])
+  const { closingIds, closeHere } = useTabCloseFlip(stripRef)
   const [draft, setDraft] = useState('')
   const renameInputRef = useRef<HTMLInputElement>(null)
   // Set true right before an Escape-cancel so the input's blur skips saving.
@@ -321,32 +180,7 @@ export function HorizontalTabs({
     setRenamingId(null)
   }
 
-  // Optimistic close: the backend removes the tab immediately, while the
-  // strip keeps a ghost row in place until the exit animation finishes.
-  const prevTabsRef = useRef<Tab[]>(tabs)
-  const displayTabs = (() => {
-    if (closingIds.size === 0) return tabs
-    const have = new Set(tabs.map((t) => t.id))
-    const prev = prevTabsRef.current
-    const ghosts = prev.filter((t) => closingIds.has(t.id) && !have.has(t.id))
-    if (ghosts.length === 0) return tabs
-    const merged = [...tabs]
-    for (const g of ghosts) {
-      merged.splice(
-        Math.min(
-          prev.findIndex((t) => t.id === g.id),
-          merged.length,
-        ),
-        0,
-        g,
-      )
-    }
-    return merged
-  })()
-  useEffect(() => {
-    prevTabsRef.current = displayTabs
-  })
-
+  const displayTabs = useClosingGhosts(tabs, closingIds)
   const pinnedSet = new Set(pinnedTabIds)
   const pinnedTabs = displayTabs.filter((t) => pinnedSet.has(t.id))
   const stripTabs = displayTabs.filter((t) => !pinnedSet.has(t.id))
@@ -394,12 +228,6 @@ export function HorizontalTabs({
     refocusAfterMove(`[data-island-id="${folderId}"] .h-island-name`)
     announce(movedTo(next.indexOf(folderId) + 1, next.length))
   }
-  const sizableTabs: Tab[] = [...looseTabs]
-  let collapsedCount = 0
-  for (const g of folderGroups) {
-    if (g.folder.collapsed || g.folder.id === closingIslandId) collapsedCount += 1
-    else sizableTabs.push(...g.members)
-  }
 
   const {
     startTabDrag,
@@ -436,79 +264,8 @@ export function HorizontalTabs({
   useLayoutEffect(() => {
     runPendingGlide(stripRef.current, pendingGlideRef)
   })
-
-  // Accordion bookkeeping: which expanded islands were opened least recently.
-  // Session-scoped per workspace, seeded in position order (oldest first).
-  const expandRecencyRef = useRef<{ ws: WorkspaceId; order: TabFolderId[] } | null>(null)
-  if (expandRecencyRef.current?.ws !== workspaceId) {
-    expandRecencyRef.current = {
-      ws: workspaceId,
-      order: folderGroups.filter((g) => !g.folder.collapsed).map((g) => g.folder.id),
-    }
-  }
-
-  // Expand an island; past the limit, the least-recently-expanded expanded
-  // island collapses with the usual exit sweep (extras, only possible after
-  // the limit was lowered mid-session, collapse on the same frame).
-  const expandIsland = (folderId: TabFolderId) => {
-    if (folderReorderRef.current) {
-      folderReorderRef.current = false
-      return
-    }
-    const recOrder = expandRecencyRef.current?.order ?? []
-    const expandedIds = folderGroups
-      .filter((g) => !g.folder.collapsed && g.folder.id !== folderId)
-      .map((g) => g.folder.id)
-    // Oldest first; islands missing from the recency list count as oldest.
-    const byAge = [
-      ...expandedIds.filter((id) => !recOrder.includes(id)),
-      ...recOrder.filter((id) => expandedIds.includes(id)),
-    ]
-    const over = maxExpandedFolders > 0 ? expandedIds.length + 1 - maxExpandedFolders : 0
-    const victims = byAge.slice(0, Math.max(0, over))
-    for (const extra of victims.slice(1)) {
-      setCollapsed.mutate({ folderId: extra, collapsed: true })
-    }
-    if (victims.length > 0) {
-      const victim = victims[0]
-      setClosingIslandId(victim)
-      window.setTimeout(() => {
-        setCollapsed.mutate({ folderId: victim, collapsed: true })
-        setClosingIslandId(null)
-      }, ISLAND_EXIT_MS)
-    }
-    expandRecencyRef.current = {
-      ws: workspaceId,
-      order: [...recOrder.filter((id) => id !== folderId), folderId],
-    }
-    setOpeningIslandId(folderId)
-    setOpeningArmed(false)
-    setCollapsed.mutate({ folderId, collapsed: false })
-  }
-
-  useLayoutEffect(() => {
-    const strip = stripRef.current
-    if (!strip) return
-    let timer: number | null = null
-    let prevW = 0
-    const update = () => {
-      const w = strip.clientWidth
-      if (prevW !== 0 && Math.abs(prevW - w) > 0.5) {
-        setStripResizing(true)
-        if (timer !== null) window.clearTimeout(timer)
-        timer = window.setTimeout(() => setStripResizing(false), 160)
-      }
-      prevW = w
-      setStripWidth(w)
-    }
-    update()
-    const ro = new ResizeObserver(update)
-    ro.observe(strip)
-    return () => {
-      ro.disconnect()
-      if (timer !== null) window.clearTimeout(timer)
-    }
-  }, [])
+  const { closingIslandId, openingIslandId, openingArmed, expandIsland, collapseIsland } =
+    useIslandAccordion({ workspaceId, folderGroups, maxExpandedFolders, folderReorderRef })
 
   useLayoutEffect(() => {
     activeRef.current?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: scrollBehavior() })
@@ -539,6 +296,12 @@ export function HorizontalTabs({
     )
     return predicted ?? activeTabId
   })()
+  const sizableTabs: Tab[] = [...looseTabs]
+  let collapsedCount = 0
+  for (const g of folderGroups) {
+    if (g.folder.collapsed || g.folder.id === closingIslandId) collapsedCount += 1
+    else sizableTabs.push(...g.members)
+  }
   const { sizing, isMany, inactiveCompact, audioExtra, activeVisible } = computeStripSizing({
     sizableTabs: liveOf(sizableTabs),
     looseTabs: liveOf(looseTabs),
@@ -742,13 +505,6 @@ export function HorizontalTabs({
         ? { transform: `translateX(${islandShift * islandDragPart.size}px)` }
         : undefined
     const isIslandSource = islandDragPart?.id === folder.id
-    const toggleCollapsed = (collapsed: boolean) => {
-      if (folderReorderRef.current) {
-        folderReorderRef.current = false
-        return
-      }
-      setCollapsed.mutate({ folderId: folder.id, collapsed })
-    }
     // IDE-style: clicking the folder selects it as the new-tab target; Enter on
     // a selected folder renames it (otherwise it selects). Mirrors the sidebar.
     const onFolderClick = () => {
@@ -853,11 +609,7 @@ export function HorizontalTabs({
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation()
-              setClosingIslandId(folder.id)
-              window.setTimeout(() => {
-                toggleCollapsed(true)
-                setClosingIslandId(null)
-              }, ISLAND_EXIT_MS)
+              collapseIsland(folder.id)
             }}
           >
             <CollapseChevron />

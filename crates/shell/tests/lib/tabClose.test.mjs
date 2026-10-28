@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 import { beforeEach, describe, test } from 'node:test'
 
-import { TAB_CLOSING_EVENT, closeTabAnimated, onTabClosing } from '../../src/features/tabs/lib/tabClose.ts'
+import { TAB_CLOSING_EVENT, closeTabAnimated, onTabClosing, withClosingGhosts } from '../../src/features/tabs/lib/tabClose.ts'
 import { noteActiveTab, pruneTabMru, recentTabs } from '../../src/features/tabs/lib/tabMru.ts'
 import { installTauri, settle } from '../support/l3-harness.mjs'
 
@@ -102,5 +102,28 @@ describe('subscribing to closes', () => {
     land(42)
     await settle()
     assert.deepEqual(ipc.argsOf('plugin:event|unlisten'), [{ event: TAB_CLOSING_EVENT, eventId: 42 }])
+  })
+})
+
+describe('withClosingGhosts', () => {
+  const tab = (id) => ({ id })
+  const ids = (list) => list.map((t) => t.id)
+
+  test('a closing tab the backend already removed stays in its old slot', () => {
+    const prev = [tab('a'), tab('b'), tab('c')]
+    const now = [tab('a'), tab('c')]
+    assert.deepEqual(ids(withClosingGhosts(now, prev, new Set(['b']))), ['a', 'b', 'c'])
+  })
+
+  test('nothing closing, or nothing removed yet, leaves the list as it is', () => {
+    const now = [tab('a'), tab('b')]
+    assert.equal(withClosingGhosts(now, now, new Set()), now)
+    assert.equal(withClosingGhosts(now, now, new Set(['b'])), now)
+  })
+
+  test('a ghost past the end of the shorter list goes last', () => {
+    const prev = [tab('a'), tab('b'), tab('c')]
+    const now = [tab('a')]
+    assert.deepEqual(ids(withClosingGhosts(now, prev, new Set(['c']))), ['a', 'c'])
   })
 })
