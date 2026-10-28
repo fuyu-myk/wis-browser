@@ -64,6 +64,73 @@ pub fn set_profile_name_hook(hook: Box<dyn Fn(&str) -> Option<String> + Send + S
   let _ = PROFILE_HOOK.set(hook);
 }
 
+/// WIS PATCH: what a main-frame `NavigationStarting` reports, for the
+/// navigation start hook.
+pub struct NavigationStart<'a> {
+  pub webview_id: &'a str,
+  pub url: &'a str,
+  /// Shared by a navigation and its redirects.
+  pub navigation_id: u64,
+  pub user_initiated: bool,
+  pub redirected: bool,
+  /// `COREWEBVIEW2_NAVIGATION_KIND_NEW_DOCUMENT`; false for reloads,
+  /// back/forward and on runtimes that do not report a kind.
+  pub new_document: bool,
+  /// The request carries a `Content-Type` header, as a form POST does.
+  pub has_body: bool,
+}
+
+type NavigationStartHook = Box<dyn Fn(&NavigationStart) -> bool + Send + Sync>;
+
+/// WIS PATCH: consulted on the UI thread before the navigation handler for
+/// each navigation start of a webview with an id; false cancels it. Set once
+/// by the embedder; first registration wins.
+static NAVIGATION_START_HOOK: std::sync::OnceLock<NavigationStartHook> = std::sync::OnceLock::new();
+
+pub fn set_navigation_start_hook(hook: NavigationStartHook) {
+  let _ = NAVIGATION_START_HOOK.set(hook);
+}
+
+/// The navigation id of a start the hook cancels. A start it cannot read is
+/// let through.
+unsafe fn cancelled_start(
+  webview_id: &str,
+  url: &str,
+  args: &ICoreWebView2NavigationStartingEventArgs,
+) -> windows::core::Result<Option<u64>> {
+  let Some(hook) = NAVIGATION_START_HOOK.get() else {
+    return Ok(None);
+  };
+
+  let mut navigation_id = 0u64;
+  args.NavigationId(&mut navigation_id)?;
+  let mut user_initiated = BOOL::default();
+  args.IsUserInitiated(&mut user_initiated)?;
+  let mut redirected = BOOL::default();
+  args.IsRedirected(&mut redirected)?;
+  let mut kind = COREWEBVIEW2_NAVIGATION_KIND_RELOAD;
+  let new_document = args
+    .cast::<ICoreWebView2NavigationStartingEventArgs3>()
+    .and_then(|args| args.NavigationKind(&mut kind))
+    .is_ok()
+    && kind == COREWEBVIEW2_NAVIGATION_KIND_NEW_DOCUMENT;
+  let mut has_body = BOOL::default();
+  args
+    .RequestHeaders()?
+    .Contains(w!("Content-Type"), &mut has_body)?;
+
+  let allowed = hook(&NavigationStart {
+    webview_id,
+    url,
+    navigation_id,
+    user_initiated: user_initiated.as_bool(),
+    redirected: redirected.as_bool(),
+    new_document,
+    has_body: has_body.as_bool(),
+  });
+  Ok((!allowed).then_some(navigation_id))
+}
+
 pub(crate) struct InnerWebView {
   id: String,
   parent: RefCell<HWND>,
@@ -682,6 +749,10 @@ impl InnerWebView {
       )?;
     }
 
+    // WIS patch: the start the navigation start hook last cancelled, whose
+    // completion reports no page load.
+    let cancelled = Rc::new(std::cell::Cell::new(None::<u64>));
+
     // Page load handler
     if let Some(on_page_load_handler) = attributes.on_page_load_handler.take() {
       let on_page_load_handler = Rc::new(on_page_load_handler);
@@ -699,11 +770,22 @@ impl InnerWebView {
         })),
         token,
       )?;
+      let cancelled = cancelled.clone();
       webview.add_NavigationCompleted(
-        &NavigationCompletedEventHandler::create(Box::new(move |webview, _| {
+        &NavigationCompletedEventHandler::create(Box::new(move |webview, args| {
           let Some(webview) = webview else {
             return Ok(());
           };
+
+          let mut navigation_id = 0u64;
+          if let Some(args) = args {
+            if args.NavigationId(&mut navigation_id).is_ok()
+              && cancelled.get() == Some(navigation_id)
+            {
+              cancelled.set(None);
+              return Ok(());
+            }
+          }
 
           on_page_load_handler(PageLoadEvent::Finished, Self::url_from_webview(&webview)?);
 
@@ -715,6 +797,7 @@ impl InnerWebView {
 
     // Navigation handler
     if let Some(nav_callback) = attributes.navigation_handler.take() {
+      let webview_id = attributes.id.map(str::to_string);
       webview.add_NavigationStarting(
         &NavigationStartingEventHandler::create(Box::new(move |_, args| {
           let Some(args) = args else {
@@ -726,6 +809,15 @@ impl InnerWebView {
             args.Uri(&mut uri)?;
             take_pwstr(uri)
           };
+
+          // WIS patch: the embedder may cancel the start first.
+          if let Some(id) = &webview_id {
+            if let Some(navigation_id) = cancelled_start(id, &uri, &args).ok().flatten() {
+              args.SetCancel(true)?;
+              cancelled.set(Some(navigation_id));
+              return Ok(());
+            }
+          }
 
           let allow = nav_callback(uri);
           args.SetCancel(!allow)?;

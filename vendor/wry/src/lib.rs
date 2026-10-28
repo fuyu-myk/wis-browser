@@ -420,7 +420,7 @@ pub(crate) mod webview2;
 #[cfg(target_os = "windows")]
 pub use self::webview2::ScrollBarStyle;
 #[cfg(target_os = "windows")]
-pub use self::webview2::set_profile_name_hook;
+pub use self::webview2::{set_navigation_start_hook, set_profile_name_hook, NavigationStart};
 #[cfg(target_os = "windows")]
 use self::webview2::*;
 #[cfg(target_os = "windows")]

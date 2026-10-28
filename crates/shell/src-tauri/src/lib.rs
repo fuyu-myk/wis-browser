@@ -347,7 +347,7 @@ pub fn run() {
             pages::preferences::install_hook(app.handle().clone());
             #[cfg(target_os = "macos")]
             protection::page_blocks::install(app.handle().clone());
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", windows))]
             protection::clean_links::install(app.handle().clone());
             vault::signup::set_app_handle(app.handle().clone());
 

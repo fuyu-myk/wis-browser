@@ -511,3 +511,24 @@ navigation type nor the frame.
   before the webpage-preferences hook; false cancels the navigation and skips
   the rest of the decision.
 - `src/lib.rs`: re-exports the setter on macOS and iOS.
+
+## Eighteenth patch: the embedder can cancel a navigation start (Windows) (Wis-original)
+
+The Windows side of the seventeenth patch. Tauri's `on_navigation` gets only
+the URL, and a second `NavigationStarting` handler would race wry's, which
+overwrites the cancel flag with its own decision.
+
+- `src/webview2/mod.rs`: `wry::set_navigation_start_hook(Box<dyn
+  Fn(&NavigationStart) -> bool + Send + Sync>)` (`OnceLock`, first
+  registration wins). `NavigationStart` carries the webview id, URL,
+  navigation id (shared with its redirects), `IsUserInitiated`,
+  `IsRedirected`, whether `NavigationKind` is a new document (false on
+  runtimes without `ICoreWebView2NavigationStartingEventArgs3`) and whether
+  the request has a `Content-Type` header, as a form POST does. WebView2 has
+  no HTTP method here. The `NavigationStarting` handler consults it for
+  webviews with an id, before the navigation handler; false cancels the start
+  and skips the handler, and a start whose details cannot be read goes on to
+  the handler. WebView2 raises the event for the main frame only. The
+  cancelled start's `NavigationCompleted` (matched by navigation id) emits no
+  `PageLoadEvent::Finished`, since it loaded nothing.
+- `src/lib.rs`: re-exports the setter and `NavigationStart` on Windows.
