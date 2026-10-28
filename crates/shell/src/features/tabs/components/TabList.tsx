@@ -50,8 +50,10 @@ import { useDiscardedTabs } from '@/features/tabs/components/DiscardedTabsContex
 import { useTabAudio } from '@/features/tabs/hooks/useTabAudio'
 import { moveFocusByArrow } from '@/lib/arrowNav'
 import {
+  crossedGroup,
   focusNeighbour,
   moveByKey,
+  movedAcross,
   movedOrder,
   movedTo,
   onTabRowKey,
@@ -625,10 +627,24 @@ export function TabList({
   const moveTab = (tab: Tab, delta: -1 | 1) => {
     const group = (tab.folder_id != null ? membersOf(tab.folder_id) : looseTabs).map((t) => t.id)
     const next = movedOrder(group, tab.id, delta)
-    if (!next) return
-    reorder.mutate(withGroupOrder(tabs.map((t) => t.id), next))
+    if (next) {
+      reorder.mutate(withGroupOrder(tabs.map((t) => t.id), next))
+      announce(movedTo(next.indexOf(tab.id) + 1, next.length))
+    } else {
+      const groups = [
+        ...sortedFolders.filter((f) => !f.collapsed).map((f) => ({ folder: f.id, size: membersOf(f.id).length })),
+        { folder: null, size: looseTabs.length },
+      ]
+      const crossing = crossedGroup(groups, tab.folder_id ?? null, delta)
+      if (!crossing) return
+      const members = crossing.folder !== null ? membersOf(crossing.folder) : looseTabs
+      const order = insertedAmong(tabs.map((t) => t.id), new Set(members.map((t) => t.id)), tab.id, crossing.index)
+      assign.mutate({ tabId: tab.id, folderId: crossing.folder })
+      if (order) reorder.mutate(order)
+      const name = (id: TabFolderId | null) => sortedFolders.find((f) => f.id === id)?.name ?? null
+      announce(movedAcross(name(crossing.folder), name(tab.folder_id ?? null), crossing.index + 1, members.length + 1))
+    }
     refocusAfterMove(`[data-tab-row="${tab.id}"]`)
-    announce(movedTo(next.indexOf(tab.id) + 1, next.length))
   }
   const moveFolder = (folderId: TabFolderId, delta: -1 | 1) => {
     const next = movedOrder(

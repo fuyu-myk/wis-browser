@@ -113,9 +113,40 @@ export function withGroupOrder<T>(full: readonly T[], groupOrder: readonly T[]):
   return full.map((id) => (members.has(id) ? groupOrder[i++] : id))
 }
 
+/** Where a tab lands when a keyboard move runs past the edge of its group. */
+export interface GroupCrossing<F> {
+  /** The folder it joins, or null for the tabs outside folders. */
+  folder: F | null
+  /** Its slot among that group's tabs. */
+  index: number
+}
+
+/**
+ * `groups` are the open folders in strip order, then the tabs outside
+ * folders. A tab moved past its group's end joins the start of the next
+ * group, past its start the end of the one before; at the strip's ends it
+ * stays put (null).
+ */
+export function crossedGroup<F>(
+  groups: ReadonlyArray<{ folder: F | null; size: number }>,
+  from: F | null,
+  delta: -1 | 1,
+): GroupCrossing<F> | null {
+  const at = groups.findIndex((g) => g.folder === from)
+  const target = at < 0 ? undefined : groups[at + delta]
+  if (!target) return null
+  return { folder: target.folder, index: delta === 1 ? 0 : target.size }
+}
+
 /** Spoken after a keyboard move. */
 export function movedTo(position: number, count: number): string {
   return `Moved to ${position} of ${count}`
+}
+
+/** Spoken after a keyboard move into a folder, or out of one. */
+export function movedAcross(into: string | null, outOf: string | null, position: number, count: number): string {
+  const where = into !== null ? `Moved into ${into}` : `Moved out of ${outOf ?? 'the folder'}`
+  return `${where}, ${position} of ${count}`
 }
 
 /**

@@ -56,10 +56,13 @@ import { TabFavicon } from '@/features/tabs/components/TabFavicon'
 import { useDiscardedTabs } from '@/features/tabs/components/DiscardedTabsContext'
 import { CollapseChevron, UrlContent } from '@/features/tabs/components/HorizontalTabsParts'
 import { motionStill, scrollBehavior } from '@/lib/motion'
+import { insertedAmong } from '@/features/tabs/hooks/useTabSplit'
 import { moveFocusByArrow } from '@/lib/arrowNav'
 import {
+  crossedGroup,
   focusNeighbour,
   moveByKey,
+  movedAcross,
   movedOrder,
   movedTo,
   onTabRowKey,
@@ -360,10 +363,25 @@ export function HorizontalTabs({
       tab.folder_id != null ? stripTabs.filter((t) => t.folder_id === tab.folder_id) : looseTabs
     ).map((t) => t.id)
     const next = movedOrder(group, tab.id, delta)
-    if (!next) return
-    reorderTabs(withGroupOrder(tabs.map((t) => t.id), next))
+    if (next) {
+      reorderTabs(withGroupOrder(tabs.map((t) => t.id), next))
+      announce(movedTo(next.indexOf(tab.id) + 1, next.length))
+    } else {
+      const open = folderGroups.filter((g) => !g.folder.collapsed)
+      const groups = [
+        ...open.map((g) => ({ folder: g.folder.id, size: g.members.length })),
+        { folder: null, size: looseTabs.length },
+      ]
+      const crossing = crossedGroup(groups, tab.folder_id ?? null, delta)
+      if (!crossing) return
+      const members = open.find((g) => g.folder.id === crossing.folder)?.members ?? looseTabs
+      const order = insertedAmong(tabs.map((t) => t.id), new Set(members.map((t) => t.id)), tab.id, crossing.index)
+      fileTab(tab.id, crossing.folder)
+      if (order) reorderTabs(order)
+      const name = (id: TabFolderId | null) => folders.find((f) => f.id === id)?.name ?? null
+      announce(movedAcross(name(crossing.folder), name(tab.folder_id ?? null), crossing.index + 1, members.length + 1))
+    }
     refocusAfterMove(`[data-tab-row="${tab.id}"]`)
-    announce(movedTo(next.indexOf(tab.id) + 1, next.length))
   }
   const moveIsland = (folderId: TabFolderId, delta: -1 | 1) => {
     const next = movedOrder(
@@ -402,6 +420,7 @@ export function HorizontalTabs({
     folderDropHint,
     pendingGlideRef,
     reorderTabs,
+    fileTab,
     reorderFolders,
   } = useTabStripDrag({
     workspaceId,

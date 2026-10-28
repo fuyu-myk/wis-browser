@@ -62,6 +62,7 @@ interface TabStripDrag {
   folderDropHint: string | null
   pendingGlideRef: RefObject<PendingGlide | null>
   reorderTabs: (order: TabId[]) => void
+  fileTab: (tabId: TabId, folderId: TabFolderId | null) => void
   reorderFolders: (order: TabFolderId[]) => void
 }
 
@@ -433,6 +434,7 @@ export function useTabStripDrag(d: TabStripDragArgs): TabStripDrag {
     folderDropHint,
     pendingGlideRef,
     reorderTabs: (order) => reorder.mutate(order),
+    fileTab: (tabId, folderId) => assign.mutate({ tabId, folderId }),
     reorderFolders: (order) => reorderFolders.mutate(order),
   }
 }
