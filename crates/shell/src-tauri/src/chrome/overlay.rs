@@ -115,12 +115,12 @@ pub fn promote_overlays_to_front(app: &AppHandle, window_label: &str) {
 /// works on any OS window.
 #[tauri::command]
 pub async fn focus_self(webview: tauri::Webview) -> WisResult<()> {
+    let is_overlay = webview.label().starts_with(OVERLAY_PREFIX);
     #[cfg(target_os = "macos")]
     {
         use objc2::msg_send;
         use objc2::runtime::{AnyObject, Bool};
 
-        let is_overlay = webview.label().starts_with(OVERLAY_PREFIX);
         let (tx, rx) = std::sync::mpsc::channel::<()>();
         webview
             .with_webview(move |w| unsafe {
@@ -145,13 +145,22 @@ pub async fn focus_self(webview: tauri::Webview) -> WisResult<()> {
     }
 
     #[cfg(windows)]
-    crate::platform::win_webview2::move_focus(&webview);
+    crate::chrome::overlay_focus::focus_win(&webview, is_overlay);
 
     #[cfg(target_os = "linux")]
+    let label = webview.label().to_owned();
+    #[cfg(target_os = "linux")]
     webview
-        .with_webview(|w| {
+        .with_webview(move |w| {
             use gtk::prelude::WidgetExt;
-            w.inner().grab_focus();
+            let view = w.inner();
+            if is_overlay && !view.is_mapped() {
+                return;
+            }
+            if is_overlay {
+                crate::chrome::overlay_focus::remember_gtk(&label, &view);
+            }
+            view.grab_focus();
         })
         .map_err(|err| WisError::InvalidInput {
             message: format!("with_webview failed: {err}"),
@@ -159,7 +168,7 @@ pub async fn focus_self(webview: tauri::Webview) -> WisResult<()> {
 
     #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
-        let _ = webview;
+        let _ = (webview, is_overlay);
     }
 
     Ok(())
@@ -467,6 +476,10 @@ pub async fn hide_overlay(window: tauri::Window, name: String) -> WisResult<()> 
     };
     #[cfg(target_os = "macos")]
     give_focus_back(&wv);
+    #[cfg(windows)]
+    crate::chrome::overlay_focus::give_back_win(&wv);
+    #[cfg(target_os = "linux")]
+    give_focus_back_gtk(&wv);
     wv.hide().map_err(|err| WisError::InvalidInput {
         message: format!("hide for {label}: {err}"),
     })
@@ -483,6 +496,17 @@ fn give_focus_back(wv: &tauri::Webview) {
             unsafe { crate::chrome::overlay_focus::give_back(view) };
         }
     });
+    if let Err(err) = queued {
+        log::warn!("focus return for {}: {err}", wv.label());
+    }
+}
+
+/// The GTK counterpart: queued on the main thread ahead of the hide.
+#[cfg(target_os = "linux")]
+fn give_focus_back_gtk(wv: &tauri::Webview) {
+    let label = wv.label().to_owned();
+    let queued =
+        wv.with_webview(move |w| crate::chrome::overlay_focus::give_back_gtk(&label, &w.inner()));
     if let Err(err) = queued {
         log::warn!("focus return for {}: {err}", wv.label());
     }

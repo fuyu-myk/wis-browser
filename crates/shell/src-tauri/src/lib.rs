@@ -57,6 +57,11 @@ pub fn run() {
         }));
     }
 
+    #[cfg(windows)]
+    {
+        builder = builder.plugin(chrome::overlay_focus::plugin());
+    }
+
     builder = builder.register_asynchronous_uri_scheme_protocol(
         canvas::page::SCHEME,
         canvas::page::handle_request,

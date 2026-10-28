@@ -147,6 +147,263 @@ mod mac {
 #[cfg(target_os = "macos")]
 pub use mac::{give_back, is_hidden, remember};
 
+/// Which webview of each window took focus last, and where each overlay took
+/// focus from, by label.
+#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(Default)]
+struct Ledger {
+    focused: std::collections::HashMap<String, String>,
+    return_to: std::collections::HashMap<String, String>,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+impl Ledger {
+    fn got_focus(&mut self, window: &str, webview: &str) {
+        self.focused.insert(window.to_owned(), webview.to_owned());
+    }
+
+    /// Note where `overlay` takes focus from, unless it already has it.
+    fn remember(&mut self, window: &str, overlay: &str) {
+        if let Some(from) = self.focused.get(window).filter(|from| *from != overlay) {
+            self.return_to.insert(overlay.to_owned(), from.clone());
+        }
+    }
+
+    /// The webview to focus as `overlay` hides, if `overlay` still has focus.
+    /// A hidden overlay stops counting as focused as focus moves to the window.
+    fn give_back(&mut self, window: &str, overlay: &str) -> Option<String> {
+        let held = self.focused.get(window).is_some_and(|from| from == overlay);
+        if held {
+            self.focused.remove(window);
+        }
+        let target = self.return_to.remove(overlay)?;
+        held.then_some(target)
+    }
+}
+
+#[cfg(windows)]
+mod win {
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    use tauri::Manager;
+    use webview2_com::FocusChangedEventHandler;
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2Controller, COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC,
+    };
+
+    use super::Ledger;
+    use crate::platform::win_webview2::with_controller;
+
+    fn ledger() -> MutexGuard<'static, Ledger> {
+        static LEDGER: OnceLock<Mutex<Ledger>> = OnceLock::new();
+        LEDGER
+            .get_or_init(Mutex::default)
+            .lock()
+            .expect("focus ledger poisoned")
+    }
+
+    /// Note each time `webview` takes focus. Once per webview, as it is made.
+    pub fn watch<R: tauri::Runtime>(webview: &tauri::Webview<R>) {
+        let window = webview.window().label().to_owned();
+        let label = webview.label().to_owned();
+        with_controller(webview, move |controller| {
+            let handler = FocusChangedEventHandler::create(Box::new(
+                move |_sender: Option<ICoreWebView2Controller>,
+                      _args: Option<windows::core::IUnknown>|
+                      -> windows::core::Result<()> {
+                    ledger().got_focus(&window, &label);
+                    Ok(())
+                },
+            ));
+            let mut token = 0_i64;
+            // SAFETY: runs on the UI thread via `with_controller`.
+            if let Err(err) = unsafe { controller.add_GotFocus(&handler, &mut token) } {
+                log::warn!("focus watch: {err}");
+            }
+        });
+    }
+
+    fn is_shown(controller: &ICoreWebView2Controller) -> bool {
+        let mut visible = windows::core::BOOL::default();
+        // SAFETY: called on the UI thread from a `with_controller` closure.
+        unsafe { controller.IsVisible(&mut visible) }.is_ok() && visible.as_bool()
+    }
+
+    fn move_focus(controller: &ICoreWebView2Controller) {
+        // SAFETY: called on the UI thread from a `with_controller` closure.
+        if let Err(err) =
+            unsafe { controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC) }
+        {
+            log::warn!("focus move: {err}");
+        }
+    }
+
+    /// Focus `webview`. An overlay first notes where focus comes from, and a
+    /// hidden one is left alone.
+    pub fn focus<R: tauri::Runtime>(webview: &tauri::Webview<R>, is_overlay: bool) {
+        let window = webview.window().label().to_owned();
+        let label = webview.label().to_owned();
+        with_controller(webview, move |controller| {
+            if is_overlay {
+                if !is_shown(controller) {
+                    return;
+                }
+                ledger().remember(&window, &label);
+            }
+            move_focus(controller);
+        });
+    }
+
+    /// Queue focus back to the remembered webview, ahead of the overlay's hide
+    /// and after any focus request already queued for it.
+    pub fn give_back<R: tauri::Runtime>(overlay: &tauri::Webview<R>) {
+        let window = overlay.window().label().to_owned();
+        let label = overlay.label().to_owned();
+        let app = overlay.app_handle().clone();
+        with_controller(overlay, move |_| {
+            let Some(target) = ledger().give_back(&window, &label) else {
+                return;
+            };
+            let Some(target) = app.webviews().get(&target).cloned() else {
+                return;
+            };
+            with_controller(&target, |controller| {
+                if is_shown(controller) {
+                    move_focus(controller);
+                }
+            });
+        });
+    }
+}
+
+#[cfg(windows)]
+pub use win::{focus as focus_win, give_back as give_back_win};
+
+/// Registers the focus watch on every webview as it is made (Windows).
+#[cfg(windows)]
+pub fn plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("wis-focus-return")
+        .on_webview_ready(|webview| win::watch(&webview))
+        .build()
+}
+
+#[cfg(target_os = "linux")]
+mod gtk_focus {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    use gtk::glib::object::{Cast, ObjectExt, WeakRef};
+    use gtk::glib::StaticType;
+    use gtk::prelude::{GtkWindowExt, WidgetExt};
+
+    thread_local! {
+        /// Overlay label -> the webview it took focus from.
+        static RETURN_TO: RefCell<HashMap<String, WeakRef<gtk::Widget>>> =
+            RefCell::new(HashMap::new());
+    }
+
+    fn focus_of(view: &gtk::Widget) -> Option<(gtk::Widget, gtk::Widget)> {
+        let toplevel = view.toplevel()?;
+        let focus = toplevel.downcast_ref::<gtk::Window>()?.focused_widget()?;
+        Some((toplevel, focus))
+    }
+
+    /// Remember the webview holding focus as `overlay` takes it. Main thread.
+    pub fn remember(label: &str, overlay: &webkit2gtk::WebView) {
+        let overlay = overlay.upcast_ref::<gtk::Widget>();
+        let Some((_, focus)) = focus_of(overlay) else {
+            return;
+        };
+        let Some(holder) = focus.ancestor(webkit2gtk::WebView::static_type()) else {
+            return;
+        };
+        if holder != *overlay {
+            RETURN_TO.with(|map| {
+                map.borrow_mut()
+                    .insert(label.to_owned(), holder.downgrade())
+            });
+        }
+    }
+
+    /// Give focus back if `overlay` still holds it. Main thread, before hiding.
+    pub fn give_back(label: &str, overlay: &webkit2gtk::WebView) {
+        let Some(weak) = RETURN_TO.with(|map| map.borrow_mut().remove(label)) else {
+            return;
+        };
+        let overlay = overlay.upcast_ref::<gtk::Widget>();
+        let (Some(target), Some((toplevel, focus))) = (weak.upgrade(), focus_of(overlay)) else {
+            return;
+        };
+        let holds = focus == *overlay || focus.is_ancestor(overlay);
+        if holds && target.toplevel().as_ref() == Some(&toplevel) && target.is_mapped() {
+            target.grab_focus();
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub use gtk_focus::{give_back as give_back_gtk, remember as remember_gtk};
+
+#[cfg(test)]
+mod ledger_tests {
+    use super::Ledger;
+
+    fn opened(ledger: &mut Ledger) {
+        ledger.got_focus("main", "tab-a");
+        ledger.remember("main", "overlay-main-menu");
+        ledger.got_focus("main", "overlay-main-menu");
+    }
+
+    #[test]
+    fn a_closing_overlay_hands_focus_back_to_where_it_came_from() {
+        let mut ledger = Ledger::default();
+        opened(&mut ledger);
+        assert_eq!(
+            ledger.give_back("main", "overlay-main-menu").as_deref(),
+            Some("tab-a")
+        );
+        assert_eq!(ledger.give_back("main", "overlay-main-menu"), None);
+    }
+
+    #[test]
+    fn focus_moved_elsewhere_is_left_alone() {
+        let mut ledger = Ledger::default();
+        opened(&mut ledger);
+        ledger.got_focus("main", "tab-b");
+        assert_eq!(ledger.give_back("main", "overlay-main-menu"), None);
+    }
+
+    #[test]
+    fn refocusing_an_open_overlay_keeps_the_first_origin() {
+        let mut ledger = Ledger::default();
+        opened(&mut ledger);
+        ledger.remember("main", "overlay-main-menu");
+        assert_eq!(
+            ledger.give_back("main", "overlay-main-menu").as_deref(),
+            Some("tab-a")
+        );
+    }
+
+    #[test]
+    fn a_hidden_overlay_no_longer_counts_as_focused() {
+        let mut ledger = Ledger::default();
+        ledger.got_focus("main", "overlay-main-menu");
+        assert_eq!(ledger.give_back("main", "overlay-main-menu"), None);
+        ledger.remember("main", "overlay-main-find");
+        ledger.got_focus("main", "overlay-main-find");
+        assert_eq!(ledger.give_back("main", "overlay-main-find"), None);
+    }
+
+    #[test]
+    fn windows_are_tracked_apart() {
+        let mut ledger = Ledger::default();
+        ledger.got_focus("other", "tab-z");
+        ledger.remember("main", "overlay-main-menu");
+        ledger.got_focus("main", "overlay-main-menu");
+        assert_eq!(ledger.give_back("main", "overlay-main-menu"), None);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::first_up;
