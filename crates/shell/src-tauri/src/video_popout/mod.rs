@@ -238,7 +238,8 @@ pub async fn close_video_popout(
 /// A real navigation in a popped-out tab destroys the page (and its pinned
 /// video) under the player; restore the tab to a plain hidden webview.
 /// Called from the tab webview's page-load hook; no-op for other tabs.
-pub fn handle_navigation(app: &AppHandle, label: &str) {
+/// Returns whether the tab's webview was closed.
+pub fn handle_navigation(app: &AppHandle, label: &str) -> bool {
     #[cfg(target_os = "macos")]
     {
         let is_active = {
@@ -246,18 +247,31 @@ pub fn handle_navigation(app: &AppHandle, label: &str) {
             let guard = state.video_popout.lock().expect("video_popout poisoned");
             guard.active.as_ref().is_some_and(|a| a.label == label)
         };
-        if is_active {
-            imp::close_and_notify(app, label, false);
-        }
+        is_active && imp::close_and_notify(app, label, false)
     }
 
     #[cfg(not(target_os = "macos"))]
-    let _ = (app, label);
+    {
+        let _ = (app, label);
+        false
+    }
 }
 
-/// Close the popout window outright (main window teardown). The reparented
-/// webview dies with it; no restore is possible or needed.
+/// Close the popout window (main window teardown), first folding the tab
+/// back into its origin window, or closing it with its page when that window
+/// has gone.
 pub fn close_popout_window(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        let active = {
+            let state = app.state::<AppState>();
+            let guard = state.video_popout.lock().expect("video_popout poisoned");
+            guard.active.as_ref().map(|a| a.label.clone())
+        };
+        if let Some(label) = active {
+            imp::close_and_notify(app, &label, false);
+        }
+    }
     if let Some(window) = app.get_window(POPOUT_WINDOW_LABEL) {
         let _ = window.close();
     }

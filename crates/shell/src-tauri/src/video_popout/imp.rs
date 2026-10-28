@@ -335,7 +335,9 @@ unsafe fn handle_message(message: *mut AnyObject) {
             }
         }
         // The page already unwound its own styling before posting these.
-        "close" | "lost" => close_and_notify(app, &label, false),
+        "close" | "lost" => {
+            close_and_notify(app, &label, false);
+        }
         _ => {}
     }
 }
@@ -577,11 +579,13 @@ fn on_aspect_changed(app: &AppHandle, label: &str, aspect: f64) {
 }
 
 /// Tear the popout down: unwind page styling (when asked), reparent the
-/// webview back into the main window hidden, close the floating window,
+/// webview back into its origin window hidden (or close it when that window
+/// has closed), close the floating window,
 /// and tell the chrome (with the final geometry when one was live).
 /// Idempotent; emits the closed event even when nothing was active so
-/// chrome-side bookkeeping can never wedge.
-pub fn close_and_notify(app: &AppHandle, label: &str, eval_exit: bool) {
+/// chrome-side bookkeeping can never wedge. Returns whether the tab's webview
+/// was closed.
+pub fn close_and_notify(app: &AppHandle, label: &str, eval_exit: bool) -> bool {
     let state = app.state::<AppState>();
     let (was_active, origin_window) = {
         let mut guard = state.video_popout.lock().expect("video_popout poisoned");
@@ -596,6 +600,7 @@ pub fn close_and_notify(app: &AppHandle, label: &str, eval_exit: bool) {
     };
 
     let window = app.get_window(POPOUT_WINDOW_LABEL);
+    let mut destroyed = false;
     let final_frame = if was_active {
         window.as_ref().and_then(frame_of_window)
     } else {
@@ -612,20 +617,24 @@ pub fn close_and_notify(app: &AppHandle, label: &str, eval_exit: bool) {
             }
             set_fills_window(&webview, false);
             let _ = webview.hide();
-            // Reparent back into the tab's origin window; fall back to main if
-            // that window has since closed.
-            let home = origin_window
+            match origin_window
                 .as_deref()
                 .and_then(|label| app.get_window(label))
-                .or_else(|| app.get_window("main"));
-            if let Some(home) = home {
-                if let Err(err) = webview.reparent(&home) {
-                    log::warn!("video popout: reparent back failed: {err}");
+            {
+                Some(home) => {
+                    if let Err(err) = webview.reparent(&home) {
+                        log::warn!("video popout: reparent back failed: {err}");
+                    }
+                    // The reparent back paused the video; resume it so folding
+                    // the popout in never silences a playing video.
+                    let _ = crate::platform::content_world::eval(&webview, RESUME_EVAL);
                 }
+                // The origin window closed with the tab's other webviews.
+                None => match crate::commands::destroy_tab_webview(app, &webview) {
+                    Ok(()) => destroyed = true,
+                    Err(err) => log::warn!("video popout: closing the orphaned tab failed: {err}"),
+                },
             }
-            // The reparent back paused the video; resume it so folding
-            // the popout in never silences a playing video.
-            let _ = crate::platform::content_world::eval(&webview, RESUME_EVAL);
         }
         if let Some(window) = window {
             let _ = window.close();
@@ -640,6 +649,7 @@ pub fn close_and_notify(app: &AppHandle, label: &str, eval_exit: bool) {
         None => serde_json::json!({ "tab": tab_uuid(label) }),
     };
     let _ = app.emit(CLOSED_EVENT, payload);
+    destroyed
 }
 
 /// Install the popout script and its `wisPopout` handler.

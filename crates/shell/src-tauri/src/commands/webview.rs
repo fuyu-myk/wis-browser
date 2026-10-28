@@ -288,12 +288,9 @@ pub async fn create_tab_webview(
 
         #[cfg(not(target_os = "macos"))]
         {
-            builder = builder.incognito(true);
-        }
-
-        #[cfg(windows)]
-        {
-            builder = builder.data_directory(ephemeral_webview_data_dir(&app, workspace_id));
+            builder = builder
+                .incognito(true)
+                .data_directory(ephemeral_webview_data_dir(&app, workspace_id));
         }
     } else {
         builder = builder.data_store_identifier(workspace_id_to_data_store_bytes(workspace_id));
@@ -387,6 +384,7 @@ pub async fn create_tab_webview(
                 .map(|url| (url.to_string(), read_document_title(&webview)));
 
             // A popped-out tab navigating loses its pinned video.
+            let mut tab_closed = false;
             if matches!(event, PageLoadEvent::Started) {
                 crate::protection::page_blocks::forget(&label_for_load);
                 crate::vault::signup::forget_field(&tab_id.as_uuid().to_string());
@@ -402,8 +400,10 @@ pub async fn create_tab_webview(
                             .zoom_percent_for_url(payload.url().as_str()),
                     ),
                 );
-                crate::video_popout::handle_navigation(&app, &label_for_load);
-                crate::tabs::load_progress::start(&app, tab_id);
+                tab_closed = crate::video_popout::handle_navigation(&app, &label_for_load);
+                if !tab_closed {
+                    crate::tabs::load_progress::start(&app, tab_id);
+                }
             }
 
             let nav = crate::tabs::swipe_nav::push_nav_state(&webview);
@@ -442,7 +442,7 @@ pub async fn create_tab_webview(
                                 wis_core::LoadError::from_ns_error(domain, *code, url)
                             });
 
-                    let next = s.with_tab_loading(tab_id, loading)?;
+                    let next = s.with_tab_loading(tab_id, loading && !tab_closed)?;
                     let next = match (&ns_failure, &failure) {
                         (None, _) => next.with_tab_url_synced(tab_id, &url_string)?,
                         (Some(_), Some(err)) => next.with_tab_url_synced(tab_id, &err.url)?,
@@ -669,6 +669,11 @@ pub async fn create_tab_webview(
         })?;
 
     crate::chrome::pane_container::wrap(&child);
+
+    #[cfg(target_os = "linux")]
+    if ephemeral && !canvas_tab {
+        crate::protection::private_store::remember(&child, workspace_id);
+    }
 
     #[cfg(target_os = "macos")]
     if extended {
@@ -905,7 +910,8 @@ pub(crate) fn workspace_webview_data_dir(
 /// arguments (`--proxy-server`) never collide with the default folder's
 /// already-running browser process. Ephemeral workspace uuids are minted per
 /// session, so [`sweep_ephemeral_webview_data`] clears stale trees at startup.
-#[cfg(windows)]
+/// On Linux the path only names the workspace's shared in-memory context.
+#[cfg(not(target_os = "macos"))]
 pub(crate) fn ephemeral_webview_data_dir(
     app: &AppHandle,
     workspace_id: WorkspaceId,
@@ -952,16 +958,21 @@ pub async fn close_tab_webview(app: AppHandle, label: String) -> WisResult<()> {
         return Ok(());
     };
 
-    crate::platform::webview_close::terminate_page(&webview);
-    crate::platform::content_world::forget(&label);
-    crate::canvas::page::forget(&app, &label);
-    #[cfg(windows)]
-    crate::platform::win_dispatch::forget(&label);
-    webview.close().map_err(|err| WisError::InvalidInput {
+    destroy_tab_webview(&app, &webview).map_err(|err| WisError::InvalidInput {
         message: format!("close webview failed: {err}"),
     })?;
 
     Ok(())
+}
+
+pub(crate) fn destroy_tab_webview(app: &AppHandle, webview: &tauri::Webview) -> tauri::Result<()> {
+    let label = webview.label();
+    crate::platform::webview_close::terminate_page(webview);
+    crate::platform::content_world::forget(label);
+    crate::canvas::page::forget(app, label);
+    #[cfg(windows)]
+    crate::platform::win_dispatch::forget(label);
+    webview.close()
 }
 
 /// Set a tab webview's position and size in a single IPC round-trip, applying
