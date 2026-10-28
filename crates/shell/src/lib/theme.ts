@@ -107,7 +107,7 @@ export function defaultModeTokens(dark: boolean): ModeTokens {
         chrome_bg: '#26262e',
         content_bg: '#24242c',
         text_primary: '#eeedf0',
-        text_secondary: '#a4a3b2',
+        text_secondary: '#bab9c6',
         border: '#3a3a43',
       }
     : {

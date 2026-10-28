@@ -207,7 +207,7 @@ body[data-platform="linux"] { --radius-scale: 0; }
   --scrollbar-thumb:       rgba(235,234,240,0.45);
   --scrollbar-thumb-hover: rgba(235,234,240,0.65);
   --text-primary:   #EEEDF0;
-  --text-secondary: #A4A3B2;
+  --text-secondary: #BAB9C6;
   --text-tertiary:  #9B9AA8;
   --text-on-accent: #FFFFFF;
   --overlay:        rgba(238,237,240,0.06);
