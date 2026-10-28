@@ -16,6 +16,7 @@ import {
   SITE_PANEL_DONE,
   SITE_PANEL_OPEN,
   SITE_PANEL_READY,
+  SITE_PANEL_SHOWN,
   SITE_PANEL_SIZE,
   panelBounds,
   type SitePanelPayload,
@@ -71,7 +72,10 @@ export function useSitePanel(buttonRef: RefObject<HTMLElement>, shown: Tab | nul
     void listen<SitePanelSize>(SITE_PANEL_SIZE, (e) => {
       if (e.payload.window !== label || !pendingRef.current) return
       const { x, y, width, height } = bounds(e.payload.height)
-      void commands.setOverlayBounds(OVERLAY, x, y, width, height).catch(() => undefined)
+      void commands
+        .setOverlayBounds(OVERLAY, x, y, width, height)
+        .then(() => emit(SITE_PANEL_SHOWN, label))
+        .catch(() => undefined)
     }).then(keep)
 
     return () => {

@@ -26,6 +26,7 @@ import {
   SITE_PANEL_DONE,
   SITE_PANEL_OPEN,
   SITE_PANEL_READY,
+  SITE_PANEL_SHOWN,
   SITE_PANEL_SIZE,
   blockedLine,
   fingerprintingApplies,
@@ -53,6 +54,7 @@ export function SitePanelSurface() {
   useThemeApply(state?.settings)
   const [panel, setPanel] = useState<SitePanelPayload | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const [onScreen, setOnScreen] = useState(false)
   const bodyRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -63,7 +65,11 @@ export function SitePanelSurface() {
     void listen<SitePanelPayload>(SITE_PANEL_OPEN, (e) => {
       if (e.payload.window !== label) return
       setExpanded(false)
+      setOnScreen(false)
       setPanel(e.payload)
+    }).then(keep)
+    void listen<string>(SITE_PANEL_SHOWN, (e) => {
+      if (e.payload === label) setOnScreen(true)
     }).then(keep)
     void listen<string>(SITE_PANEL_CLOSE, (e) => {
       if (e.payload === label) setPanel(null)
@@ -112,7 +118,7 @@ export function SitePanelSurface() {
     rules.length,
   ])
 
-  useSurfaceFocus(panel)
+  useSurfaceFocus(onScreen ? panel : null)
 
   if (!panel || !site) return null
 

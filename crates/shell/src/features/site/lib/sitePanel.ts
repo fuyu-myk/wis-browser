@@ -8,6 +8,7 @@ export const SITE_PANEL_READY = 'wis-sitepanel-ready'
 export const SITE_PANEL_DONE = 'wis-sitepanel-done'
 export const SITE_PANEL_SIZE = 'wis-sitepanel-size'
 export const SITE_PANEL_CLOSE = 'wis-sitepanel-close'
+export const SITE_PANEL_SHOWN = 'wis-sitepanel-shown'
 export const SITE_PROTECTION_SESSION_EVENT = 'wis-site-protection-session'
 
 export const PANEL_WIDTH = 280
