@@ -20,6 +20,7 @@ import {
   withGroupOrder,
 } from '@/features/tabs/lib/tabKeys'
 import { announce } from '@/lib/announce'
+import { clearAfterClick } from '@/features/tabs/lib/dragFlag'
 import { patchTabOrder } from '@/features/tabs/lib/tabMotion'
 
 interface PinnedTabsProps {
@@ -161,7 +162,10 @@ export function PinnedTabs({
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       ghost?.remove()
-      if (begun) document.body.classList.remove('is-tab-dragging')
+      if (begun) {
+        document.body.classList.remove('is-tab-dragging')
+        clearAfterClick(draggedRef)
+      }
       setDropIndex(null)
       if (begun && lastIndex != null) {
         const next = reorderedAmong(fullOrder, pinnedSet, tabId, lastIndex)

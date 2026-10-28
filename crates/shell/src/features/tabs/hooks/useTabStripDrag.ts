@@ -25,6 +25,7 @@ import {
   type TabReorder,
   type DropTarget,
 } from '@/features/tabs/hooks/useTabSplit'
+import { clearAfterClick } from '@/features/tabs/lib/dragFlag'
 import { GAP_PX, moveInList, type FolderGroup } from '@/features/tabs/lib/tabStripLayout'
 
 /** A non-reorder drop target: "assign to island", not "insert here". */
@@ -320,7 +321,10 @@ export function useTabStripDrag(d: TabStripDragArgs): TabStripDrag {
       window.removeEventListener('pointerup', up)
       const ghostRect = ghost?.getBoundingClientRect()
       ghost?.remove()
-      if (begun) document.body.classList.remove('is-tab-dragging')
+      if (begun) {
+        document.body.classList.remove('is-tab-dragging')
+        clearAfterClick(pinDraggedRef)
+      }
       setPinDropIndex(null)
       setPinDragId(null)
       if (begun && lastIndex != null) {
@@ -395,7 +399,10 @@ export function useTabStripDrag(d: TabStripDragArgs): TabStripDrag {
       window.removeEventListener('pointerup', up)
       const ghostRect = ghost?.getBoundingClientRect()
       ghost?.remove()
-      if (begun) document.body.classList.remove('is-tab-dragging')
+      if (begun) {
+        document.body.classList.remove('is-tab-dragging')
+        clearAfterClick(folderReorderRef)
+      }
       setFolderReorderDrop(null)
       setIslandDragPart(null)
       if (begun && lastIndex != null) {

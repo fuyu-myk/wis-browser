@@ -19,6 +19,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { TabId, WorkspaceId } from '@/bindings/types'
+import { clearAfterClick } from '@/features/tabs/lib/dragFlag'
 import type { MenuPoint } from '@/features/tabs/lib/tabKeys'
 
 const DRAG_THRESHOLD_PX = 6
@@ -354,7 +355,10 @@ export function useTabSplit({
       const ghostRect = ghost?.getBoundingClientRect()
       ghost?.remove()
       ghost = null
-      if (begun) document.body.classList.remove('is-tab-dragging')
+      if (begun) {
+        document.body.classList.remove('is-tab-dragging')
+        clearAfterClick(draggedRef)
+      }
       if (begun && reorder) {
         reorder.onTarget(null)
         reorder.onDragChange?.(false)

@@ -10,6 +10,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 
 import { commands } from '@/bindings/commands'
+import { clearAfterClick } from '@/features/tabs/lib/dragFlag'
 import { closeTabAnimated, onTabClosing, TAB_EXIT_MS } from '@/features/tabs/lib/tabClose'
 import { closeReturnTarget, noteTabClosed, recentTabs } from '@/features/tabs/lib/tabMru'
 import type {
@@ -489,7 +490,10 @@ export function TabList({
       window.removeEventListener('pointerup', up)
       const ghostRect = ghost?.getBoundingClientRect()
       ghost?.remove()
-      if (begun) document.body.classList.remove('is-tab-dragging')
+      if (begun) {
+        document.body.classList.remove('is-tab-dragging')
+        clearAfterClick(folderDraggedRef)
+      }
       setFolderDropIndex(null)
       setFolderDragPart(null)
       if (begun && lastIndex != null) {
