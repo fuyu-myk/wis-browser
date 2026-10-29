@@ -5,6 +5,8 @@ use std::collections::{HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
+use super::objects::OBJECT;
+
 /// `page.js` sends at most 24 segments of 4000 characters at a time, and
 /// numbers segments up to a million a translation; these caps leave room
 /// above that.
@@ -35,12 +37,35 @@ pub struct Block {
     /// is. Styling elements may be dropped.
     #[serde(default)]
     pub needed: Vec<u32>,
+    /// The needed tags that are images, icons or formulas, sent as U+FFFC.
+    #[serde(default)]
+    pub objects: Vec<u32>,
 }
 
 impl Block {
-    /// Whether the segment is plain text, with no inline elements.
+    /// Whether the segment is plain text, with no inline elements but one
+    /// object. Placeholders without tags cannot be told apart, so two objects
+    /// go by their tags.
     pub fn plain(&self) -> bool {
-        self.runs.iter().all(|run| run.tag.is_none())
+        self.objects.len() <= 1
+            && self
+                .runs
+                .iter()
+                .all(|run| run.tag.is_none_or(|tag| self.objects.contains(&tag)))
+    }
+
+    /// Each object is needed, listed once and carried by placeholders only.
+    fn objects_hold(&self) -> bool {
+        self.objects.iter().enumerate().all(|(i, &tag)| {
+            let carried = |run: &Run| run.tag == Some(tag);
+            self.needed.contains(&tag)
+                && !self.objects[..i].contains(&tag)
+                && self.runs.iter().any(carried)
+                && self
+                    .runs
+                    .iter()
+                    .all(|run| !carried(run) || run.text == OBJECT)
+        })
     }
 
     fn within_caps(&self) -> bool {
@@ -48,6 +73,8 @@ impl Block {
         self.id < MAX_BLOCK_ID
             && self.runs.len() <= MAX_RUNS
             && self.needed.len() <= self.runs.len()
+            && self.objects.len() <= self.needed.len()
+            && self.objects_hold()
             && bytes <= MAX_BLOCK_BYTES
     }
 }
@@ -151,6 +178,7 @@ mod tests {
             runs: vec![run(&format!("段落{id}"), None)],
             main: false,
             needed: vec![],
+            objects: vec![],
         }
     }
 
@@ -186,9 +214,49 @@ mod tests {
                     runs: vec![run("詳しくは", None), run("こちら", Some(0))],
                     main: true,
                     needed: vec![0],
+                    objects: vec![],
                 }]
             })
         );
+    }
+
+    #[test]
+    fn a_segment_whose_only_inline_elements_are_objects_is_plain() {
+        let body = r#"{"kind":"blocks","gen":1,"wave":1,"blocks":[{"id":0,"runs":[{"text":"右上の"},{"text":"\uFFFC","tag":0},{"text":"を押す"}],"needed":[0],"objects":[0]}]}"#;
+        let Some(PageMessage::Blocks { blocks, .. }) = parse_message(body) else {
+            panic!("a blocks message");
+        };
+        assert!(blocks[0].plain());
+        let linked = Block {
+            runs: vec![run(OBJECT, Some(0)), run("こちら", Some(1))],
+            needed: vec![0, 1],
+            ..blocks[0].clone()
+        };
+        assert!(!linked.plain());
+        let two = Block {
+            runs: vec![run(OBJECT, Some(0)), run("か", None), run(OBJECT, Some(1))],
+            needed: vec![0, 1],
+            objects: vec![0, 1],
+            ..blocks[0].clone()
+        };
+        assert!(!two.plain());
+    }
+
+    #[test]
+    fn a_block_whose_objects_are_not_placeholders_it_needs_is_dropped() {
+        let body = |objects: &str| {
+            format!(
+                r#"{{"kind":"blocks","gen":1,"wave":1,"blocks":[{{"id":0,"runs":[{{"text":"\uFFFC","tag":0}},{{"text":"こちら","tag":1}}],"needed":[0,1],"objects":[{objects}]}}]}}"#
+            )
+        };
+        let kept = |objects: &str| match parse_message(&body(objects)) {
+            Some(PageMessage::Blocks { blocks, .. }) => blocks.len(),
+            other => panic!("a blocks message, got {other:?}"),
+        };
+        assert_eq!(kept("0"), 1);
+        assert_eq!(kept("1"), 0, "a link listed as an object");
+        assert_eq!(kept("2"), 0, "a tag no run carries");
+        assert_eq!(kept("0,0"), 0, "an object listed twice");
     }
 
     #[test]
@@ -233,6 +301,7 @@ mod tests {
             runs: vec![run("詳しくは", None), run("こちら", Some(0))],
             main: false,
             needed: vec![0],
+            objects: vec![],
         }
     }
 
@@ -254,7 +323,7 @@ mod tests {
     fn a_block_needing_more_tags_than_it_has_runs_is_dropped() {
         let needed = ["0"; 2].join(",");
         let body = format!(
-            r#"{{"kind":"blocks","gen":1,"wave":1,"blocks":[{{"id":0,"runs":[{{"text":"x"}}],"needed":[{needed}]}}]}}"#
+            r#"{{"kind":"blocks","gen":1,"wave":1,"blocks":[{{"id":0,"runs":[{{"text":"x"}}],"needed":[{needed}]}},{{"id":1,"runs":[{{"text":"x","tag":0}},{{"text":"y"}}],"needed":[0],"objects":[0,0]}}]}}"#
         );
         let Some(PageMessage::Blocks { blocks, .. }) = parse_message(&body) else {
             panic!("a blocks message");

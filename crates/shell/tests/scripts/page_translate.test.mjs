@@ -1,13 +1,14 @@
-// `translation/page.js`: splits a page into segments, sends the visible ones
-// to `wisTranslate`, puts translations in place and restores the original.
+// The page script in `translation/page/`: splits a page into segments, sends
+// the visible ones to `wisTranslate`, puts translations in place and restores
+// the original.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import { NodeFilter, Text, eventTarget, h, handlers, page } from '../support/s2-dom.mjs'
-import { includedFile } from '../support/rustSource.mjs'
+import { concatenated } from '../support/rustSource.mjs'
 
-const SCRIPT = includedFile('translation/page.js')
+const SCRIPT = concatenated('translation/page.rs', 'PAGE_JS')
 
 /** An IntersectionObserver whose callbacks the test fires by hand. */
 function observerClass() {
@@ -156,6 +157,7 @@ describe('finding segments', () => {
         ],
         main: false,
         needed: [0],
+        objects: [],
       },
     ])
   })
@@ -311,13 +313,24 @@ describe('finding segments', () => {
     assert.deepEqual(texts, ['二酸化炭素CO2は気体です。', '広さは10m2です。', '漢字を読む。'])
   })
 
-  test('a script or a custom element inside a sentence still ends it', () => {
+  test('a link to no stylesheet inside a sentence keeps it whole, a stylesheet ends it', () => {
+    const doc = page(
+      'https://example.jp/',
+      h('p', {}, '零点集合', h('link', { rel: 'mw-deduplicated-inline-style', href: 'mw-data:x' }), 'を表す条件。'),
+      h('p', {}, '前の文', h('link', { rel: 'stylesheet', href: '/a.css' }), '後の文'),
+    )
+    const texts = blocksOf(goVisible(load(doc))).map((b) => b.runs.map((r) => r.text).join(''))
+    assert.deepEqual(texts, ['零点集合を表す条件。', '前の文', '後の文'])
+  })
+
+  test('a script inside a sentence still ends it, and a custom element sits in it', () => {
     const doc = page(
       'https://example.jp/',
       h('p', {}, '前の文', h('script', { src: 'x.js' }), '後の文'),
       h('p', {}, '別の文', h('ion-icon', { name: 'star' }), '最後の文'),
     )
-    assert.equal(blocksOf(goVisible(load(doc))).length, 4)
+    const texts = blocksOf(goVisible(load(doc))).map((b) => b.runs.map((r) => r.text).join(''))
+    assert.deepEqual(texts, ['前の文', '後の文', '別の文\uFFFC最後の文'])
   })
 
   test('an empty element the page later fills makes the sentence be read again', () => {
@@ -476,16 +489,119 @@ describe('finding segments', () => {
 
   test('a segment that is one link is sent whole, untagged', () => {
     const doc = page('https://example.jp/', h('ul', {}, h('li', {}, h('a', { href: '/' }, 'ホーム'))))
-    assert.deepEqual(blocksOf(goVisible(load(doc))), [{ id: 0, runs: [{ text: 'ホーム' }], main: false, needed: [] }])
+    assert.deepEqual(blocksOf(goVisible(load(doc))), [{ id: 0, runs: [{ text: 'ホーム' }], main: false, needed: [], objects: [] }])
   })
 
-  test('a line break or an image splits a block into segments', () => {
-    const doc = page(
-      'https://example.jp/',
-      h('p', {}, '一行目', h('br'), '二行目', h('img', { src: '/i.png' }), '三行目'),
-    )
+  test('a line break splits a block into segments', () => {
+    const doc = page('https://example.jp/', h('p', {}, '一行目', h('br'), '二行目', h('br'), '三行目'))
     const texts = blocksOf(goVisible(load(doc))).map((b) => b.runs.map((r) => r.text).join(''))
     assert.deepEqual(texts, ['一行目', '二行目', '三行目'])
+  })
+
+  test('an image inside a sentence goes as a placeholder and keeps its place', () => {
+    const p = h('p', {}, '右上の', h('img', { src: '/gear.png', alt: '歯車' }), 'ボタンを押します。')
+    const loaded = load(page('https://example.jp/', p))
+    const before = p.innerHTML
+    const [block] = blocksOf(goVisible(loaded))
+    assert.deepEqual(block.runs, [{ text: '右上の' }, { text: '\uFFFC', tag: 0 }, { text: 'ボタンを押します。' }])
+    assert.deepEqual([block.needed, block.objects], [[0], [0]])
+    loaded.api.apply(1, 0, [{ text: 'Press the ' }, { text: '\uFFFC', tag: 0 }, { text: ' button at the top right.' }])
+    assert.equal(p.innerHTML, 'Press the <img src="/gear.png" alt="歯車"> button at the top right.')
+    loaded.api.revert()
+    assert.equal(p.innerHTML, before)
+  })
+
+  test('icons, formulas and links around an image are placeholders too', () => {
+    const p = h(
+      'p',
+      {},
+      '関数',
+      h('span', { class: 'math' }, h('math', {}, 'f(x)'), h('img', { alt: 'f(x)' })),
+      'は',
+      h('svg', {}, h('title', {}, '注')),
+      h('a', { href: '/x' }, ' ', h('img', { src: '/i.png' })),
+      h('ion-icon', { name: 'star' }),
+      'で連続である。',
+    )
+    const [block] = blocksOf(goVisible(load(page('https://example.jp/', p))))
+    assert.deepEqual(block.runs.map((r) => r.text).join(''), '関数\uFFFCは\uFFFC\uFFFC\uFFFCで連続である。')
+    assert.deepEqual(block.objects, [0, 1, 2, 3])
+  })
+
+  test('an image before a label, apart from a sentence or after it stays out of it', () => {
+    const doc = page(
+      'https://example.jp/',
+      h('p', {}, h('img', { src: '/a.png' }), '設定'),
+      h('p', {}, h('img', { src: '/b.png' }), ' 設定を開きます。'),
+      h('p', {}, '設定を開きます。', h('img', { src: '/c.png' })),
+    )
+    const loaded = load(doc)
+    const blocks = blocksOf(goVisible(loaded))
+    assert.deepEqual(blocks.map((b) => [b.runs.map((r) => r.text).join(''), b.objects]), [
+      ['設定', []],
+      [' 設定を開きます。', []],
+      ['設定を開きます。', []],
+    ])
+    loaded.api.apply(1, 2, [{ text: 'Open the settings.' }])
+    assert.equal(doc.body.childNodes[2].innerHTML, 'Open the settings.<img src="/c.png">')
+  })
+
+  test('an image leading a sentence is part of it', () => {
+    const p = h('p', {}, h('img', { src: '/star.png', alt: '星' }), 'が付いた項目は必須です。')
+    const loaded = load(page('https://example.jp/', p))
+    const before = p.innerHTML
+    const [block] = blocksOf(goVisible(loaded))
+    assert.deepEqual([block.runs, block.objects], [[{ text: '\uFFFC', tag: 0 }, { text: 'が付いた項目は必須です。' }], [0]])
+    loaded.api.apply(1, 0, [{ text: 'Items marked with ' }, { text: '\uFFFC', tag: 0 }, { text: ' are required.' }])
+    assert.equal(p.innerHTML, 'Items marked with <img src="/star.png" alt="星"> are required.')
+    loaded.api.revert()
+    assert.equal(p.innerHTML, before)
+  })
+
+  test('an icon before a sentence that is one link stays out, so the link translates whole', () => {
+    const p = h('p', {}, h('img', { src: '/gear.png' }), h('a', { href: '/x' }, '設定を開きます。'))
+    const [block] = blocksOf(goVisible(load(page('https://example.jp/', p))))
+    assert.deepEqual([block.runs, block.objects], [[{ text: '設定を開きます。' }], []])
+  })
+
+  test('an element that keeps its place among the words is not moved', () => {
+    const link = h('a', { href: '/x' }, 'リンク')
+    const p = h('p', {}, 'これは', link, 'です。')
+    const loaded = load(page('https://example.jp/', p))
+    const before = p.innerHTML
+    goVisible(loaded)
+    const moved = []
+    const insert = p.insertBefore.bind(p)
+    p.insertBefore = (node, ref) => {
+      moved.push(node)
+      return insert(node, ref)
+    }
+    loaded.api.apply(1, 0, [{ text: 'This', tag: 0 }, { text: ' is it.' }])
+    assert.equal(p.innerHTML, '<a href="/x">This</a> is it.')
+    loaded.api.revert()
+    assert.equal(p.innerHTML, before)
+    assert.ok(!moved.includes(link), 'the link stayed where it was')
+  })
+
+  test('a segment whose image the page removed is let go and read again', () => {
+    const icon = h('img', { src: '/gear.png' })
+    const p = h('p', {}, '右上の', icon, 'ボタンを押します。')
+    const loaded = load(page('https://example.jp/', p))
+    goVisible(loaded)
+    loaded.api.apply(1, 0, [{ text: 'Press the ' }, { text: '￼', tag: 0 }, { text: ' button.' }])
+    icon.remove()
+    loaded.mutations.at(-1).fire({ type: 'childList', target: p, addedNodes: [], removedNodes: [icon] })
+    loaded.flush()
+    assert.equal(p.textContent, '右上のボタンを押します。')
+  })
+
+  test('a translation that loses an image is not used', () => {
+    const p = h('p', {}, '右上の', h('img', { src: '/gear.png' }), 'ボタンを押します。')
+    const loaded = load(page('https://example.jp/', p))
+    const before = p.innerHTML
+    goVisible(loaded)
+    loaded.api.apply(1, 0, [{ text: 'Press the button at the top right.' }])
+    assert.equal(p.innerHTML, before)
   })
 
   test('a segment with more pieces than a message may carry is left as it is', () => {
@@ -516,8 +632,23 @@ describe('sending what is on screen', () => {
     loaded.observers[0].show(second)
     loaded.flush()
     const sent = blocksOf(loaded.messages().filter((m) => m.kind === 'blocks'))
-    assert.deepEqual(sent, [{ id: 1, runs: [{ text: '二つ目' }], main: false, needed: [] }])
+    assert.deepEqual(sent, [{ id: 1, runs: [{ text: '二つ目' }], main: false, needed: [], objects: [] }])
     assert.ok(!loaded.observers[0].targets.has(second), 'a sent block stops being watched')
+  })
+
+  test('a segment in an element shown only as its contents is watched through its parent', () => {
+    const contents = h('span', {}, '中身だけの要素')
+    contents.style.display = 'contents'
+    const p = h('p', {}, contents)
+    const loaded = load(page('https://example.jp/', p))
+    loaded.api.start(1)
+    loaded.api.go(1)
+    assert.deepEqual([...loaded.observers[0].targets], [p])
+    loaded.observers[0].show(p)
+    loaded.flush()
+    const sent = blocksOf(loaded.messages().filter((m) => m.kind === 'blocks'))
+    assert.deepEqual(sent.map((b) => b.runs[0].text), ['中身だけの要素'])
+    assert.deepEqual([...loaded.observers[0].targets], [])
   })
 
   test('a long page goes out in batches tagged with its generation', () => {
@@ -775,7 +906,7 @@ describe('putting translations in place', () => {
     const loaded = load(page('https://example.jp/', p))
     const blocks = blocksOf(goVisible(loaded))
     assert.deepEqual(blocks, [
-      { id: 0, runs: [{ text: '一覧は' }, { text: 'ls', tag: 0 }, { text: 'で表示' }], main: false, needed: [0] },
+      { id: 0, runs: [{ text: '一覧は' }, { text: 'ls', tag: 0 }, { text: 'で表示' }], main: false, needed: [0], objects: [] },
     ])
     loaded.api.apply(1, 0, [{ text: 'Show the list with ' }, { text: 'エルエス', tag: 0 }])
     assert.equal(p.innerHTML, 'Show the list with <code>ls</code>')
@@ -816,13 +947,13 @@ describe('putting translations in place', () => {
   })
 
   test('the spaces at a segment\'s edges survive a translation that drops them', () => {
-    const p = h('p', {}, '前の文 ', h('img', { src: '/i.png' }), ' 後の文')
+    const p = h('p', {}, '前の文 ', h('br'), ' 後の文')
     const loaded = load(page('https://example.jp/', p))
     const sent = blocksOf(goVisible(loaded)).map((b) => b.runs)
     assert.deepEqual(sent, [[{ text: '前の文 ' }], [{ text: ' 後の文' }]])
     loaded.api.apply(1, 0, [{ text: 'Before' }])
     loaded.api.apply(1, 1, [{ text: ' After' }])
-    assert.equal(p.innerHTML, 'Before <img src="/i.png"> After')
+    assert.equal(p.innerHTML, 'Before <br> After')
   })
 
   test('a lost space before a link goes in front of it in a new node, and reverts', () => {

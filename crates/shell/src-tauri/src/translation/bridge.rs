@@ -29,6 +29,9 @@ pub struct TranslateRequest<'a> {
     pub target: &'a str,
     pub strategy: Strategy,
     pub runs: &'a [Run],
+    /// Tags whose text the framework is told not to translate.
+    #[serde(skip_serializing_if = "<[u32]>::is_empty")]
+    pub skip: &'a [u32],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -221,11 +224,19 @@ mod tests {
             target: "en",
             strategy: Strategy::LowLatency,
             runs: &runs,
+            skip: &[],
         };
         assert_eq!(
             serde_json::to_string(&request).unwrap(),
             r#"{"source":"ja","target":"en","strategy":"lowLatency","runs":[{"text":"こんにちは"},{"text":"世界","tag":2}]}"#
         );
+        let held = TranslateRequest {
+            skip: &[2],
+            ..request
+        };
+        assert!(serde_json::to_string(&held)
+            .unwrap()
+            .ends_with(r#""tag":2}],"skip":[2]}"#));
     }
 
     #[test]
@@ -278,6 +289,7 @@ mod tests {
             target: "en",
             strategy: Strategy::HighFidelity,
             runs: &runs,
+            skip: &[],
         };
         assert_eq!(
             translate(&request).await,

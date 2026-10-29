@@ -28,6 +28,7 @@ struct TranslateRequest: Decodable {
     let target: String
     let strategy: String
     let runs: [Run]
+    let skip: [Int]?
 }
 
 struct Reply: Encodable {
@@ -191,7 +192,7 @@ func translateBlock(_ request: TranslateRequest, strategy: TranslationSession.St
         target: Locale.Language(identifier: request.target),
         preferredStrategy: strategy
     )
-    let response = try await session.translate(attributed(request.runs))
+    let response = try await session.translate(attributed(request.runs, skip: Set(request.skip ?? [])))
     guard let out = response.attributedTargetText else {
         return [Run(text: response.targetText, tag: nil)]
     }
@@ -199,11 +200,14 @@ func translateBlock(_ request: TranslateRequest, strategy: TranslationSession.St
 }
 
 @available(macOS 26.4, *)
-func attributed(_ runs: [Run]) -> AttributedString {
+func attributed(_ runs: [Run], skip: Set<Int>) -> AttributedString {
     var text = AttributedString()
     for run in runs {
         var part = AttributedString(run.text)
-        if let tag = run.tag { part[WisTag.self] = tag }
+        if let tag = run.tag {
+            part[WisTag.self] = tag
+            if skip.contains(tag) { part.translation.skipsTranslation = true }
+        }
         text += part
     }
     return text

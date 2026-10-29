@@ -14,6 +14,7 @@ use tokio::sync::oneshot;
 use super::bridge::{self, Check, Status, Strategy, TranslateError, TranslateRequest};
 use super::language::page_language;
 use super::message::{Block, PageMessage, Queue, Run};
+use super::objects::{held, place, HELD, OBJECT};
 use super::page;
 use super::pieces::{anchor, lost_tags, pieces, piecewise, relabel, spaced, tidy, MAX_PIECES};
 use crate::platform::content_world;
@@ -293,16 +294,39 @@ fn apply(app: &AppHandle, label: &str, gen: u64, id: u32, runs: &[Run]) {
     }
 }
 
-/// Translates the task's segment. One the low-latency model fails on is
-/// retried in high fidelity, and a lasting failure keeps the page there.
-async fn translate_whole(label: &str, gen: u64, task: &Task) -> Result<Vec<Run>, TranslateError> {
-    let request = |strategy| TranslateRequest {
+/// What stands for an object in a request with `strategy`.
+fn marker(strategy: Strategy) -> &'static str {
+    match strategy {
+        Strategy::HighFidelity => HELD,
+        Strategy::LowLatency => OBJECT,
+    }
+}
+
+/// The segment translated with `strategy`; high fidelity gets its objects
+/// as held bullets.
+async fn ask(task: &Task, strategy: Strategy) -> Result<Vec<Run>, TranslateError> {
+    let objects = &task.block.objects;
+    let holding = (strategy == Strategy::HighFidelity && !objects.is_empty())
+        .then(|| held(&task.block.runs, objects));
+    let request = TranslateRequest {
         source: &task.source,
         target: &task.target,
         strategy,
-        runs: &task.block.runs,
+        runs: holding.as_deref().unwrap_or(&task.block.runs),
+        skip: if holding.is_some() { objects } else { &[] },
     };
-    match bridge::translate(&request(task.strategy)).await {
+    bridge::translate(&request).await
+}
+
+/// Translates the task's segment, with the strategy that answered. One the
+/// low-latency model fails on is retried in high fidelity, and a lasting
+/// failure keeps the page there.
+async fn translate_whole(
+    label: &str,
+    gen: u64,
+    task: &Task,
+) -> Result<(Vec<Run>, Strategy), TranslateError> {
+    match ask(task, task.strategy).await {
         Err(err)
             if task.strategy == Strategy::LowLatency
                 && err != TranslateError::NothingToTranslate =>
@@ -314,9 +338,10 @@ async fn translate_whole(label: &str, gen: u64, task: &Task) -> Result<Vec<Run>,
                 log::debug!("low latency failed in {label}, using high fidelity from now: {err}");
                 stop_low_latency(label, gen);
             }
-            bridge::translate(&request(Strategy::HighFidelity)).await
+            let runs = ask(task, Strategy::HighFidelity).await?;
+            Ok((runs, Strategy::HighFidelity))
         }
-        result => result,
+        result => result.map(|runs| (runs, task.strategy)),
     }
 }
 
@@ -330,6 +355,7 @@ async fn translate_piece(label: &str, gen: u64, task: &Task, text: String) -> Op
         target: &task.target,
         strategy: Strategy::HighFidelity,
         runs: &runs,
+        skip: &[],
     };
     let pieces = bridge::translate(&request).await.ok()?;
     let text: String = pieces.into_iter().map(|piece| piece.text).collect();
@@ -337,9 +363,16 @@ async fn translate_piece(label: &str, gen: u64, task: &Task, text: String) -> Op
 }
 
 /// A lost inline element goes back on its own words in the translation,
-/// and failing that, the segment is redone piece by piece.
+/// and failing that, the segment is redone piece by piece; an object stays
+/// as it was sent.
 async fn translate(label: &str, gen: u64, task: &Task) -> Result<Vec<Run>, TranslateError> {
-    let runs = translate_whole(label, gen, task).await?;
+    let (whole, strategy) = translate_whole(label, gen, task).await?;
+    let runs = place(
+        whole,
+        &task.block.runs,
+        &task.block.objects,
+        marker(strategy),
+    );
     let sent = &task.block.runs;
     let lost = lost_tags(sent, &runs, &task.block.needed);
     if lost.is_empty() || pieces(sent) > MAX_PIECES || !is_current(label, gen) {
@@ -349,7 +382,11 @@ async fn translate(label: &str, gen: u64, task: &Task) -> Result<Vec<Run>, Trans
     let unplaced = || TranslateError::Failed("an inline element could not be placed".into());
     let mut found = Vec::with_capacity(lost.len());
     for &(tag, text) in &lost {
-        let piece = translate_piece(label, gen, task, text.to_string()).await;
+        let piece = if task.block.objects.contains(&tag) {
+            Some(text.to_string())
+        } else {
+            translate_piece(label, gen, task, text.to_string()).await
+        };
         found.push((tag, piece.ok_or_else(unplaced)?));
     }
 
@@ -368,6 +405,7 @@ async fn translate(label: &str, gen: u64, task: &Task) -> Result<Vec<Run>, Trans
     piecewise(sent, spaced, |text| async move {
         match known(&text) {
             Some(piece) => Some(piece),
+            None if text == OBJECT => Some(text),
             None => translate_piece(label, gen, task, text).await,
         }
     })
@@ -423,14 +461,31 @@ mod tests {
             runs: vec![run("概要", None), run("の説明", None)],
             main: true,
             needed: vec![],
+            objects: vec![],
         };
         let linked = Block {
             id: 1,
             runs: vec![run("詳しくは", None), run("こちら", Some(0))],
             main: true,
             needed: vec![0],
+            objects: vec![],
+        };
+        let pictured = Block {
+            id: 2,
+            runs: vec![run("右上の", None), run("\u{FFFC}", Some(0))],
+            main: true,
+            needed: vec![0],
+            objects: vec![0],
         };
         assert_eq!(strategy_for(&plain, true), Strategy::LowLatency);
+        let two = Block {
+            runs: vec![run("\u{FFFC}", Some(0)), run("\u{FFFC}", Some(1))],
+            needed: vec![0, 1],
+            objects: vec![0, 1],
+            ..pictured.clone()
+        };
+        assert_eq!(strategy_for(&pictured, true), Strategy::LowLatency);
+        assert_eq!(strategy_for(&two, true), Strategy::HighFidelity);
         assert_eq!(strategy_for(&linked, true), Strategy::HighFidelity);
         assert_eq!(strategy_for(&plain, false), Strategy::HighFidelity);
     }

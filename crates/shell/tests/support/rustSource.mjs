@@ -14,6 +14,20 @@ export function includedFile(file) {
   return read(file)
 }
 
+export function concatenated(file, name) {
+  const source = read(file)
+  const at = source.indexOf(`const ${name}: &str = concat!(`)
+  if (at < 0) throw new Error(`${name} not found in ${file}`)
+  const body = source.slice(at, source.indexOf(');', at))
+  const parts = /include_str!\("([^"]+)"\)|"((?:[^"\\]|\\.)*)"/g
+  let text = ''
+  for (const [, included, literal] of body.matchAll(parts)) {
+    if (included) text += read(new URL(included, new URL(file, SRC)).href)
+    else text += JSON.parse(`"${literal}"`)
+  }
+  return text
+}
+
 /** The body of `const NAME: &str = r#"..."#;` in `file`. */
 export function rawStringConst(file, name) {
   const source = read(file)

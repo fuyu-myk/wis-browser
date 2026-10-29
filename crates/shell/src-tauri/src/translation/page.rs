@@ -1,10 +1,16 @@
-//! The page side of translation: `page.js`, run in Wis's content world, and
-//! the `wisTranslate` handler its messages arrive on. Only Wis's world can
-//! post to the handler, and only the main frame's messages count.
+//! The page side of translation: the page script, run in Wis's content
+//! world, and the `wisTranslate` handler its messages arrive on. Only Wis's
+//! world can post to the handler, and only the main frame's messages count.
 
 use super::message::{parse_message, Run};
 
-const PAGE_JS: &str = include_str!("page.js");
+const PAGE_JS: &str = concat!(
+    "(function () {\nif (window.__wisTranslate) return\n",
+    include_str!("page/segments.js"),
+    include_str!("page/layout.js"),
+    include_str!("page/flow.js"),
+    "})()\n",
+);
 
 const HANDLER: &str = "wisTranslate";
 

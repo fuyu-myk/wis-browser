@@ -7,6 +7,7 @@ mod bridge;
 pub mod command;
 mod language;
 mod message;
+mod objects;
 #[cfg(target_os = "macos")]
 mod page;
 mod pieces;

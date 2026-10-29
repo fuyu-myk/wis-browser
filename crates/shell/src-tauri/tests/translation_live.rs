@@ -56,6 +56,7 @@ mod live {
             target: "en",
             strategy: Strategy::HighFidelity,
             runs: &runs,
+            skip: &[],
         };
         let out = translate(&request)
             .await
@@ -67,6 +68,26 @@ mod live {
             .any(|run| run.tag == Some(1) && !run.text.trim().is_empty())
         {
             return Err(format!("the tagged link did not survive: {out:?}"));
+        }
+
+        let held = [
+            run_text("画面下部の", None),
+            run_text("•", Some(0)),
+            run_text("を押して、最初の画面に戻ります。", None),
+        ];
+        let skipped = translate(&TranslateRequest {
+            runs: &held,
+            skip: &[0],
+            ..request
+        })
+        .await
+        .map_err(|err| format!("held object: {err}"))?;
+        println!("held object: {skipped:?}");
+        if !skipped
+            .iter()
+            .any(|run| run.tag == Some(0) || run.text.contains('•'))
+        {
+            return Err(format!("the held object did not come back: {skipped:?}"));
         }
 
         let unsupported = TranslateRequest {

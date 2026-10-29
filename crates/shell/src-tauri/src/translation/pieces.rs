@@ -26,7 +26,7 @@ fn word_char(c: char) -> bool {
     c.is_alphanumeric() || mark(c)
 }
 
-fn push_plain(out: &mut Vec<Run>, text: &str) {
+pub fn push_plain(out: &mut Vec<Run>, text: &str) {
     if text.is_empty() {
         return;
     }
@@ -192,21 +192,26 @@ pub fn anchor(mut runs: Vec<Run>, found: &[(u32, String)], spaced: bool) -> Opti
                 .filter(|(_, run)| run.tag.is_none())
                 .find_map(|(i, run)| find_word(&run.text, needle, spaced).map(|range| (i, range)))
         })?;
-        let text = std::mem::take(&mut runs[at].text);
-        let split = [
-            (&text[..range.start], None),
-            (&text[range.clone()], Some(*tag)),
-            (&text[range.end..], None),
-        ]
-        .into_iter()
-        .filter(|(part, _)| !part.is_empty())
-        .map(|(part, tag)| Run {
-            text: part.to_string(),
-            tag,
-        });
-        runs.splice(at..=at, split.collect::<Vec<_>>());
+        tag_within(&mut runs, at, range, *tag);
     }
     Some(runs)
+}
+
+/// Splits run `at` so that `range` of its text carries `tag`.
+pub fn tag_within(runs: &mut Vec<Run>, at: usize, range: Range<usize>, tag: u32) {
+    let text = std::mem::take(&mut runs[at].text);
+    let split = [
+        (&text[..range.start], None),
+        (&text[range.clone()], Some(tag)),
+        (&text[range.end..], None),
+    ]
+    .into_iter()
+    .filter(|(part, _)| !part.is_empty())
+    .map(|(part, tag)| Run {
+        text: part.to_string(),
+        tag,
+    });
+    runs.splice(at..=at, split);
 }
 
 pub fn pieces(runs: &[Run]) -> usize {
