@@ -154,6 +154,7 @@ describe('finding segments', () => {
           { text: 'を。' },
         ],
         main: false,
+        needed: [0],
       },
     ])
   })
@@ -231,9 +232,142 @@ describe('finding segments', () => {
     assert.deepEqual(blocksOf(goVisible(load(doc))).map((b) => b.runs), [[{ text: '構造と動作' }]])
   })
 
+  test('a word-break hint or an empty element inside a sentence keeps it whole', () => {
+    const p = h(
+      'p',
+      {},
+      '下取りに出すと',
+      h('wbr'),
+      h('span', { class: 'nowrap' }, '実質'),
+      h('wbr'),
+      h('span', { class: 'adjust' }),
+      h('span', { class: 'nowrap' }, 'お得'),
+      'です。',
+    )
+    const blocks = blocksOf(goVisible(load(page('https://example.jp/', p))))
+    assert.deepEqual(
+      blocks.map((b) => b.runs),
+      [[{ text: '下取りに出すと' }, { text: '実質', tag: 0 }, { text: 'お得', tag: 1 }, { text: 'です。' }]],
+    )
+    assert.deepEqual(blocks[0].needed, [])
+  })
+
+  test('word-break hints go back where they were when a reordered sentence is reverted', () => {
+    const p = h('p', {}, '詳しくは', h('wbr'), h('a', { href: '/x' }, 'こちら'), h('wbr'), 'を見る')
+    const loaded = load(page('https://example.jp/', p))
+    const before = p.innerHTML
+    goVisible(loaded)
+    loaded.api.apply(1, 0, [{ text: 'here', tag: 0 }, { text: ' for details' }])
+    assert.equal(p.textContent, 'here for details')
+    loaded.api.revert()
+    assert.equal(p.innerHTML, before)
+  })
+
+  test('a sentence of styling elements followed by a link keeps the sentence whole', () => {
+    const div = h(
+      'div',
+      {},
+      h('span', { class: 'nowrap' }, 'キャリア契約で、'),
+      h('wbr'),
+      h('span', { class: 'nowrap' }, 'さらに割引です。'),
+      h('wbr'),
+      h('a', { href: '/buy' }, 'さらに詳しく'),
+    )
+    const blocks = blocksOf(goVisible(load(page('https://example.jp/', div))))
+    assert.deepEqual(
+      blocks.map((b) => b.runs.map((r) => r.text).join('')),
+      ['キャリア契約で、さらに割引です。', 'さらに詳しく'],
+    )
+  })
+
+  test('silent elements stay beside the text they followed', () => {
+    const footnote = h('sup', {}, h('a', { href: '#f' }, '1'))
+    const p = h('p', {}, 'これは', h('a', { href: '/x' }, 'リンク'), h('wbr'), 'です', footnote, '。')
+    const loaded = load(page('https://example.jp/', p))
+    goVisible(loaded)
+    loaded.api.apply(1, 0, [{ text: 'This is a ' }, { text: 'link', tag: 0 }, { text: '.' }])
+    assert.equal(p.innerHTML, 'This is a <a href="/x">link</a><wbr>.<sup><a href="#f">1</a></sup>')
+  })
+
+  test('a styling element holding a link must come back', () => {
+    const p = h('p', {}, 'これは', h('span', { class: 'nowrap' }, '詳しくは', h('a', { href: '/x' }, 'こちら')), 'です。')
+    const loaded = load(page('https://example.jp/', p))
+    const before = p.innerHTML
+    const [block] = blocksOf(goVisible(loaded))
+    assert.deepEqual(block.needed, [0])
+    loaded.api.apply(1, 0, [{ text: 'This is, for details, here.' }])
+    assert.equal(p.innerHTML, before)
+  })
+
+  test('chemistry and units keep their numbers; furigana is not read', () => {
+    const doc = page(
+      'https://example.jp/',
+      h('p', {}, '二酸化炭素CO', h('sub', {}, '2'), 'は気体です。'),
+      h('p', {}, '広さは10m', h('sup', {}, '2'), 'です。'),
+      h('p', {}, h('ruby', {}, '漢字', h('rt', {}, 'かんじ')), 'を読む。'),
+    )
+    const texts = blocksOf(goVisible(load(doc))).map((b) => b.runs.map((r) => r.text).join(''))
+    assert.deepEqual(texts, ['二酸化炭素CO2は気体です。', '広さは10m2です。', '漢字を読む。'])
+  })
+
+  test('a script or a custom element inside a sentence still ends it', () => {
+    const doc = page(
+      'https://example.jp/',
+      h('p', {}, '前の文', h('script', { src: 'x.js' }), '後の文'),
+      h('p', {}, '別の文', h('ion-icon', { name: 'star' }), '最後の文'),
+    )
+    assert.equal(blocksOf(goVisible(load(doc))).length, 4)
+  })
+
+  test('an empty element the page later fills makes the sentence be read again', () => {
+    const slot = h('span', { class: 'price' })
+    const p = h('p', {}, '価格は', slot, 'です。')
+    const loaded = load(page('https://example.jp/', p))
+    goVisible(loaded)
+    const filled = new Text('千円')
+    slot.appendChild(filled)
+    loaded.mutations.at(-1).fire({ type: 'childList', target: slot, addedNodes: [filled], removedNodes: [] })
+    loaded.flush()
+    loaded.observers.at(-1).show(...loaded.observers.at(-1).targets)
+    loaded.flush()
+    const texts = blocksOf(loaded.messages().filter((m) => m.kind === 'blocks')).map((b) =>
+      b.runs.map((r) => r.text).join(''),
+    )
+    assert.deepEqual(texts, ['価格はです。', '価格は千円です。'])
+  })
+
+  test('a footnote number stays in place and is not read as part of the sentence', () => {
+    const note = () => h('sup', {}, h('a', { href: '#fn' }, '1'))
+    const loose = h('p', {}, '36回から', note(), '。24か月目です。')
+    const nested = h('p', {}, h('span', { class: 'nowrap' }, '36回から', note(), '。'), 'です。')
+    const blocks = blocksOf(goVisible(load(page('https://example.jp/', loose, nested))))
+    assert.deepEqual(
+      blocks.map((b) => b.runs.map((r) => r.text).join('')),
+      ['36回から。24か月目です。', '36回から。です。'],
+    )
+  })
+
+  test('an empty element at the start of a sentence stays first', () => {
+    const swatch = h('span', { class: 'legend-color' }, '\u00a0')
+    const legend = h('div', {}, swatch, h('a', { href: '/chrome' }, 'Google Chrome'), ' (64.7%)')
+    const loaded = load(page('https://example.jp/', legend))
+    goVisible(loaded)
+    loaded.api.apply(1, 0, [{ text: '(64.7%) ' }, { text: 'Google Chrome', tag: 0 }])
+    assert.equal(legend.textContent, '\u00a0(64.7%) Google Chrome')
+    assert.equal(legend.childNodes[0], swatch)
+  })
+
+  test('a sentence made only of styling elements stays whole', () => {
+    const p = h('p', {}, h('span', { class: 'nowrap' }, 'iPhoneで、'), h('span', { class: 'nowrap' }, 'もっと楽しく。'))
+    const loaded = load(page('https://example.jp/', p))
+    assert.equal(blocksOf(goVisible(loaded)).length, 1)
+    loaded.api.apply(1, 0, [{ text: 'Have more fun with iPhone.' }])
+    assert.equal(p.textContent, 'Have more fun with iPhone.')
+  })
+
   test('a segment that is one link is sent whole, untagged', () => {
     const doc = page('https://example.jp/', h('ul', {}, h('li', {}, h('a', { href: '/' }, 'ホーム'))))
-    assert.deepEqual(blocksOf(goVisible(load(doc))), [{ id: 0, runs: [{ text: 'ホーム' }], main: false }])
+    assert.deepEqual(blocksOf(goVisible(load(doc))), [{ id: 0, runs: [{ text: 'ホーム' }], main: false, needed: [] }])
   })
 
   test('a line break or an image splits a block into segments', () => {
@@ -273,7 +407,7 @@ describe('sending what is on screen', () => {
     loaded.observers[0].show(second)
     loaded.flush()
     const sent = blocksOf(loaded.messages().filter((m) => m.kind === 'blocks'))
-    assert.deepEqual(sent, [{ id: 1, runs: [{ text: '二つ目' }], main: false }])
+    assert.deepEqual(sent, [{ id: 1, runs: [{ text: '二つ目' }], main: false, needed: [] }])
     assert.ok(!loaded.observers[0].targets.has(second), 'a sent block stops being watched')
   })
 
@@ -382,9 +516,20 @@ describe('putting translations in place', () => {
     assert.equal(p.childNodes[1], link)
   })
 
-  test('a translation that dropped a tag leaves the segment as it was', () => {
+  test('a translation that dropped a link leaves the segment as it was', () => {
     const { loaded, p, before } = translatedParagraph()
-    loaded.api.apply(1, 0, [{ text: 'Read the full text ' }, { text: 'here', tag: 0 }])
+    loaded.api.apply(1, 0, [{ text: 'Read ' }, { text: 'the full text', tag: 1 }, { text: ' here' }])
+    assert.equal(p.innerHTML, before)
+  })
+
+  test('a styling element the translation dropped is emptied, its words kept in the sentence', () => {
+    const p = h('p', {}, 'これは', h('span', { class: 'nowrap' }, '短い'), '文です。')
+    const loaded = load(page('https://example.jp/', p))
+    const before = p.innerHTML
+    goVisible(loaded)
+    loaded.api.apply(1, 0, [{ text: 'This is a short sentence.' }])
+    assert.equal(p.innerHTML, 'This is a short sentence.<span class="nowrap"></span>')
+    loaded.api.revert()
     assert.equal(p.innerHTML, before)
   })
 
@@ -521,7 +666,7 @@ describe('putting translations in place', () => {
     const loaded = load(page('https://example.jp/', p))
     const blocks = blocksOf(goVisible(loaded))
     assert.deepEqual(blocks, [
-      { id: 0, runs: [{ text: '一覧は' }, { text: 'ls', tag: 0 }, { text: 'で表示' }], main: false },
+      { id: 0, runs: [{ text: '一覧は' }, { text: 'ls', tag: 0 }, { text: 'で表示' }], main: false, needed: [0] },
     ])
     loaded.api.apply(1, 0, [{ text: 'Show the list with ' }, { text: 'エルエス', tag: 0 }])
     assert.equal(p.innerHTML, 'Show the list with <code>ls</code>')

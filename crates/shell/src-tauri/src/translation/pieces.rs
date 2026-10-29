@@ -65,12 +65,53 @@ pub fn tidy(runs: Vec<Run>) -> Vec<Run> {
     out
 }
 
-/// The tags sent that did not come back, with the text each carried.
-pub fn lost_tags<'a>(sent: &'a [Run], back: &[Run]) -> Vec<(u32, &'a str)> {
+/// The needed tags sent that did not come back, with the text each carried.
+pub fn lost_tags<'a>(sent: &'a [Run], back: &[Run], needed: &[u32]) -> Vec<(u32, &'a str)> {
     sent.iter()
         .filter_map(|run| Some((run.tag?, run.text.as_str())))
+        .filter(|(tag, _)| needed.contains(tag))
         .filter(|(tag, _)| !back.iter().any(|back| back.tag == Some(*tag)))
         .collect()
+}
+
+/// A short label translated alone reads as a phrase ("A store"); on a page it
+/// is a label ("Store").
+pub fn relabel(sent: &[Run], mut runs: Vec<Run>, target: &str) -> Vec<Run> {
+    let english = target.split(['-', '_']).next() == Some("en");
+    let [Run {
+        text: source,
+        tag: None,
+    }] = sent
+    else {
+        return runs;
+    };
+    let latin = |c: char| c.is_ascii_alphabetic() || matches!(c, 'Ａ'..='Ｚ' | 'ａ'..='ｚ');
+    let label = source.trim().chars().count() <= 12
+        && !source.chars().any(|c| latin(c) || "。！？.!?…".contains(c));
+    if !english || !label || runs.len() != 1 || runs[0].tag.is_some() {
+        return runs;
+    }
+
+    let text = runs[0].text.trim();
+    let bare = ["a ", "an "]
+        .iter()
+        .find_map(|article| {
+            let (head, rest) = text.split_at_checked(article.len())?;
+            let rest = rest.trim_start();
+            (head.eq_ignore_ascii_case(article) && rest.starts_with(char::is_lowercase))
+                .then_some(rest)
+        })
+        .unwrap_or(text);
+    let word = bare.split_whitespace().next().unwrap_or_default();
+    let mut chars = bare.chars();
+    runs[0].text = match chars.next() {
+        Some(first) if !word.chars().skip(1).any(char::is_uppercase) => {
+            first.to_uppercase().chain(chars).collect()
+        }
+        _ => bare.to_string(),
+    };
+
+    runs
 }
 
 /// What to look for: the whole piece, then its words, longest first.
@@ -262,17 +303,57 @@ mod tests {
     }
 
     #[test]
-    fn a_translation_that_dropped_an_inline_element_is_caught() {
+    fn a_translation_that_dropped_a_needed_element_is_caught() {
         let sent = [
             run("詳しくは", None),
             run("こちら", Some(0)),
-            run("を参照", None),
+            run("を", None),
+            run("参照", Some(1)),
         ];
-        assert!(lost_tags(&sent, &[run("See ", None), run("here", Some(0))]).is_empty());
+        assert!(lost_tags(&sent, &[run("See ", None), run("here", Some(0))], &[0]).is_empty());
         assert_eq!(
-            lost_tags(&sent, &[run("See this article", None)]),
+            lost_tags(&sent, &[run("See this article", None)], &[0]),
             vec![(0, "こちら")]
         );
+    }
+
+    #[test]
+    fn a_short_label_reads_as_a_label() {
+        let one = |text: &str| vec![run(text, None)];
+        assert_eq!(relabel(&one("ストア"), one("A store"), "en"), one("Store"));
+        assert_eq!(
+            relabel(&one("予約注文"), one("an advance order"), "en-GB"),
+            one("Advance order")
+        );
+        assert_eq!(
+            relabel(&one("購入"), one("purchase"), "en"),
+            one("Purchase")
+        );
+        assert_eq!(relabel(&one("返信"), one("A  reply"), "en"), one("Reply"));
+    }
+
+    #[test]
+    fn sentences_other_languages_and_latin_labels_are_left_as_translated() {
+        let one = |text: &str| vec![run(text, None)];
+        for (sent, back, target) in [
+            ("これは店です。", "This is a store.", "en"),
+            ("Aランク", "A rank", "en"),
+            ("ストア", "Un magasin", "fr"),
+            (
+                "長いラベルの説明文になります",
+                "A long label explanation",
+                "en",
+            ),
+            ("안중근", "An Jung-geun", "en"),
+            ("ア・ゴースト・ストーリー", "A Ghost Story", "en"),
+            ("Ａランク", "A rank", "en"),
+            ("アイフォン", "iPhone", "en"),
+            ("イーベイ", "eBay", "en"),
+        ] {
+            assert_eq!(relabel(&one(sent), one(back), target), one(back), "{sent}");
+        }
+        let linked = [run("詳しくは", None), run("こちら", Some(0))];
+        assert_eq!(relabel(&linked, one("a link"), "en"), one("a link"));
     }
 
     #[test]

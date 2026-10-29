@@ -15,10 +15,20 @@
   ])
   const SKIP =
     'script, style, noscript, template, code, pre, kbd, samp, var, textarea, input, select, ' +
-    'option, svg, math, [contenteditable=""], [contenteditable=true], ' +
+    'option, svg, math, rt, rp, [contenteditable=""], [contenteditable=true], ' +
     '[contenteditable=plaintext-only], [translate=no], .notranslate'
   // Kept inside a sentence where they stand, their text left as it is.
   const OPAQUE = 'code, kbd, samp, var, [translate=no], .notranslate'
+  // Inline elements a translation must keep; styling ones may be dropped.
+  const NEEDED = 'a, [role], [tabindex], [onclick]'
+  // Elements that end a sentence rather than sit inside one.
+  const BREAKS = new Set([
+    'BR', 'HR', 'IMG', 'PICTURE', 'SVG', 'VIDEO', 'AUDIO', 'CANVAS', 'IFRAME', 'OBJECT', 'EMBED',
+    'INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'MATH', 'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE',
+    'PROGRESS', 'METER', 'SLOT', 'LINK',
+  ])
+  const FOOTNOTE = /foot|note|ref|cite/i
+  const BREAKING = [...BREAKS].join(', ').toLowerCase()
   // Messages carry at most this many segments; longer segments are left as they are.
   const BATCH = 24
   const MAX_SEGMENTS = 10000
@@ -54,6 +64,7 @@
   const childNodesOf = getter(NodeType, 'childNodes')
   const tagOf = getter(ElementType, 'tagName')
   const matches = method(ElementType, 'matches')
+  const querySelector = method(ElementType, 'querySelector')
   const attributeOf = method(ElementType, 'getAttribute')
   const closest = method(ElementType, 'closest')
   const insertBefore = method(NodeType, 'insertBefore')
@@ -148,7 +159,7 @@
       const node = stack.pop()
       const type = kind(node)
       if (type === 3) out.push(node)
-      else if (type === 1 && !BLOCKS.has(tagOf(node)) && !matches(node, SKIP)) {
+      else if (type === 1 && !BLOCKS.has(tagOf(node)) && !matches(node, SKIP) && tagOf(node) !== 'WBR' && !marker(node)) {
         const kids = childrenOf(node)
         for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i])
       }
@@ -177,7 +188,7 @@
   const ownText = (el) => textNodesIn(el).map((t) => t.nodeValue).join('')
 
   function trimBlank(nodes) {
-    const meaningful = (n) => kind(n) === 1 || !blank(n.nodeValue)
+    const meaningful = (n) => (kind(n) === 1 ? !invisible(n) : !blank(n.nodeValue))
     let start = 0
     let end = nodes.length
     while (start < end && !meaningful(nodes[start])) start++
@@ -185,9 +196,35 @@
     return nodes.slice(start, end)
   }
 
-  // Runs of a root's children that hold the block's text, code kept in place
-  // among them. Anything else, a line break, an image, a nested block, ends a
-  // segment and stays where it is.
+  // A word-break hint, an empty element or a footnote number sits inside a
+  // sentence without being read.
+  function invisible(el) {
+    const tag = tagOf(el)
+    if (tag === 'WBR' || marker(el)) return true
+    if (BLOCKS.has(tag) || BREAKS.has(tag) || tag.includes('-') || !blank(textOf(el))) return false
+    return !querySelector(el, BREAKING)
+  }
+
+  function marker(el) {
+    if (tagOf(el) !== 'SUP' || worded(textOf(el))) return false
+    const local = (a) => (attributeOf(a, 'href') || '').startsWith('#')
+    const links = method(ElementType, 'querySelectorAll')(el, 'a')
+    return Array.from(links).some(local) || FOOTNOTE.test(attributeOf(el, 'class') || '')
+  }
+
+  // A link or control inside an element makes it one the translation must keep.
+  function needs(el) {
+    if (opaque(el) || matches(el, NEEDED)) return true
+    for (const inner of method(ElementType, 'querySelectorAll')(el, NEEDED)) {
+      const sup = closest(inner, 'sup')
+      if (!sup || !marker(sup)) return true
+    }
+    return false
+  }
+
+  // Runs of a root's children that hold the block's text, code and silent
+  // elements kept in place among them. Anything else, a line break, an image,
+  // a nested block, ends a segment and stays where it is.
   function groupsOf(root, assigned, carriers) {
     const groups = []
     let current = []
@@ -199,42 +236,50 @@
     for (const child of childrenOf(root)) {
       const type = kind(child)
       if (type === 3 && (assigned.has(child) || blank(child.nodeValue))) current.push(child)
-      else if (type === 1 && (carriers.has(child) || opaque(child))) current.push(child)
+      else if (type === 1 && (carriers.has(child) || opaque(child) || invisible(child))) current.push(child)
       else if (type !== 8) close()
     }
     close()
     return groups
   }
 
+  const textual = (n) => kind(n) !== 1 || !invisible(n)
+
   function segmentOf(root, nodes) {
-    const elements = nodes.filter((n) => kind(n) === 1)
+    const elements = nodes.filter((n) => kind(n) === 1 && !invisible(n))
     const loose = nodes.filter((n) => kind(n) === 3 && !blank(n.nodeValue))
     if (elements.length === 1 && !loose.length && !opaque(elements[0])) {
       const text = ownText(elements[0])
       if (!worded(text)) return null
-      return { root, nodes, whole: elements[0], tagged: [], opaque: new Set(), runs: [{ text }], sent: text }
+      return { root, nodes, whole: elements[0], tagged: [], opaque: new Set(), needed: [], runs: [{ text }], sent: text }
     }
     const tagged = []
     const fixed = new Set()
-    const runs = nodes.map((n) => {
+    const needed = []
+    const runs = nodes.filter(textual).map((n) => {
       if (kind(n) === 3) return { text: n.nodeValue }
       tagged.push(n)
       const tag = tagged.length - 1
       if (opaque(n)) {
         fixed.add(tag)
+        needed.push(tag)
         return { text: textOf(n), tag }
       }
+      if (needs(n)) needed.push(tag)
       return { text: ownText(n), tag }
     })
     const translatable = runs.some((r) => (r.tag == null || !fixed.has(r.tag)) && worded(r.text))
     if (!translatable) return null
-    return { root, nodes, whole: null, tagged, opaque: fixed, runs, sent: runs.map((r) => r.text).join('') }
+    const sent = runs.map((r) => r.text).join('')
+    const hidden = nodes.filter((n) => !textual(n))
+    return { root, nodes, whole: null, tagged, opaque: fixed, needed, hidden, runs, sent }
   }
 
   // The segment's text now, to tell whether the page changed it since.
   function currentText(seg) {
     if (seg.whole) return ownText(seg.whole)
     return seg.nodes
+      .filter(textual)
       .map((n) => {
         if (kind(n) === 3) return n.nodeValue
         return seg.opaque.has(seg.tagged.indexOf(n)) ? textOf(n) : ownText(n)
@@ -252,9 +297,28 @@
   }
 
   // The framework drops the tags of a segment with no text of its own.
+  // Links and controls go alone; the styling elements between them stay
+  // together when they make a sentence, and go one by one otherwise.
   function partsOf(nodes) {
     if (nodes.length === 1 || nodes.some((n) => kind(n) === 3 && !blank(n.nodeValue))) return [nodes]
-    return nodes.filter((n) => kind(n) === 1).map((n) => [n])
+    const parts = []
+    let styling = []
+    const close = () => {
+      const elements = styling.filter((n) => kind(n) === 1 && !invisible(n))
+      if (/[。！？.!?]\s*$/.test(elements.map(textOf).join(''))) parts.push(trimBlank(styling))
+      else for (const el of elements) parts.push([el])
+      styling = []
+    }
+    for (const n of nodes) {
+      if (kind(n) !== 1 || !needs(n)) {
+        styling.push(n)
+        continue
+      }
+      close()
+      parts.push([n])
+    }
+    close()
+    return parts
   }
 
   // New segments under `scope`, leaving text other segments already hold.
@@ -264,7 +328,10 @@
     const byBlock = new Map()
     const rejected = new Map()
     const reject = (el) => {
-      if (!rejected.has(el)) rejected.set(el, !!closest(el, SKIP) || foreign(el, state.primary))
+      if (!rejected.has(el)) {
+        const sup = closest(el, 'sup')
+        rejected.set(el, !!closest(el, SKIP) || foreign(el, state.primary) || (!!sup && marker(sup)))
+      }
       return rejected.get(el)
     }
     const walker = method(DocumentType, 'createTreeWalker')(document, scope, NodeFilter.SHOW_TEXT, {
@@ -293,7 +360,7 @@
         if (!segment || segment.sent.length > MAX_CHARS || segment.runs.length > MAX_RUNS) continue
         segment.texts = textsOf(segment)
         if (segment.texts.some((t) => state.owner.has(t))) continue
-        segment.sig = JSON.stringify([segment.runs.map((r) => [r.text.length, r.tag]), [...segment.opaque]])
+        segment.sig = JSON.stringify([segment.runs.map((r) => [r.text.length, r.tag]), [...segment.opaque], segment.needed])
         segments.push(segment)
         if (segments.length >= room) return segments
       }
@@ -327,7 +394,9 @@
     if (!pending.length) return
     s.wave++
     for (let i = 0; i < pending.length; i += BATCH) {
-      const blocks = pending.slice(i, i + BATCH).map((seg) => ({ id: seg.id, runs: seg.runs, main: seg.main }))
+      const blocks = pending
+        .slice(i, i + BATCH)
+        .map((seg) => ({ id: seg.id, runs: seg.runs, main: seg.main, needed: seg.needed }))
       post({ kind: 'blocks', gen: s.gen, wave: s.wave, blocks })
     }
   }
@@ -497,7 +566,8 @@
     quietly(() => {
       for (const seg of [...s.segments.values()]) {
         try {
-          if (connected(seg.root) && seg.texts.every((t) => connected(t))) continue
+          const intact = seg.texts.every((t) => connected(t)) && (seg.hidden || []).every(invisible)
+          if (connected(seg.root) && intact) continue
           mark(seg.root)
           drop(seg)
         } catch (err) {}
@@ -546,7 +616,7 @@
       if (!Number.isInteger(r.tag) || r.tag < 0 || r.tag >= seg.tagged.length) return false
       tags.add(r.tag)
     }
-    return tags.size === seg.tagged.length
+    return seg.needed.every((tag) => tags.has(tag))
   }
 
   // The framework drops a segment's leading and trailing spaces, which keep
@@ -645,6 +715,11 @@
         laid.push(copy)
       }
     }
+    seg.tagged.forEach((el, tag) => {
+      if (used.has(tag)) return
+      setText(el, '', saved)
+      laid.push(el)
+    })
     for (; next < loose.length; next++) {
       remember(saved, loose[next])
       loose[next].nodeValue = ''
@@ -652,8 +727,23 @@
     }
     for (const n of created) for (const t of textsIn(n)) state.owner.set(t, seg)
     applied.written = writtenIn(saved)
-    if (!inOrder(laid, seg.nodes)) arrange(seg.root, laid, seg.nodes[0])
+    const order = withSilent(seg, laid)
+    if (!inOrder(order, seg.nodes)) arrange(seg.root, order, seg.nodes[0])
     return true
+  }
+
+  function withSilent(seg, laid) {
+    const out = laid.slice()
+    let after = null
+    for (const n of seg.nodes) {
+      if (textual(n)) {
+        after = n
+        continue
+      }
+      out.splice(after ? out.indexOf(after) + 1 : 0, 0, n)
+      after = n
+    }
+    return out
   }
 
   const writtenIn = (saved) => new Map([...saved.keys()].map((t) => [t, t.nodeValue]))

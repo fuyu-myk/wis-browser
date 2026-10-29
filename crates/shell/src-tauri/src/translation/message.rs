@@ -31,6 +31,10 @@ pub struct Block {
     /// Whether it is in the page's main content.
     #[serde(default)]
     pub main: bool,
+    /// The tags a translation must keep: links, controls and text left as it
+    /// is. Styling elements may be dropped.
+    #[serde(default)]
+    pub needed: Vec<u32>,
 }
 
 impl Block {
@@ -41,7 +45,10 @@ impl Block {
 
     fn within_caps(&self) -> bool {
         let bytes: usize = self.runs.iter().map(|run| run.text.len()).sum();
-        self.id < MAX_BLOCK_ID && self.runs.len() <= MAX_RUNS && bytes <= MAX_BLOCK_BYTES
+        self.id < MAX_BLOCK_ID
+            && self.runs.len() <= MAX_RUNS
+            && self.needed.len() <= self.runs.len()
+            && bytes <= MAX_BLOCK_BYTES
     }
 }
 
@@ -143,6 +150,7 @@ mod tests {
             id,
             runs: vec![run(&format!("段落{id}"), None)],
             main: false,
+            needed: vec![],
         }
     }
 
@@ -168,7 +176,7 @@ mod tests {
     fn a_blocks_message_carries_tagged_runs() {
         assert_eq!(
             parse_message(
-                r#"{"kind":"blocks","gen":3,"wave":2,"blocks":[{"id":0,"runs":[{"text":"詳しくは"},{"text":"こちら","tag":0}],"main":true}]}"#
+                r#"{"kind":"blocks","gen":3,"wave":2,"blocks":[{"id":0,"runs":[{"text":"詳しくは"},{"text":"こちら","tag":0}],"main":true,"needed":[0]}]}"#
             ),
             Some(PageMessage::Blocks {
                 gen: 3,
@@ -177,6 +185,7 @@ mod tests {
                     id: 0,
                     runs: vec![run("詳しくは", None), run("こちら", Some(0))],
                     main: true,
+                    needed: vec![0],
                 }]
             })
         );
@@ -223,6 +232,7 @@ mod tests {
             id,
             runs: vec![run("詳しくは", None), run("こちら", Some(0))],
             main: false,
+            needed: vec![0],
         }
     }
 
@@ -238,6 +248,18 @@ mod tests {
             panic!("a blocks message");
         };
         assert_eq!(blocks.len(), 1);
+    }
+
+    #[test]
+    fn a_block_needing_more_tags_than_it_has_runs_is_dropped() {
+        let needed = ["0"; 2].join(",");
+        let body = format!(
+            r#"{{"kind":"blocks","gen":1,"wave":1,"blocks":[{{"id":0,"runs":[{{"text":"x"}}],"needed":[{needed}]}}]}}"#
+        );
+        let Some(PageMessage::Blocks { blocks, .. }) = parse_message(&body) else {
+            panic!("a blocks message");
+        };
+        assert!(blocks.is_empty());
     }
 
     #[test]

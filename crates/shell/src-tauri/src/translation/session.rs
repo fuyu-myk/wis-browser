@@ -15,7 +15,7 @@ use super::bridge::{self, Check, Status, Strategy, TranslateError, TranslateRequ
 use super::language::page_language;
 use super::message::{Block, PageMessage, Queue, Run};
 use super::page;
-use super::pieces::{anchor, lost_tags, pieces, piecewise, spaced, tidy, MAX_PIECES};
+use super::pieces::{anchor, lost_tags, pieces, piecewise, relabel, spaced, tidy, MAX_PIECES};
 use crate::platform::content_world;
 
 /// How long the page has to report its language after the script starts.
@@ -341,7 +341,7 @@ async fn translate_piece(label: &str, gen: u64, task: &Task, text: String) -> Op
 async fn translate(label: &str, gen: u64, task: &Task) -> Result<Vec<Run>, TranslateError> {
     let runs = translate_whole(label, gen, task).await?;
     let sent = &task.block.runs;
-    let lost = lost_tags(sent, &runs);
+    let lost = lost_tags(sent, &runs, &task.block.needed);
     if lost.is_empty() || pieces(sent) > MAX_PIECES || !is_current(label, gen) {
         return Ok(runs);
     }
@@ -378,7 +378,10 @@ async fn translate(label: &str, gen: u64, task: &Task) -> Result<Vec<Run>, Trans
 async fn work(app: AppHandle, label: String, gen: u64) {
     while let Some(task) = next_task(&label, gen) {
         match translate(&label, gen, &task).await {
-            Ok(runs) => apply(&app, &label, gen, task.block.id, &tidy(runs)),
+            Ok(runs) => {
+                let runs = tidy(relabel(&task.block.runs, runs, &task.target));
+                apply(&app, &label, gen, task.block.id, &runs);
+            }
             Err(TranslateError::NothingToTranslate) => {}
             Err(err @ (TranslateError::NotInstalled | TranslateError::Unsupported)) => {
                 log::warn!("translation stopped in {label}: {err}");
@@ -419,11 +422,13 @@ mod tests {
             id: 0,
             runs: vec![run("概要", None), run("の説明", None)],
             main: true,
+            needed: vec![],
         };
         let linked = Block {
             id: 1,
             runs: vec![run("詳しくは", None), run("こちら", Some(0))],
             main: true,
+            needed: vec![0],
         };
         assert_eq!(strategy_for(&plain, true), Strategy::LowLatency);
         assert_eq!(strategy_for(&linked, true), Strategy::HighFidelity);
