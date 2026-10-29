@@ -138,7 +138,7 @@ For Linux, **AppImage** requires `FUSE` to be installed. Without it, you can run
 
 - [Rust via rustup](https://rustup.rs), which installs the version `rust-toolchain.toml` pins
 - [Node 22.13+](https://nodejs.org) and [pnpm 11+](https://pnpm.io)
-- [Tauri prerequisites for your platform](https://tauri.app/start/prerequisites/)
+- [Tauri prerequisites for your platform](https://tauri.app/start/prerequisites/); on macOS, Xcode or its Command Line Tools 26.4 or later
 
 **Run**:
 

@@ -15,6 +15,8 @@ mod save_coalescer;
 mod state;
 mod system;
 mod tabs;
+#[cfg(target_os = "macos")]
+pub mod translation;
 mod vault;
 mod video_popout;
 

@@ -15,7 +15,7 @@ make install
 make dev
 ```
 
-Prereqs: Rust via [rustup](https://rustup.rs) (it installs the version `rust-toolchain.toml` pins), Node 22.13+, pnpm 11+, plus your platform's [Tauri prerequisites](https://tauri.app/start/prerequisites/).
+Prereqs: Rust via [rustup](https://rustup.rs) (it installs the version `rust-toolchain.toml` pins), Node 22.13+, pnpm 11+, plus your platform's [Tauri prerequisites](https://tauri.app/start/prerequisites/) (on macOS, Xcode or its Command Line Tools 26.4 or later, for the Swift translation bridge).
 
 ## Quality bar
 
