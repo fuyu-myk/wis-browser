@@ -18,10 +18,11 @@ pub fn start_script(gen: u64) -> String {
 }
 
 /// Collects the page's segments for generation `gen`, translating from
-/// `source`; content marked as another language is left alone.
-pub fn go_script(gen: u64, source: &str) -> String {
+/// `source` into `target`; content marked as another language is left alone.
+pub fn go_script(gen: u64, source: &str, target: &str) -> String {
     let source = serde_json::to_string(source).expect("a string serialises");
-    format!("window.__wisTranslate && window.__wisTranslate.go({gen}, {source});")
+    let target = serde_json::to_string(target).expect("a string serialises");
+    format!("window.__wisTranslate && window.__wisTranslate.go({gen}, {source}, {target});")
 }
 
 /// Puts one segment's translation in place. The runs go in as JSON, a JS
@@ -198,10 +199,10 @@ mod tests {
     }
 
     #[test]
-    fn going_names_the_source_language_as_a_js_string() {
+    fn going_names_the_language_pair_as_js_strings() {
         assert_eq!(
-            go_script(3, "ja"),
-            r#"window.__wisTranslate && window.__wisTranslate.go(3, "ja");"#
+            go_script(3, "ja", "en-GB"),
+            r#"window.__wisTranslate && window.__wisTranslate.go(3, "ja", "en-GB");"#
         );
     }
 

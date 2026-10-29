@@ -202,7 +202,7 @@ pub async fn enable(app: &AppHandle, label: &str) -> Result<Option<u64>, String>
         return refuse(message);
     }
 
-    let go = page::go_script(gen, &source);
+    let go = page::go_script(gen, &source, &check.target);
     let running = with_session(label, gen, |phase| {
         *phase = Phase::Running {
             source,

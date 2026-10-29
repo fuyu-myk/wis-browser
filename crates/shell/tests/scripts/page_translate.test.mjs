@@ -65,9 +65,9 @@ function load(doc, { findMain } = {}) {
  * Starts and runs translation generation `gen` from `source`, with every root
  * on screen.
  */
-function goVisible(loaded, gen = 1, source = '') {
+function goVisible(loaded, gen = 1, source = '', target = 'en') {
   loaded.api.start(gen)
-  loaded.api.go(gen, source)
+  loaded.api.go(gen, source, target)
   const observer = loaded.observers.at(-1)
   observer.show(...observer.targets)
   loaded.flush()
@@ -624,5 +624,108 @@ describe('putting translations in place', () => {
     const changed = p.innerHTML
     loaded.api.apply(1, 0, [{ text: 'For more ' }, { text: 'text', tag: 1 }, { text: ' ' }, { text: 'here', tag: 0 }])
     assert.equal(p.innerHTML, changed)
+  })
+})
+
+describe('turning translation back on', () => {
+  function translatedTwice() {
+    const first = h('p', {}, '一つ目')
+    const second = h('p', {}, '二つ目')
+    const loaded = load(page('https://example.jp/', first, second))
+    loaded.api.start(1)
+    loaded.api.go(1, 'ja', 'en')
+    loaded.observers[0].show(first)
+    loaded.flush()
+    loaded.api.apply(1, 0, [{ text: 'First' }])
+    loaded.api.revert()
+    return { loaded, first, second }
+  }
+
+  const sentFor = (loaded, gen) => blocksOf(loaded.messages().filter((m) => m.kind === 'blocks' && m.gen === gen))
+
+  test('puts the translations it had straight back, without asking again', () => {
+    const { loaded, first } = translatedTwice()
+    assert.equal(first.textContent, '一つ目')
+    loaded.api.start(2)
+    loaded.api.go(2, 'ja', 'en')
+    assert.equal(first.textContent, 'First', 'back before anything scrolls into view')
+    loaded.observers.at(-1).show(...loaded.observers.at(-1).targets)
+    loaded.flush()
+    assert.deepEqual(sentFor(loaded, 2).map((b) => b.runs[0].text), ['二つ目'])
+  })
+
+  test('remembers translations for one language pair only', () => {
+    const { loaded, first } = translatedTwice()
+    loaded.api.start(2)
+    loaded.api.go(2, 'ja', 'fr')
+    assert.equal(first.textContent, '一つ目')
+  })
+
+  test('a segment the page has changed since is sent again', () => {
+    const { loaded, first } = translatedTwice()
+    first.childNodes[0].nodeValue = '新しい一つ目'
+    loaded.api.start(2)
+    loaded.api.go(2, 'ja', 'en')
+    assert.equal(first.textContent, '新しい一つ目')
+    loaded.observers.at(-1).show(...loaded.observers.at(-1).targets)
+    loaded.flush()
+    assert.deepEqual(sentFor(loaded, 2).map((b) => b.runs[0].text), ['新しい一つ目', '二つ目'])
+  })
+
+  test('a long paragraph and every copy of a repeated one come back', () => {
+    const long = h('p', {}, 'あ'.repeat(300))
+    const one = h('p', {}, '返信')
+    const two = h('p', {}, '返信')
+    const loaded = load(page('https://example.jp/', long, one, two))
+    goVisible(loaded, 1, 'ja')
+    loaded.api.apply(1, 0, [{ text: 'A'.repeat(100) }])
+    loaded.api.apply(1, 1, [{ text: 'Reply' }])
+    loaded.api.revert()
+    loaded.api.start(2)
+    loaded.api.go(2, 'ja', 'en')
+    assert.deepEqual([long.textContent, one.textContent, two.textContent], ['A'.repeat(100), 'Reply', 'Reply'])
+  })
+
+  test('switching to another language pair and back translates afresh', () => {
+    const { loaded, first } = translatedTwice()
+    loaded.api.start(2)
+    loaded.api.go(2, 'ja', 'fr')
+    loaded.api.revert()
+    loaded.api.start(3)
+    loaded.api.go(3, 'ja', 'en')
+    assert.equal(first.textContent, '一つ目')
+  })
+
+  test('a restore that fails leaves the page watched and revertible', () => {
+    const link = h('a', { href: '/x' }, 'こちら')
+    const p = h('p', {}, '詳しくは', link, 'を。')
+    const other = h('p', {}, '別の段落')
+    const loaded = load(page('https://example.jp/', p, other))
+    const before = p.innerHTML
+    goVisible(loaded, 1, 'ja')
+    loaded.api.apply(1, 0, [{ text: 'here', tag: 0 }, { text: ' for details.' }])
+    loaded.api.revert()
+    p.insertBefore = () => {
+      throw new Error('the page broke insertBefore')
+    }
+    loaded.api.start(2)
+    loaded.api.go(2, 'ja', 'en')
+    loaded.observers.at(-1).show(...loaded.observers.at(-1).targets)
+    loaded.flush()
+    assert.deepEqual(sentFor(loaded, 2).map((b) => b.runs[0].text), ['別の段落'])
+    loaded.api.revert()
+    assert.equal(p.innerHTML, before)
+  })
+
+  test('a translation the page refused is not remembered', () => {
+    const link = h('a', { href: '/x' }, 'こちら')
+    const p = h('p', {}, '詳しくは', link, 'を。')
+    const loaded = load(page('https://example.jp/', p))
+    goVisible(loaded, 1, 'ja')
+    loaded.api.apply(1, 0, [{ text: 'See this.' }])
+    loaded.api.revert()
+    loaded.api.start(2)
+    loaded.api.go(2, 'ja', 'en')
+    assert.equal(p.textContent, '詳しくはこちらを。')
   })
 })

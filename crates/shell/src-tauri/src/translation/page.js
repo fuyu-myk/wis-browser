@@ -24,7 +24,7 @@
   const MAX_CHARS = 4000
   const MAX_RUNS = 128
   const MAX_LANG = 64
-  const MAX_KEYED = 256
+  const MAX_KEPT = 2000000
 
   // DOM reads through the prototypes: a page's named controls and images
   // (an input named `parentNode`, an img named `body`) shadow the properties
@@ -57,6 +57,7 @@
   const childrenOf = (node) => Array.from(childNodesOf(node))
 
   let state = null
+  let kept = { pair: '', translations: new Map(), chars: 0 }
 
   const blank = (text) => !/\S/.test(text)
   const worded = (text) => /\p{L}/u.test(text)
@@ -272,7 +273,7 @@
         if (!segment || segment.sent.length > MAX_CHARS || segment.runs.length > MAX_RUNS) continue
         segment.id = segments.length
         segment.applied = null
-        segment.key = segment.sent.length <= MAX_KEYED ? JSON.stringify([segment.runs, [...segment.opaque]]) : null
+        segment.sig = JSON.stringify([segment.runs.map((r) => [r.text.length, r.tag]), [...segment.opaque]])
         segments.push(segment)
         if (segments.length >= MAX_SEGMENTS) return segments
       }
@@ -280,16 +281,27 @@
     return segments
   }
 
-  function sendable(s, seg) {
-    if (seg.applied || (seg.key && s.sentKeys.has(seg.key))) return false
-    if (seg.key) s.sentKeys.add(seg.key)
+  // Segments match when their text, its runs and what stays untranslated
+  // do. Keyed by the text the segment already holds.
+  function among(map, seg, make) {
+    let list = map.get(seg.sent)
+    if (!list && !make) return undefined
+    if (!list) map.set(seg.sent, (list = []))
+    let found = list.find((entry) => entry.sig === seg.sig)
+    if (!found && make) list.push((found = make()))
+    return found
+  }
+
+  function sendable(seg) {
+    if (seg.applied || seg.group.sent) return false
+    seg.group.sent = true
     return true
   }
 
   function flush(s) {
     if (s !== state) return
     s.scheduled = false
-    const pending = s.pending.sort((a, b) => b.main - a.main || a.id - b.id).filter((seg) => sendable(s, seg))
+    const pending = s.pending.sort((a, b) => b.main - a.main || a.id - b.id).filter(sendable)
     s.pending = []
     if (!pending.length) return
     s.wave++
@@ -325,8 +337,6 @@
       primary: '',
       segments: null,
       byRoot: null,
-      byKey: null,
-      sentKeys: new Set(),
       observer: null,
       pending: [],
       scheduled: false,
@@ -335,28 +345,35 @@
     post({ kind: 'start', gen, lang: declaredLanguage() })
   }
 
-  function go(gen, source) {
+  function go(gen, source, target) {
     if (!state || state.gen !== gen || state.segments) return
+    const pair = `${source}>${target}`
+    if (kept.pair !== pair) kept = { pair, translations: new Map(), chars: 0 }
     const main = mainContent()
     state.primary = primaryOf(source)
     state.segments = collect()
     state.byRoot = new Map()
-    state.byKey = new Map()
+    const groups = new Map()
     for (const seg of state.segments) {
       seg.main = !!main && within(main, seg.root)
       if (!state.byRoot.has(seg.root)) state.byRoot.set(seg.root, [])
       state.byRoot.get(seg.root).push(seg)
-      if (!seg.key) continue
-      if (!state.byKey.has(seg.key)) state.byKey.set(seg.key, [])
-      state.byKey.get(seg.key).push(seg)
+      seg.group = among(groups, seg, () => ({ sig: seg.sig, segs: [], sent: false }))
+      seg.group.segs.push(seg)
     }
-    if (typeof IntersectionObserver !== 'function') {
-      queue(state.segments)
-      return
+    if (typeof IntersectionObserver === 'function') {
+      state.observer = new IntersectionObserver(seen, { rootMargin: '400px 0px' })
+      for (const root of state.byRoot.keys()) state.observer.observe(root)
     }
-    state.observer = new IntersectionObserver(seen, { rootMargin: '400px 0px' })
-    for (const root of state.byRoot.keys()) state.observer.observe(root)
+    for (const seg of state.segments) {
+      const known = among(kept.translations, seg)
+      try {
+        if (known) put(seg, known.translation)
+      } catch (err) {}
+    }
+    if (!state.observer) queue(state.segments)
   }
+
 
   function remember(saved, t) {
     if (saved && !saved.has(t)) saved.set(t, t.nodeValue)
@@ -426,19 +443,28 @@
     if (!state || state.gen !== gen || !state.segments) return
     const seg = state.segments[id]
     if (!seg) return
-    for (const each of seg.key ? state.byKey.get(seg.key) : [seg]) put(each, translation)
+    let used = false
+    for (const each of seg.group.segs) used = put(each, translation) || used
+    if (used) keep(seg, translation)
+  }
+
+  function keep(seg, translation) {
+    const size = seg.sent.length + translation.reduce((n, r) => n + r.text.length, 0)
+    if (among(kept.translations, seg) || kept.chars + size > MAX_KEPT) return
+    among(kept.translations, seg, () => ({ sig: seg.sig, translation }))
+    kept.chars += size
   }
 
   function put(seg, translation) {
-    if (seg.applied || !usable(translation, seg) || currentText(seg) !== seg.sent) return
+    if (seg.applied || !usable(translation, seg) || currentText(seg) !== seg.sent) return false
     const runs = withEdges(translation, seg.sent)
     const saved = new Map()
     if (seg.whole) {
       setText(seg.whole, runs.map((r) => r.text).join(''), saved)
       seg.applied = { created: [], saved }
-      return
+      return true
     }
-    if (seg.nodes.some((n) => parentOf(n) !== seg.root)) return
+    if (seg.nodes.some((n) => parentOf(n) !== seg.root)) return false
     const loose = seg.nodes.filter((n) => kind(n) === 3)
     const created = []
     const used = new Set()
@@ -474,8 +500,9 @@
       loose[next].nodeValue = ''
       laid.push(loose[next])
     }
-    if (!inOrder(laid, seg.nodes)) arrange(seg.root, laid, seg.nodes[0])
     seg.applied = { created, saved }
+    if (!inOrder(laid, seg.nodes)) arrange(seg.root, laid, seg.nodes[0])
+    return true
   }
 
   function restore(seg) {
