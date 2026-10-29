@@ -1,6 +1,7 @@
 //! One translation per tab: the start handshake with `page.js`, the check of
 //! the page's language, and a worker that translates queued segments one at a
-//! time (the framework serves one request at a time anyway).
+//! time. The framework serves one request at a time anyway, and the two
+//! models slow each other down when asked at once.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -12,8 +13,9 @@ use tokio::sync::oneshot;
 
 use super::bridge::{self, Check, Status, Strategy, TranslateError, TranslateRequest};
 use super::language::page_language;
-use super::message::{PageMessage, Queue};
+use super::message::{Block, PageMessage, Queue, Run};
 use super::page;
+use super::pieces::{anchor, lost_tags, pieces, piecewise, spaced, tidy, MAX_PIECES};
 use crate::platform::content_world;
 
 /// How long the page has to report its language after the script starts.
@@ -34,9 +36,37 @@ enum Phase {
     Running {
         source: String,
         target: String,
+        /// Whether the low-latency model is installed for the pair and still
+        /// answering.
+        low_latency: bool,
         queue: Queue,
         working: bool,
     },
+}
+
+struct Task {
+    block: Block,
+    source: String,
+    target: String,
+    strategy: Strategy,
+}
+
+/// Failures that will not go away for this page, so the rest of it stays on
+/// high fidelity.
+fn lasting(err: &TranslateError) -> bool {
+    matches!(
+        err,
+        TranslateError::NotInstalled | TranslateError::Unsupported | TranslateError::TimedOut
+    )
+}
+
+/// The low-latency model drops inline elements, so it only takes plain text.
+fn strategy_for(block: &Block, low_latency: bool) -> Strategy {
+    if low_latency && block.plain() {
+        Strategy::LowLatency
+    } else {
+        Strategy::HighFidelity
+    }
 }
 
 fn sessions() -> MutexGuard<'static, Option<HashMap<String, Session>>> {
@@ -172,10 +202,12 @@ pub async fn enable(app: &AppHandle, label: &str) -> Result<Option<u64>, String>
         return refuse(message);
     }
 
+    let go = page::go_script(gen, &source);
     let running = with_session(label, gen, |phase| {
         *phase = Phase::Running {
             source,
             target: check.target,
+            low_latency: check.low_latency == Status::Installed,
             queue: Queue::default(),
             working: false,
         };
@@ -184,7 +216,7 @@ pub async fn enable(app: &AppHandle, label: &str) -> Result<Option<u64>, String>
         return Ok(None);
     }
 
-    eval(app, label, page::go_script(gen));
+    eval(app, label, go);
     Ok(Some(gen))
 }
 
@@ -202,10 +234,10 @@ pub fn on_message(label: &str, message: PageMessage) {
                 }
             }
         }
-        PageMessage::Blocks { gen, blocks } => {
+        PageMessage::Blocks { gen, wave, blocks } => {
             let start_worker = with_session(label, gen, |phase| match phase {
                 Phase::Running { queue, working, .. } => {
-                    queue.push_batch(blocks);
+                    queue.push_batch(wave, blocks);
                     !std::mem::replace(working, true)
                 }
                 Phase::Starting(_) => false,
@@ -219,41 +251,134 @@ pub fn on_message(label: &str, message: PageMessage) {
     }
 }
 
-/// The next segment to translate with its language pair, or `None` when the
-/// queue is empty (the worker then stops) or the translation has ended.
-fn next_segment(label: &str, gen: u64) -> Option<(super::message::Block, String, String)> {
+/// The worker's next segment, or `None` when the queue is empty (the worker
+/// then stops) or the translation has ended.
+fn next_task(label: &str, gen: u64) -> Option<Task> {
     with_session(label, gen, |phase| match phase {
         Phase::Running {
             queue,
             working,
             source,
             target,
-        } => match queue.next() {
-            Some(block) => Some((block, source.clone(), target.clone())),
-            None => {
+            low_latency,
+        } => {
+            let low_latency = *low_latency;
+            let Some(block) = queue.next(|block| low_latency && block.plain()) else {
                 *working = false;
-                None
-            }
-        },
+                return None;
+            };
+            Some(Task {
+                strategy: strategy_for(&block, low_latency),
+                block,
+                source: source.clone(),
+                target: target.clone(),
+            })
+        }
         Phase::Starting(_) => None,
     })
     .flatten()
 }
 
-async fn work(app: AppHandle, label: String, gen: u64) {
-    while let Some((block, source, target)) = next_segment(&label, gen) {
-        let request = TranslateRequest {
-            source: &source,
-            target: &target,
-            strategy: Strategy::HighFidelity,
-            runs: &block.runs,
-        };
-        match bridge::translate(&request).await {
-            Ok(runs) => {
-                if is_current(&label, gen) {
-                    eval(&app, &label, page::apply_script(gen, block.id, &runs));
-                }
+fn stop_low_latency(label: &str, gen: u64) {
+    with_session(label, gen, |phase| {
+        if let Phase::Running { low_latency, .. } = phase {
+            *low_latency = false;
+        }
+    });
+}
+
+fn apply(app: &AppHandle, label: &str, gen: u64, id: u32, runs: &[Run]) {
+    if is_current(label, gen) {
+        eval(app, label, page::apply_script(gen, id, runs));
+    }
+}
+
+/// Translates the task's segment. One the low-latency model fails on is
+/// retried in high fidelity, and a lasting failure keeps the page there.
+async fn translate_whole(label: &str, gen: u64, task: &Task) -> Result<Vec<Run>, TranslateError> {
+    let request = |strategy| TranslateRequest {
+        source: &task.source,
+        target: &task.target,
+        strategy,
+        runs: &task.block.runs,
+    };
+    match bridge::translate(&request(task.strategy)).await {
+        Err(err)
+            if task.strategy == Strategy::LowLatency
+                && err != TranslateError::NothingToTranslate =>
+        {
+            if !is_current(label, gen) {
+                return Err(err);
             }
+            if lasting(&err) {
+                log::debug!("low latency failed in {label}, using high fidelity from now: {err}");
+                stop_low_latency(label, gen);
+            }
+            bridge::translate(&request(Strategy::HighFidelity)).await
+        }
+        result => result,
+    }
+}
+
+async fn translate_piece(label: &str, gen: u64, task: &Task, text: String) -> Option<String> {
+    if !is_current(label, gen) {
+        return None;
+    }
+    let runs = [Run { text, tag: None }];
+    let request = TranslateRequest {
+        source: &task.source,
+        target: &task.target,
+        strategy: Strategy::HighFidelity,
+        runs: &runs,
+    };
+    let pieces = bridge::translate(&request).await.ok()?;
+    let text: String = pieces.into_iter().map(|piece| piece.text).collect();
+    (!text.trim().is_empty()).then_some(text)
+}
+
+/// A lost inline element goes back on its own words in the translation,
+/// and failing that, the segment is redone piece by piece.
+async fn translate(label: &str, gen: u64, task: &Task) -> Result<Vec<Run>, TranslateError> {
+    let runs = translate_whole(label, gen, task).await?;
+    let sent = &task.block.runs;
+    let lost = lost_tags(sent, &runs);
+    if lost.is_empty() || pieces(sent) > MAX_PIECES || !is_current(label, gen) {
+        return Ok(runs);
+    }
+
+    let unplaced = || TranslateError::Failed("an inline element could not be placed".into());
+    let mut found = Vec::with_capacity(lost.len());
+    for &(tag, text) in &lost {
+        let piece = translate_piece(label, gen, task, text.to_string()).await;
+        found.push((tag, piece.ok_or_else(unplaced)?));
+    }
+
+    let spaced = spaced(&task.target);
+    if let Some(anchored) = anchor(runs, &found, spaced) {
+        return Ok(anchored);
+    }
+
+    log::debug!("a segment in {label} lost an inline element, translating it piece by piece");
+    let known = |text: &str| {
+        lost.iter()
+            .zip(&found)
+            .find_map(|(&(_, sent), (_, piece))| (sent == text).then(|| piece.clone()))
+    };
+    let known = &known;
+    piecewise(sent, spaced, |text| async move {
+        match known(&text) {
+            Some(piece) => Some(piece),
+            None => translate_piece(label, gen, task, text).await,
+        }
+    })
+    .await
+    .ok_or_else(unplaced)
+}
+
+async fn work(app: AppHandle, label: String, gen: u64) {
+    while let Some(task) = next_task(&label, gen) {
+        match translate(&label, gen, &task).await {
+            Ok(runs) => apply(&app, &label, gen, task.block.id, &tidy(runs)),
             Err(TranslateError::NothingToTranslate) => {}
             Err(err @ (TranslateError::NotInstalled | TranslateError::Unsupported)) => {
                 log::warn!("translation stopped in {label}: {err}");
@@ -279,6 +404,38 @@ mod tests {
             high_fidelity,
             low_latency: Status::Unsupported,
         }
+    }
+
+    fn run(text: &str, tag: Option<u32>) -> Run {
+        Run {
+            text: text.into(),
+            tag,
+        }
+    }
+
+    #[test]
+    fn plain_segments_take_low_latency_once_it_is_installed() {
+        let plain = Block {
+            id: 0,
+            runs: vec![run("概要", None), run("の説明", None)],
+            main: true,
+        };
+        let linked = Block {
+            id: 1,
+            runs: vec![run("詳しくは", None), run("こちら", Some(0))],
+            main: true,
+        };
+        assert_eq!(strategy_for(&plain, true), Strategy::LowLatency);
+        assert_eq!(strategy_for(&linked, true), Strategy::HighFidelity);
+        assert_eq!(strategy_for(&plain, false), Strategy::HighFidelity);
+    }
+
+    #[test]
+    fn only_a_lasting_failure_turns_low_latency_off() {
+        assert!(lasting(&TranslateError::NotInstalled));
+        assert!(lasting(&TranslateError::Unsupported));
+        assert!(lasting(&TranslateError::TimedOut));
+        assert!(!lasting(&TranslateError::Failed("one segment".into())));
     }
 
     #[test]

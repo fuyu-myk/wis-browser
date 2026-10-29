@@ -10,13 +10,18 @@ const HANDLER: &str = "wisTranslate";
 
 pub const REVERT_SCRIPT: &str = "window.__wisTranslate && window.__wisTranslate.revert();";
 
-/// Defines the script if this document lacks it, then starts generation `gen`.
+/// Defines the scripts if this document lacks them, then starts generation
+/// `gen`. The reader's main-content finder decides what goes first.
 pub fn start_script(gen: u64) -> String {
-    format!("{PAGE_JS}\nwindow.__wisTranslate.start({gen});")
+    let finder = crate::pages::reader::MAIN_CONTENT_FINDER;
+    format!("{finder}\n{PAGE_JS}\nwindow.__wisTranslate.start({gen});")
 }
 
-pub fn go_script(gen: u64) -> String {
-    format!("window.__wisTranslate && window.__wisTranslate.go({gen});")
+/// Collects the page's segments for generation `gen`, translating from
+/// `source`; content marked as another language is left alone.
+pub fn go_script(gen: u64, source: &str) -> String {
+    let source = serde_json::to_string(source).expect("a string serialises");
+    format!("window.__wisTranslate && window.__wisTranslate.go({gen}, {source});")
 }
 
 /// Puts one segment's translation in place. The runs go in as JSON, a JS
@@ -193,9 +198,19 @@ mod tests {
     }
 
     #[test]
-    fn starting_defines_the_script_before_calling_it() {
+    fn going_names_the_source_language_as_a_js_string() {
+        assert_eq!(
+            go_script(3, "ja"),
+            r#"window.__wisTranslate && window.__wisTranslate.go(3, "ja");"#
+        );
+    }
+
+    #[test]
+    fn starting_defines_the_scripts_before_calling_them() {
         let script = start_script(4);
-        assert!(script.starts_with(PAGE_JS));
+        let finder = script.find("function __wisFindMainContent").unwrap();
+        let page = script.find(PAGE_JS).unwrap();
+        assert!(finder < page, "the main-content finder comes first");
         assert!(script.ends_with("window.__wisTranslate.start(4);"));
     }
 }

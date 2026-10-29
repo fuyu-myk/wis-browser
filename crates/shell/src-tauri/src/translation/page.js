@@ -1,8 +1,8 @@
 // Page translation, in Wis's content world. `start` reports the page's
 // declared language, `go` splits the page into segments and sends the ones on
-// screen to `wisTranslate`, `apply` puts one translation in place and
-// `revert` restores the page. Text is only ever set as text nodes, and the
-// page's own nodes are never detached.
+// screen to `wisTranslate`, main content first, `apply` puts one translation
+// in place and `revert` restores the page. Text is only ever set as text
+// nodes, and the page's own nodes are never detached.
 (function () {
   if (window.__wisTranslate) return
 
@@ -24,6 +24,7 @@
   const MAX_CHARS = 4000
   const MAX_RUNS = 128
   const MAX_LANG = 64
+  const MAX_KEYED = 256
 
   // DOM reads through the prototypes: a page's named controls and images
   // (an input named `parentNode`, an img named `body`) shadow the properties
@@ -46,6 +47,7 @@
   const childNodesOf = getter(NodeType, 'childNodes')
   const tagOf = getter(ElementType, 'tagName')
   const matches = method(ElementType, 'matches')
+  const attributeOf = method(ElementType, 'getAttribute')
   const closest = method(ElementType, 'closest')
   const insertBefore = method(NodeType, 'insertBefore')
   const removeChild = method(NodeType, 'removeChild')
@@ -57,6 +59,7 @@
   let state = null
 
   const blank = (text) => !/\S/.test(text)
+  const worded = (text) => /\p{L}/u.test(text)
 
   function post(payload) {
     try {
@@ -74,6 +77,36 @@
       }
     }
     return ''
+  }
+
+  function mainContent() {
+    try {
+      return typeof __wisFindMainContent === 'function' ? __wisFindMainContent() : null
+    } catch (err) {
+      return null
+    }
+  }
+
+  function within(ancestor, node) {
+    for (let n = node; n; n = parentOf(n)) if (n === ancestor) return true
+    return false
+  }
+
+  // Codes that name the same language here, and codes that name none.
+  const ALIASES = new Map([
+    ['iw', 'he'], ['in', 'id'], ['ji', 'yi'], ['jw', 'jv'], ['mo', 'ro'], ['tl', 'fil'],
+    ['nb', 'no'], ['nn', 'no'], ['cmn', 'zh'], ['yue', 'zh'], ['wuu', 'zh'],
+  ])
+  const UNMARKED = new Set(['', 'und', 'mul', 'x', 'i'])
+  function primaryOf(lang) {
+    const code = (lang || '').split(/[-_,\s]/)[0].toLowerCase()
+    return ALIASES.get(code) || code
+  }
+
+  function foreign(el, primary) {
+    const marked = primary ? closest(el, '[lang]') : null
+    const lang = marked ? primaryOf(attributeOf(marked, 'lang')) : ''
+    return !UNMARKED.has(lang) && lang !== primary
   }
 
   function blockOf(el) {
@@ -128,7 +161,10 @@
     return text
   }
 
-  const opaque = (el) => !BLOCKS.has(tagOf(el)) && matches(el, OPAQUE) && !blank(textOf(el))
+  const opaque = (el) =>
+    !BLOCKS.has(tagOf(el)) &&
+    (matches(el, OPAQUE) || foreign(el, state.primary)) &&
+    !blank(textOf(el))
   const ownText = (el) => textNodesIn(el).map((t) => t.nodeValue).join('')
 
   function trimBlank(nodes) {
@@ -166,6 +202,7 @@
     const loose = nodes.filter((n) => kind(n) === 3 && !blank(n.nodeValue))
     if (elements.length === 1 && !loose.length && !opaque(elements[0])) {
       const text = ownText(elements[0])
+      if (!worded(text)) return null
       return { root, nodes, whole: elements[0], tagged: [], opaque: new Set(), runs: [{ text }], sent: text }
     }
     const tagged = []
@@ -180,7 +217,7 @@
       }
       return { text: ownText(n), tag }
     })
-    const translatable = runs.some((r) => (r.tag == null || !fixed.has(r.tag)) && !blank(r.text))
+    const translatable = runs.some((r) => (r.tag == null || !fixed.has(r.tag)) && worded(r.text))
     if (!translatable) return null
     return { root, nodes, whole: null, tagged, opaque: fixed, runs, sent: runs.map((r) => r.text).join('') }
   }
@@ -196,14 +233,25 @@
       .join('')
   }
 
+  // The framework drops the tags of a segment with no text of its own.
+  function partsOf(nodes) {
+    if (nodes.length === 1 || nodes.some((n) => kind(n) === 3 && !blank(n.nodeValue))) return [nodes]
+    return nodes.filter((n) => kind(n) === 1).map((n) => [n])
+  }
+
   function collect() {
     const body = bodyOf(document)
     if (!body) return []
     const byBlock = new Map()
+    const rejected = new Map()
+    const reject = (el) => {
+      if (!rejected.has(el)) rejected.set(el, !!closest(el, SKIP) || foreign(el, state.primary))
+      return rejected.get(el)
+    }
     const walker = method(DocumentType, 'createTreeWalker')(document, body, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         const parent = parentElementOf(node)
-        if (blank(node.nodeValue) || !parent || closest(parent, SKIP)) return NodeFilter.FILTER_REJECT
+        if (blank(node.nodeValue) || !parent || reject(parent)) return NodeFilter.FILTER_REJECT
         return NodeFilter.FILTER_ACCEPT
       },
     })
@@ -219,11 +267,12 @@
       for (const t of texts) {
         for (let e = parentElementOf(t); e && e !== root; e = parentElementOf(e)) carriers.add(e)
       }
-      for (const nodes of groupsOf(root, new Set(texts), carriers)) {
+      for (const nodes of groupsOf(root, new Set(texts), carriers).flatMap(partsOf)) {
         const segment = segmentOf(root, nodes)
         if (!segment || segment.sent.length > MAX_CHARS || segment.runs.length > MAX_RUNS) continue
         segment.id = segments.length
         segment.applied = null
+        segment.key = segment.sent.length <= MAX_KEYED ? JSON.stringify([segment.runs, [...segment.opaque]]) : null
         segments.push(segment)
         if (segments.length >= MAX_SEGMENTS) return segments
       }
@@ -231,14 +280,22 @@
     return segments
   }
 
+  function sendable(s, seg) {
+    if (seg.applied || (seg.key && s.sentKeys.has(seg.key))) return false
+    if (seg.key) s.sentKeys.add(seg.key)
+    return true
+  }
+
   function flush(s) {
     if (s !== state) return
     s.scheduled = false
-    const pending = s.pending.sort((a, b) => a.id - b.id)
+    const pending = s.pending.sort((a, b) => b.main - a.main || a.id - b.id).filter((seg) => sendable(s, seg))
     s.pending = []
+    if (!pending.length) return
+    s.wave++
     for (let i = 0; i < pending.length; i += BATCH) {
-      const blocks = pending.slice(i, i + BATCH).map((seg) => ({ id: seg.id, runs: seg.runs }))
-      post({ kind: 'blocks', gen: s.gen, blocks })
+      const blocks = pending.slice(i, i + BATCH).map((seg) => ({ id: seg.id, runs: seg.runs, main: seg.main }))
+      post({ kind: 'blocks', gen: s.gen, wave: s.wave, blocks })
     }
   }
 
@@ -263,17 +320,35 @@
 
   function start(gen) {
     revert()
-    state = { gen, segments: null, byRoot: null, observer: null, pending: [], scheduled: false }
+    state = {
+      gen,
+      primary: '',
+      segments: null,
+      byRoot: null,
+      byKey: null,
+      sentKeys: new Set(),
+      observer: null,
+      pending: [],
+      scheduled: false,
+      wave: 0,
+    }
     post({ kind: 'start', gen, lang: declaredLanguage() })
   }
 
-  function go(gen) {
+  function go(gen, source) {
     if (!state || state.gen !== gen || state.segments) return
+    const main = mainContent()
+    state.primary = primaryOf(source)
     state.segments = collect()
     state.byRoot = new Map()
+    state.byKey = new Map()
     for (const seg of state.segments) {
+      seg.main = !!main && within(main, seg.root)
       if (!state.byRoot.has(seg.root)) state.byRoot.set(seg.root, [])
       state.byRoot.get(seg.root).push(seg)
+      if (!seg.key) continue
+      if (!state.byKey.has(seg.key)) state.byKey.set(seg.key, [])
+      state.byKey.get(seg.key).push(seg)
     }
     if (typeof IntersectionObserver !== 'function') {
       queue(state.segments)
@@ -317,6 +392,25 @@
     return tags.size === seg.tagged.length
   }
 
+  // The framework drops a segment's leading and trailing spaces, which keep
+  // it apart from an image or a line break beside it.
+  function withEdges(runs, sent) {
+    const out = runs.slice()
+    const text = runs.map((r) => r.text).join('')
+    const lead = /^\s*/.exec(sent)[0]
+    const trail = /\s*$/.exec(sent)[0]
+    if (lead && !/^\s/.test(text)) {
+      if (out[0] && out[0].tag == null) out[0] = { text: lead + out[0].text }
+      else out.unshift({ text: lead, edge: true })
+    }
+    const last = out[out.length - 1]
+    if (trail && !/\s$/.test(text)) {
+      if (last && last.tag == null) out[out.length - 1] = { text: last.text + trail }
+      else out.push({ text: trail, edge: true })
+    }
+    return out
+  }
+
   // Lays `nodes` out in order where the segment's nodes stood. Every node is
   // already a child of `root` or new, so the page's nodes only move within it.
   function arrange(root, nodes, anchor) {
@@ -328,10 +422,16 @@
 
   const inOrder = (a, b) => a.length === b.length && a.every((n, i) => n === b[i])
 
-  function apply(gen, id, runs) {
+  function apply(gen, id, translation) {
     if (!state || state.gen !== gen || !state.segments) return
     const seg = state.segments[id]
-    if (!seg || seg.applied || !usable(runs, seg) || currentText(seg) !== seg.sent) return
+    if (!seg) return
+    for (const each of seg.key ? state.byKey.get(seg.key) : [seg]) put(each, translation)
+  }
+
+  function put(seg, translation) {
+    if (seg.applied || !usable(translation, seg) || currentText(seg) !== seg.sent) return
+    const runs = withEdges(translation, seg.sent)
     const saved = new Map()
     if (seg.whole) {
       setText(seg.whole, runs.map((r) => r.text).join(''), saved)
@@ -346,7 +446,7 @@
     const laid = []
     for (const run of runs) {
       if (run.tag == null) {
-        let t = loose[next++]
+        let t = run.edge ? null : loose[next++]
         if (t) {
           remember(saved, t)
           t.nodeValue = run.text

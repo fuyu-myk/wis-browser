@@ -9,6 +9,7 @@ mod language;
 mod message;
 #[cfg(target_os = "macos")]
 mod page;
+mod pieces;
 #[cfg(target_os = "macos")]
 mod session;
 

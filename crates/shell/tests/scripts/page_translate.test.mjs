@@ -35,20 +35,25 @@ function observerClass() {
   return { FakeObserver, observers }
 }
 
-/** Runs the script over `doc` and returns its API, what it posted, and the observers. */
-function load(doc) {
+/**
+ * Runs the script over `doc` and returns its API, what it posted, and the
+ * observers. `findMain` stands in for the reader's main-content finder.
+ */
+function load(doc, { findMain } = {}) {
   const { webkit, sent } = handlers('wisTranslate')
   const window = eventTarget({ webkit })
   const { FakeObserver, observers } = observerClass()
   const timers = []
   const setTimeout = (fn) => timers.push(fn)
-  new Function('window', 'document', 'NodeFilter', 'IntersectionObserver', 'setTimeout', SCRIPT)(
-    window,
-    doc,
-    NodeFilter,
-    FakeObserver,
-    setTimeout,
-  )
+  new Function(
+    'window',
+    'document',
+    'NodeFilter',
+    'IntersectionObserver',
+    'setTimeout',
+    '__wisFindMainContent',
+    SCRIPT,
+  )(window, doc, NodeFilter, FakeObserver, setTimeout, findMain)
   const messages = () => sent.map(({ body }) => JSON.parse(body))
   const flush = () => {
     while (timers.length) timers.shift()()
@@ -56,10 +61,13 @@ function load(doc) {
   return { api: window.__wisTranslate, window, messages, observers, flush }
 }
 
-/** Starts and runs translation generation `gen`, with every root on screen. */
-function goVisible(loaded, gen = 1) {
+/**
+ * Starts and runs translation generation `gen` from `source`, with every root
+ * on screen.
+ */
+function goVisible(loaded, gen = 1, source = '') {
   loaded.api.start(gen)
-  loaded.api.go(gen)
+  loaded.api.go(gen, source)
   const observer = loaded.observers.at(-1)
   observer.show(...observer.targets)
   loaded.flush()
@@ -117,6 +125,7 @@ describe('finding segments', () => {
           { text: '全文', tag: 1 },
           { text: 'を。' },
         ],
+        main: false,
       },
     ])
   })
@@ -142,9 +151,61 @@ describe('finding segments', () => {
     assert.deepEqual(texts, ['本文'])
   })
 
+  test('content marked as another language than the source is left alone', () => {
+    const menu = h(
+      'ul',
+      {},
+      h('li', {}, h('a', { href: '/af', lang: 'af' }, 'Afrikaans')),
+      h('li', { lang: 'ar' }, 'العربية'),
+      h('li', { lang: 'ja-JP' }, '日本語'),
+    )
+    const doc = page('https://example.jp/', h('p', {}, '本文'), menu)
+    doc.documentElement.setAttribute('lang', 'ja')
+    const texts = blocksOf(goVisible(load(doc), 1, 'ja')).map((b) => b.runs[0].text)
+    assert.deepEqual(texts, ['本文', '日本語'])
+  })
+
+  test('a phrase marked as another language stays in its sentence, untranslated', () => {
+    const term = h('span', { lang: 'en' }, 'iPhone')
+    const p = h('p', {}, 'これは', term, 'です')
+    const doc = page('https://example.jp/', p)
+    doc.documentElement.setAttribute('lang', 'ja')
+    const loaded = load(doc)
+    const sent = blocksOf(goVisible(loaded, 1, 'ja')).map((b) => b.runs)
+    assert.deepEqual(sent, [[{ text: 'これは' }, { text: 'iPhone', tag: 0 }, { text: 'です' }]])
+    loaded.api.apply(1, 0, [{ text: 'This is an ' }, { text: 'iphone', tag: 0 }, { text: '.' }])
+    assert.equal(p.innerHTML, 'This is an <span lang="en">iPhone</span>.')
+  })
+
+  test('codes for the same language, and codes for none, are not another language', () => {
+    const doc = page(
+      'https://example.no/',
+      h('main', { lang: 'nb' }, h('p', {}, 'Bokmål')),
+      h('p', { lang: 'nn' }, 'Nynorsk'),
+      h('p', { lang: 'und' }, 'Ukjent'),
+      h('p', { lang: 'x-klingon' }, 'Privat'),
+      h('p', { lang: 'sv' }, 'Svenska'),
+    )
+    const texts = blocksOf(goVisible(load(doc), 1, 'no')).map((b) => b.runs[0].text)
+    assert.deepEqual(texts, ['Bokmål', 'Nynorsk', 'Ukjent', 'Privat'])
+  })
+
+  test('an article marked in the source language is kept on a page marked otherwise', () => {
+    const doc = page('https://example.jp/', h('p', {}, 'Menu'), h('article', { lang: 'ja' }, h('p', {}, '本文')))
+    doc.documentElement.setAttribute('lang', 'en')
+    const texts = blocksOf(goVisible(load(doc), 1, 'ja')).map((b) => b.runs[0].text)
+    assert.deepEqual(texts, ['本文'])
+  })
+
+  test('elements with no text between them go one by one, and numbers alone stay', () => {
+    const entry = h('a', { href: '#s1' }, h('span', {}, '3.1'), '\n  ', h('span', {}, '構造と動作'))
+    const doc = page('https://example.jp/', h('ul', {}, h('li', {}, entry)))
+    assert.deepEqual(blocksOf(goVisible(load(doc))).map((b) => b.runs), [[{ text: '構造と動作' }]])
+  })
+
   test('a segment that is one link is sent whole, untagged', () => {
     const doc = page('https://example.jp/', h('ul', {}, h('li', {}, h('a', { href: '/' }, 'ホーム'))))
-    assert.deepEqual(blocksOf(goVisible(load(doc))), [{ id: 0, runs: [{ text: 'ホーム' }] }])
+    assert.deepEqual(blocksOf(goVisible(load(doc))), [{ id: 0, runs: [{ text: 'ホーム' }], main: false }])
   })
 
   test('a line break or an image splits a block into segments', () => {
@@ -184,7 +245,7 @@ describe('sending what is on screen', () => {
     loaded.observers[0].show(second)
     loaded.flush()
     const sent = blocksOf(loaded.messages().filter((m) => m.kind === 'blocks'))
-    assert.deepEqual(sent, [{ id: 1, runs: [{ text: '二つ目' }] }])
+    assert.deepEqual(sent, [{ id: 1, runs: [{ text: '二つ目' }], main: false }])
     assert.ok(!loaded.observers[0].targets.has(second), 'a sent block stops being watched')
   })
 
@@ -192,11 +253,71 @@ describe('sending what is on screen', () => {
     const paragraphs = Array.from({ length: 50 }, (_, i) => h('p', {}, `段落${i}`))
     const messages = goVisible(load(page('https://example.jp/', ...paragraphs)), 7)
     assert.ok(messages.length > 1, 'more than one message')
-    assert.ok(messages.every((m) => m.gen === 7 && m.blocks.length <= 24))
+    assert.ok(messages.every((m) => m.gen === 7 && m.wave === 1 && m.blocks.length <= 24))
     assert.deepEqual(
       blocksOf(messages).map((b) => b.id),
       Array.from({ length: 50 }, (_, i) => i),
     )
+  })
+
+  test('each scroll that brings segments into view is a new wave', () => {
+    const first = h('p', {}, '一つ目')
+    const second = h('p', {}, '二つ目')
+    const loaded = load(page('https://example.jp/', first, second))
+    loaded.api.start(1)
+    loaded.api.go(1)
+    loaded.observers[0].show(first)
+    loaded.flush()
+    loaded.observers[0].show(second)
+    loaded.flush()
+    const waves = loaded.messages().filter((m) => m.kind === 'blocks').map((m) => m.wave)
+    assert.deepEqual(waves, [1, 2])
+  })
+
+  test('the main content goes before menus that came into view with it', () => {
+    const menu = h('nav', {}, h('ul', {}, h('li', {}, 'ホーム'), h('li', {}, 'ヘルプ')))
+    const article = h('main', {}, h('p', {}, '本文一'), h('p', {}, '本文二'))
+    const loaded = load(page('https://example.jp/', menu, article), { findMain: () => article })
+    const sent = blocksOf(goVisible(loaded))
+    assert.deepEqual(
+      sent.map((b) => [b.runs[0].text, b.main]),
+      [['本文一', true], ['本文二', true], ['ホーム', false], ['ヘルプ', false]],
+    )
+  })
+
+  test('main content stays first when a wave spans several messages', () => {
+    const menu = h('nav', {}, h('ul', {}, ...Array.from({ length: 30 }, (_, i) => h('li', {}, `項目${i}`))))
+    const article = h('main', {}, h('p', {}, '本文一'), h('p', {}, '本文二'))
+    const loaded = load(page('https://example.jp/', menu, article), { findMain: () => article })
+    const messages = goVisible(loaded)
+    assert.ok(messages.length > 1)
+    assert.deepEqual(
+      messages[0].blocks.slice(0, 2).map((b) => b.runs[0].text),
+      ['本文一', '本文二'],
+    )
+  })
+
+  test('a page with nothing to send uses no wave', () => {
+    const loaded = load(page('https://example.jp/', h('p', {}, '一つ目'), h('p', {}, '二つ目')))
+    loaded.api.start(1)
+    loaded.api.go(1, '')
+    loaded.observers[0].show()
+    loaded.flush()
+    loaded.observers[0].show(...loaded.observers[0].targets)
+    loaded.flush()
+    const waves = loaded.messages().filter((m) => m.kind === 'blocks').map((m) => m.wave)
+    assert.deepEqual(waves, [1])
+  })
+
+  test('a page whose main content cannot be found keeps document order', () => {
+    const menu = h('nav', {}, h('ul', {}, h('li', {}, 'ホーム')))
+    const article = h('main', {}, h('p', {}, '本文'))
+    const findMain = () => {
+      throw new TypeError('document.querySelectorAll is not a function')
+    }
+    const loaded = load(page('https://example.jp/', menu, article), { findMain })
+    const texts = blocksOf(goVisible(loaded)).map((b) => b.runs[0].text)
+    assert.deepEqual(texts, ['ホーム', '本文'])
   })
 })
 
@@ -371,7 +492,9 @@ describe('putting translations in place', () => {
     const p = h('p', {}, '一覧は', code, 'で表示')
     const loaded = load(page('https://example.jp/', p))
     const blocks = blocksOf(goVisible(loaded))
-    assert.deepEqual(blocks, [{ id: 0, runs: [{ text: '一覧は' }, { text: 'ls', tag: 0 }, { text: 'で表示' }] }])
+    assert.deepEqual(blocks, [
+      { id: 0, runs: [{ text: '一覧は' }, { text: 'ls', tag: 0 }, { text: 'で表示' }], main: false },
+    ])
     loaded.api.apply(1, 0, [{ text: 'Show the list with ' }, { text: 'エルエス', tag: 0 }])
     assert.equal(p.innerHTML, 'Show the list with <code>ls</code>')
     assert.equal(p.childNodes[1], code)
@@ -408,6 +531,90 @@ describe('putting translations in place', () => {
     assert.notEqual(p.innerHTML, before, 'a plain unload leaves the page alone')
     loaded.window.fire('pagehide', { persisted: true })
     assert.equal(p.innerHTML, before)
+  })
+
+  test('the spaces at a segment\'s edges survive a translation that drops them', () => {
+    const p = h('p', {}, '前の文 ', h('img', { src: '/i.png' }), ' 後の文')
+    const loaded = load(page('https://example.jp/', p))
+    const sent = blocksOf(goVisible(loaded)).map((b) => b.runs)
+    assert.deepEqual(sent, [[{ text: '前の文 ' }], [{ text: ' 後の文' }]])
+    loaded.api.apply(1, 0, [{ text: 'Before' }])
+    loaded.api.apply(1, 1, [{ text: ' After' }])
+    assert.equal(p.innerHTML, 'Before <img src="/i.png"> After')
+  })
+
+  test('a lost space before a link goes in front of it in a new node, and reverts', () => {
+    const link = h('a', { href: '/x' }, ' こちら')
+    const p = h('p', {}, h('img', { src: '/i.png' }), link, 'を見る')
+    const rest = p.childNodes[2]
+    const loaded = load(page('https://example.jp/', p))
+    const before = p.innerHTML
+    goVisible(loaded)
+    loaded.api.apply(1, 0, [{ text: 'here', tag: 0 }, { text: ' to see' }])
+    assert.equal(p.innerHTML, '<img src="/i.png"> <a href="/x">here</a> to see')
+    assert.equal(p.childNodes[2], link)
+    assert.equal(p.childNodes[3], rest, 'the page\'s text node keeps its place after the link')
+    assert.equal(rest.nodeValue, ' to see')
+    loaded.api.revert()
+    assert.equal(p.innerHTML, before)
+  })
+
+  test('a lost space after a link goes behind it', () => {
+    const p = h('p', {}, '見る', h('a', { href: '/x' }, 'こちら '), h('img', { src: '/i.png' }))
+    const loaded = load(page('https://example.jp/', p))
+    goVisible(loaded)
+    loaded.api.apply(1, 0, [{ text: 'See ' }, { text: 'here', tag: 0 }])
+    assert.equal(p.innerHTML, 'See <a href="/x">here</a> <img src="/i.png">')
+  })
+
+  test('a whole-link segment keeps the spaces inside its link', () => {
+    const link = h('a', { href: '/' }, ' ホーム ')
+    const loaded = load(page('https://example.jp/', h('ul', {}, h('li', {}, link))))
+    goVisible(loaded)
+    loaded.api.apply(1, 0, [{ text: 'Home' }])
+    assert.equal(link.textContent, ' Home ')
+  })
+
+  test('a segment the page repeats is sent once and every copy filled together', () => {
+    const edit = (href) => h('span', { class: 'mw-editsection' }, '[', h('a', { href }, '編集'), ']')
+    const first = edit('/e1')
+    const later = edit('/e2')
+    const loaded = load(page('https://example.jp/', h('div', {}, first), h('div', {}, later)))
+    loaded.api.start(1)
+    loaded.api.go(1, '')
+    loaded.observers[0].show(first)
+    loaded.flush()
+    const sent = blocksOf(loaded.messages().filter((m) => m.kind === 'blocks'))
+    assert.equal(sent.length, 1)
+    loaded.api.apply(1, sent[0].id, [{ text: '[' }, { text: 'edit', tag: 0 }, { text: ']' }])
+    assert.equal(first.innerHTML, '[<a href="/e1">edit</a>]')
+    assert.equal(later.innerHTML, '[<a href="/e2">edit</a>]', 'a copy not yet on screen is filled too')
+    loaded.observers[0].show(later)
+    loaded.flush()
+    assert.equal(blocksOf(loaded.messages().filter((m) => m.kind === 'blocks')).length, 1)
+    loaded.api.revert()
+    assert.equal(later.innerHTML, '[<a href="/e2">編集</a>]')
+  })
+
+  test('two copies on screen together are sent once and both filled', () => {
+    const one = h('p', {}, '返信')
+    const two = h('p', {}, '返信')
+    const loaded = load(page('https://example.jp/', one, two))
+    goVisible(loaded)
+    const sent = blocksOf(loaded.messages().filter((m) => m.kind === 'blocks'))
+    assert.equal(sent.length, 1)
+    loaded.api.apply(1, sent[0].id, [{ text: 'Reply' }])
+    assert.deepEqual([one.textContent, two.textContent], ['Reply', 'Reply'])
+  })
+
+  test('copies that differ in what stays untranslated are sent apart', () => {
+    const doc = page(
+      'https://example.jp/',
+      h('p', {}, 'これは', h('span', { lang: 'en' }, 'Python'), 'です'),
+      h('p', {}, 'これは', h('span', {}, 'Python'), 'です'),
+    )
+    doc.documentElement.setAttribute('lang', 'ja')
+    assert.equal(blocksOf(goVisible(load(doc), 1, 'ja')).length, 2)
   })
 
   test('a segment the page has since changed is skipped, not forced', () => {
