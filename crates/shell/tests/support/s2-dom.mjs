@@ -32,6 +32,9 @@ export class Text {
   get textContent() {
     return this.nodeValue
   }
+  get isConnected() {
+    return rootOf(this).nodeType === 9
+  }
   cloneNode() {
     return new Text(this.nodeValue)
   }

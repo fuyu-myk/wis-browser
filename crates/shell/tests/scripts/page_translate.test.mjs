@@ -35,6 +35,32 @@ function observerClass() {
   return { FakeObserver, observers }
 }
 
+/** A MutationObserver whose records the test hands over by hand. */
+function mutationClass() {
+  const mutations = []
+  class FakeMutations {
+    constructor(callback) {
+      this.callback = callback
+      this.watching = false
+      mutations.push(this)
+    }
+    observe() {
+      this.watching = true
+    }
+    disconnect() {
+      this.watching = false
+    }
+    takeRecords() {
+      return []
+    }
+    /** Report `records` as the page's changes. */
+    fire(...records) {
+      if (this.watching) this.callback(records)
+    }
+  }
+  return { FakeMutations, mutations }
+}
+
 /**
  * Runs the script over `doc` and returns its API, what it posted, and the
  * observers. `findMain` stands in for the reader's main-content finder.
@@ -43,6 +69,7 @@ function load(doc, { findMain } = {}) {
   const { webkit, sent } = handlers('wisTranslate')
   const window = eventTarget({ webkit })
   const { FakeObserver, observers } = observerClass()
+  const { FakeMutations, mutations } = mutationClass()
   const timers = []
   const setTimeout = (fn) => timers.push(fn)
   new Function(
@@ -51,14 +78,15 @@ function load(doc, { findMain } = {}) {
     'NodeFilter',
     'IntersectionObserver',
     'setTimeout',
+    'MutationObserver',
     '__wisFindMainContent',
     SCRIPT,
-  )(window, doc, NodeFilter, FakeObserver, setTimeout, findMain)
+  )(window, doc, NodeFilter, FakeObserver, setTimeout, FakeMutations, findMain)
   const messages = () => sent.map(({ body }) => JSON.parse(body))
   const flush = () => {
     while (timers.length) timers.shift()()
   }
-  return { api: window.__wisTranslate, window, messages, observers, flush }
+  return { api: window.__wisTranslate, window, messages, observers, mutations, flush }
 }
 
 /**
@@ -727,5 +755,167 @@ describe('turning translation back on', () => {
     loaded.api.start(2)
     loaded.api.go(2, 'ja', 'en')
     assert.equal(p.textContent, '詳しくはこちらを。')
+  })
+})
+
+describe('a page that changes after translating', () => {
+  const sentTexts = (loaded) =>
+    blocksOf(loaded.messages().filter((m) => m.kind === 'blocks')).map((b) => b.runs[0].text)
+  const added = (target, ...nodes) => ({ type: 'childList', target, addedNodes: nodes, removedNodes: [] })
+
+  test('text the page adds later is sent when it comes into view', () => {
+    const list = h('ul', {}, h('li', {}, '一つ目'))
+    const loaded = load(page('https://example.jp/', list))
+    goVisible(loaded, 1, 'ja')
+    const item = h('li', {}, '二つ目')
+    list.appendChild(item)
+    loaded.mutations.at(-1).fire(added(list, item))
+    loaded.flush()
+    loaded.observers.at(-1).show(item)
+    loaded.flush()
+    assert.deepEqual(sentTexts(loaded), ['一つ目', '二つ目'])
+  })
+
+  test('text the page re-renders as it was comes back translated at once', () => {
+    const p = h('p', {}, '一つ目')
+    const loaded = load(page('https://example.jp/', p))
+    goVisible(loaded, 1, 'ja')
+    loaded.api.apply(1, 0, [{ text: 'First' }])
+    p.removeChild(p.childNodes[0])
+    const fresh = new Text('一つ目')
+    p.appendChild(fresh)
+    loaded.mutations.at(-1).fire(added(p, fresh))
+    loaded.flush()
+    assert.equal(p.textContent, 'First')
+    assert.deepEqual(sentTexts(loaded), ['一つ目'])
+  })
+
+  test('new text the page writes over a translation is sent in turn', () => {
+    const p = h('p', {}, '一つ目')
+    const loaded = load(page('https://example.jp/', p))
+    goVisible(loaded, 1, 'ja')
+    loaded.api.apply(1, 0, [{ text: 'First' }])
+    p.childNodes[0].nodeValue = '三件の返信'
+    loaded.mutations.at(-1).fire({ type: 'characterData', target: p.childNodes[0] })
+    loaded.flush()
+    assert.equal(p.textContent, '三件の返信')
+    loaded.observers.at(-1).show(p)
+    loaded.flush()
+    assert.deepEqual(sentTexts(loaded), ['一つ目', '三件の返信'])
+  })
+
+  test('a rescan leaves the nodes Wis made for a translation alone', () => {
+    const link = h('a', { href: '/x' }, 'こちら')
+    const p = h('p', {}, '詳しくは', link)
+    const loaded = load(page('https://example.jp/', p))
+    goVisible(loaded, 1, 'ja')
+    loaded.api.apply(1, 0, [{ text: 'See ' }, { text: 'here', tag: 0 }, { text: ' and ' }, { text: 'here', tag: 0 }])
+    const note = h('span', {}, '追記')
+    p.appendChild(note)
+    loaded.mutations.at(-1).fire(added(p, note))
+    loaded.flush()
+    loaded.observers.at(-1).show(...loaded.observers.at(-1).targets)
+    loaded.flush()
+    assert.deepEqual(sentTexts(loaded), ['詳しくは', '追記'])
+  })
+
+  const rewritten = (node, value) => {
+    node.nodeValue = value
+    return { type: 'characterData', target: node }
+  }
+
+  test('a reply for text the page changed meanwhile still fills its later copies', () => {
+    const like = h('button', {}, 'いいね')
+    const loaded = load(page('https://example.jp/', like))
+    goVisible(loaded, 1, 'ja')
+    const text = like.childNodes[0]
+    loaded.mutations.at(-1).fire(rewritten(text, 'いいね済み'))
+    loaded.flush()
+    loaded.api.apply(1, 0, [{ text: 'Like' }])
+    loaded.mutations.at(-1).fire(rewritten(text, 'いいね'))
+    loaded.flush()
+    assert.equal(like.textContent, 'Like')
+  })
+
+  test('segments the page throws away stop counting toward the cap', () => {
+    const items = Array.from({ length: 10000 }, (_, i) => h('li', {}, `項目${i}`))
+    const list = h('ul', {}, ...items)
+    const loaded = load(page('https://example.jp/', list))
+    goVisible(loaded, 1, 'ja')
+    const gone = items.slice(0, 10)
+    for (const item of gone) list.removeChild(item)
+    loaded.mutations.at(-1).fire({ type: 'childList', target: list, addedNodes: [], removedNodes: gone })
+    loaded.flush()
+    const item = h('li', {}, '追加')
+    list.appendChild(item)
+    loaded.mutations.at(-1).fire(added(list, item))
+    loaded.flush()
+    loaded.observers.at(-1).show(item)
+    loaded.flush()
+    assert.equal(sentTexts(loaded).at(-1), '追加')
+  })
+
+  test('a node the page keeps rewriting is left to the page', () => {
+    const p = h('p', {}, '一つ目')
+    const loaded = load(page('https://example.jp/', p))
+    goVisible(loaded, 1, 'ja')
+    loaded.api.apply(1, 0, [{ text: 'First' }])
+    const text = p.childNodes[0]
+    for (let i = 0; i < 5; i++) {
+      loaded.mutations.at(-1).fire(rewritten(text, '一つ目'))
+      loaded.flush()
+    }
+    assert.equal(p.textContent, '一つ目')
+  })
+
+  test('dropping a segment takes away the nodes Wis made for it', () => {
+    const link = h('a', { href: '/x' }, 'こちら')
+    const p = h('p', {}, '詳しくは', link)
+    const loaded = load(page('https://example.jp/', p))
+    goVisible(loaded, 1, 'ja')
+    loaded.api.apply(1, 0, [{ text: 'See ' }, { text: 'here', tag: 0 }, { text: ' and ' }, { text: 'here', tag: 0 }])
+    const first = p.childNodes.find((n) => n.nodeType === 3 && n.nodeValue === 'See ')
+    loaded.mutations.at(-1).fire(rewritten(first, '新しい'))
+    loaded.flush()
+    assert.equal(p.innerHTML, '新しい<a href="/x">こちら</a>')
+    loaded.observers.at(-1).show(...loaded.observers.at(-1).targets)
+    loaded.flush()
+    assert.deepEqual(sentTexts(loaded), ['詳しくは', '新しい'])
+  })
+
+  test('revert leaves text the page has changed since', () => {
+    const p = h('p', {}, '一つ目')
+    const loaded = load(page('https://example.jp/', p))
+    goVisible(loaded, 1, 'ja')
+    loaded.api.apply(1, 0, [{ text: 'First' }])
+    p.childNodes[0].nodeValue = '三件の返信'
+    loaded.api.revert()
+    assert.equal(p.textContent, '三件の返信')
+  })
+
+  test('reverting stops watching the page', () => {
+    const list = h('ul', {}, h('li', {}, '一つ目'))
+    const loaded = load(page('https://example.jp/', list))
+    goVisible(loaded, 1, 'ja')
+    loaded.api.revert()
+    assert.equal(loaded.mutations.at(-1).watching, false)
+  })
+
+  test('a page at the segment cap gains no more as it grows', () => {
+    const list = h('ul', {}, ...Array.from({ length: 10000 }, (_, i) => h('li', {}, `項目${i}`)))
+    const loaded = load(page('https://example.jp/', list))
+    goVisible(loaded, 1, 'ja')
+    const item = h('li', {}, '追加')
+    list.appendChild(item)
+    loaded.mutations.at(-1).fire(added(list, item))
+    loaded.flush()
+    loaded.observers.at(-1).show(item)
+    loaded.flush()
+    assert.equal(sentTexts(loaded).length, 10000)
+  })
+
+  test('a long page is translated past two thousand segments', () => {
+    const paragraphs = Array.from({ length: 2500 }, (_, i) => h('p', {}, `段落${i}`))
+    assert.equal(blocksOf(goVisible(load(page('https://example.jp/', ...paragraphs)))).length, 2500)
   })
 })

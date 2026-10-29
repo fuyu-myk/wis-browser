@@ -1,7 +1,8 @@
 // Page translation, in Wis's content world. `start` reports the page's
 // declared language, `go` splits the page into segments and sends the ones on
-// screen to `wisTranslate`, main content first, `apply` puts one translation
-// in place and `revert` restores the page. Text is only ever set as text
+// screen to `wisTranslate`, main content first, then watches for text the
+// page adds or changes, `apply` puts one translation in place and `revert`
+// restores the page. Text is only ever set as text
 // nodes, and the page's own nodes are never detached.
 (function () {
   if (window.__wisTranslate) return
@@ -20,11 +21,17 @@
   const OPAQUE = 'code, kbd, samp, var, [translate=no], .notranslate'
   // Messages carry at most this many segments; longer segments are left as they are.
   const BATCH = 24
-  const MAX_SEGMENTS = 2000
+  const MAX_SEGMENTS = 10000
   const MAX_CHARS = 4000
   const MAX_RUNS = 128
   const MAX_LANG = 64
   const MAX_KEPT = 2000000
+  const MAX_IDS = 1000000
+  const RESCAN_DELAY = 300
+  const MAX_RESCAN_DELAY = 5000
+  const SLOW_RESCAN = 20
+  const MAX_CHURN = 3
+  const CHURN_WINDOW = 10000
 
   // DOM reads through the prototypes: a page's named controls and images
   // (an input named `parentNode`, an img named `body`) shadow the properties
@@ -51,6 +58,7 @@
   const closest = method(ElementType, 'closest')
   const insertBefore = method(NodeType, 'insertBefore')
   const removeChild = method(NodeType, 'removeChild')
+  const connected = getter(NodeType, 'isConnected')
   const bodyOf = getter(DocumentType, 'body')
   const documentElementOf = getter(DocumentType, 'documentElement')
   const createText = (text) => method(DocumentType, 'createTextNode')(document, text)
@@ -234,25 +242,37 @@
       .join('')
   }
 
+  function textsOf(seg) {
+    const out = []
+    for (const n of seg.whole ? [seg.whole] : seg.nodes) {
+      if (kind(n) === 3) out.push(n)
+      else for (const t of textNodesIn(n)) out.push(t)
+    }
+    return out
+  }
+
   // The framework drops the tags of a segment with no text of its own.
   function partsOf(nodes) {
     if (nodes.length === 1 || nodes.some((n) => kind(n) === 3 && !blank(n.nodeValue))) return [nodes]
     return nodes.filter((n) => kind(n) === 1).map((n) => [n])
   }
 
-  function collect() {
-    const body = bodyOf(document)
-    if (!body) return []
+  // New segments under `scope`, leaving text other segments already hold.
+  function collect(scope) {
+    const room = Math.min(MAX_SEGMENTS - state.segments.size, MAX_IDS - state.nextId)
+    if (!scope || room <= 0) return []
     const byBlock = new Map()
     const rejected = new Map()
     const reject = (el) => {
       if (!rejected.has(el)) rejected.set(el, !!closest(el, SKIP) || foreign(el, state.primary))
       return rejected.get(el)
     }
-    const walker = method(DocumentType, 'createTreeWalker')(document, body, NodeFilter.SHOW_TEXT, {
+    const walker = method(DocumentType, 'createTreeWalker')(document, scope, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         const parent = parentElementOf(node)
-        if (blank(node.nodeValue) || !parent || reject(parent)) return NodeFilter.FILTER_REJECT
+        if (blank(node.nodeValue) || !parent || state.owner.has(node) || state.given.has(node) || reject(parent)) {
+          return NodeFilter.FILTER_REJECT
+        }
         return NodeFilter.FILTER_ACCEPT
       },
     })
@@ -271,11 +291,11 @@
       for (const nodes of groupsOf(root, new Set(texts), carriers).flatMap(partsOf)) {
         const segment = segmentOf(root, nodes)
         if (!segment || segment.sent.length > MAX_CHARS || segment.runs.length > MAX_RUNS) continue
-        segment.id = segments.length
-        segment.applied = null
+        segment.texts = textsOf(segment)
+        if (segment.texts.some((t) => state.owner.has(t))) continue
         segment.sig = JSON.stringify([segment.runs.map((r) => [r.text.length, r.tag]), [...segment.opaque]])
         segments.push(segment)
-        if (segments.length >= MAX_SEGMENTS) return segments
+        if (segments.length >= room) return segments
       }
     }
     return segments
@@ -293,8 +313,9 @@
   }
 
   function sendable(seg) {
-    if (seg.applied || seg.group.sent) return false
+    if (seg.applied || seg.dead || seg.group.sent) return false
     seg.group.sent = true
+    state.inflight.set(seg.id, seg)
     return true
   }
 
@@ -335,9 +356,20 @@
     state = {
       gen,
       primary: '',
+      main: null,
       segments: null,
-      byRoot: null,
+      nextId: 0,
+      inflight: new Map(),
+      byRoot: new Map(),
+      groups: new Map(),
+      owner: new WeakMap(),
+      churn: new WeakMap(),
+      given: new WeakSet(),
       observer: null,
+      mutations: null,
+      dirty: new Set(),
+      rescan: false,
+      delay: RESCAN_DELAY,
       pending: [],
       scheduled: false,
       wave: 0,
@@ -345,35 +377,143 @@
     post({ kind: 'start', gen, lang: declaredLanguage() })
   }
 
+  function register(seg) {
+    seg.id = state.nextId++
+    seg.applied = null
+    seg.main = !!state.main && within(state.main, seg.root)
+    state.segments.set(seg.id, seg)
+    if (!state.byRoot.has(seg.root)) state.byRoot.set(seg.root, [])
+    state.byRoot.get(seg.root).push(seg)
+    seg.group = among(state.groups, seg, () => ({ sig: seg.sig, segs: new Set(), sent: false, translation: null }))
+    seg.group.segs.add(seg)
+    for (const t of seg.texts) state.owner.set(t, seg)
+    if (state.observer) state.observer.observe(seg.root)
+  }
+
+  // Registers new segments and fills those whose translation is known.
+  function add(segments) {
+    for (const seg of segments) register(seg)
+    for (const seg of segments) {
+      const known = seg.group.translation || (among(kept.translations, seg) || {}).translation
+      try {
+        if (known) put(seg, known)
+      } catch (err) {}
+    }
+    if (!state.observer) queue(segments)
+  }
+
   function go(gen, source, target) {
     if (!state || state.gen !== gen || state.segments) return
     const pair = `${source}>${target}`
     if (kept.pair !== pair) kept = { pair, translations: new Map(), chars: 0 }
-    const main = mainContent()
+    state.main = mainContent()
     state.primary = primaryOf(source)
-    state.segments = collect()
-    state.byRoot = new Map()
-    const groups = new Map()
-    for (const seg of state.segments) {
-      seg.main = !!main && within(main, seg.root)
-      if (!state.byRoot.has(seg.root)) state.byRoot.set(seg.root, [])
-      state.byRoot.get(seg.root).push(seg)
-      seg.group = among(groups, seg, () => ({ sig: seg.sig, segs: [], sent: false }))
-      seg.group.segs.push(seg)
-    }
+    state.segments = new Map()
     if (typeof IntersectionObserver === 'function') {
       state.observer = new IntersectionObserver(seen, { rootMargin: '400px 0px' })
-      for (const root of state.byRoot.keys()) state.observer.observe(root)
     }
-    for (const seg of state.segments) {
-      const known = among(kept.translations, seg)
-      try {
-        if (known) put(seg, known.translation)
-      } catch (err) {}
-    }
-    if (!state.observer) queue(state.segments)
+    add(collect(bodyOf(document)))
+    watch()
   }
 
+  function watch() {
+    const body = bodyOf(document)
+    if (typeof MutationObserver !== 'function' || !body) return
+    state.mutations = new MutationObserver(changed)
+    state.mutations.observe(body, { childList: true, subtree: true, characterData: true })
+  }
+
+  function quietly(fn) {
+    try {
+      fn()
+    } finally {
+      if (state && state.mutations) state.mutations.takeRecords()
+    }
+  }
+
+  function changed(records) {
+    if (!state) return
+    for (const record of records) {
+      try {
+        const seg = record.type === 'characterData' ? state.owner.get(record.target) : null
+        if (!seg) {
+          mark(record.type === 'characterData' ? parentElementOf(record.target) : record.target)
+          continue
+        }
+        mark(seg.root)
+        if (churned(record.target)) state.given.add(record.target)
+        quietly(() => drop(seg))
+      } catch (err) {}
+    }
+    if (state.dirty.size && !state.rescan) {
+      const s = state
+      s.rescan = true
+      setTimeout(() => rescan(s), s.delay)
+    }
+  }
+
+  function mark(el) {
+    if (el && connected(el)) state.dirty.add(el)
+  }
+
+  // A node the page keeps rewriting is left to the page.
+  function churned(node) {
+    const now = Date.now()
+    const log = state.churn.get(node)
+    if (!log || now - log.since > CHURN_WINDOW) {
+      state.churn.set(node, { since: now, count: 1 })
+      return false
+    }
+    log.count++
+    return log.count > MAX_CHURN
+  }
+
+  // A segment the page changed or threw away: what Wis wrote goes back, and
+  // its text is free for a new segment.
+  function drop(seg) {
+    if (seg.dead) return
+    seg.dead = true
+    if (seg.applied) restore(seg)
+    for (const t of seg.texts) if (state.owner.get(t) === seg) state.owner.delete(t)
+    state.segments.delete(seg.id)
+    const group = seg.group
+    group.segs.delete(seg)
+    if (!group.segs.size && (!group.sent || group.translation)) unlist(group, seg.sent)
+    const peers = (state.byRoot.get(seg.root) || []).filter((each) => each !== seg)
+    if (peers.length) state.byRoot.set(seg.root, peers)
+    else if (state.byRoot.delete(seg.root) && state.observer) state.observer.unobserve(seg.root)
+  }
+
+  function unlist(group, sent) {
+    const rest = (state.groups.get(sent) || []).filter((entry) => entry !== group)
+    if (rest.length) state.groups.set(sent, rest)
+    else state.groups.delete(sent)
+  }
+
+  function rescan(s) {
+    if (s !== state) return
+    s.rescan = false
+    const began = Date.now()
+    quietly(() => {
+      for (const seg of [...s.segments.values()]) {
+        try {
+          if (connected(seg.root) && seg.texts.every((t) => connected(t))) continue
+          mark(seg.root)
+          drop(seg)
+        } catch (err) {}
+      }
+      const dirty = s.dirty
+      s.dirty = new Set()
+      for (const el of dirty) {
+        let outer = connected(el)
+        for (let p = parentElementOf(el); outer && p; p = parentElementOf(p)) if (dirty.has(p)) outer = false
+        try {
+          if (outer) add(collect(el))
+        } catch (err) {}
+      }
+    })
+    s.delay = Date.now() - began > SLOW_RESCAN ? Math.min(s.delay * 2, MAX_RESCAN_DELAY) : RESCAN_DELAY
+  }
 
   function remember(saved, t) {
     if (saved && !saved.has(t)) saved.set(t, t.nodeValue)
@@ -441,11 +581,19 @@
 
   function apply(gen, id, translation) {
     if (!state || state.gen !== gen || !state.segments) return
-    const seg = state.segments[id]
-    if (!seg) return
-    let used = false
-    for (const each of seg.group.segs) used = put(each, translation) || used
-    if (used) keep(seg, translation)
+    const seg = state.segments.get(id) || state.inflight.get(id)
+    state.inflight.delete(id)
+    if (!seg || !usable(translation, seg)) return
+    seg.group.translation = translation
+    keep(seg, translation)
+    if (!seg.group.segs.size) unlist(seg.group, seg.sent)
+    quietly(() => {
+      for (const each of seg.group.segs) {
+        try {
+          put(each, translation)
+        } catch (err) {}
+      }
+    })
   }
 
   function keep(seg, translation) {
@@ -456,17 +604,19 @@
   }
 
   function put(seg, translation) {
-    if (seg.applied || !usable(translation, seg) || currentText(seg) !== seg.sent) return false
+    if (seg.applied || seg.dead || !usable(translation, seg) || currentText(seg) !== seg.sent) return false
+    if (!seg.whole && seg.nodes.some((n) => parentOf(n) !== seg.root)) return false
     const runs = withEdges(translation, seg.sent)
     const saved = new Map()
+    const created = []
+    const applied = { created, saved, written: null }
+    seg.applied = applied
     if (seg.whole) {
       setText(seg.whole, runs.map((r) => r.text).join(''), saved)
-      seg.applied = { created: [], saved }
+      applied.written = writtenIn(saved)
       return true
     }
-    if (seg.nodes.some((n) => parentOf(n) !== seg.root)) return false
     const loose = seg.nodes.filter((n) => kind(n) === 3)
-    const created = []
     const used = new Set()
     let next = 0
     const laid = []
@@ -500,27 +650,39 @@
       loose[next].nodeValue = ''
       laid.push(loose[next])
     }
-    seg.applied = { created, saved }
+    for (const n of created) for (const t of textsIn(n)) state.owner.set(t, seg)
+    applied.written = writtenIn(saved)
     if (!inOrder(laid, seg.nodes)) arrange(seg.root, laid, seg.nodes[0])
     return true
   }
 
+  const writtenIn = (saved) => new Map([...saved.keys()].map((t) => [t, t.nodeValue]))
+  const textsIn = (n) => (kind(n) === 3 ? [n] : textNodesIn(n))
+
   function restore(seg) {
-    const { created, saved } = seg.applied
-    for (const n of created) if (parentOf(n) === seg.root) removeChild(seg.root, n)
+    const { created, saved, written } = seg.applied
+    for (const n of created) {
+      for (const t of textsIn(n)) if (state.owner.get(t) === seg) state.owner.delete(t)
+      if (parentOf(n) === seg.root) removeChild(seg.root, n)
+    }
     if (!seg.whole && seg.nodes.every((n) => parentOf(n) === seg.root)) {
       const members = new Set(seg.nodes)
       const now = childrenOf(seg.root).filter((n) => members.has(n))
       if (!inOrder(now, seg.nodes)) arrange(seg.root, seg.nodes, now[0])
     }
-    for (const [t, value] of saved) t.nodeValue = value
+    for (const [t, value] of saved) if (!written || t.nodeValue === written.get(t)) t.nodeValue = value
     seg.applied = null
   }
 
   function revert() {
     if (!state) return
+    if (state.mutations) state.mutations.disconnect()
     if (state.observer) state.observer.disconnect()
-    for (const seg of state.segments || []) if (seg.applied) restore(seg)
+    for (const seg of state.segments ? state.segments.values() : []) {
+      try {
+        if (seg.applied) restore(seg)
+      } catch (err) {}
+    }
     state = null
   }
 

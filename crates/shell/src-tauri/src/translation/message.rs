@@ -6,12 +6,13 @@ use std::collections::{HashSet, VecDeque};
 use serde::{Deserialize, Serialize};
 
 /// `page.js` sends at most 24 segments of 4000 characters at a time, and
-/// numbers at most 2000 segments a page; these caps leave room above that.
+/// numbers segments up to a million a translation; these caps leave room
+/// above that.
 pub const MAX_MESSAGE_BYTES: usize = 512 * 1024;
 pub const MAX_BLOCKS: usize = 32;
 pub const MAX_RUNS: usize = 128;
 pub const MAX_BLOCK_BYTES: usize = 16 * 1024;
-const MAX_BLOCK_ID: u32 = 4096;
+const MAX_BLOCK_ID: u32 = 1 << 20;
 const MAX_LANG_LEN: usize = 64;
 
 /// A piece of a segment's text, tagged with the inline element it sits in.
@@ -205,7 +206,7 @@ mod tests {
         let many_runs = vec![r#"{"text":"x"}"#; MAX_RUNS + 1].join(",");
         let long_text = "あ".repeat(MAX_BLOCK_BYTES / 3 + 1);
         let body = format!(
-            r#"{{"kind":"blocks","gen":1,"wave":1,"blocks":[{{"id":0,"runs":[{many_runs}]}},{{"id":1,"runs":[{{"text":"{long_text}"}}]}},{{"id":99999,"runs":[{{"text":"x"}}]}},{{"id":2,"runs":[{{"text":"段落2"}}]}}]}}"#
+            r#"{{"kind":"blocks","gen":1,"wave":1,"blocks":[{{"id":0,"runs":[{many_runs}]}},{{"id":1,"runs":[{{"text":"{long_text}"}}]}},{{"id":2000000,"runs":[{{"text":"x"}}]}},{{"id":2,"runs":[{{"text":"段落2"}}]}}]}}"#
         );
         assert_eq!(
             parse_message(&body),
@@ -227,6 +228,16 @@ mod tests {
 
     fn order(queue: &mut Queue) -> Vec<u32> {
         std::iter::from_fn(|| queue.next(|_| false).map(|b| b.id)).collect()
+    }
+
+    #[test]
+    fn a_segment_numbered_up_to_the_page_s_cap_is_kept() {
+        let body =
+            r#"{"kind":"blocks","gen":1,"wave":1,"blocks":[{"id":999999,"runs":[{"text":"x"}]}]}"#;
+        let Some(PageMessage::Blocks { blocks, .. }) = parse_message(body) else {
+            panic!("a blocks message");
+        };
+        assert_eq!(blocks.len(), 1);
     }
 
     #[test]
