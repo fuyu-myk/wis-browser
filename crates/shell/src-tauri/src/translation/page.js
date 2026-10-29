@@ -28,6 +28,8 @@
     'PROGRESS', 'METER', 'SLOT', 'LINK',
   ])
   const FOOTNOTE = /foot|note|ref|cite/i
+  const UNSPACED = new Set(['ja', 'zh', 'yue'])
+  const LEADING = /^([\p{Pe}\p{Pf}.,;:!?%…、。]+)(\s*)/u
   const BREAKING = [...BREAKS].join(', ').toLowerCase()
   // Messages carry at most this many segments; longer segments are left as they are.
   const BATCH = 24
@@ -60,6 +62,7 @@
   const DocumentType = typeOf('Document')
   const parentOf = getter(NodeType, 'parentNode')
   const parentElementOf = getter(NodeType, 'parentElement')
+  const previousOf = getter(NodeType, 'previousSibling')
   const kind = getter(NodeType, 'nodeType')
   const childNodesOf = getter(NodeType, 'childNodes')
   const tagOf = getter(ElementType, 'tagName')
@@ -477,6 +480,7 @@
     if (kept.pair !== pair) kept = { pair, translations: new Map(), chars: 0 }
     state.main = mainContent()
     state.primary = primaryOf(source)
+    state.spaced = !UNSPACED.has(primaryOf(target))
     state.segments = new Map()
     if (typeof IntersectionObserver === 'function') {
       state.observer = new IntersectionObserver(seen, { rootMargin: '400px 0px' })
@@ -619,6 +623,82 @@
     return seg.needed.every((tag) => tags.has(tag))
   }
 
+  function settled(runs, seg) {
+    const loose = (run) => run.tag == null || !seg.needed.includes(run.tag)
+    const seen = new Set()
+    const out = []
+    const plain = (text) => {
+      const prev = out[out.length - 1]
+      if (prev && prev.tag == null) out[out.length - 1] = { ...prev, text: prev.text + text }
+      else out.push({ text })
+    }
+    for (const original of runs) {
+      const again = original.tag != null && loose(original) && seen.has(original.tag)
+      let run = again ? { text: original.text } : original
+      if (original.tag != null) seen.add(original.tag)
+      const prev = out[out.length - 1]
+      const lead = prev && loose(prev) && loose(run) ? LEADING.exec(run.text) : null
+      if (lead) {
+        out[out.length - 1] = { ...prev, text: prev.text + lead[1] }
+        if (lead[2]) plain(lead[2])
+        run = { ...run, text: run.text.slice(lead[0].length) }
+        if (!run.text) continue
+      }
+      if (run.tag == null) plain(run.text)
+      else out.push(run)
+    }
+    return out
+  }
+
+  function shownInline(el) {
+    try {
+      const style = typeof window.getComputedStyle === 'function' ? window.getComputedStyle(el) : null
+      return !!style && /^inline/.test(style.display)
+    } catch (err) {
+      return false
+    }
+  }
+
+  // The last character shown in `node`, '' after a line break or an image,
+  // or undefined when it shows nothing.
+  function lastShown(node) {
+    const type = kind(node)
+    if (type === 3) return node.nodeValue ? node.nodeValue.slice(-1) : undefined
+    if (type !== 1) return undefined
+    const tag = tagOf(node)
+    if (BREAKS.has(tag) || (BLOCKS.has(tag) && !shownInline(node))) return ''
+    if (matches(node, SKIP) && !opaque(node)) return undefined
+    const kids = childrenOf(node)
+    for (let i = kids.length - 1; i >= 0; i--) {
+      const shown = lastShown(kids[i])
+      if (shown !== undefined) return shown
+    }
+    return undefined
+  }
+
+  // The last character shown before `node` in its block, or '' after a line
+  // break, an image or the start of the block.
+  function textBefore(node) {
+    for (let n = node; n; n = parentOf(n)) {
+      for (let prev = previousOf(n); prev; prev = previousOf(prev)) {
+        const shown = lastShown(prev)
+        if (shown !== undefined) return shown
+      }
+      const parent = parentOf(n)
+      if (!parent || kind(parent) !== 1 || (BLOCKS.has(tagOf(parent)) && !shownInline(parent))) return ''
+    }
+    return ''
+  }
+
+  // Words of two segments the source ran together need a space between them
+  // in a language written with spaces.
+  function gapBefore(seg, runs) {
+    const text = runs.map((r) => r.text).join('')
+    if (!state.spaced || !text || /^[\s\p{Pe}\p{Pf}.,;:!?%…、。]/u.test(text)) return false
+    const last = textBefore(seg.whole || seg.nodes[0])
+    return !!last && !/[\s\p{Ps}\p{Pi}¿¡$]/u.test(last)
+  }
+
   // The framework drops a segment's leading and trailing spaces, which keep
   // it apart from an image or a line break beside it.
   function withEdges(runs, sent) {
@@ -676,16 +756,24 @@
   function put(seg, translation) {
     if (seg.applied || seg.dead || !usable(translation, seg) || currentText(seg) !== seg.sent) return false
     if (!seg.whole && seg.nodes.some((n) => parentOf(n) !== seg.root)) return false
-    const runs = withEdges(translation, seg.sent)
+    let runs = withEdges(settled(translation, seg), seg.sent)
+    const gap = gapBefore(seg, runs)
     const saved = new Map()
     const created = []
     const applied = { created, saved, written: null }
     seg.applied = applied
     if (seg.whole) {
       setText(seg.whole, runs.map((r) => r.text).join(''), saved)
+      if (gap) {
+        const space = createText(' ')
+        insertBefore(seg.root, space, seg.whole)
+        created.push(space)
+      }
       applied.written = writtenIn(saved)
       return true
     }
+    if (gap && runs[0].tag == null) runs = [{ ...runs[0], text: ' ' + runs[0].text }, ...runs.slice(1)]
+    else if (gap) runs = [{ text: ' ', edge: true }, ...runs]
     const loose = seg.nodes.filter((n) => kind(n) === 3)
     const used = new Set()
     let next = 0

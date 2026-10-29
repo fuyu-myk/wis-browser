@@ -14,6 +14,12 @@ function detach(node) {
   node.parentNode = null
 }
 
+function previousOf(node) {
+  const siblings = node.parentNode ? node.parentNode.childNodes : []
+  const at = siblings.indexOf(node)
+  return at > 0 ? siblings[at - 1] : null
+}
+
 function rootOf(node) {
   let n = node
   while (n.parentNode) n = n.parentNode
@@ -34,6 +40,9 @@ export class Text {
   }
   get isConnected() {
     return rootOf(this).nodeType === 9
+  }
+  get previousSibling() {
+    return previousOf(this)
   }
   cloneNode() {
     return new Text(this.nodeValue)
@@ -109,6 +118,9 @@ export class Element {
   }
   get parentElement() {
     return this.parentNode && this.parentNode.nodeType === 1 ? this.parentNode : null
+  }
+  get previousSibling() {
+    return previousOf(this)
   }
   get textContent() {
     return this.childNodes.map((n) => n.textContent).join('')

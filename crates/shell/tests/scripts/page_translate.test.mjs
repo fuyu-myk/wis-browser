@@ -67,7 +67,8 @@ function mutationClass() {
  */
 function load(doc, { findMain } = {}) {
   const { webkit, sent } = handlers('wisTranslate')
-  const window = eventTarget({ webkit })
+  const getComputedStyle = (el) => ({ display: el.style.display || '' })
+  const window = eventTarget({ webkit, getComputedStyle })
   const { FakeObserver, observers } = observerClass()
   const { FakeMutations, mutations } = mutationClass()
   const timers = []
@@ -345,6 +346,114 @@ describe('finding segments', () => {
       blocks.map((b) => b.runs.map((r) => r.text).join('')),
       ['36回から。24か月目です。', '36回から。です。'],
     )
+  })
+
+  test('punctuation given its own styling element stays with the word before it', () => {
+    const p = h('p', {}, h('span', { class: 'a' }, 'これは短い'), h('wbr'), h('span', { class: 'b' }, '文です。'))
+    const loaded = load(page('https://example.jp/', p))
+    goVisible(loaded)
+    loaded.api.apply(1, 0, [{ text: 'This is a short sentence', tag: 0 }, { text: '.', tag: 1 }])
+    assert.equal(p.innerHTML, '<span class="a">This is a short sentence.</span><wbr><span class="b"></span>')
+  })
+
+  test('a styling element that comes back twice is plain text the second time', () => {
+    const note = h('sup', {}, h('a', { href: '#f3' }, '3'))
+    const p = h('p', {}, h('span', { class: 'a' }, '割引に', note, '。'), h('wbr'), h('span', { class: 'b' }, 'さらにお得です。'))
+    const loaded = load(page('https://example.jp/', p))
+    goVisible(loaded)
+    loaded.api.apply(1, 0, [{ text: 'You can get ', tag: 0 }, { text: 'more', tag: 1 }, { text: ' discount.', tag: 0 }])
+    assert.equal(p.querySelectorAll('sup').length, 1)
+    assert.equal(p.textContent, 'You can get 3more discount.')
+  })
+
+  test('punctuation at the start of a styling element moves to the text before it', () => {
+    const loose = h('p', {}, '指先で', h('wbr'), h('span', { class: 'nowrap' }, '本能のままに。'))
+    const styled = h('p', {}, h('span', { class: 'a' }, '指先で'), h('wbr'), h('span', { class: 'b' }, '本能のままに。'))
+    const loaded = load(page('https://example.jp/', loose, styled))
+    const sent = blocksOf(goVisible(loaded))
+    loaded.api.apply(1, sent[0].id, [{ text: 'With the tips of your fingers' }, { text: ', as instinct dictates.', tag: 0 }])
+    loaded.api.apply(1, sent[1].id, [
+      { text: 'With your fingertips', tag: 0 },
+      { text: ', by instinct.', tag: 1 },
+    ])
+    assert.equal(loose.innerHTML, 'With the tips of your fingers, <wbr><span class="nowrap">as instinct dictates.</span>')
+    assert.equal(styled.innerHTML, '<span class="a">With your fingertips,</span><wbr> <span class="b">by instinct.</span>')
+  })
+
+  test('a heading shown inline before its paragraph gets a space after it', () => {
+    const heading = h('h3', {}, 'タンデムOLED。')
+    const body = h('p', {}, 'PROLED XDRは2層です。')
+    heading.style.display = 'inline'
+    body.style.display = 'inline'
+    const card = h('div', {}, heading, '\u200b', body)
+    const plain = h('div', {}, h('h3', {}, '見出し'), h('p', {}, '本文です。'))
+    const loaded = load(page('https://example.jp/', card, plain))
+    const sent = blocksOf(goVisible(loaded))
+    const id = (text) => sent.find((b) => b.runs[0].text === text).id
+    loaded.api.apply(1, id('タンデムOLED。'), [{ text: 'Tandem OLED.' }])
+    loaded.api.apply(1, id('PROLED XDRは2層です。'), [{ text: 'PROLED XDR has two layers.' }])
+    loaded.api.apply(1, id('本文です。'), [{ text: 'This is the body.' }])
+    assert.equal(body.textContent, ' PROLED XDR has two layers.')
+    assert.equal(plain.childNodes[1].textContent, 'This is the body.')
+  })
+
+  test('punctuation after a link is not pulled into it', () => {
+    const p = h('p', {}, '詳しくは', h('a', { href: '/x' }, 'こちら'), '。')
+    const loaded = load(page('https://example.jp/', p))
+    goVisible(loaded)
+    loaded.api.apply(1, 0, [{ text: 'For details, see ' }, { text: 'here', tag: 0 }, { text: '.' }])
+    assert.equal(p.innerHTML, 'For details, see <a href="/x">here</a>.')
+  })
+
+  test('a segment right after other text gets a space in English, not after a line break', () => {
+    const link = h('a', { href: '/buy' }, 'さらに詳しく')
+    const div = h('div', {}, h('span', { class: 'nowrap' }, '割引です。'), link)
+    const lines = h('p', {}, '一行目', h('br'), '二行目')
+    const loaded = load(page('https://example.jp/', div, lines))
+    const before = div.innerHTML
+    const sent = blocksOf(goVisible(loaded))
+    const id = (text) => sent.find((b) => b.runs[0].text === text).id
+    loaded.api.apply(1, id('さらに詳しく'), [{ text: 'Learn more' }])
+    loaded.api.apply(1, id('二行目'), [{ text: 'Line two' }])
+    assert.equal(div.innerHTML, '<span class="nowrap">割引です。</span> <a href="/buy">Learn more</a>')
+    assert.equal(lines.innerHTML, '一行目<br>Line two')
+    loaded.api.revert()
+    assert.equal(div.innerHTML, before)
+  })
+
+  test('no space goes in after a line break or an opening bracket inside the text before', () => {
+    const afterBreak = h('a', { href: '/a' }, 'もっと')
+    const afterBracket = h('a', { href: '/b' }, '詳細')
+    const one = h('div', {}, h('span', {}, '一行目', h('br')), afterBreak)
+    const two = h('div', {}, h('span', {}, '【'), afterBracket)
+    const loaded = load(page('https://example.jp/', one, two))
+    const sent = blocksOf(goVisible(loaded))
+    const id = (text) => sent.find((b) => b.runs[0].text === text).id
+    loaded.api.apply(1, id('もっと'), [{ text: 'More' }])
+    loaded.api.apply(1, id('詳細'), [{ text: 'Details' }])
+    assert.equal(one.innerHTML, '<span>一行目<br></span><a href="/a">More</a>')
+    assert.equal(two.innerHTML, '<span>【</span><a href="/b">Details</a>')
+  })
+
+  test('a gap before a translation that starts with a link reverts exactly', () => {
+    const p = h('p', {}, h('b', {}, '注意'), h('a', { href: '/x' }, 'こちら'), 'を見る')
+    const loaded = load(page('https://example.jp/', p))
+    const before = p.innerHTML
+    const sent = blocksOf(goVisible(loaded))
+    assert.equal(sent.length, 1)
+    loaded.api.apply(1, sent[0].id, [{ text: 'Note', tag: 0 }, { text: ' see ' }, { text: 'here', tag: 1 }])
+    assert.equal(p.textContent, 'Note see here')
+    loaded.api.revert()
+    assert.equal(p.innerHTML, before)
+  })
+
+  test('a language written without spaces gets no space between segments', () => {
+    const link = h('a', { href: '/buy' }, 'More')
+    const div = h('div', {}, h('span', {}, 'A discount.'), link)
+    const loaded = load(page('https://example.com/', div))
+    const sent = blocksOf(goVisible(loaded, 1, 'en', 'ja'))
+    loaded.api.apply(1, sent.find((b) => b.runs[0].text === 'More').id, [{ text: '詳しく' }])
+    assert.equal(div.innerHTML, '<span>A discount.</span><a href="/buy">詳しく</a>')
   })
 
   test('an empty element at the start of a sentence stays first', () => {
