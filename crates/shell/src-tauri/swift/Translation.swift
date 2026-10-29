@@ -35,6 +35,19 @@ struct Reply: Encodable {
     var error: String? = nil
 }
 
+struct CheckRequest: Decodable {
+    let source: String
+}
+
+struct CheckReply: Encodable {
+    let target: String
+    let sourceName: String
+    let targetName: String
+    let sameLanguage: Bool
+    let highFidelity: String
+    let lowLatency: String
+}
+
 /// Translates one block: `request` is a `TranslateRequest` as JSON, and the
 /// reply is a `Reply` as JSON, handed to `reply` along with `context`.
 @_cdecl("wis_translation_translate")
@@ -50,7 +63,22 @@ public func wisTranslationTranslate(
     }
 }
 
-func encode(_ reply: Reply) -> String {
+/// What translating from a language involves: `request` is a `CheckRequest`
+/// as JSON, and the reply is a `CheckReply` or a `Reply` carrying an error.
+@_cdecl("wis_translation_check")
+public func wisTranslationCheck(
+    _ request: UnsafePointer<CChar>,
+    _ context: UnsafeMutableRawPointer?,
+    _ reply: WisTranslationReply
+) {
+    let body = Data(String(cString: request).utf8)
+    let callback = Callback(reply: reply, context: context)
+    Task.detached {
+        callback.answer(await check(body))
+    }
+}
+
+func encode(_ reply: some Encodable) -> String {
     let data = (try? JSONEncoder().encode(reply)) ?? Data(#"{"error":"failed"}"#.utf8)
     return String(decoding: data, as: UTF8.self)
 }
@@ -70,6 +98,57 @@ func translate(_ body: Data) async -> String {
         return encode(Reply(runs: try await translateBlock(request, strategy: strategy)))
     } catch {
         return encode(Reply(error: code(for: error)))
+    }
+}
+
+func check(_ body: Data) async -> String {
+    guard let request = try? JSONDecoder().decode(CheckRequest.self, from: body) else {
+        return encode(Reply(error: "badRequest"))
+    }
+    if request.source.allSatisfy(\.isWhitespace) {
+        return encode(Reply(error: "noLanguage"))
+    }
+    guard #available(macOS 26.4, *) else { return encode(Reply(error: "unavailable")) }
+    guard let preferred = Locale.preferredLanguages.first else {
+        return encode(Reply(error: "noTarget"))
+    }
+    let source = Locale.Language(identifier: request.source)
+    let target = Locale.Language(identifier: preferred)
+    return encode(CheckReply(
+        target: target.minimalIdentifier,
+        sourceName: displayName(of: source),
+        targetName: displayName(of: target),
+        sameLanguage: sameLanguage(source, target),
+        highFidelity: await status(from: source, to: target, strategy: .highFidelity),
+        lowLatency: await status(from: source, to: target, strategy: .lowLatency)
+    ))
+}
+
+/// The language and script decide it, so en-GB is English to an en-US reader
+/// while zh-Hant is not zh-Hans.
+func sameLanguage(_ a: Locale.Language, _ b: Locale.Language) -> Bool {
+    let a = Locale.Language(identifier: a.maximalIdentifier)
+    let b = Locale.Language(identifier: b.maximalIdentifier)
+    return a.languageCode == b.languageCode && a.script == b.script
+}
+
+/// The name Wis shows, in English like the rest of its interface.
+func displayName(of language: Locale.Language) -> String {
+    Locale(identifier: "en").localizedString(forIdentifier: language.minimalIdentifier)
+        ?? language.minimalIdentifier
+}
+
+@available(macOS 26.4, *)
+func status(
+    from source: Locale.Language,
+    to target: Locale.Language,
+    strategy: TranslationSession.Strategy
+) async -> String {
+    switch await LanguageAvailability(preferredStrategy: strategy).status(from: source, to: target) {
+    case .installed: return "installed"
+    case .supported: return "supported"
+    case .unsupported: return "unsupported"
+    @unknown default: return "unsupported"
     }
 }
 

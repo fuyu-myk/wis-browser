@@ -32,6 +32,20 @@ mod live {
     }
 
     async fn check() -> Result<(), String> {
+        let japanese = app_lib::translation::check("ja-JP")
+            .await
+            .map_err(|err| format!("check ja-JP: {err}"))?;
+        println!("check ja-JP: {japanese:?}");
+        if japanese.same_language || japanese.source_name != "Japanese" {
+            return Err(format!("unexpected check for ja-JP: {japanese:?}"));
+        }
+        let british = app_lib::translation::check("en-GB")
+            .await
+            .map_err(|err| format!("check en-GB: {err}"))?;
+        if !british.same_language {
+            return Err(format!("en-GB should read as English: {british:?}"));
+        }
+
         let runs = [
             run_text("詳しくは", None),
             run_text("こちらのリンク", Some(1)),

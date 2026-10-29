@@ -31,6 +31,8 @@ import { BROWSER_STATE_KEY, useBrowserState } from '@/hooks/useBrowserState'
 import { usePendingRename } from '@/features/workspaces/hooks/usePendingRename'
 import { currentPlatform } from '@/lib/platform'
 import { guardFeatureUnavailable } from '@/lib/platformSupport'
+import { errorMessage } from '@/lib/errors'
+import { showToast } from '@/lib/toast'
 import { openCanvases } from '@/features/canvas/hooks/openCanvases'
 import { useQueryClient } from '@tanstack/react-query'
 import { WINDOW_PICKER_OPEN_EVENT } from '@/features/workspaces/hooks/useWindowPickerOverlay'
@@ -530,6 +532,16 @@ async function handle(action: KeyAction, ctx: DispatchContext): Promise<void> {
     case 'toggle_reader': {
       if (!ctx.activeTab || isChromeUrl(ctx.activeTab.url)) return
       await commands.tabSetReader(ctx.activeTab.id, !ctx.activeTab.reader)
+      ctx.invalidate()
+      return
+    }
+    case 'toggle_translation': {
+      if (!ctx.activeTab || isChromeUrl(ctx.activeTab.url)) return
+      try {
+        await commands.tabSetTranslated(ctx.activeTab.id, !ctx.activeTab.translated)
+      } catch (err) {
+        showToast(errorMessage(err))
+      }
       ctx.invalidate()
       return
     }

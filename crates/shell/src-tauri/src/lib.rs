@@ -15,7 +15,6 @@ mod save_coalescer;
 mod state;
 mod system;
 mod tabs;
-#[cfg(target_os = "macos")]
 pub mod translation;
 mod vault;
 mod video_popout;
@@ -644,6 +643,7 @@ pub fn run() {
             commands::tab_reload,
             commands::tab_stop,
             commands::tab_set_reader,
+            translation::command::tab_set_translated,
             commands::tab_go_back,
             commands::tab_go_forward,
             tabs::preview::stash_tab_preview,

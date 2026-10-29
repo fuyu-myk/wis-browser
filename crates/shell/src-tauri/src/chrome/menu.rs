@@ -245,6 +245,12 @@ fn build_menu(
             KeyAction::ToggleReader,
             "Reader Mode",
         )?)
+        .item(&action_item(
+            app,
+            keymap,
+            KeyAction::ToggleTranslation,
+            "Translate Page",
+        )?)
         .separator()
         .item(&action_item(app, keymap, KeyAction::ZoomIn, "Zoom In")?)
         .item(&action_item(app, keymap, KeyAction::ZoomOut, "Zoom Out")?)

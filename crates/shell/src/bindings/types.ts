@@ -168,6 +168,7 @@ export type KeyAction =
   | 'previous_tab'
   | 'hard_reload'
   | 'toggle_reader'
+  | 'toggle_translation'
   | 'zoom_in'
   | 'zoom_out'
   | 'zoom_reset'
@@ -270,6 +271,8 @@ export interface Tab {
   loading: boolean
   /** Showing the in-page reader transform. In-memory only; reset on reload/launch. */
   reader: boolean
+  /** Showing the page's on-device translation. In-memory only; reset on navigation/launch. */
+  translated: boolean
   /** Whether the page has a previous/next history entry. In-memory only;
    *  false on launch until the first load reports the real values. */
   can_go_back: boolean

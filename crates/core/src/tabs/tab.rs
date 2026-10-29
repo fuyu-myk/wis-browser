@@ -36,6 +36,11 @@ pub struct Tab {
     /// is lost on reload/restart, so the storage layer reconstructs `false`.
     #[serde(default)]
     pub reader: bool,
+    /// Whether the page is showing its on-device translation. In-memory only:
+    /// the translation lives in the live document, so the storage layer
+    /// reconstructs `false`.
+    #[serde(default)]
+    pub translated: bool,
     /// Whether the page has a previous/next history entry. In-memory only:
     /// history lives in the live webview, so both reconstruct `false` until
     /// the restored page's first load reports the real values.
@@ -87,6 +92,7 @@ impl Tab {
             muted: false,
             loading: false,
             reader: false,
+            translated: false,
             load_error: None,
             can_go_back: false,
             can_go_forward: false,
@@ -157,6 +163,13 @@ impl Tab {
     pub fn with_reader(&self, reader: bool) -> Self {
         Self {
             reader,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_translated(&self, translated: bool) -> Self {
+        Self {
+            translated,
             ..self.clone()
         }
     }

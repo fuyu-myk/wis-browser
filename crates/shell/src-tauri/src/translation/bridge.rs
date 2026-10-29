@@ -9,6 +9,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
+use super::message::Run;
+
 /// Longest one block may take.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -19,14 +21,6 @@ pub enum Strategy {
     HighFidelity,
     /// About 0.05 s a block, but inline elements are lost; needs a download.
     LowLatency,
-}
-
-/// A piece of a block's text, tagged with the inline element it sits in.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Run {
-    pub text: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tag: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -41,6 +35,8 @@ pub struct TranslateRequest<'a> {
 pub enum TranslateError {
     #[error("translation needs macOS 26.4 or later")]
     Unavailable,
+    #[error("the page's language is unknown")]
+    NoLanguage,
     #[error("the language pair is not installed")]
     NotInstalled,
     #[error("the language pair is not supported")]
@@ -53,22 +49,53 @@ pub enum TranslateError {
     Failed(String),
 }
 
+/// Whether a language pair can be translated with one strategy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Status {
+    Installed,
+    /// Supported, but its models need a download.
+    Supported,
+    Unsupported,
+}
+
+/// What translating a page from one language involves: the target (the first
+/// macOS preferred language) and what each strategy can do for the pair.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Check {
+    pub target: String,
+    pub source_name: String,
+    pub target_name: String,
+    /// The page is already in the target language, regional variants aside.
+    pub same_language: bool,
+    pub high_fidelity: Status,
+    pub low_latency: Status,
+}
+
 #[derive(Deserialize)]
 struct Reply {
     runs: Option<Vec<Run>>,
     error: Option<String>,
 }
 
+#[derive(Serialize)]
+struct CheckRequest<'a> {
+    source: &'a str,
+}
+
 type ReplyFn = extern "C" fn(*mut c_void, *const c_char);
+type EntryFn = unsafe extern "C" fn(*const c_char, *mut c_void, ReplyFn);
 
 extern "C" {
     fn wis_translation_translate(request: *const c_char, context: *mut c_void, reply: ReplyFn);
+    fn wis_translation_check(request: *const c_char, context: *mut c_void, reply: ReplyFn);
 }
 
 /// Called by the bridge exactly once per request, on a Swift executor thread.
 extern "C" fn on_reply(context: *mut c_void, reply: *const c_char) {
-    // SAFETY: `context` is the sender `translate` leaked for this request, and
-    // the bridge answers each request once.
+    // SAFETY: `context` is the sender `call` leaked for this request, and the
+    // bridge answers each request once.
     let sender = unsafe { Box::from_raw(context.cast::<oneshot::Sender<String>>()) };
     // SAFETY: the bridge passes a NUL-terminated string that outlives the call.
     let reply = unsafe { CStr::from_ptr(reply) }
@@ -79,8 +106,8 @@ extern "C" fn on_reply(context: *mut c_void, reply: *const c_char) {
     }
 }
 
-/// Translates one block. Must not be awaited on the main thread.
-pub async fn translate(request: &TranslateRequest<'_>) -> Result<Vec<Run>, TranslateError> {
+/// Sends `request` to a bridge entry point and waits for its JSON reply.
+async fn call(entry: EntryFn, request: &impl Serialize) -> Result<String, TranslateError> {
     // SAFETY: `pthread_main_np` has no preconditions.
     debug_assert!(
         unsafe { libc::pthread_main_np() } == 0,
@@ -93,12 +120,35 @@ pub async fn translate(request: &TranslateRequest<'_>) -> Result<Vec<Run>, Trans
     let context = Box::into_raw(Box::new(sender)).cast::<c_void>();
     // SAFETY: the bridge copies `json` before returning and hands `context`
     // back to `on_reply` exactly once, which reclaims it.
-    unsafe { wis_translation_translate(json.as_ptr(), context, on_reply) };
-    let reply = tokio::time::timeout(REPLY_TIMEOUT, receiver)
+    unsafe { entry(json.as_ptr(), context, on_reply) };
+    tokio::time::timeout(REPLY_TIMEOUT, receiver)
         .await
         .map_err(|_| TranslateError::TimedOut)?
-        .map_err(|_| TranslateError::Failed("the bridge dropped its reply".into()))?;
-    parse_reply(&reply)
+        .map_err(|_| TranslateError::Failed("the bridge dropped its reply".into()))
+}
+
+/// Translates one block. Must not be awaited on the main thread.
+pub async fn translate(request: &TranslateRequest<'_>) -> Result<Vec<Run>, TranslateError> {
+    parse_reply(&call(wis_translation_translate, request).await?)
+}
+
+/// What translating a page in `source` (a BCP 47 tag) involves. Must not be
+/// awaited on the main thread.
+pub async fn check(source: &str) -> Result<Check, TranslateError> {
+    parse_check_reply(&call(wis_translation_check, &CheckRequest { source }).await?)
+}
+
+fn error_from_code(code: &str) -> TranslateError {
+    match code {
+        "unavailable" => TranslateError::Unavailable,
+        "noLanguage" => TranslateError::NoLanguage,
+        "notInstalled" => TranslateError::NotInstalled,
+        "unsupportedSourceLanguage"
+        | "unsupportedTargetLanguage"
+        | "unsupportedLanguagePairing" => TranslateError::Unsupported,
+        "nothingToTranslate" => TranslateError::NothingToTranslate,
+        other => TranslateError::Failed(other.to_string()),
+    }
 }
 
 fn parse_reply(reply: &str) -> Result<Vec<Run>, TranslateError> {
@@ -106,20 +156,18 @@ fn parse_reply(reply: &str) -> Result<Vec<Run>, TranslateError> {
         serde_json::from_str(reply).map_err(|err| TranslateError::Failed(err.to_string()))?;
     match (reply.runs, reply.error.as_deref()) {
         (Some(runs), None) => Ok(runs),
-        (_, Some("unavailable")) => Err(TranslateError::Unavailable),
-        (_, Some("notInstalled")) => Err(TranslateError::NotInstalled),
-        (
-            _,
-            Some(
-                "unsupportedSourceLanguage"
-                | "unsupportedTargetLanguage"
-                | "unsupportedLanguagePairing",
-            ),
-        ) => Err(TranslateError::Unsupported),
-        (_, Some("nothingToTranslate")) => Err(TranslateError::NothingToTranslate),
-        (_, Some(other)) => Err(TranslateError::Failed(other.to_string())),
+        (_, Some(code)) => Err(error_from_code(code)),
         (None, None) => Err(TranslateError::Failed("an empty reply".into())),
     }
+}
+
+fn parse_check_reply(reply: &str) -> Result<Check, TranslateError> {
+    let value: serde_json::Value =
+        serde_json::from_str(reply).map_err(|err| TranslateError::Failed(err.to_string()))?;
+    if let Some(code) = value.get("error").and_then(serde_json::Value::as_str) {
+        return Err(error_from_code(code));
+    }
+    serde_json::from_value(value).map_err(|err| TranslateError::Failed(err.to_string()))
 }
 
 #[cfg(test)]
@@ -178,6 +226,46 @@ mod tests {
             serde_json::to_string(&request).unwrap(),
             r#"{"source":"ja","target":"en","strategy":"lowLatency","runs":[{"text":"こんにちは"},{"text":"世界","tag":2}]}"#
         );
+    }
+
+    #[test]
+    fn a_check_reply_reads_the_target_names_and_statuses() {
+        let check = parse_check_reply(
+            r#"{"target":"en","sourceName":"Japanese","targetName":"English","sameLanguage":false,"highFidelity":"installed","lowLatency":"supported"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            check,
+            Check {
+                target: "en".into(),
+                source_name: "Japanese".into(),
+                target_name: "English".into(),
+                same_language: false,
+                high_fidelity: Status::Installed,
+                low_latency: Status::Supported,
+            }
+        );
+    }
+
+    #[test]
+    fn a_check_error_maps_like_a_translation_error() {
+        assert_eq!(
+            parse_check_reply(r#"{"error":"unavailable"}"#),
+            Err(TranslateError::Unavailable)
+        );
+        assert_eq!(
+            parse_check_reply(r#"{"error":"noLanguage"}"#),
+            Err(TranslateError::NoLanguage)
+        );
+        assert!(matches!(
+            parse_check_reply(r#"{"target":"en"}"#),
+            Err(TranslateError::Failed(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_blank_language_round_trips_through_the_bridge() {
+        assert_eq!(check(" ").await, Err(TranslateError::NoLanguage));
     }
 
     /// A real round trip through the linked Swift library that stops before

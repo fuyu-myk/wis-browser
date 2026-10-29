@@ -387,6 +387,7 @@ pub async fn create_tab_webview(
             let mut tab_closed = false;
             if matches!(event, PageLoadEvent::Started) {
                 crate::protection::page_blocks::forget(&label_for_load);
+                crate::translation::forget(&label_for_load);
                 crate::vault::signup::forget_field(&tab_id.as_uuid().to_string());
                 if let Err(err) = crate::pages::find::clear_webview(&webview) {
                     log::debug!("clearing find on navigation failed: {err}");
@@ -450,6 +451,7 @@ pub async fn create_tab_webview(
                     };
                     let next = if loading {
                         next.with_tab_reader(tab_id, false)?
+                            .with_tab_translated(tab_id, false)?
                     } else {
                         next
                     };
@@ -780,6 +782,7 @@ pub async fn create_tab_webview(
     // AI page-text channel (inert until the chrome requests extraction).
     crate::pages::text::install(&child);
     crate::pages::source::install(&child);
+    crate::translation::install(&child);
     crate::vault::signup::install(&child);
     crate::vault::address_field::install(&child);
 
@@ -969,6 +972,7 @@ pub(crate) fn destroy_tab_webview(app: &AppHandle, webview: &tauri::Webview) -> 
     let label = webview.label();
     crate::platform::webview_close::terminate_page(webview);
     crate::platform::content_world::forget(label);
+    crate::translation::forget(label);
     crate::canvas::page::forget(app, label);
     #[cfg(windows)]
     crate::platform::win_dispatch::forget(label);

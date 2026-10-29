@@ -145,6 +145,20 @@ export class Element {
     this.childNodes.push(node)
     return node
   }
+  removeChild(node) {
+    if (node.parentNode !== this) throw new Error('NotFoundError: not a child')
+    detach(node)
+    return node
+  }
+  insertBefore(node, ref) {
+    if (ref == null) return this.appendChild(node)
+    detach(node)
+    const at = this.childNodes.indexOf(ref)
+    if (at < 0) throw new Error('NotFoundError: the reference is not a child')
+    node.parentNode = this
+    this.childNodes.splice(at, 0, node)
+    return node
+  }
   remove() {
     detach(this)
   }

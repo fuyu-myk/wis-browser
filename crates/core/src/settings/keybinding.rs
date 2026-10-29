@@ -86,6 +86,8 @@ pub enum KeyAction {
     HardReload,
     /// Toggle reader mode (the in-page article transform) on the active tab.
     ToggleReader,
+    /// Translate the active tab's page on-device, or show the original.
+    ToggleTranslation,
     /// Per-tab page zoom.
     ZoomIn,
     ZoomOut,
@@ -179,6 +181,7 @@ impl KeyAction {
             Self::PreviousTab => "previous_tab",
             Self::HardReload => "hard_reload",
             Self::ToggleReader => "toggle_reader",
+            Self::ToggleTranslation => "toggle_translation",
             Self::ZoomIn => "zoom_in",
             Self::ZoomOut => "zoom_out",
             Self::ZoomReset => "zoom_reset",
@@ -212,7 +215,7 @@ impl KeyAction {
     }
 }
 
-const ALL_ACTIONS: [KeyAction; 66] = [
+const ALL_ACTIONS: [KeyAction; 67] = [
     KeyAction::NewTab,
     KeyAction::NewWorkspace,
     KeyAction::CloseTab,
@@ -262,6 +265,7 @@ const ALL_ACTIONS: [KeyAction; 66] = [
     KeyAction::PreviousTab,
     KeyAction::HardReload,
     KeyAction::ToggleReader,
+    KeyAction::ToggleTranslation,
     KeyAction::ZoomIn,
     KeyAction::ZoomOut,
     KeyAction::ZoomReset,
@@ -350,6 +354,7 @@ pub fn default_keymap_for(mac: bool) -> HashMap<KeyAction, String> {
         (KeyAction::PreviousTab, "Cmd+Shift+["),
         (KeyAction::HardReload, "Cmd+Shift+R"),
         (KeyAction::ToggleReader, "Alt+Cmd+R"),
+        (KeyAction::ToggleTranslation, "Alt+Cmd+T"),
         (KeyAction::ZoomIn, "Cmd+="),
         (KeyAction::ZoomOut, "Cmd+-"),
         (KeyAction::ZoomReset, "Cmd+0"),

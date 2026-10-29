@@ -978,3 +978,23 @@ fn activating_a_loose_tab_leaves_folders_as_they_were() {
     );
     assert_clean(&s4);
 }
+
+#[test]
+fn a_tab_s_translated_flag_toggles_and_repeats_as_a_no_op() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, tab) = s0.with_new_tab(ws, "https://example.jp/").unwrap();
+    assert!(!tab.translated, "a new tab starts untranslated");
+
+    let s2 = s1.with_tab_translated(tab.id, true).unwrap();
+    assert!(s2.tab(tab.id).unwrap().translated);
+    assert_eq!(s2.with_tab_translated(tab.id, true).unwrap(), s2);
+    assert_clean(&s2);
+
+    let s3 = s2.with_tab_translated(tab.id, false).unwrap();
+    assert!(!s3.tab(tab.id).unwrap().translated);
+    assert!(matches!(
+        s3.with_tab_translated(wis_core::TabId::new(), true),
+        Err(WisError::TabNotFound { .. })
+    ));
+}

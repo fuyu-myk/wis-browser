@@ -932,6 +932,14 @@ export const commands = {
     return invoke('tab_set_reader', { id, enabled })
   },
 
+  /**
+   * Translate a tab's page on-device, or restore the original. Rejects with
+   * the reason when Wis won't translate the page.
+   */
+  async tabSetTranslated(id: TabId, enabled: boolean): Promise<void> {
+    return invoke('tab_set_translated', { id, enabled })
+  },
+
   /** History back in the tab. No-ops at start of history. */
   async tabGoBack(id: TabId): Promise<void> {
     return invoke('tab_go_back', { id })

@@ -46,6 +46,8 @@ const FEATURES: Readonly<Record<string, FeatureSupport>> = {
   site_block_counts: { label: 'Blocked counts', unavailableOn: ['windows', 'linux'] },
   // WebKit's Lockdown Mode, set when a webview is created.
   lockdown_mode: { label: 'Lockdown Mode', unavailableOn: ['windows', 'linux'] },
+  // Apple's Translation framework, through the Swift bridge.
+  toggle_translation: { label: 'Translation', unavailableOn: ['windows', 'linux'] },
 }
 
 /** True when `featureId` is not available on the running platform. */
