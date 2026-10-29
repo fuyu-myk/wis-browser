@@ -7,9 +7,6 @@ use std::ops::Range;
 
 use super::message::Run;
 
-/// A segment with more pieces than this stays as it is.
-pub const MAX_PIECES: usize = 12;
-
 const STOP_WORDS: [&str; 12] = [
     "the", "and", "for", "with", "from", "that", "this", "are", "was", "you", "your", "our",
 ];
@@ -182,19 +179,23 @@ fn find_word(hay: &str, needle: &str, spaced: bool) -> Option<Range<usize>> {
     })
 }
 
-/// Tags the words of the translation that each lost element, and translated
-/// on its own as `found`. `None` when one cannot be placed.
-pub fn anchor(mut runs: Vec<Run>, found: &[(u32, String)], spaced: bool) -> Option<Vec<Run>> {
+/// Tags the words of the translation that each lost element, as `found`,
+/// stands for. Returns the runs and the tags that could not be placed.
+pub fn anchor(mut runs: Vec<Run>, found: &[(u32, String)], spaced: bool) -> (Vec<Run>, Vec<u32>) {
+    let mut unplaced = Vec::new();
     for (tag, piece) in found {
-        let (at, range) = needles(piece).into_iter().find_map(|needle| {
+        let at = needles(piece).into_iter().find_map(|needle| {
             runs.iter()
                 .enumerate()
                 .filter(|(_, run)| run.tag.is_none())
                 .find_map(|(i, run)| find_word(&run.text, needle, spaced).map(|range| (i, range)))
-        })?;
-        tag_within(&mut runs, at, range, *tag);
+        });
+        match at {
+            Some((at, range)) => tag_within(&mut runs, at, range, *tag),
+            None => unplaced.push(*tag),
+        }
     }
-    Some(runs)
+    (runs, unplaced)
 }
 
 /// Splits run `at` so that `range` of its text carries `tag`.
@@ -214,10 +215,39 @@ pub fn tag_within(runs: &mut Vec<Run>, at: usize, range: Range<usize>, tag: u32)
     runs.splice(at..=at, split);
 }
 
-pub fn pieces(runs: &[Run]) -> usize {
-    runs.iter()
-        .filter(|run| !run.text.trim().is_empty())
-        .count()
+fn latin(c: char) -> bool {
+    c.is_ascii_alphanumeric() || ('\u{00C0}'..='\u{024F}').contains(&c)
+}
+
+/// Where `text` stands in the untagged runs exactly as it was sent, as whole
+/// words and only once.
+pub fn verbatim(runs: &[Run], text: &str) -> Option<(usize, Range<usize>)> {
+    let needle = text.trim();
+    let first = needle.chars().next()?;
+    let last = needle.chars().next_back()?;
+    let joins = |edge: char, next: Option<char>| {
+        next.is_some_and(|c| {
+            word_char(edge) && (mark(c) || (word_char(c) && latin(edge) == latin(c)))
+        })
+    };
+    let mut found = runs
+        .iter()
+        .enumerate()
+        .filter(|(_, run)| run.tag.is_none())
+        .flat_map(|(at, run)| {
+            run.text
+                .match_indices(needle)
+                .filter(move |&(start, _)| {
+                    let end = start + needle.len();
+                    !joins(first, run.text[..start].chars().next_back())
+                        && !joins(last, run.text[end..].chars().next())
+                })
+                .map(move |(start, _)| (at, start..start + needle.len()))
+        });
+    match (found.next(), found.next()) {
+        (Some(hit), None) => Some(hit),
+        _ => None,
+    }
 }
 
 /// Whether the language puts spaces between words.
@@ -366,11 +396,14 @@ mod tests {
         let runs = vec![run("For details, please click here.", None)];
         assert_eq!(
             anchor(runs, &[(0, "here".into())], true),
-            Some(vec![
-                run("For details, please click ", None),
-                run("here", Some(0)),
-                run(".", None),
-            ])
+            (
+                vec![
+                    run("For details, please click ", None),
+                    run("here", Some(0)),
+                    run(".", None),
+                ],
+                vec![]
+            )
         );
     }
 
@@ -387,30 +420,36 @@ mod tests {
                 &[(1, "Free of charge".into()), (2, "an archive".into())],
                 true
             ),
-            Some(vec![
-                run("Operated by the ", None),
-                run("Digital Agency", Some(0)),
-                run(" and ", None),
-                run("free", Some(1)),
-                run("; past notices are ", None),
-                run("archived", Some(2)),
-                run(".", None),
-            ])
+            (
+                vec![
+                    run("Operated by the ", None),
+                    run("Digital Agency", Some(0)),
+                    run(" and ", None),
+                    run("free", Some(1)),
+                    run("; past notices are ", None),
+                    run("archived", Some(2)),
+                    run(".", None),
+                ],
+                vec![]
+            )
         );
     }
 
     #[test]
     fn a_lost_element_is_not_put_inside_another_word_or_element() {
         let inside_a_word = vec![run("There is more.", None)];
-        assert_eq!(anchor(inside_a_word, &[(0, "here".into())], true), None);
+        assert_eq!(anchor(inside_a_word, &[(0, "here".into())], true).1, [0]);
         let taken = vec![run("here", Some(1)), run(" and here", None)];
         assert_eq!(
             anchor(taken, &[(0, "here".into())], true),
-            Some(vec![
-                run("here", Some(1)),
-                run(" and ", None),
-                run("here", Some(0)),
-            ])
+            (
+                vec![
+                    run("here", Some(1)),
+                    run(" and ", None),
+                    run("here", Some(0)),
+                ],
+                vec![]
+            )
         );
     }
 
@@ -423,18 +462,17 @@ mod tests {
             ("the terms", "The"),
         ] {
             assert_eq!(
-                anchor(vec![run(hay, None)], &[(0, piece.into())], true),
-                None,
+                anchor(vec![run(hay, None)], &[(0, piece.into())], true).1,
+                [0],
                 "{piece} in {hay}"
             );
         }
         assert_eq!(
             anchor(vec![run("see article 1.", None)], &[(0, "1".into())], true),
-            Some(vec![
-                run("see article ", None),
-                run("1", Some(0)),
-                run(".", None),
-            ])
+            (
+                vec![run("see article ", None), run("1", Some(0)), run(".", None),],
+                vec![]
+            )
         );
     }
 
@@ -443,7 +481,10 @@ mod tests {
         let thai = vec![run("ดูที่นี่ครับ", None)];
         assert_eq!(
             anchor(thai, &[(0, "นี".into())], false),
-            Some(vec![run("ดูที่", None), run("นี่", Some(0)), run("ครับ", None),])
+            (
+                vec![run("ดูที่", None), run("นี่", Some(0)), run("ครับ", None)],
+                vec![]
+            )
         );
     }
 
@@ -452,11 +493,56 @@ mod tests {
         let runs = vec![run("詳細はここをクリック", None)];
         assert_eq!(
             anchor(runs, &[(0, "ここ".into())], false),
-            Some(vec![
-                run("詳細は", None),
-                run("ここ", Some(0)),
-                run("をクリック", None),
-            ])
+            (
+                vec![
+                    run("詳細は", None),
+                    run("ここ", Some(0)),
+                    run("をクリック", None),
+                ],
+                vec![]
+            )
+        );
+    }
+
+    #[test]
+    fn a_lost_element_s_own_text_counts_whole_exact_and_once() {
+        let at = |hay: &str, text: &str| {
+            verbatim(&[run(hay, None)], text).map(|(_, range)| hay[range].to_string())
+        };
+        assert_eq!(
+            at("A function f is continuous at point a.", "a"),
+            Some("a".into())
+        );
+        assert_eq!(at("Search with Google Maps.", "Google マップ"), None);
+        assert_eq!(at("Appleのアプリストア", "App Store"), None);
+        assert_eq!(at("App Storeで入手", "App Store"), Some("App Store".into()));
+        assert_eq!(at("Call foo (bar) now", "foo(bar)"), None);
+        assert_eq!(at("x plus x", "x"), None, "twice");
+        assert_eq!(at("日本国の首都", "日本"), None);
+        assert_eq!(at("Cafe\u{301} society", "Cafe"), None);
+        assert_eq!(
+            verbatim(&[run("a", Some(0)), run(" and a b", None)], "a"),
+            Some((1, 5..6))
+        );
+    }
+
+    #[test]
+    fn the_elements_that_can_be_placed_are_kept_when_one_cannot() {
+        let runs = vec![run("The function f is continuous at a point.", None)];
+        assert_eq!(
+            anchor(
+                runs,
+                &[(0, "Secondary".into()), (1, "continuous".into())],
+                true
+            ),
+            (
+                vec![
+                    run("The function f is ", None),
+                    run("continuous", Some(1)),
+                    run(" at a point.", None),
+                ],
+                vec![0]
+            )
         );
     }
 

@@ -12,8 +12,10 @@ const SKIP =
   '[contenteditable=plaintext-only], [translate=no], .notranslate'
 // Kept inside a sentence where they stand, their text left as it is.
 const OPAQUE = 'code, kbd, samp, var, [translate=no], .notranslate'
-// Inline elements a translation must keep; styling ones may be dropped.
-const NEEDED = 'a, [role], [tabindex], [onclick]'
+// Inline elements a translation must keep; styling ones may be dropped, and
+// so may a link in a sentence too long for Rust to repair.
+const CONTROLS = '[role], [tabindex], [onclick]'
+const NEEDED = 'a, ' + CONTROLS
 // Elements that end a sentence rather than sit inside one, but for objects.
 const BREAKS = new Set([
   'BR', 'HR', 'IMG', 'PICTURE', 'SVG', 'VIDEO', 'AUDIO', 'CANVAS', 'IFRAME', 'OBJECT', 'EMBED',
@@ -31,6 +33,7 @@ const MAX_SEGMENTS = 10000
 const MAX_CHARS = 4000
 const MAX_RUNS = 128
 const MAX_IDS = 1000000
+const MAX_PIECES = 12
 
 // DOM reads through the prototypes: a page's named controls and images
 // (an input named `parentNode`, an img named `body`) shadow the properties
@@ -158,7 +161,7 @@ const opaque = (el) =>
 const ownText = (el) => textNodesIn(el).map((t) => t.nodeValue).join('')
 
 function trimBlank(nodes) {
-  const meaningful = (n) => (kind(n) === 1 ? !invisible(n) && !object(n) : !blank(n.nodeValue))
+  const meaningful = (n) => (kind(n) === 1 ? !invisible(n) && !object(n) : kind(n) === 3 && !blank(n.nodeValue))
   let start = 0
   let end = nodes.length
   while (start < end && !meaningful(nodes[start])) start++
@@ -196,9 +199,9 @@ function marker(el) {
 }
 
 // A link or control inside an element makes it one the translation must keep.
-function needs(el) {
-  if (opaque(el) || matches(el, NEEDED)) return true
-  for (const inner of method(ElementType, 'querySelectorAll')(el, NEEDED)) {
+function needs(el, selector = NEEDED) {
+  if (opaque(el) || matches(el, selector)) return true
+  for (const inner of method(ElementType, 'querySelectorAll')(el, selector)) {
     const sup = closest(inner, 'sup')
     if (!sup || !marker(sup)) return true
   }
@@ -224,14 +227,14 @@ function groupsOf(root, assigned, carriers) {
   for (const child of childrenOf(root)) {
     const type = kind(child)
     if (type === 3 && (assigned.has(child) || blank(child.nodeValue))) current.push(child)
-    else if (type === 1 && member(child)) current.push(child)
-    else if (type !== 8) close()
+    else if ((type === 1 && member(child)) || type === 8) current.push(child)
+    else close()
   }
   close()
   return groups
 }
 
-const textual = (n) => kind(n) !== 1 || !invisible(n)
+const textual = (n) => kind(n) === 3 || (kind(n) === 1 && !invisible(n))
 
 function segmentOf(root, nodes) {
   const elements = nodes.filter((n) => kind(n) === 1 && !invisible(n))
@@ -239,12 +242,13 @@ function segmentOf(root, nodes) {
   if (elements.length === 1 && !loose.length && !opaque(elements[0])) {
     const text = ownText(elements[0])
     if (!worded(text)) return null
-    const none = { tagged: [], opaque: new Set(), needed: [], objects: [] }
+    const none = { tagged: [], opaque: new Set(), needed: [], required: [], objects: [] }
     return { root, nodes, whole: elements[0], ...none, runs: [{ text }], sent: text }
   }
   const tagged = []
   const fixed = new Set()
   const needed = []
+  const required = []
   const objects = []
   const runs = nodes.filter(textual).map((n) => {
     if (kind(n) === 3) return { text: n.nodeValue }
@@ -254,17 +258,20 @@ function segmentOf(root, nodes) {
     if (placeholder || opaque(n)) {
       fixed.add(tag)
       needed.push(tag)
+      required.push(tag)
       if (placeholder) objects.push(tag)
       return { text: placeholder ? OBJECT : textOf(n), tag }
     }
     if (needs(n)) needed.push(tag)
+    if (needs(n, CONTROLS)) required.push(tag)
     return { text: ownText(n), tag }
   })
   const translatable = runs.some((r) => (r.tag == null || !fixed.has(r.tag)) && worded(r.text))
   if (!translatable) return null
   const sent = runs.map((r) => r.text).join('')
   const hidden = nodes.filter((n) => !textual(n))
-  return { root, nodes, whole: null, tagged, opaque: fixed, needed, objects, hidden, runs, sent }
+  const long = runs.filter((r) => !blank(r.text)).length > MAX_PIECES
+  return { root, nodes, whole: null, tagged, opaque: fixed, needed, required, long, objects, hidden, runs, sent }
 }
 
 // The segment's text now, to tell whether the page changed it since.

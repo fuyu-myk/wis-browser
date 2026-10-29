@@ -16,7 +16,8 @@ use super::language::page_language;
 use super::message::{Block, PageMessage, Queue, Run};
 use super::objects::{held, place, HELD, OBJECT};
 use super::page;
-use super::pieces::{anchor, lost_tags, pieces, piecewise, relabel, spaced, tidy, MAX_PIECES};
+use super::pieces::{anchor, lost_tags, piecewise, relabel, spaced, tag_within, tidy, verbatim};
+use super::readings::unread;
 use crate::platform::content_world;
 
 /// How long the page has to report its language after the script starts.
@@ -362,37 +363,53 @@ async fn translate_piece(label: &str, gen: u64, task: &Task, text: String) -> Op
     (!text.trim().is_empty()).then_some(text)
 }
 
-/// A lost inline element goes back on its own words in the translation,
-/// and failing that, the segment is redone piece by piece; an object stays
-/// as it was sent.
+/// A lost inline element goes back on its own text where the translation
+/// kept it whole, or else on the words of its own translation, and failing
+/// that a short segment is redone piece by piece. A long one keeps its
+/// fluent translation and the page lets lost links go. An object stays as it
+/// was sent.
 async fn translate(label: &str, gen: u64, task: &Task) -> Result<Vec<Run>, TranslateError> {
     let (whole, strategy) = translate_whole(label, gen, task).await?;
-    let runs = place(
+    let mut runs = place(
         whole,
         &task.block.runs,
         &task.block.objects,
         marker(strategy),
     );
     let sent = &task.block.runs;
-    let lost = lost_tags(sent, &runs, &task.block.needed);
-    if lost.is_empty() || pieces(sent) > MAX_PIECES || !is_current(label, gen) {
+    let needed = &task.block.needed;
+    for (tag, text) in lost_tags(sent, &runs, needed) {
+        if let Some((at, range)) = verbatim(&runs, text) {
+            tag_within(&mut runs, at, range, tag);
+        }
+    }
+
+    let lost = lost_tags(sent, &runs, needed);
+    if lost.is_empty() || task.block.long || !is_current(label, gen) {
         return Ok(runs);
     }
 
     let unplaced = || TranslateError::Failed("an inline element could not be placed".into());
-    let mut found = Vec::with_capacity(lost.len());
+    let mut found: Vec<(u32, String)> = Vec::with_capacity(lost.len());
     for &(tag, text) in &lost {
-        let piece = if task.block.objects.contains(&tag) {
-            Some(text.to_string())
-        } else {
-            translate_piece(label, gen, task, text.to_string()).await
+        let known = lost
+            .iter()
+            .zip(&found)
+            .find_map(|(&(_, seen), (_, piece))| (seen == text).then(|| piece.clone()));
+        let piece = match known {
+            Some(piece) => piece,
+            None if task.block.objects.contains(&tag) => text.to_string(),
+            None => translate_piece(label, gen, task, text.to_string())
+                .await
+                .ok_or_else(unplaced)?,
         };
-        found.push((tag, piece.ok_or_else(unplaced)?));
+        found.push((tag, piece));
     }
 
     let spaced = spaced(&task.target);
-    if let Some(anchored) = anchor(runs, &found, spaced) {
-        return Ok(anchored);
+    let (runs, unplaced_tags) = anchor(runs, &found, spaced);
+    if unplaced_tags.is_empty() {
+        return Ok(runs);
     }
 
     log::debug!("a segment in {label} lost an inline element, translating it piece by piece");
@@ -414,7 +431,10 @@ async fn translate(label: &str, gen: u64, task: &Task) -> Result<Vec<Run>, Trans
 }
 
 async fn work(app: AppHandle, label: String, gen: u64) {
-    while let Some(task) = next_task(&label, gen) {
+    while let Some(mut task) = next_task(&label, gen) {
+        if let Some(runs) = unread(&task.block.runs, &task.block.needed, &task.source) {
+            task.block.runs = runs;
+        }
         match translate(&label, gen, &task).await {
             Ok(runs) => {
                 let runs = tidy(relabel(&task.block.runs, runs, &task.target));
@@ -462,6 +482,7 @@ mod tests {
             main: true,
             needed: vec![],
             objects: vec![],
+            long: false,
         };
         let linked = Block {
             id: 1,
@@ -469,6 +490,7 @@ mod tests {
             main: true,
             needed: vec![0],
             objects: vec![],
+            long: false,
         };
         let pictured = Block {
             id: 2,
@@ -476,6 +498,7 @@ mod tests {
             main: true,
             needed: vec![0],
             objects: vec![0],
+            long: false,
         };
         assert_eq!(strategy_for(&plain, true), Strategy::LowLatency);
         let two = Block {

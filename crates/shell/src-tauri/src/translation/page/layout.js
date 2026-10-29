@@ -33,7 +33,7 @@ function usable(runs, seg) {
     if (!Number.isInteger(r.tag) || r.tag < 0 || r.tag >= seg.tagged.length) return false
     tags.add(r.tag)
   }
-  return seg.needed.every((tag) => tags.has(tag))
+  return seg.required.every((tag) => tags.has(tag)) && (seg.long || seg.needed.every((tag) => tags.has(tag)))
 }
 
 function settled(runs, seg) {

@@ -40,6 +40,9 @@ pub struct Block {
     /// The needed tags that are images, icons or formulas, sent as U+FFFC.
     #[serde(default)]
     pub objects: Vec<u32>,
+    /// Too many pieces to redo one by one.
+    #[serde(default)]
+    pub long: bool,
 }
 
 impl Block {
@@ -179,6 +182,7 @@ mod tests {
             main: false,
             needed: vec![],
             objects: vec![],
+            long: false,
         }
     }
 
@@ -204,7 +208,7 @@ mod tests {
     fn a_blocks_message_carries_tagged_runs() {
         assert_eq!(
             parse_message(
-                r#"{"kind":"blocks","gen":3,"wave":2,"blocks":[{"id":0,"runs":[{"text":"詳しくは"},{"text":"こちら","tag":0}],"main":true,"needed":[0]}]}"#
+                r#"{"kind":"blocks","gen":3,"wave":2,"blocks":[{"id":0,"runs":[{"text":"詳しくは"},{"text":"こちら","tag":0}],"main":true,"needed":[0],"long":true}]}"#
             ),
             Some(PageMessage::Blocks {
                 gen: 3,
@@ -215,6 +219,7 @@ mod tests {
                     main: true,
                     needed: vec![0],
                     objects: vec![],
+                    long: true,
                 }]
             })
         );
@@ -226,7 +231,7 @@ mod tests {
         let Some(PageMessage::Blocks { blocks, .. }) = parse_message(body) else {
             panic!("a blocks message");
         };
-        assert!(blocks[0].plain());
+        assert!(blocks[0].plain() && !blocks[0].long);
         let linked = Block {
             runs: vec![run(OBJECT, Some(0)), run("こちら", Some(1))],
             needed: vec![0, 1],
@@ -302,6 +307,7 @@ mod tests {
             main: false,
             needed: vec![0],
             objects: vec![],
+            long: false,
         }
     }
 

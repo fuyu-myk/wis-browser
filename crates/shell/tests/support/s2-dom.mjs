@@ -52,6 +52,30 @@ export class Text {
   }
 }
 
+export class Comment {
+  constructor(value) {
+    this.nodeType = 8
+    this.nodeValue = value
+    this.parentNode = null
+    this.childNodes = []
+  }
+  get textContent() {
+    return this.nodeValue
+  }
+  get isConnected() {
+    return rootOf(this).nodeType === 9
+  }
+  get previousSibling() {
+    return previousOf(this)
+  }
+  cloneNode() {
+    return new Comment(this.nodeValue)
+  }
+  remove() {
+    detach(this)
+  }
+}
+
 class Style {
   constructor() {
     this.cssText = ''
@@ -242,6 +266,7 @@ function escapeText(text) {
 
 function serialize(node) {
   if (node.nodeType === 3) return escapeText(node.nodeValue)
+  if (node.nodeType === 8) return `<!--${node.nodeValue}-->`
   const tag = node.tagName.toLowerCase()
   const attrs = node.attributes
     .map((a) => ` ${a.name}="${a.value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`)

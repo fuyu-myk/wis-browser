@@ -11,6 +11,7 @@ mod objects;
 #[cfg(target_os = "macos")]
 mod page;
 mod pieces;
+mod readings;
 #[cfg(target_os = "macos")]
 mod session;
 

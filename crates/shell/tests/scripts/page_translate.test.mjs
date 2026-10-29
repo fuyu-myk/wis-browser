@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { NodeFilter, Text, eventTarget, h, handlers, page } from '../support/s2-dom.mjs'
+import { Comment, NodeFilter, Text, eventTarget, h, handlers, page } from '../support/s2-dom.mjs'
 import { concatenated } from '../support/rustSource.mjs'
 
 const SCRIPT = concatenated('translation/page.rs', 'PAGE_JS')
@@ -158,6 +158,7 @@ describe('finding segments', () => {
         main: false,
         needed: [0],
         objects: [],
+        long: false,
       },
     ])
   })
@@ -300,6 +301,58 @@ describe('finding segments', () => {
     assert.deepEqual(block.needed, [0])
     loaded.api.apply(1, 0, [{ text: 'This is, for details, here.' }])
     assert.equal(p.innerHTML, before)
+  })
+
+  /** A lead sentence linking a term every few words, thirteen pieces long. */
+  function linkedLead() {
+    const parts = []
+    for (let i = 0; i < 6; i++) parts.push(`語${i}は`, h('a', { href: `/${i}` }, `項目${i}`))
+    return h('p', {}, ...parts, h('code', {}, 'x'), 'である。')
+  }
+
+  test('a long sentence that loses a link keeps its translation and lets the link go', () => {
+    const p = linkedLead()
+    const loaded = load(page('https://example.jp/', p))
+    const before = p.innerHTML
+    const [block] = blocksOf(goVisible(loaded))
+    assert.deepEqual([block.runs.length, block.long], [14, true])
+    const translation = [{ text: 'Word 0 is ' }]
+    for (let i = 0; i < 6; i++) if (i !== 3) translation.push({ text: `item ${i}`, tag: i }, { text: ', ' })
+    translation.push({ text: 'x', tag: 6 }, { text: '.' })
+    loaded.api.apply(1, 0, translation)
+    assert.match(p.textContent, /^Word 0 is item 0, /)
+    assert.equal(p.childNodes.find((n) => n.getAttribute && n.getAttribute('href') === '/3').textContent, '')
+    loaded.api.revert()
+    assert.equal(p.innerHTML, before)
+  })
+
+  test('a long sentence that loses a styling element holding a link reverts exactly', () => {
+    const p = linkedLead()
+    const bold = h('b', {}, '太字の', h('a', { href: '/b' }, '語'))
+    p.insertBefore(bold, p.childNodes[0])
+    const loaded = load(page('https://example.jp/', p))
+    const before = p.innerHTML
+    goVisible(loaded)
+    const links = []
+    for (let i = 0; i < 6; i++) links.push({ text: ` item ${i}`, tag: i + 1 })
+    loaded.api.apply(1, 0, [{ text: 'Word 0 is' }, ...links, { text: ' ' }, { text: 'x', tag: 7 }, { text: '.' }])
+    assert.match(p.textContent, /^Word 0 is item 0/)
+    assert.equal(bold.textContent, '')
+    loaded.api.revert()
+    assert.equal(p.innerHTML, before)
+  })
+
+  test('a long sentence that loses kept text or a short one that loses a link is refused', () => {
+    const long = linkedLead()
+    const short = h('p', {}, '詳しくは', h('a', { href: '/x' }, 'こちら'), 'を見る')
+    const loaded = load(page('https://example.jp/', long, short))
+    const before = [long.innerHTML, short.innerHTML]
+    goVisible(loaded)
+    const links = []
+    for (let i = 0; i < 6; i++) links.push({ text: `item ${i}`, tag: i }, { text: ', ' })
+    loaded.api.apply(1, 0, [{ text: 'Word 0 is ' }, ...links, { text: 'x.' }])
+    loaded.api.apply(1, 1, [{ text: 'See here for details.' }])
+    assert.deepEqual([long.innerHTML, short.innerHTML], before)
   })
 
   test('chemistry and units keep their numbers; furigana is not read', () => {
@@ -489,7 +542,7 @@ describe('finding segments', () => {
 
   test('a segment that is one link is sent whole, untagged', () => {
     const doc = page('https://example.jp/', h('ul', {}, h('li', {}, h('a', { href: '/' }, 'ホーム'))))
-    assert.deepEqual(blocksOf(goVisible(load(doc))), [{ id: 0, runs: [{ text: 'ホーム' }], main: false, needed: [], objects: [] }])
+    assert.deepEqual(blocksOf(goVisible(load(doc))), [{ id: 0, runs: [{ text: 'ホーム' }], main: false, needed: [], objects: [], long: false }])
   })
 
   test('a line break splits a block into segments', () => {
@@ -564,6 +617,17 @@ describe('finding segments', () => {
     assert.deepEqual([block.runs, block.objects], [[{ text: '設定を開きます。' }], []])
   })
 
+  test('a comment inside a reordered sentence goes back where it was', () => {
+    const p = h('p', {}, h('b', {}, '日本'), '（にほん', new Comment('どちらの呼称も法定ではない。'), '）は国家。')
+    const loaded = load(page('https://example.jp/', p))
+    const before = p.innerHTML
+    const [block] = blocksOf(goVisible(loaded))
+    assert.deepEqual(block.runs.map((r) => r.text).join(''), '日本（にほん）は国家。')
+    loaded.api.apply(1, 0, [{ text: 'Japan is a state (' }, { text: 'Nihon', tag: 0 }, { text: ').' }])
+    loaded.api.revert()
+    assert.equal(p.innerHTML, before)
+  })
+
   test('an element that keeps its place among the words is not moved', () => {
     const link = h('a', { href: '/x' }, 'リンク')
     const p = h('p', {}, 'これは', link, 'です。')
@@ -632,7 +696,7 @@ describe('sending what is on screen', () => {
     loaded.observers[0].show(second)
     loaded.flush()
     const sent = blocksOf(loaded.messages().filter((m) => m.kind === 'blocks'))
-    assert.deepEqual(sent, [{ id: 1, runs: [{ text: '二つ目' }], main: false, needed: [], objects: [] }])
+    assert.deepEqual(sent, [{ id: 1, runs: [{ text: '二つ目' }], main: false, needed: [], objects: [], long: false }])
     assert.ok(!loaded.observers[0].targets.has(second), 'a sent block stops being watched')
   })
 
@@ -906,7 +970,7 @@ describe('putting translations in place', () => {
     const loaded = load(page('https://example.jp/', p))
     const blocks = blocksOf(goVisible(loaded))
     assert.deepEqual(blocks, [
-      { id: 0, runs: [{ text: '一覧は' }, { text: 'ls', tag: 0 }, { text: 'で表示' }], main: false, needed: [0], objects: [] },
+      { id: 0, runs: [{ text: '一覧は' }, { text: 'ls', tag: 0 }, { text: 'で表示' }], main: false, needed: [0], objects: [], long: false },
     ])
     loaded.api.apply(1, 0, [{ text: 'Show the list with ' }, { text: 'エルエス', tag: 0 }])
     assert.equal(p.innerHTML, 'Show the list with <code>ls</code>')

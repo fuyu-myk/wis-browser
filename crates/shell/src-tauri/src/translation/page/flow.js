@@ -73,7 +73,14 @@ function flush(s) {
   for (let i = 0; i < pending.length; i += BATCH) {
     const blocks = pending
       .slice(i, i + BATCH)
-      .map((seg) => ({ id: seg.id, runs: seg.runs, main: seg.main, needed: seg.needed, objects: seg.objects }))
+      .map((seg) => ({
+        id: seg.id,
+        runs: seg.runs,
+        main: seg.main,
+        needed: seg.needed,
+        objects: seg.objects,
+        long: !!seg.long,
+      }))
     post({ kind: 'blocks', gen: s.gen, wave: s.wave, blocks })
   }
 }
@@ -251,7 +258,7 @@ function rescan(s) {
         const intact =
           seg.texts.every((t) => connected(t)) &&
           seg.nodes.every((n) => parentOf(n) === seg.root) &&
-          (seg.hidden || []).every(invisible)
+          (seg.hidden || []).every((n) => kind(n) !== 1 || invisible(n))
         if (connected(seg.root) && intact) continue
         mark(seg.root)
         drop(seg)
