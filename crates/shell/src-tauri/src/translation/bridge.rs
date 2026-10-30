@@ -6,6 +6,7 @@
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::time::Duration;
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
@@ -14,6 +15,8 @@ use super::message::Run;
 
 /// Longest one block may take.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(30);
+/// Longest Apple's download sheet may stay up, the download included.
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -95,6 +98,17 @@ struct DetectRequest<'a> {
     sample: &'a str,
 }
 
+#[derive(Serialize)]
+struct PrepareRequest<'a> {
+    source: &'a str,
+    target: &'a str,
+}
+
+#[derive(Deserialize)]
+struct Prepared {
+    status: Status,
+}
+
 type ReplyFn = extern "C" fn(*mut c_void, *const c_char);
 type EntryFn = unsafe extern "C" fn(*const c_char, *mut c_void, ReplyFn);
 
@@ -102,9 +116,16 @@ extern "C" {
     fn wis_translation_translate(request: *const c_char, context: *mut c_void, reply: ReplyFn);
     fn wis_translation_check(request: *const c_char, context: *mut c_void, reply: ReplyFn);
     fn wis_translation_detect(request: *const c_char, context: *mut c_void, reply: ReplyFn);
+    fn wis_translation_prepare(
+        request: *const c_char,
+        view: *mut c_void,
+        context: *mut c_void,
+        reply: ReplyFn,
+    );
 }
 
-/// Called by the bridge exactly once per request, on a Swift executor thread.
+/// Called by the bridge exactly once per request, on a Swift executor thread
+/// or the main thread.
 extern "C" fn on_reply(context: *mut c_void, reply: *const c_char) {
     // SAFETY: `context` is the sender `call` leaked for this request, and the
     // bridge answers each request once.
@@ -118,8 +139,7 @@ extern "C" fn on_reply(context: *mut c_void, reply: *const c_char) {
     }
 }
 
-/// Sends `request` to a bridge entry point and waits for its JSON reply.
-async fn call(entry: EntryFn, request: &impl Serialize) -> Result<String, TranslateError> {
+fn request_json(request: &impl Serialize) -> Result<CString, TranslateError> {
     // SAFETY: `pthread_main_np` has no preconditions.
     debug_assert!(
         unsafe { libc::pthread_main_np() } == 0,
@@ -127,7 +147,12 @@ async fn call(entry: EntryFn, request: &impl Serialize) -> Result<String, Transl
     );
     let json =
         serde_json::to_string(request).map_err(|err| TranslateError::Failed(err.to_string()))?;
-    let json = CString::new(json).expect("serde_json escapes NUL");
+    Ok(CString::new(json).expect("serde_json escapes NUL"))
+}
+
+/// Sends `request` to a bridge entry point and waits for its JSON reply.
+async fn call(entry: EntryFn, request: &impl Serialize) -> Result<String, TranslateError> {
+    let json = request_json(request)?;
     let (sender, receiver) = oneshot::channel::<String>();
     let context = Box::into_raw(Box::new(sender)).cast::<c_void>();
     // SAFETY: the bridge copies `json` before returning and hands `context`
@@ -147,7 +172,36 @@ pub async fn translate(request: &TranslateRequest<'_>) -> Result<Vec<Run>, Trans
 /// What translating a page in `source` (a BCP 47 tag) involves. Must not be
 /// awaited on the main thread.
 pub async fn check(source: &str) -> Result<Check, TranslateError> {
-    parse_check_reply(&call(wis_translation_check, &CheckRequest { source }).await?)
+    parse_answer(&call(wis_translation_check, &CheckRequest { source }).await?)
+}
+
+/// Offers Apple's sheet that downloads high fidelity for `source` into
+/// `target`, on the window `webview` is in, and returns the pair's status
+/// once the sheet is done. Must not be awaited on the main thread.
+pub async fn prepare(
+    webview: &tauri::Webview,
+    source: &str,
+    target: &str,
+) -> Result<Status, TranslateError> {
+    let json = request_json(&PrepareRequest { source, target })?;
+    let (sender, receiver) = oneshot::channel::<String>();
+    // Dropped unsent if the closure never runs, which ends the wait.
+    let sender = Box::new(sender);
+    webview
+        .with_webview(move |view| {
+            let context = Box::into_raw(sender).cast::<c_void>();
+            // SAFETY: `with_webview` runs this on the main thread, which the
+            // bridge requires, with the live WKWebView. The bridge copies
+            // `json` before returning and hands `context` back to `on_reply`
+            // exactly once, which reclaims it.
+            unsafe { wis_translation_prepare(json.as_ptr(), view.inner(), context, on_reply) };
+        })
+        .map_err(|err| TranslateError::Failed(err.to_string()))?;
+    let reply = tokio::time::timeout(DOWNLOAD_TIMEOUT, receiver)
+        .await
+        .map_err(|_| TranslateError::TimedOut)?
+        .map_err(|_| TranslateError::Failed("the download sheet never opened".into()))?;
+    parse_prepared(&reply)
 }
 
 /// The language `sample` is written in. Must not be awaited on the main thread.
@@ -182,7 +236,12 @@ fn parse_detected(reply: &str) -> Result<Detected, TranslateError> {
     serde_json::from_str(reply).map_err(|err| TranslateError::Failed(err.to_string()))
 }
 
-fn parse_check_reply(reply: &str) -> Result<Check, TranslateError> {
+fn parse_prepared(reply: &str) -> Result<Status, TranslateError> {
+    parse_answer::<Prepared>(reply).map(|prepared| prepared.status)
+}
+
+/// A reply that is either `T` or a bridge error.
+fn parse_answer<T: DeserializeOwned>(reply: &str) -> Result<T, TranslateError> {
     let value: serde_json::Value =
         serde_json::from_str(reply).map_err(|err| TranslateError::Failed(err.to_string()))?;
     if let Some(code) = value.get("error").and_then(serde_json::Value::as_str) {
@@ -259,7 +318,7 @@ mod tests {
 
     #[test]
     fn a_check_reply_reads_the_target_names_and_statuses() {
-        let check = parse_check_reply(
+        let check = parse_answer::<Check>(
             r#"{"target":"en","sourceName":"Japanese","targetName":"English","sameLanguage":false,"readsSource":true,"highFidelity":"installed","lowLatency":"supported"}"#,
         )
         .unwrap();
@@ -280,15 +339,43 @@ mod tests {
     #[test]
     fn a_check_error_maps_like_a_translation_error() {
         assert_eq!(
-            parse_check_reply(r#"{"error":"unavailable"}"#),
+            parse_answer::<Check>(r#"{"error":"unavailable"}"#),
             Err(TranslateError::Unavailable)
         );
         assert_eq!(
-            parse_check_reply(r#"{"error":"noLanguage"}"#),
+            parse_answer::<Check>(r#"{"error":"noLanguage"}"#),
             Err(TranslateError::NoLanguage)
         );
         assert!(matches!(
-            parse_check_reply(r#"{"target":"en"}"#),
+            parse_answer::<Check>(r#"{"target":"en"}"#),
+            Err(TranslateError::Failed(_))
+        ));
+    }
+
+    #[test]
+    fn a_prepare_reply_is_the_pair_s_status_once_the_sheet_is_done() {
+        assert_eq!(
+            serde_json::to_string(&PrepareRequest {
+                source: "ru",
+                target: "en"
+            })
+            .unwrap(),
+            r#"{"source":"ru","target":"en"}"#
+        );
+        assert_eq!(
+            parse_prepared(r#"{"status":"installed"}"#),
+            Ok(Status::Installed)
+        );
+        assert_eq!(
+            parse_prepared(r#"{"status":"supported"}"#),
+            Ok(Status::Supported)
+        );
+        assert_eq!(
+            parse_prepared(r#"{"error":"noWindow"}"#),
+            Err(TranslateError::Failed("noWindow".into()))
+        );
+        assert!(matches!(
+            parse_prepared("{}"),
             Err(TranslateError::Failed(_))
         ));
     }

@@ -83,4 +83,6 @@ fn build_translation_bridge() {
     println!("cargo:rustc-link-search=native={sdk}/usr/lib/swift");
     println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
     println!("cargo:rustc-link-arg=-Wl,-weak_framework,Translation");
+    // The download sheet's SwiftUI half, only from macOS 15.
+    println!("cargo:rustc-link-arg=-Wl,-weak_framework,_Translation_SwiftUI");
 }

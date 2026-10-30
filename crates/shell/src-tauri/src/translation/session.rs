@@ -26,6 +26,8 @@ const START_TIMEOUT: Duration = Duration::from_secs(3);
 static APP: OnceLock<AppHandle> = OnceLock::new();
 static NEXT_GEN: AtomicU64 = AtomicU64::new(1);
 static SESSIONS: Mutex<Option<HashMap<String, Session>>> = Mutex::new(None);
+/// One download sheet at a time, holding the pair it offered last.
+static DOWNLOADS: tokio::sync::Mutex<String> = tokio::sync::Mutex::const_new(String::new());
 
 struct Session {
     gen: u64,
@@ -103,13 +105,59 @@ fn refusal(check: &Check) -> Option<String> {
     }
 }
 
+/// A page Wis can translate once the reader downloads high fidelity for it.
+fn wants_download(check: &Check) -> bool {
+    !check.same_language && check.high_fidelity == Status::Supported
+}
+
+/// The language pair a download sheet offers.
+fn pair(check: &Check) -> String {
+    format!("{}>{}", check.source_name, check.target)
+}
+
+/// Whether a press opens the sheet. One that waited behind a sheet for its
+/// own pair takes that sheet's answer instead.
+fn opens_sheet(check: &Check, waited_behind: Option<&str>) -> bool {
+    wants_download(check) && waited_behind != Some(pair(check).as_str())
+}
+
+/// Offers Apple's download sheet on tab `label`'s window, and returns what
+/// translating from `source` involves once it is done.
+async fn download(
+    app: &AppHandle,
+    label: &str,
+    gen: u64,
+    source: &str,
+) -> Result<Check, TranslateError> {
+    let (mut offered, waited) = match DOWNLOADS.try_lock() {
+        Ok(turn) => (turn, false),
+        Err(_) => (DOWNLOADS.lock().await, true),
+    };
+    let check = bridge::check(source).await?;
+    let behind = waited.then_some(offered.as_str());
+    if !opens_sheet(&check, behind) || !is_current(label, gen) {
+        return Ok(check);
+    }
+
+    *offered = pair(&check);
+    let webview = app
+        .get_webview(label)
+        .ok_or_else(|| TranslateError::Failed("the tab closed".into()))?;
+    let high_fidelity = bridge::prepare(&webview, source, &check.target).await?;
+
+    Ok(Check {
+        high_fidelity,
+        ..check
+    })
+}
+
 fn failure_message(err: &TranslateError) -> String {
     match err {
         TranslateError::NoLanguage => "Wis can't tell what language this page is in".into(),
         TranslateError::Unavailable => "Translation needs macOS 26.4 or later".into(),
         TranslateError::TimedOut => "Translation isn't responding, try again in a moment".into(),
         other => {
-            log::warn!("translation check failed: {other}");
+            log::warn!("translation could not start: {other}");
             "This page can't be translated".into()
         }
     }
@@ -199,6 +247,14 @@ pub async fn enable(app: &AppHandle, label: &str) -> Result<Option<u64>, String>
     let check = match bridge::check(&source).await {
         Ok(check) => check,
         Err(err) => return refuse(failure_message(&err)),
+    };
+    let check = if wants_download(&check) {
+        match download(app, label, gen, &source).await {
+            Ok(check) => check,
+            Err(err) => return refuse(failure_message(&err)),
+        }
+    } else {
+        check
     };
     if let Some(message) = refusal(&check) {
         return refuse(message);
@@ -546,6 +602,23 @@ mod tests {
             refusal(&check(false, Status::Unsupported)).as_deref(),
             Some("Wis can't translate Japanese into English")
         );
+    }
+
+    #[test]
+    fn only_a_foreign_language_waiting_for_its_models_offers_the_download() {
+        assert!(wants_download(&check(false, Status::Supported)));
+        assert!(!wants_download(&check(true, Status::Supported)));
+        assert!(!wants_download(&check(false, Status::Installed)));
+        assert!(!wants_download(&check(false, Status::Unsupported)));
+    }
+
+    #[test]
+    fn a_press_that_waited_behind_a_sheet_for_its_own_pair_opens_no_other() {
+        let foreign = check(false, Status::Supported);
+        assert!(opens_sheet(&foreign, None));
+        assert!(!opens_sheet(&foreign, Some(&pair(&foreign))));
+        assert!(opens_sheet(&foreign, Some("Thai>en")));
+        assert!(!opens_sheet(&check(false, Status::Installed), None));
     }
 
     #[test]

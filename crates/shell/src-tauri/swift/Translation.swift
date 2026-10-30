@@ -1,9 +1,12 @@
 // Bridge to Apple's Translation framework, which has no Objective-C API.
 // Every call answers exactly once through its callback, from a Swift
-// executor thread. The framework does its work on the main run loop, so a
-// caller must never block the main thread waiting for an answer.
+// executor thread or, for the download sheet, the main thread. The framework
+// does its work on the main run loop, so a caller must never block the main
+// thread waiting for an answer.
+import AppKit
 import Foundation
 import NaturalLanguage
+import SwiftUI
 import Translation
 
 public typealias WisTranslationReply = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>) -> Void
@@ -90,6 +93,38 @@ public func wisTranslationDetect(
     }
 }
 
+struct PrepareRequest: Decodable {
+    let source: String
+    let target: String
+}
+
+struct PrepareReply: Encodable {
+    let status: String
+}
+
+func prepared(_ status: String) -> String {
+    encode(PrepareReply(status: status))
+}
+
+/// Offers Apple's sheet that downloads a language pair for high fidelity, on
+/// the window of `view` (an NSView). Main thread only: `request` is a
+/// `PrepareRequest` as JSON, and the reply is a `PrepareReply` with the
+/// pair's status once the sheet is done, or a `Reply` carrying an error.
+@_cdecl("wis_translation_prepare")
+public func wisTranslationPrepare(
+    _ request: UnsafePointer<CChar>,
+    _ view: UnsafeMutableRawPointer,
+    _ context: UnsafeMutableRawPointer?,
+    _ reply: WisTranslationReply
+) {
+    let body = Data(String(cString: request).utf8)
+    let callback = Callback(reply: reply, context: context)
+    let view = Unmanaged<NSView>.fromOpaque(view)
+    MainActor.assumeIsolated {
+        prepare(body, on: view.takeUnretainedValue(), callback)
+    }
+}
+
 /// What translating from a language involves: `request` is a `CheckRequest`
 /// as JSON, and the reply is a `CheckReply` or a `Reply` carrying an error.
 @_cdecl("wis_translation_check")
@@ -162,6 +197,90 @@ func detect(_ body: Data) -> String {
     recognizer.processString(request.sample)
     let best = recognizer.languageHypotheses(withMaximum: 1).max { $0.value < $1.value }
     return encode(DetectReply(language: best?.key.rawValue ?? "", confidence: best?.value ?? 0))
+}
+
+@MainActor
+func prepare(_ body: Data, on view: NSView, _ callback: Callback) {
+    guard let request = try? JSONDecoder().decode(PrepareRequest.self, from: body) else {
+        return callback.answer(encode(Reply(error: "badRequest")))
+    }
+    guard #available(macOS 26.4, *) else { return callback.answer(encode(Reply(error: "unavailable"))) }
+    guard let content = view.window?.contentView else {
+        return callback.answer(encode(Reply(error: "noWindow")))
+    }
+    content.addSubview(DownloadHost(
+        source: Locale.Language(identifier: request.source),
+        target: Locale.Language(identifier: request.target),
+        callback: callback
+    ))
+}
+
+/// Holds one download sheet and answers for it once: when the sheet is done,
+/// or when the host leaves its window or the window closes. Wis keeps closed
+/// windows, so closing frees nothing.
+@available(macOS 26.4, *)
+final class DownloadHost: NSView {
+    private var callback: Callback?
+    private var closing: (any NSObjectProtocol)?
+
+    init(source: Locale.Language, target: Locale.Language, callback: Callback) {
+        self.callback = callback
+        super.init(frame: .zero)
+        let sheet = NSHostingView(rootView: DownloadSheet(source: source, target: target, host: self))
+        sheet.frame = .zero
+        addSubview(sheet)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { nil }
+
+    private func answer(_ status: String) {
+        guard let callback else { return }
+        self.callback = nil
+        callback.answer(prepared(status))
+    }
+
+    func finish(status: String) {
+        answer(status)
+        removeFromSuperview()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        closing.map(NotificationCenter.default.removeObserver)
+        closing = nil
+        guard let window else { return answer("supported") }
+        closing = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.finish(status: "supported") }
+        }
+    }
+
+    deinit {
+        callback?.answer(prepared("supported"))
+    }
+}
+
+@available(macOS 26.4, *)
+struct DownloadSheet: View {
+    let source: Locale.Language
+    let target: Locale.Language
+    weak var host: DownloadHost?
+
+    var body: some View {
+        Color.clear.translationTask(
+            source: source,
+            target: target,
+            preferredStrategy: .highFidelity
+        ) { @Sendable [weak host, source, target] session in
+            try? await session.prepareTranslation()
+            let now = await status(from: source, to: target, strategy: .highFidelity)
+            await host?.finish(status: now)
+        }
+    }
 }
 
 /// The language and script decide it, so en-GB is English to an en-US reader
