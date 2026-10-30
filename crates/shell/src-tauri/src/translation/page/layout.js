@@ -24,16 +24,26 @@ function copyOf(el) {
 
 const textRuns = (runs) => Array.isArray(runs) && runs.every((r) => r && typeof r.text === 'string')
 
+function reads(text, words) {
+  const escaped = words.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${escaped}(?![\\p{L}\\p{M}\\p{N}])`, 'u').test(text)
+}
+
 function usable(runs, seg) {
   if (!textRuns(runs)) return false
-  if (blank(runs.map((r) => r.text).join('')) && !blank(seg.sent)) return false
+  const text = runs.map((r) => r.text).join('')
+  if (blank(text) && !blank(seg.sent)) return false
   const tags = new Set()
   for (const r of runs) {
     if (r.tag == null) continue
     if (!Number.isInteger(r.tag) || r.tag < 0 || r.tag >= seg.tagged.length) return false
     tags.add(r.tag)
   }
-  return seg.required.every((tag) => tags.has(tag)) && (seg.long || seg.needed.every((tag) => tags.has(tag)))
+  const kept = (tag) =>
+    seg.long && seg.opaque.has(tag) && !seg.objects.includes(tag) &&
+    reads(text, seg.runs.find((r) => r.tag === tag).text.trim())
+  const back = (tag) => tags.has(tag) || kept(tag)
+  return seg.required.every(back) && (seg.long || seg.needed.every((tag) => tags.has(tag)))
 }
 
 function settled(runs, seg) {

@@ -440,9 +440,27 @@ describe('finding segments', () => {
     goVisible(loaded)
     const links = []
     for (let i = 0; i < 6; i++) links.push({ text: `item ${i}`, tag: i }, { text: ', ' })
-    loaded.api.apply(1, 0, [{ text: 'Word 0 is ' }, ...links, { text: 'x.' }])
+    loaded.api.apply(1, 0, [{ text: 'Word 0 is ' }, ...links, { text: 'next.' }])
     loaded.api.apply(1, 1, [{ text: 'See here for details.' }])
     assert.deepEqual([long.innerHTML, short.innerHTML], before)
+  })
+
+  test('a long sentence whose kept text lost its tag but reads as written lets the tag go', () => {
+    const parts = []
+    for (let i = 0; i < 6; i++) parts.push(`語${i}は`, h('a', { href: `/${i}` }, `項目${i}`))
+    const english = h('span', { lang: 'en' }, 'web browser')
+    const p = h('p', {}, 'ブラウザ（英: ', english, '）、', ...parts, 'である。')
+    const loaded = load(page('https://example.jp/', p))
+    const before = p.innerHTML
+    const [block] = blocksOf(goVisible(loaded, 1, 'ja'))
+    assert.deepEqual([block.long, block.needed.includes(0)], [true, true])
+    const words = []
+    for (let i = 0; i < 6; i++) words.push(`term ${i} is item ${i}`)
+    loaded.api.apply(1, 0, [{ text: `A web browser (English: web browser), ${words.join(', ')}.` }])
+    assert.match(p.textContent, /^A web browser \(English: web browser\), term 0/)
+    assert.equal(english.textContent, '')
+    loaded.api.revert()
+    assert.equal(p.innerHTML, before)
   })
 
   test('chemistry and units keep their numbers; furigana is not read', () => {
