@@ -92,7 +92,7 @@ Wis is an open-source, lightweight, secure, and fast browser with AI integration
 - **Smart URL bar**: history suggestions, inline completion, custom search engines with keyword shortcuts
 - **AI assistant**: an opt-in side panel that chats, summarises the page you are on, and answers questions about it. Bring your own key (Anthropic or OpenAI), or point it at a model running on your own machine with Ollama or LM Studio, which needs no key at all. It stays completely off until you set one up, conversations are never saved, and page content is only ever sent when you explicitly attach it. An optional web-access toggle lets a local model search the web and read pages through isolated, invisible page loads, so even an offline model can answer with current information
 - **Reader mode** for a clean, distraction-free article view
-- **Page translation** on your Mac (macOS 26.4 or later), with nothing sent to a server
+- **Page translation** on your Mac (macOS 26.4 or later), with nothing sent to a server: the address bar offers it on pages in a language none of your Mac's languages cover, what is on screen goes first, links and formatting stay on the right words, and one press brings the original back. A language not on your Mac yet downloads through Apple's own prompt
 - **Clear error pages** when a site fails to load (DNS, unreachable, timeout, certificate), with one-click retry
 - **Bookmarks** with folders, pinning, drag-to-reorder, HTML import/export, and import of bookmarks and recent history from Chrome, Edge, Brave, Arc, Firefox, Zen and other Chromium or Firefox browsers
 - **Downloads manager** with history, search, and an optional "ask where to save" prompt
@@ -113,7 +113,7 @@ Wis is an open-source, lightweight, secure, and fast browser with AI integration
 
 ### Platform support
 
-Wis is macOS-first. The Windows and Linux builds are previews: Windows is a growing tier-1 platform (encrypted vault via DPAPI + Windows Hello, Mica glass styling) and Linux follows the same design, but both are tested less than macOS. A few pieces remain macOS-only today: native session/history restore, encrypted session-cookie persistence, per-tab memory readouts in the task manager, and full window/region screenshot capture.
+Wis is macOS-first. The Windows and Linux builds are previews: Windows is a growing tier-1 platform (encrypted vault via DPAPI + Windows Hello, Mica glass styling) and Linux follows the same design, but both are tested less than macOS. A few pieces remain macOS-only today: native session/history restore, encrypted session-cookie persistence, per-tab memory readouts in the task manager, full window/region screenshot capture, and page translation.
 
 Wis renders with the OS system WebView (WebKit on macOS, via Tauri/wry) rather than Chromium: a tiny bundle, low RAM use, and Safari-class battery life, at the cost of a few structural tradeoffs: premium DRM streaming (e.g. Netflix 4K) is limited, with an "Open in default browser" fallback, and there's no cross-device sync or mobile app yet. Browser extensions are early: macOS 15.4 or later, installed from the Chrome Web Store, a folder or a `.zip`.
 

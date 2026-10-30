@@ -127,3 +127,15 @@ test('the fingerprinting switch is offered exactly where WebKit takes it per pag
   assert.deepEqual(probe('windows', ['site_fingerprinting']).unavailable, ['site_fingerprinting'])
   assert.deepEqual(probe('macos', ['site_fingerprinting']).unavailable, [])
 })
+
+test('translation is offered exactly where translation/ reaches Apple\'s framework', () => {
+  const mod = readSource('src-tauri/src/translation/mod.rs')
+  assert.match(mod, /#\[cfg\(target_os = "macos"\)\]\nmod bridge;/)
+  const command = readSource('src-tauri/src/translation/command.rs')
+  assert.match(command, /#\[cfg\(not\(target_os = "macos"\)\)\][\s\S]*Translation isn't available on this platform/)
+  assert.equal(guardFeatureUnavailable('toggle_translation'), true, 'Linux')
+  assert.deepEqual(toasts, ['Translation not available on Linux'])
+  const windows = probe('windows', ['toggle_translation'])
+  assert.deepEqual([windows.unavailable, windows.toasts], [['toggle_translation'], ['Translation not available on Windows']])
+  assert.deepEqual(probe('macos', ['toggle_translation']).unavailable, [])
+})
