@@ -4,6 +4,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ffi::CStr;
 use std::ptr::NonNull;
 
 use block2_06::RcBlock;
@@ -12,12 +13,7 @@ use objc2_06::runtime::{AnyObject, NSObjectProtocol, ProtocolObject};
 use objc2_06::MainThreadMarker;
 use objc2_foundation::{NSNotification, NSNotificationCenter, NSSet, NSString};
 use objc2_web_kit::{
-    WKWebExtensionContext,
-    WKWebExtensionContextGrantedPermissionMatchPatternsWereRemovedNotification,
-    WKWebExtensionContextGrantedPermissionsWereRemovedNotification,
-    WKWebExtensionContextNotificationUserInfoKeyMatchPatterns,
-    WKWebExtensionContextNotificationUserInfoKeyPermissions, WKWebExtensionContextPermissionStatus,
-    WKWebExtensionMatchPattern,
+    WKWebExtensionContext, WKWebExtensionContextPermissionStatus, WKWebExtensionMatchPattern,
 };
 use wis_core::extensions::access::{plain_host, site_pattern, SiteAccess};
 use wis_core::extensions::installed::{is_site_pattern, InstalledExtension};
@@ -281,6 +277,28 @@ fn grant(context: &WKWebExtensionContext, access: &Access) {
     }
 }
 
+/// WebKit's notifications for given-back access, and the keys naming what
+/// was given back. They are looked up when used.
+const REMOVED: [&CStr; 2] = [
+    c"WKWebExtensionContextGrantedPermissionsWereRemovedNotification",
+    c"WKWebExtensionContextGrantedPermissionMatchPatternsWereRemovedNotification",
+];
+const REMOVED_KEYS: [&CStr; 2] = [
+    c"WKWebExtensionContextNotificationUserInfoKeyPermissions",
+    c"WKWebExtensionContextNotificationUserInfoKeyMatchPatterns",
+];
+
+/// WebKit's `NSString` constant called `name`, if a loaded image exports it.
+///
+/// # Safety
+/// Any symbol called `name` must be an `NSString *const`.
+unsafe fn webkit_string(name: &CStr) -> Option<&'static NSString> {
+    libc::dlsym(libc::RTLD_DEFAULT, name.as_ptr())
+        .cast::<&'static NSString>()
+        .as_ref()
+        .copied()
+}
+
 fn watch() {
     if OBSERVERS.with_borrow(|o| !o.is_empty()) {
         return;
@@ -293,17 +311,21 @@ fn watch() {
         // SAFETY: the notification is alive for the block's call.
         given_back(unsafe { note.as_ref() });
     });
-    // SAFETY: main thread; with no queue the block runs where WebKit posts,
-    // which is the main queue, and the observers live for the app.
-    let observers = unsafe {
-        [
-            WKWebExtensionContextGrantedPermissionsWereRemovedNotification,
-            WKWebExtensionContextGrantedPermissionMatchPatternsWereRemovedNotification,
-        ]
-        .map(|name| {
-            center.addObserverForName_object_queue_usingBlock(Some(name), None, None, &removed)
-        })
+    // SAFETY: main thread; the names are WebKit's strings; with no queue the
+    // block runs where WebKit posts, which is the main queue, and the
+    // observers live for the app.
+    let observers: Vec<_> = unsafe {
+        REMOVED
+            .into_iter()
+            .filter_map(|name| webkit_string(name))
+            .map(|name| {
+                center.addObserverForName_object_queue_usingBlock(Some(name), None, None, &removed)
+            })
+            .collect()
     };
+    if observers.len() < REMOVED.len() {
+        log::warn!("WebKit lacks the notifications for access extensions give back");
+    }
     OBSERVERS.with_borrow_mut(|o| o.extend(observers));
 }
 
@@ -339,14 +361,10 @@ fn given_back(note: &NSNotification) {
     // SAFETY: a property read on the main thread.
     let id = unsafe { context.uniqueIdentifier() }.to_string();
     // SAFETY: WebKit's notification keys, constant for the app.
-    let keys = unsafe {
-        [
-            WKWebExtensionContextNotificationUserInfoKeyPermissions,
-            WKWebExtensionContextNotificationUserInfoKeyMatchPatterns,
-        ]
-    };
+    let keys = unsafe { REMOVED_KEYS.map(|key| webkit_string(key)) };
     let removed: Vec<String> = keys
         .into_iter()
+        .flatten()
         .flat_map(|key| strings_under(note, key))
         .collect();
     let held: Vec<String> = ACCESS.with_borrow(|access| {
@@ -384,5 +402,31 @@ fn still_granted(context: &WKWebExtensionContext, item: &str) -> bool {
                 .0
                 >= granted
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn every_webkit_string_is_found_and_distinct() {
+        let found: HashSet<String> = REMOVED
+            .iter()
+            .chain(&REMOVED_KEYS)
+            .map(|name| {
+                // SAFETY: every name in the lists is one of WebKit's strings.
+                let string = unsafe { webkit_string(name) };
+                string.unwrap_or_else(|| panic!("{name:?}")).to_string()
+            })
+            .collect();
+        assert_eq!(found.len(), REMOVED.len() + REMOVED_KEYS.len());
+    }
+
+    #[test]
+    fn a_string_this_macos_lacks_is_none() {
+        // SAFETY: a name with no symbol behind it is never read.
+        assert!(unsafe { webkit_string(c"WKWebExtensionContextNoSuchString") }.is_none());
     }
 }
