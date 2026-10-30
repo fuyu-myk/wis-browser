@@ -9,6 +9,8 @@ mod language;
 mod message;
 mod objects;
 #[cfg(target_os = "macos")]
+mod offer;
+#[cfg(target_os = "macos")]
 mod page;
 mod pieces;
 mod readings;
@@ -32,11 +34,29 @@ pub fn install(webview: &tauri::Webview) {
     let _ = webview;
 }
 
+/// Asks the page just loaded in `webview` what language it is in, so the
+/// address bar can offer to translate it. No-op off macOS.
+pub fn probe(webview: &tauri::Webview) {
+    #[cfg(target_os = "macos")]
+    if offer::available() {
+        let probe = offer::register(webview.label());
+        if let Err(err) = crate::platform::content_world::eval(webview, page::probe_script(probe)) {
+            log::debug!("the translation probe failed to run: {err}");
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = webview;
+}
+
 /// Ends a tab's translation when its page is closed or navigated away.
 /// No-op off macOS.
 pub fn forget(label: &str) {
     #[cfg(target_os = "macos")]
-    session::stop(label);
+    {
+        session::stop(label);
+        offer::forget(label);
+    }
 
     #[cfg(not(target_os = "macos"))]
     let _ = label;

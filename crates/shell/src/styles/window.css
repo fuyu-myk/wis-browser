@@ -38,6 +38,8 @@
 .kb-urlbar-key svg { width: 15px; height: 15px; }
 .kb-urlbar-star.is-on { color: var(--primary-500); }
 .kb-urlbar-star.is-on:hover { color: var(--primary-500); }
+.kb-urlbar-translate.is-on,
+.kb-urlbar-translate.is-on:hover { color: var(--primary-500); }
 
 /* The host element where native tab webviews are placed. */
 .kb-content-host {

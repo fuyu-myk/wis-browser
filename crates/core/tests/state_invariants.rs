@@ -980,6 +980,35 @@ fn activating_a_loose_tab_leaves_folders_as_they_were() {
 }
 
 #[test]
+fn a_tab_s_translation_offer_is_set_cleared_and_repeats_as_a_no_op() {
+    let s0 = BrowserState::new_with_defaults();
+    let ws = s0.workspaces[0].id;
+    let (s1, tab) = s0.with_new_tab(ws, "https://example.fr/").unwrap();
+    assert_eq!(tab.translatable_from, None, "a new tab offers nothing");
+
+    let s2 = s1
+        .with_tab_translatable_from(tab.id, Some("French".into()))
+        .unwrap();
+    assert_eq!(
+        s2.tab(tab.id).unwrap().translatable_from.as_deref(),
+        Some("French")
+    );
+    assert_eq!(
+        s2.with_tab_translatable_from(tab.id, Some("French".into()))
+            .unwrap(),
+        s2
+    );
+    assert_clean(&s2);
+
+    let s3 = s2.with_tab_translatable_from(tab.id, None).unwrap();
+    assert_eq!(s3.tab(tab.id).unwrap().translatable_from, None);
+    assert!(matches!(
+        s3.with_tab_translatable_from(wis_core::TabId::new(), None),
+        Err(WisError::TabNotFound { .. })
+    ));
+}
+
+#[test]
 fn a_tab_s_translated_flag_toggles_and_repeats_as_a_no_op() {
     let s0 = BrowserState::new_with_defaults();
     let ws = s0.workspaces[0].id;

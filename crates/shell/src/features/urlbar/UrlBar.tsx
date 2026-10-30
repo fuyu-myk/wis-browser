@@ -17,6 +17,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { commands } from '@/bindings/commands'
 import { ExtensionsButton } from '@/features/extensions/components/ExtensionsButton'
 import { SiteButton } from '@/features/site/components/SiteButton'
+import { TranslateButton } from '@/features/translation/TranslateButton'
 import { ZoomIndicator } from '@/features/zoom/ZoomIndicator'
 import type { Tab, TabId, WorkspaceId } from '@/bindings/types'
 import { LoadProgressBar } from '@/features/urlbar/LoadProgressBar'
@@ -730,6 +731,7 @@ export function FloatingUrlBar({
         {form.suggest.spoken}
       </span>
       <ZoomIndicator activeTab={activeTab} />
+      <TranslateButton activeTab={activeTab} />
       <AutofillKey activeTab={activeTab} />
       <OpenExternalButton activeTab={activeTab} />
       <ExtensionsButton

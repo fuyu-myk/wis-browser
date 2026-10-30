@@ -64,6 +64,7 @@ const insertBefore = method(NodeType, 'insertBefore')
 const removeChild = method(NodeType, 'removeChild')
 const connected = getter(NodeType, 'isConnected')
 const bodyOf = getter(DocumentType, 'body')
+const titleOf = getter(DocumentType, 'title')
 const documentElementOf = getter(DocumentType, 'documentElement')
 const createText = (text) => method(DocumentType, 'createTextNode')(document, text)
 const childrenOf = (node) => Array.from(childNodesOf(node))
@@ -98,7 +99,7 @@ function primaryOf(lang) {
 
 function foreign(el, primary) {
   const marked = primary ? closest(el, '[lang]') : null
-  const lang = marked ? primaryOf(attributeOf(marked, 'lang')) : ''
+  const lang = marked && marked !== documentElementOf(document) ? primaryOf(attributeOf(marked, 'lang')) : ''
   return !UNMARKED.has(lang) && lang !== primary
 }
 

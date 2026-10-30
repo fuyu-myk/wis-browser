@@ -3,6 +3,7 @@
 // executor thread. The framework does its work on the main run loop, so a
 // caller must never block the main thread waiting for an answer.
 import Foundation
+import NaturalLanguage
 import Translation
 
 public typealias WisTranslationReply = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>) -> Void
@@ -45,6 +46,7 @@ struct CheckReply: Encodable {
     let sourceName: String
     let targetName: String
     let sameLanguage: Bool
+    let readsSource: Bool
     let highFidelity: String
     let lowLatency: String
 }
@@ -61,6 +63,30 @@ public func wisTranslationTranslate(
     let callback = Callback(reply: reply, context: context)
     Task.detached {
         callback.answer(await translate(body))
+    }
+}
+
+struct DetectRequest: Decodable {
+    let sample: String
+}
+
+struct DetectReply: Encodable {
+    let language: String
+    let confidence: Double
+}
+
+/// The language a text sample is in: `request` is a `DetectRequest` as JSON,
+/// and the reply is a `DetectReply`, with an empty language when it can't tell.
+@_cdecl("wis_translation_detect")
+public func wisTranslationDetect(
+    _ request: UnsafePointer<CChar>,
+    _ context: UnsafeMutableRawPointer?,
+    _ reply: WisTranslationReply
+) {
+    let body = Data(String(cString: request).utf8)
+    let callback = Callback(reply: reply, context: context)
+    Task.detached {
+        callback.answer(detect(body))
     }
 }
 
@@ -120,9 +146,22 @@ func check(_ body: Data) async -> String {
         sourceName: displayName(of: source),
         targetName: displayName(of: target),
         sameLanguage: sameLanguage(source, target),
+        readsSource: Locale.preferredLanguages.contains {
+            sameLanguage(source, Locale.Language(identifier: $0))
+        },
         highFidelity: await status(from: source, to: target, strategy: .highFidelity),
         lowLatency: await status(from: source, to: target, strategy: .lowLatency)
     ))
+}
+
+func detect(_ body: Data) -> String {
+    guard let request = try? JSONDecoder().decode(DetectRequest.self, from: body) else {
+        return encode(Reply(error: "badRequest"))
+    }
+    let recognizer = NLLanguageRecognizer()
+    recognizer.processString(request.sample)
+    let best = recognizer.languageHypotheses(withMaximum: 1).max { $0.value < $1.value }
+    return encode(DetectReply(language: best?.key.rawValue ?? "", confidence: best?.value ?? 0))
 }
 
 /// The language and script decide it, so en-GB is English to an en-US reader

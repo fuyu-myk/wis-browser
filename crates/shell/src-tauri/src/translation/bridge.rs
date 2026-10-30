@@ -9,6 +9,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
+use super::language::Detected;
 use super::message::Run;
 
 /// Longest one block may take.
@@ -72,6 +73,8 @@ pub struct Check {
     pub target_name: String,
     /// The page is already in the target language, regional variants aside.
     pub same_language: bool,
+    /// The page is in one of the macOS preferred languages.
+    pub reads_source: bool,
     pub high_fidelity: Status,
     pub low_latency: Status,
 }
@@ -87,12 +90,18 @@ struct CheckRequest<'a> {
     source: &'a str,
 }
 
+#[derive(Serialize)]
+struct DetectRequest<'a> {
+    sample: &'a str,
+}
+
 type ReplyFn = extern "C" fn(*mut c_void, *const c_char);
 type EntryFn = unsafe extern "C" fn(*const c_char, *mut c_void, ReplyFn);
 
 extern "C" {
     fn wis_translation_translate(request: *const c_char, context: *mut c_void, reply: ReplyFn);
     fn wis_translation_check(request: *const c_char, context: *mut c_void, reply: ReplyFn);
+    fn wis_translation_detect(request: *const c_char, context: *mut c_void, reply: ReplyFn);
 }
 
 /// Called by the bridge exactly once per request, on a Swift executor thread.
@@ -141,6 +150,11 @@ pub async fn check(source: &str) -> Result<Check, TranslateError> {
     parse_check_reply(&call(wis_translation_check, &CheckRequest { source }).await?)
 }
 
+/// The language `sample` is written in. Must not be awaited on the main thread.
+pub async fn detect(sample: &str) -> Result<Detected, TranslateError> {
+    parse_detected(&call(wis_translation_detect, &DetectRequest { sample }).await?)
+}
+
 fn error_from_code(code: &str) -> TranslateError {
     match code {
         "unavailable" => TranslateError::Unavailable,
@@ -162,6 +176,10 @@ fn parse_reply(reply: &str) -> Result<Vec<Run>, TranslateError> {
         (_, Some(code)) => Err(error_from_code(code)),
         (None, None) => Err(TranslateError::Failed("an empty reply".into())),
     }
+}
+
+fn parse_detected(reply: &str) -> Result<Detected, TranslateError> {
+    serde_json::from_str(reply).map_err(|err| TranslateError::Failed(err.to_string()))
 }
 
 fn parse_check_reply(reply: &str) -> Result<Check, TranslateError> {
@@ -242,7 +260,7 @@ mod tests {
     #[test]
     fn a_check_reply_reads_the_target_names_and_statuses() {
         let check = parse_check_reply(
-            r#"{"target":"en","sourceName":"Japanese","targetName":"English","sameLanguage":false,"highFidelity":"installed","lowLatency":"supported"}"#,
+            r#"{"target":"en","sourceName":"Japanese","targetName":"English","sameLanguage":false,"readsSource":true,"highFidelity":"installed","lowLatency":"supported"}"#,
         )
         .unwrap();
         assert_eq!(
@@ -252,6 +270,7 @@ mod tests {
                 source_name: "Japanese".into(),
                 target_name: "English".into(),
                 same_language: false,
+                reads_source: true,
                 high_fidelity: Status::Installed,
                 low_latency: Status::Supported,
             }
@@ -272,6 +291,32 @@ mod tests {
             parse_check_reply(r#"{"target":"en"}"#),
             Err(TranslateError::Failed(_))
         ));
+    }
+
+    #[test]
+    fn a_detect_reply_reads_the_language_and_how_sure_it_is() {
+        assert_eq!(
+            parse_detected(r#"{"language":"ja","confidence":0.97}"#),
+            Ok(Detected {
+                language: "ja".into(),
+                confidence: 0.97
+            })
+        );
+        assert!(matches!(
+            parse_detected("{}"),
+            Err(TranslateError::Failed(_))
+        ));
+    }
+
+    /// The recogniser runs in process, so this needs no models or run loop.
+    #[tokio::test]
+    async fn a_sample_s_language_is_detected_through_the_bridge() {
+        let detected = detect("これは日本語で書かれた、ごく普通の文章です。")
+            .await
+            .unwrap();
+        assert_eq!(detected.language, "ja");
+        assert!(detected.confidence > 0.5, "{detected:?}");
+        assert_eq!(detect("").await.unwrap().language, "");
     }
 
     #[tokio::test]

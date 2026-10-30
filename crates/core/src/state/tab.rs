@@ -390,6 +390,23 @@ impl BrowserState {
         Ok(self.replace_tab(id, &updated))
     }
 
+    /// Set or clear the language a tab's page offers to translate from.
+    /// Idempotent when the value doesn't change.
+    pub fn with_tab_translatable_from(
+        &self,
+        id: TabId,
+        translatable_from: Option<String>,
+    ) -> WisResult<Self> {
+        let current = self.tab(id)?;
+        if current.translatable_from == translatable_from {
+            return Ok(self.clone());
+        }
+
+        let updated = current.with_translatable_from(translatable_from);
+
+        Ok(self.replace_tab(id, &updated))
+    }
+
     /// Update a tab's favicon reference. Idempotent when the value doesn't change.
     pub fn with_tab_favicon(
         &self,

@@ -388,6 +388,7 @@ fn load_tabs(conn: &Connection) -> StorageResult<Vec<Tab>> {
             loading: false,
             reader: false,
             translated: false,
+            translatable_from: None,
             load_error: None,
             can_go_back: false,
             can_go_forward: false,

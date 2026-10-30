@@ -452,6 +452,7 @@ pub async fn create_tab_webview(
                     let next = if loading {
                         next.with_tab_reader(tab_id, false)?
                             .with_tab_translated(tab_id, false)?
+                            .with_tab_translatable_from(tab_id, None)?
                     } else {
                         next
                     };
@@ -499,6 +500,10 @@ pub async fn create_tab_webview(
             }
 
             if matches!(event, PageLoadEvent::Finished) && !load_failed {
+                if matches!(page_url.scheme(), "http" | "https") {
+                    crate::translation::probe(&webview);
+                }
+
                 // Re-apply the live swipe-nav colour.
                 let color = app
                     .state::<AppState>()

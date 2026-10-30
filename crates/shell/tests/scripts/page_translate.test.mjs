@@ -88,7 +88,8 @@ function load(doc, { findMain } = {}) {
   const flush = () => {
     while (timers.length) timers.shift()()
   }
-  return { api: window.__wisTranslate, window, messages, observers, mutations, flush }
+  const bodies = () => sent.map(({ body }) => body)
+  return { api: window.__wisTranslate, window, messages, bodies, observers, mutations, flush }
 }
 
 /**
@@ -107,12 +108,96 @@ function goVisible(loaded, gen = 1, source = '', target = 'en') {
 const blocksOf = (messages) => messages.flatMap((m) => m.blocks)
 
 describe('the page language', () => {
-  test('start reports the language the page declares', () => {
-    const doc = page('https://example.jp/', h('p', {}, 'こんにちは'))
+  test('start reports the language the page declares and a sample of its text', () => {
+    const doc = page('https://example.jp/', h('p', {}, 'こんにちは、世界のみなさん'))
     doc.documentElement.setAttribute('lang', 'ja')
     const loaded = load(doc)
     loaded.api.start(1)
-    assert.deepEqual(loaded.messages(), [{ kind: 'start', gen: 1, lang: 'ja' }])
+    assert.deepEqual(loaded.messages(), [{ kind: 'start', gen: 1, lang: 'ja', sample: 'こんにちは、世界のみなさん' }])
+  })
+
+  test('a probe samples headings and paragraphs, not scripts, code or other languages', () => {
+    const doc = page(
+      'https://example.jp/',
+      h('nav', {}, h('a', { href: '/' }, 'ホーム')),
+      h('h1', {}, '二次方程式について'),
+      h('p', {}, '二次方程式とは、数学において二次の多項式で表される方程式である。'),
+      h('pre', {}, h('code', {}, 'let x = 1 // a code sample in English')),
+      h('p', { lang: 'en' }, 'An English quotation that should not count.'),
+      h('p', {}, h('span', { class: 'notranslate' }, 'Brand name kept as it is in English')),
+      h('li', {}, '短'),
+    )
+    doc.title = '二次方程式 - Wikipedia'
+    const loaded = load(doc)
+    loaded.api.probe(5)
+    const [message] = loaded.messages()
+    assert.deepEqual(Object.keys(message), ['kind', 'id', 'lang', 'sample'])
+    assert.deepEqual([message.kind, message.id], ['probe', 5])
+    assert.equal(
+      message.sample,
+      '二次方程式 - Wikipedia\n二次方程式について\n二次方程式とは、数学において二次の多項式で表される方程式である。',
+    )
+  })
+
+  test('a probe samples the main content first and leaves out text marked as another language', () => {
+    const languages = h('ul', {}, h('li', {}, h('a', { href: '/af', lang: 'af' }, 'Afrikaans, die taal')))
+    const doc = page(
+      'https://example.jp/',
+      h('nav', {}, h('p', {}, 'メニューの項目の一覧です')),
+      languages,
+      h('main', {}, h('p', {}, '本文は', h('span', { lang: 'en' }, 'web browser'), 'についての記事である。')),
+    )
+    const loaded = load(doc)
+    loaded.api.probe(5)
+    assert.equal(loaded.messages()[0].sample, '本文はについての記事である。')
+  })
+
+  test('a probe falls back to marked text when that is all the page has', () => {
+    const doc = page('https://example.jp/', h('main', {}, h('div', { lang: 'ja' }, h('p', {}, '日本は東アジアの国である。'))))
+    const loaded = load(doc)
+    loaded.api.probe(5)
+    assert.equal(loaded.messages()[0].sample, '日本は東アジアの国である。')
+  })
+
+  test('a probe samples content marked as the language the page declares', () => {
+    const doc = page('https://example.jp/', h('main', {}, h('div', { lang: 'ja' }, h('p', {}, '日本は東アジアの国である。'))))
+    doc.documentElement.setAttribute('lang', 'ja')
+    const loaded = load(doc)
+    loaded.api.probe(5)
+    assert.equal(loaded.messages()[0].sample, '日本は東アジアの国である。')
+  })
+
+  test('a probe sample leaves out menus, asides, headers and footers', () => {
+    const doc = page(
+      'https://example.jp/',
+      h(
+        'main',
+        {},
+        h('nav', {}, h('li', {}, 'この版への固定リンク')),
+        h('aside', {}, h('p', {}, '関連する記事の一覧')),
+        h('header', {}, h('p', {}, 'ページの見出し部分')),
+        h('p', {}, '本文の最初の段落である。'),
+        h('footer', {}, h('p', {}, '最終更新日時の表示')),
+      ),
+    )
+    const loaded = load(doc)
+    loaded.api.probe(5)
+    assert.equal(loaded.messages()[0].sample, '本文の最初の段落である。')
+  })
+
+  test('a sample cut inside an emoji is still well formed', () => {
+    const loaded = load(page('https://example.jp/', h('p', {}, 'あ'.repeat(999) + '😀です')))
+    loaded.api.probe(5)
+    loaded.api.start(1)
+    assert.equal(loaded.bodies().length, 2)
+    for (const body of loaded.bodies()) assert.ok(!/\\u[dD][89abAB]/.test(body), 'no lone surrogate')
+  })
+
+  test('a probe sample stops at a thousand characters', () => {
+    const paragraphs = Array.from({ length: 40 }, (_, i) => h('p', {}, `第${i}段落。`.repeat(10)))
+    const loaded = load(page('https://example.jp/', ...paragraphs))
+    loaded.api.probe(5)
+    assert.ok(loaded.messages()[0].sample.length <= 1000)
   })
 
   test('a Content-Language meta stands in for a missing lang', () => {
@@ -198,6 +283,18 @@ describe('finding segments', () => {
     assert.deepEqual(texts, ['本文', '日本語'])
   })
 
+  test('a page whose declared language its text overrules is translated from its text', () => {
+    const doc = page(
+      'https://example.jp/',
+      h('p', {}, 'メニュー'),
+      h('article', { lang: 'ja' }, h('p', {}, '本文')),
+      h('p', { lang: 'en' }, 'English'),
+    )
+    doc.documentElement.setAttribute('lang', 'en')
+    const texts = blocksOf(goVisible(load(doc), 1, 'ja')).map((b) => b.runs[0].text)
+    assert.deepEqual(texts, ['メニュー', '本文'])
+  })
+
   test('a phrase marked as another language stays in its sentence, untranslated', () => {
     const term = h('span', { lang: 'en' }, 'iPhone')
     const p = h('p', {}, 'これは', term, 'です')
@@ -221,13 +318,6 @@ describe('finding segments', () => {
     )
     const texts = blocksOf(goVisible(load(doc), 1, 'no')).map((b) => b.runs[0].text)
     assert.deepEqual(texts, ['Bokmål', 'Nynorsk', 'Ukjent', 'Privat'])
-  })
-
-  test('an article marked in the source language is kept on a page marked otherwise', () => {
-    const doc = page('https://example.jp/', h('p', {}, 'Menu'), h('article', { lang: 'ja' }, h('p', {}, '本文')))
-    doc.documentElement.setAttribute('lang', 'en')
-    const texts = blocksOf(goVisible(load(doc), 1, 'ja')).map((b) => b.runs[0].text)
-    assert.deepEqual(texts, ['本文'])
   })
 
   test('elements with no text between them go one by one, and numbers alone stay', () => {

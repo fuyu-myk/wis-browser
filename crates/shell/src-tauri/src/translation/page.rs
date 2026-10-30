@@ -23,6 +23,12 @@ pub fn start_script(gen: u64) -> String {
     format!("{finder}\n{PAGE_JS}\nwindow.__wisTranslate.start({gen});")
 }
 
+/// Defines the scripts if this document lacks them, then reports the page's
+/// language for the address bar's offer, as probe `probe`.
+pub fn probe_script(probe: u64) -> String {
+    format!("{PAGE_JS}\nwindow.__wisTranslate.probe({probe});")
+}
+
 /// Collects the page's segments for generation `gen`, translating from
 /// `source` into `target`; content marked as another language is left alone.
 pub fn go_script(gen: u64, source: &str, target: &str) -> String {

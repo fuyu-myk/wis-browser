@@ -12,9 +12,9 @@ use tauri::{AppHandle, Manager};
 use tokio::sync::oneshot;
 
 use super::bridge::{self, Check, Status, Strategy, TranslateError, TranslateRequest};
-use super::language::page_language;
 use super::message::{Block, PageMessage, Queue, Run};
 use super::objects::{held, place, HELD, OBJECT};
+use super::offer::{language_of, probed};
 use super::page;
 use super::pieces::{anchor, lost_tags, piecewise, relabel, spaced, tag_within, tidy, verbatim};
 use super::readings::unread;
@@ -34,7 +34,7 @@ struct Session {
 
 enum Phase {
     /// Waiting for the page's `start` reply.
-    Starting(Option<oneshot::Sender<String>>),
+    Starting(Option<oneshot::Sender<(String, String)>>),
     Running {
         source: String,
         target: String,
@@ -190,10 +190,10 @@ pub async fn enable(app: &AppHandle, label: &str) -> Result<Option<u64>, String>
             Ok(None)
         }
     };
-    let Ok(Ok(raw)) = tokio::time::timeout(START_TIMEOUT, receiver).await else {
+    let Ok(Ok((raw, sample))) = tokio::time::timeout(START_TIMEOUT, receiver).await else {
         return refuse("This page can't be translated".into());
     };
-    let Some(source) = page_language(&raw) else {
+    let Some(source) = language_of(&raw, &sample).await else {
         return refuse(failure_message(&TranslateError::NoLanguage));
     };
     let check = match bridge::check(&source).await {
@@ -225,15 +225,20 @@ pub async fn enable(app: &AppHandle, label: &str) -> Result<Option<u64>, String>
 /// A message from the page's script, on the main thread.
 pub fn on_message(label: &str, message: PageMessage) {
     match message {
-        PageMessage::Start { gen, lang } => {
+        PageMessage::Start { gen, lang, sample } => {
             let sender = with_session(label, gen, |phase| match phase {
                 Phase::Starting(sender) => sender.take(),
                 Phase::Running { .. } => None,
             });
             if let Some(sender) = sender.flatten() {
-                if sender.send(lang).is_err() {
+                if sender.send((lang, sample)).is_err() {
                     log::debug!("translation start reply arrived after the wait ended");
                 }
+            }
+        }
+        PageMessage::Probe { id, lang, sample } => {
+            if let Some(app) = APP.get() {
+                probed(app, label, id, lang, sample);
             }
         }
         PageMessage::Blocks { gen, wave, blocks } => {
@@ -462,6 +467,7 @@ mod tests {
             source_name: "Japanese".into(),
             target_name: "English".into(),
             same_language: same,
+            reads_source: same,
             high_fidelity,
             low_latency: Status::Unsupported,
         }

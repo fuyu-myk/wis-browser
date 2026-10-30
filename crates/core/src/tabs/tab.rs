@@ -41,6 +41,10 @@ pub struct Tab {
     /// reconstructs `false`.
     #[serde(default)]
     pub translated: bool,
+    /// The page's language, by its English name, that Wis can translate.
+    /// In-memory only, like `translated`.
+    #[serde(default)]
+    pub translatable_from: Option<String>,
     /// Whether the page has a previous/next history entry. In-memory only:
     /// history lives in the live webview, so both reconstruct `false` until
     /// the restored page's first load reports the real values.
@@ -93,6 +97,7 @@ impl Tab {
             loading: false,
             reader: false,
             translated: false,
+            translatable_from: None,
             load_error: None,
             can_go_back: false,
             can_go_forward: false,
@@ -170,6 +175,13 @@ impl Tab {
     pub fn with_translated(&self, translated: bool) -> Self {
         Self {
             translated,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_translatable_from(&self, translatable_from: Option<String>) -> Self {
+        Self {
+            translatable_from,
             ..self.clone()
         }
     }

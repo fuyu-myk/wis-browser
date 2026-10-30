@@ -273,6 +273,9 @@ export interface Tab {
   reader: boolean
   /** Showing the page's on-device translation. In-memory only; reset on navigation/launch. */
   translated: boolean
+  /** The page's language by name that Wis can translate. In-memory only;
+   *  reset on navigation/launch. */
+  translatable_from: string | null
   /** Whether the page has a previous/next history entry. In-memory only;
    *  false on launch until the first load reports the real values. */
   can_go_back: boolean

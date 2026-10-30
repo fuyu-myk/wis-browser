@@ -16,6 +16,7 @@ pub const MAX_RUNS: usize = 128;
 pub const MAX_BLOCK_BYTES: usize = 16 * 1024;
 const MAX_BLOCK_ID: u32 = 1 << 20;
 const MAX_LANG_LEN: usize = 64;
+pub const MAX_SAMPLE_BYTES: usize = 4 * 1024;
 
 /// A piece of a segment's text, tagged with the inline element it sits in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,8 +87,20 @@ impl Block {
 #[derive(Debug, PartialEq, Eq, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum PageMessage {
-    /// The page's declared language, raw.
-    Start { gen: u64, lang: String },
+    /// The page's declared language, raw, and a sample of its text.
+    Start {
+        gen: u64,
+        lang: String,
+        #[serde(default)]
+        sample: String,
+    },
+    /// Same as [`PageMessage::Start`], sent once a page has loaded, for
+    /// the address bar's offer, with the number of the probe that asked.
+    Probe {
+        id: u64,
+        lang: String,
+        sample: String,
+    },
     /// Segments that came into view. Those that came into view together
     /// share a wave, numbered upwards, and may span several messages.
     Blocks {
@@ -104,9 +117,12 @@ pub fn parse_message(body: &str) -> Option<PageMessage> {
         return None;
     }
     match serde_json::from_str(body).ok()? {
-        PageMessage::Start { gen, lang } => {
-            (lang.len() <= MAX_LANG_LEN).then_some(PageMessage::Start { gen, lang })
-        }
+        PageMessage::Start { gen, lang, sample } => (lang.len() <= MAX_LANG_LEN
+            && sample.len() <= MAX_SAMPLE_BYTES)
+            .then_some(PageMessage::Start { gen, lang, sample }),
+        PageMessage::Probe { id, lang, sample } => (lang.len() <= MAX_LANG_LEN
+            && sample.len() <= MAX_SAMPLE_BYTES)
+            .then_some(PageMessage::Probe { id, lang, sample }),
         PageMessage::Blocks {
             gen,
             wave,
@@ -196,12 +212,30 @@ mod tests {
     #[test]
     fn a_start_message_carries_its_generation_and_language() {
         assert_eq!(
-            parse_message(r#"{"kind":"start","gen":3,"lang":"ja"}"#),
+            parse_message(r#"{"kind":"start","gen":3,"lang":"ja","sample":"本文"}"#),
             Some(PageMessage::Start {
                 gen: 3,
-                lang: "ja".into()
+                lang: "ja".into(),
+                sample: "本文".into()
             })
         );
+    }
+
+    #[test]
+    fn a_probe_carries_the_declared_language_and_a_sample() {
+        assert_eq!(
+            parse_message(r#"{"kind":"probe","id":9,"lang":"","sample":"本文"}"#),
+            Some(PageMessage::Probe {
+                id: 9,
+                lang: String::new(),
+                sample: "本文".into()
+            })
+        );
+        let long = format!(
+            r#"{{"kind":"probe","id":9,"lang":"ja","sample":"{}"}}"#,
+            "a".repeat(MAX_SAMPLE_BYTES + 1)
+        );
+        assert_eq!(parse_message(&long), None);
     }
 
     #[test]
