@@ -2,14 +2,15 @@
 //! the Japanese and English models and a main run loop, neither of which CI
 //! has, so it runs only when asked:
 //! `WIS_TRANSLATION_LIVE=1 cargo test -p wis-browser --test translation_live`
+//! On macOS before 26.4, `WIS_TRANSLATION_LIVE=older` checks instead that
+//! the bridge answers that translation is unavailable.
 
 #[cfg(target_os = "macos")]
 fn main() {
-    if std::env::var_os("WIS_TRANSLATION_LIVE").is_none() {
-        println!("translation_live: skipped (set WIS_TRANSLATION_LIVE=1 to run)");
-        return;
+    match std::env::var_os("WIS_TRANSLATION_LIVE") {
+        Some(mode) => live::run(mode == "older"),
+        None => println!("translation_live: skipped (set WIS_TRANSLATION_LIVE=1 to run)"),
     }
-    live::run();
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -101,17 +102,44 @@ mod live {
         Ok(())
     }
 
+    /// What macOS before 26.4 answers, from the check and the translation alike.
+    async fn older() -> Result<(), String> {
+        let runs = [run_text("こんにちは。", None)];
+        let request = TranslateRequest {
+            source: "ja",
+            target: "en",
+            strategy: Strategy::HighFidelity,
+            runs: &runs,
+            skip: &[],
+        };
+        let checked = app_lib::translation::check("ja-JP").await.map(|_| ());
+        let translated = translate(&request).await.map(|_| ());
+        for (call, answer) in [("check", checked), ("translate", translated)] {
+            if answer != Err(TranslateError::Unavailable) {
+                return Err(format!("{call} gave {answer:?}"));
+            }
+        }
+        println!("check and translate: unavailable");
+        Ok(())
+    }
+
     /// The checks run on a worker while the main thread serves the run loop,
     /// as AppKit's does in the browser.
-    pub fn run() {
-        std::thread::spawn(|| {
+    pub fn run(older_macos: bool) {
+        std::thread::spawn(move || {
             // A panic would otherwise leave the main thread in the run loop.
             let outcome = std::panic::catch_unwind(|| {
                 tokio::runtime::Builder::new_current_thread()
                     .enable_time()
                     .build()
                     .expect("a tokio runtime")
-                    .block_on(check())
+                    .block_on(async {
+                        if older_macos {
+                            older().await
+                        } else {
+                            check().await
+                        }
+                    })
             });
             match outcome {
                 Ok(Ok(())) => {
