@@ -2,6 +2,16 @@
 
 What changed in each Wis release.
 
+## 0.4.1
+
+### Fixed
+
+- Wis opens on macOS 14 again. Version 0.4.0 quit at launch there, and likely on macOS 15 before 15.4 too, because it linked WebKit extension APIs those versions lack.
+
+### Platform notes
+
+- On macOS 14, 0.4.0 cannot open to update itself, so download 0.4.1 from this release.
+
 ## 0.4.0
 
 ### Added
