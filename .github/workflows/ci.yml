@@ -58,6 +58,11 @@ jobs:
           toolchain: 1.99.0
           components: clippy, rustfmt
 
+      # The oldest macOS Wis supports, as `tauri build` sets it.
+      - name: Target the oldest supported macOS
+        if: matrix.os == 'macos-latest'
+        run: echo "MACOSX_DEPLOYMENT_TARGET=$(jq -r .bundle.macOS.minimumSystemVersion crates/shell/src-tauri/tauri.conf.json)" >> "$GITHUB_ENV"
+
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
@@ -89,3 +94,32 @@ jobs:
 
       - name: Test
         run: cargo test --workspace --all-targets
+
+      - name: Upload the macOS binary
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wis-browser-macos
+          path: target/debug/wis-browser
+          if-no-files-found: error
+          retention-days: 1
+
+  older-macos:
+    name: symbols (macos-14)
+    needs: build
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: crates/shell/scripts
+
+      - name: Download the macOS binary
+        uses: actions/download-artifact@v4
+        with:
+          name: wis-browser-macos
+          path: ${{ runner.temp }}/app
+
+      - name: Check every strong symbol resolves
+        run: python3 -I crates/shell/scripts/missing-symbols.py "$RUNNER_TEMP/app/wis-browser"
