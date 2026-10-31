@@ -93,6 +93,20 @@ public func wisTranslationDetect(
     }
 }
 
+/// The macOS preferred languages, most preferred first, as a JSON array. They
+/// can change while Wis runs. `request` is ignored.
+@_cdecl("wis_translation_languages")
+public func wisTranslationLanguages(
+    _ request: UnsafePointer<CChar>,
+    _ context: UnsafeMutableRawPointer?,
+    _ reply: WisTranslationReply
+) {
+    let callback = Callback(reply: reply, context: context)
+    Task.detached {
+        callback.answer(encode(Locale.preferredLanguages))
+    }
+}
+
 struct PrepareRequest: Decodable {
     let source: String
     let target: String

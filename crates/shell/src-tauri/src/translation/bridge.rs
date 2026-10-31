@@ -116,6 +116,7 @@ extern "C" {
     fn wis_translation_translate(request: *const c_char, context: *mut c_void, reply: ReplyFn);
     fn wis_translation_check(request: *const c_char, context: *mut c_void, reply: ReplyFn);
     fn wis_translation_detect(request: *const c_char, context: *mut c_void, reply: ReplyFn);
+    fn wis_translation_languages(request: *const c_char, context: *mut c_void, reply: ReplyFn);
     fn wis_translation_prepare(
         request: *const c_char,
         view: *mut c_void,
@@ -207,6 +208,12 @@ pub async fn prepare(
 /// The language `sample` is written in. Must not be awaited on the main thread.
 pub async fn detect(sample: &str) -> Result<Detected, TranslateError> {
     parse_detected(&call(wis_translation_detect, &DetectRequest { sample }).await?)
+}
+
+/// The macOS preferred languages, most preferred first. Must not be awaited on
+/// the main thread.
+pub async fn languages() -> Result<Vec<String>, TranslateError> {
+    parse_answer(&call(wis_translation_languages, &()).await?)
 }
 
 fn error_from_code(code: &str) -> TranslateError {
@@ -404,6 +411,22 @@ mod tests {
         assert_eq!(detected.language, "ja");
         assert!(detected.confidence > 0.5, "{detected:?}");
         assert_eq!(detect("").await.unwrap().language, "");
+    }
+
+    #[test]
+    fn a_languages_reply_is_the_list_most_preferred_first() {
+        assert_eq!(
+            parse_answer::<Vec<String>>(r#"["en-US","ja-SG"]"#),
+            Ok(vec!["en-US".to_string(), "ja-SG".to_string()])
+        );
+    }
+
+    /// Read from the preferences in process, so it needs no models.
+    #[tokio::test]
+    async fn the_reader_s_languages_come_through_the_bridge() {
+        let languages = languages().await.unwrap();
+        assert!(!languages.is_empty());
+        assert!(languages.iter().all(|tag| !tag.is_empty()), "{languages:?}");
     }
 
     #[tokio::test]

@@ -1,6 +1,7 @@
 //! The address bar's offer to translate: once a page has loaded, or a
 //! single-page app has moved to another address, the language it is in and
-//! whether the reader reads it, decided once per language for the session.
+//! whether the reader reads it, decided once per language until the macOS
+//! languages change.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -25,17 +26,37 @@ static NEXT_PROBE: AtomicU64 = AtomicU64::new(1);
 static UNAVAILABLE: AtomicBool = AtomicBool::new(false);
 /// Each tab's latest probe, until it navigates.
 static PROBES: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
-/// The offer for each language, decided once however many tabs ask at once.
-static OFFERS: Mutex<Option<HashMap<String, Decided>>> = Mutex::new(None);
+static OFFERS: Mutex<Option<Offers>> = Mutex::new(None);
 
 type Decided = Arc<OnceCell<Option<String>>>;
-type Map<T> = MutexGuard<'static, Option<HashMap<String, T>>>;
 
-fn probes() -> Map<u64> {
+/// The offer for each language, decided once however many tabs ask at once.
+#[derive(Default)]
+struct Offers {
+    /// The macOS languages they were decided for.
+    languages: Vec<String>,
+    decided: HashMap<String, Decided>,
+}
+
+impl Offers {
+    /// Where `source`'s offer for a reader of `languages` is decided.
+    fn cell(&mut self, languages: &[String], source: &str) -> Decided {
+        let key = key(source);
+        if self.languages != languages {
+            self.languages = languages.to_vec();
+            self.decided.clear();
+        } else if self.decided.len() >= MAX_LANGUAGES && !self.decided.contains_key(&key) {
+            self.decided.clear();
+        }
+        self.decided.entry(key).or_default().clone()
+    }
+}
+
+fn probes() -> MutexGuard<'static, Option<HashMap<String, u64>>> {
     PROBES.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn offers() -> Map<Decided> {
+fn offers() -> MutexGuard<'static, Option<Offers>> {
     OFFERS.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
@@ -125,16 +146,18 @@ fn key(source: &str) -> String {
 }
 
 /// The offer for `source` (`Some(None)` when there is none), or `None` when
-/// the check timed out.
+/// the macOS languages could not be read or the check timed out.
 async fn offer_for(source: &str) -> Option<Option<String>> {
-    let cell = {
-        let mut guard = offers();
-        let map = guard.get_or_insert_with(HashMap::new);
-        if map.len() >= MAX_LANGUAGES && !map.contains_key(&key(source)) {
-            map.clear();
+    let languages = match bridge::languages().await {
+        Ok(languages) => languages,
+        Err(err) => {
+            log::debug!("the macOS languages could not be read: {err}");
+            return None;
         }
-        map.entry(key(source)).or_default().clone()
     };
+    let cell = offers()
+        .get_or_insert_with(Offers::default)
+        .cell(&languages, source);
     let decided = cell
         .get_or_try_init(|| async {
             match bridge::check(source).await {
@@ -247,6 +270,30 @@ mod tests {
         assert!(!current("tab-test", first));
         forget("tab-test");
         assert!(!current("tab-test", second));
+    }
+
+    #[test]
+    fn other_macos_languages_decide_every_offer_again() {
+        let mut offers = Offers::default();
+        let english = ["en-US".to_string()];
+        let first = offers.cell(&english, "ja");
+        assert!(Arc::ptr_eq(&first, &offers.cell(&english, "JA")));
+        let french = ["fr-FR".to_string(), "en-US".to_string()];
+        assert!(!Arc::ptr_eq(&first, &offers.cell(&french, "ja")));
+        assert!(!Arc::ptr_eq(&first, &offers.cell(&english, "ja")));
+    }
+
+    #[test]
+    fn past_the_cap_the_offers_start_again() {
+        let mut offers = Offers::default();
+        let english = ["en-US".to_string()];
+        let first = offers.cell(&english, "lang-0");
+        for n in 1..MAX_LANGUAGES {
+            offers.cell(&english, &format!("lang-{n}"));
+        }
+        assert!(Arc::ptr_eq(&first, &offers.cell(&english, "lang-0")));
+        offers.cell(&english, "one-more");
+        assert!(!Arc::ptr_eq(&first, &offers.cell(&english, "lang-0")));
     }
 
     #[test]
