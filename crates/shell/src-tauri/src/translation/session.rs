@@ -4,6 +4,7 @@
 //! models slow each other down when asked at once.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::Duration;
@@ -12,6 +13,7 @@ use tauri::{AppHandle, Manager};
 use tokio::sync::oneshot;
 
 use super::bridge::{self, Check, Status, Strategy, TranslateError, TranslateRequest};
+use super::fidelity;
 use super::message::{Block, PageMessage, Queue, Run};
 use super::objects::{held, place, HELD, OBJECT};
 use super::offer::{language_of, probed, reprobe};
@@ -64,9 +66,10 @@ fn lasting(err: &TranslateError) -> bool {
     )
 }
 
-/// The low-latency model drops inline elements, so it only takes plain text.
-fn strategy_for(block: &Block, low_latency: bool) -> Strategy {
-    if low_latency && block.plain() {
+/// The low-latency model drops inline elements, so it only takes plain text,
+/// unless the pair's high-fidelity model drops them too.
+fn strategy_for(block: &Block, low_latency: bool, keeps_none: bool) -> Strategy {
+    if low_latency && (keeps_none || block.plain()) {
         Strategy::LowLatency
     } else {
         Strategy::HighFidelity
@@ -354,12 +357,14 @@ fn next_task(label: &str, gen: u64) -> Option<Task> {
             low_latency,
         } => {
             let low_latency = *low_latency;
-            let Some(block) = queue.next(|block| low_latency && block.plain()) else {
+            let keeps_none = fidelity::keeps_none(source, target);
+            let lane = |block: &Block| strategy_for(block, low_latency, keeps_none);
+            let Some(block) = queue.next(|block| lane(block) == Strategy::LowLatency) else {
                 *working = false;
                 return None;
             };
             Some(Task {
-                strategy: strategy_for(&block, low_latency),
+                strategy: lane(&block),
                 block,
                 source: source.clone(),
                 target: target.clone(),
@@ -408,18 +413,22 @@ async fn ask(task: &Task, strategy: Strategy) -> Result<Vec<Run>, TranslateError
     bridge::translate(&request).await
 }
 
-/// Translates the task's segment, with the strategy that answered. One the
+/// Asks in `strategy`, and says which strategy answered. What the
 /// low-latency model fails on is retried in high fidelity, and a lasting
 /// failure keeps the page there.
-async fn translate_whole(
+async fn falling_back<F, Fut>(
     label: &str,
     gen: u64,
-    task: &Task,
-) -> Result<(Vec<Run>, Strategy), TranslateError> {
-    match ask(task, task.strategy).await {
+    strategy: Strategy,
+    ask: F,
+) -> Result<(Vec<Run>, Strategy), TranslateError>
+where
+    F: Fn(Strategy) -> Fut,
+    Fut: Future<Output = Result<Vec<Run>, TranslateError>>,
+{
+    match ask(strategy).await {
         Err(err)
-            if task.strategy == Strategy::LowLatency
-                && err != TranslateError::NothingToTranslate =>
+            if strategy == Strategy::LowLatency && err != TranslateError::NothingToTranslate =>
         {
             if !is_current(label, gen) {
                 return Err(err);
@@ -428,37 +437,68 @@ async fn translate_whole(
                 log::debug!("low latency failed in {label}, using high fidelity from now: {err}");
                 stop_low_latency(label, gen);
             }
-            let runs = ask(task, Strategy::HighFidelity).await?;
+            let runs = ask(Strategy::HighFidelity).await?;
             Ok((runs, Strategy::HighFidelity))
         }
-        result => result.map(|runs| (runs, task.strategy)),
+        result => result.map(|runs| (runs, strategy)),
     }
 }
 
-async fn translate_piece(label: &str, gen: u64, task: &Task, text: String) -> Option<String> {
+/// The strategy for a piece of a segment translated in `strategy`: high
+/// fidelity once a lasting failure has turned low latency off for the page.
+fn piece_strategy(label: &str, gen: u64, strategy: Strategy) -> Strategy {
+    let off = || {
+        with_session(label, gen, |phase| match phase {
+            Phase::Running { low_latency, .. } => !*low_latency,
+            Phase::Starting(_) => true,
+        })
+        .unwrap_or(true)
+    };
+    match strategy {
+        Strategy::LowLatency if off() => Strategy::HighFidelity,
+        strategy => strategy,
+    }
+}
+
+async fn translate_piece(
+    label: &str,
+    gen: u64,
+    task: &Task,
+    strategy: Strategy,
+    text: String,
+) -> Option<String> {
     if !is_current(label, gen) {
         return None;
     }
     let runs = [Run { text, tag: None }];
-    let request = TranslateRequest {
-        source: &task.source,
-        target: &task.target,
-        strategy: Strategy::HighFidelity,
-        runs: &runs,
-        skip: &[],
+    let runs = &runs;
+    let send = |strategy| async move {
+        let request = TranslateRequest {
+            source: &task.source,
+            target: &task.target,
+            strategy,
+            runs,
+            skip: &[],
+        };
+        bridge::translate(&request).await
     };
-    let pieces = bridge::translate(&request).await.ok()?;
+    let strategy = piece_strategy(label, gen, strategy);
+    let (pieces, _) = falling_back(label, gen, strategy, send).await.ok()?;
     let text: String = pieces.into_iter().map(|piece| piece.text).collect();
     (!text.trim().is_empty()).then_some(text)
 }
 
 /// A lost inline element goes back on its own text where the translation
 /// kept it whole, or else on the words of its own translation, and failing
-/// that a short segment is redone piece by piece. A long one keeps its
-/// fluent translation and the page lets lost links go. An object stays as it
-/// was sent.
+/// that a short segment is redone piece by piece, all with the model that
+/// translated it. A long one keeps its fluent translation and the page lets
+/// lost links go. An object stays as it was sent.
 async fn translate(label: &str, gen: u64, task: &Task) -> Result<Vec<Run>, TranslateError> {
-    let (whole, strategy) = translate_whole(label, gen, task).await?;
+    let (whole, strategy) =
+        falling_back(label, gen, task.strategy, |strategy| ask(task, strategy)).await?;
+    if strategy == Strategy::HighFidelity {
+        fidelity::record(&task.source, &task.target, &task.block, &whole);
+    }
     let mut runs = place(
         whole,
         &task.block.runs,
@@ -488,7 +528,7 @@ async fn translate(label: &str, gen: u64, task: &Task) -> Result<Vec<Run>, Trans
         let piece = match known {
             Some(piece) => piece,
             None if task.block.objects.contains(&tag) => text.to_string(),
-            None => translate_piece(label, gen, task, text.to_string())
+            None => translate_piece(label, gen, task, strategy, text.to_string())
                 .await
                 .ok_or_else(unplaced)?,
         };
@@ -512,7 +552,7 @@ async fn translate(label: &str, gen: u64, task: &Task) -> Result<Vec<Run>, Trans
         match known(&text) {
             Some(piece) => Some(piece),
             None if text == OBJECT => Some(text),
-            None => translate_piece(label, gen, task, text).await,
+            None => translate_piece(label, gen, task, strategy, text).await,
         }
     })
     .await
@@ -590,17 +630,21 @@ mod tests {
             objects: vec![0],
             long: false,
         };
-        assert_eq!(strategy_for(&plain, true), Strategy::LowLatency);
+        assert_eq!(strategy_for(&plain, true, false), Strategy::LowLatency);
         let two = Block {
             runs: vec![run("\u{FFFC}", Some(0)), run("\u{FFFC}", Some(1))],
             needed: vec![0, 1],
             objects: vec![0, 1],
             ..pictured.clone()
         };
-        assert_eq!(strategy_for(&pictured, true), Strategy::LowLatency);
-        assert_eq!(strategy_for(&two, true), Strategy::HighFidelity);
-        assert_eq!(strategy_for(&linked, true), Strategy::HighFidelity);
-        assert_eq!(strategy_for(&plain, false), Strategy::HighFidelity);
+        assert_eq!(strategy_for(&pictured, true, false), Strategy::LowLatency);
+        assert_eq!(strategy_for(&two, true, false), Strategy::HighFidelity);
+        assert_eq!(strategy_for(&linked, true, false), Strategy::HighFidelity);
+        assert_eq!(strategy_for(&plain, false, false), Strategy::HighFidelity);
+
+        assert_eq!(strategy_for(&linked, true, true), Strategy::LowLatency);
+        assert_eq!(strategy_for(&two, true, true), Strategy::LowLatency);
+        assert_eq!(strategy_for(&linked, false, true), Strategy::HighFidelity);
     }
 
     #[test]
@@ -609,6 +653,38 @@ mod tests {
         assert!(lasting(&TranslateError::Unsupported));
         assert!(lasting(&TranslateError::TimedOut));
         assert!(!lasting(&TranslateError::Failed("one segment".into())));
+    }
+
+    #[test]
+    fn once_low_latency_is_off_a_piece_goes_to_high_fidelity() {
+        let label = "tab-pieces";
+        sessions().get_or_insert_with(HashMap::new).insert(
+            label.to_string(),
+            Session {
+                gen: 7,
+                phase: Phase::Running {
+                    source: "ru".into(),
+                    target: "en".into(),
+                    low_latency: true,
+                    queue: Queue::default(),
+                    working: true,
+                },
+            },
+        );
+        assert_eq!(
+            piece_strategy(label, 7, Strategy::LowLatency),
+            Strategy::LowLatency
+        );
+        stop_low_latency(label, 7);
+        assert_eq!(
+            piece_strategy(label, 7, Strategy::LowLatency),
+            Strategy::HighFidelity
+        );
+        assert_eq!(
+            piece_strategy(label, 7, Strategy::HighFidelity),
+            Strategy::HighFidelity
+        );
+        stop(label);
     }
 
     #[test]

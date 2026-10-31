@@ -5,6 +5,8 @@
 #[cfg(target_os = "macos")]
 mod bridge;
 pub mod command;
+#[cfg(target_os = "macos")]
+mod fidelity;
 mod language;
 mod message;
 mod objects;
