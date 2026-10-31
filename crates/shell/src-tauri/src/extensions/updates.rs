@@ -26,7 +26,7 @@ use crate::state::AppState;
 #[cfg(target_os = "macos")]
 use quick_xml::events::{BytesStart, Event};
 #[cfg(target_os = "macos")]
-use quick_xml::Reader;
+use quick_xml::{Reader, XmlVersion};
 
 #[cfg(target_os = "macos")]
 const CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
@@ -40,13 +40,15 @@ struct Offered {
     sha256: Option<String>,
 }
 
+/// The first `name` attribute of `element`.
 #[cfg(target_os = "macos")]
-fn attribute(element: &BytesStart, name: &[u8]) -> Option<String> {
-    element
-        .attributes()
+fn attribute(element: &BytesStart, name: &str) -> Option<String> {
+    let mut attributes = element.attributes();
+    attributes
+        .with_checks(false)
         .flatten()
         .find(|a| a.key.as_ref() == name)?
-        .unescape_value()
+        .normalized_value(XmlVersion::Implicit1_0)
         .ok()
         .map(|value| value.into_owned())
 }
@@ -58,20 +60,20 @@ fn offered(xml: &str, store_id: &str) -> Option<Offered> {
     let mut in_app = false;
     loop {
         match reader.read_event().ok()? {
-            Event::Start(e) | Event::Empty(e) if e.local_name().as_ref() == b"app" => {
-                in_app = attribute(&e, b"appid").as_deref() == Some(store_id);
+            Event::Start(e) | Event::Empty(e) if e.local_name().as_ref() == "app" => {
+                in_app = attribute(&e, "appid").as_deref() == Some(store_id);
             }
-            Event::End(e) if e.local_name().as_ref() == b"app" => in_app = false,
+            Event::End(e) if e.local_name().as_ref() == "app" => in_app = false,
             Event::Start(e) | Event::Empty(e)
-                if in_app && e.local_name().as_ref() == b"updatecheck" =>
+                if in_app && e.local_name().as_ref() == "updatecheck" =>
             {
-                if attribute(&e, b"status").as_deref() != Some("ok") {
+                if attribute(&e, "status").as_deref() != Some("ok") {
                     return None;
                 }
                 return Some(Offered {
-                    version: attribute(&e, b"version")?,
-                    codebase: attribute(&e, b"codebase")?,
-                    sha256: attribute(&e, b"hash_sha256"),
+                    version: attribute(&e, "version")?,
+                    codebase: attribute(&e, "codebase")?,
+                    sha256: attribute(&e, "hash_sha256"),
                 });
             }
             Event::Eof => return None,
@@ -417,6 +419,18 @@ mod tests {
         assert_eq!(offered(NEWER, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), None);
         assert_eq!(offered("not xml <", ID), None);
         assert_eq!(offered("", ID), None);
+    }
+
+    #[test]
+    fn an_answer_repeating_an_attribute_is_read_quickly() {
+        let distinct: String = (0..20_000).map(|i| format!(" a{i}=\"\"")).collect();
+        let repeated = " a19999=\"\"".repeat(20_000);
+        let xml = format!(
+            r#"<gupdate><app{distinct}{repeated} appid="{ID}"><updatecheck status="ok" version="2" codebase="https://example.com/x.crx"/></app></gupdate>"#
+        );
+        let started = std::time::Instant::now();
+        assert_eq!(offered(&xml, ID).map(|offer| offer.version), Some("2".into()));
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
     }
 
     #[test]

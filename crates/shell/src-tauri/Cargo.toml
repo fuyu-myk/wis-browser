@@ -93,7 +93,7 @@ flate2 = { version = "1", default-features = false, features = ["rust_backend"] 
 ring = "0.17"
 spki = "0.7"
 # Reading the store's update answers; already in the tree through plist.
-quick-xml = "0.39"
+quick-xml = "0.42"
 
 # Windows Hello biometric gate (UserConsentVerifier) for the password vault,
 # plus webview2-com to reach the WebView2 COM handles (mute, print, ...) behind
