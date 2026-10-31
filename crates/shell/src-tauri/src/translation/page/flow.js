@@ -56,7 +56,7 @@ function flush(s) {
       .slice(i, i + BATCH)
       .map((seg) => ({
         id: seg.id,
-        runs: seg.runs,
+        runs: readRuns(seg),
         main: seg.main,
         needed: seg.needed,
         objects: seg.objects,

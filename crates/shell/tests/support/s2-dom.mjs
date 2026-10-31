@@ -124,6 +124,7 @@ export class Element {
   }
   removeAttribute(name) {
     this.attrMap.delete(name)
+    if (name === 'style') this.style = new Style()
   }
   get href() {
     if (!LINKS.has(this.tagName)) return undefined

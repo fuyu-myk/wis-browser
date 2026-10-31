@@ -74,6 +74,22 @@ function settled(runs, seg) {
 }
 
 const shownInline = (el) => /^inline/.test(displayOf(el))
+const removeAttribute = method(ElementType, 'removeAttribute')
+
+function hideBreaks(seg, applied) {
+  applied.breaks = []
+  for (const n of seg.hidden || []) {
+    if (kind(n) !== 1 || tagOf(n) !== 'BR' || displayOf(n) === 'none') continue
+    n.style.setProperty('display', 'none', 'important')
+    applied.breaks.push([n, attributeOf(n, 'style')])
+  }
+}
+
+function showBreaks(applied) {
+  for (const [br, written] of applied.breaks || []) {
+    if (attributeOf(br, 'style') === written) removeAttribute(br, 'style')
+  }
+}
 
 // The last character shown in `node`, '' after a line break or an image,
 // or undefined when it shows nothing.
@@ -235,6 +251,7 @@ function put(seg, translation) {
   applied.written = writtenIn(saved)
   const order = withSilent(seg, laid)
   if (!inOrder(order, seg.nodes)) arrange(seg.root, order)
+  hideBreaks(seg, applied)
   return true
 }
 
@@ -267,5 +284,6 @@ function restore(seg) {
     if (!inOrder(now, seg.nodes)) arrange(seg.root, seg.nodes)
   }
   for (const [t, value] of saved) if (!written || t.nodeValue === written.get(t)) t.nodeValue = value
+  showBreaks(seg.applied)
   seg.applied = null
 }

@@ -18,6 +18,7 @@ const OBJECTS = 'img, picture, svg, math, canvas'
 const OBJECT = '\uFFFC'
 const SENTENCE_END = /[。！？.!?]\s*$/
 const BREAKING = [...BREAKS].join(', ').toLowerCase()
+const CUT = /[、がをにでとのもへやはてしくずば]$/
 
 const MAX_SEGMENTS = 10000
 const MAX_CHARS = 4000
@@ -34,13 +35,23 @@ const connected = getter(NodeType, 'isConnected')
 const bodyOf = getter(DocumentType, 'body')
 const createText = (text) => method(DocumentType, 'createTextNode')(document, text)
 
-function displayOf(el) {
+function styleOf(el) {
   try {
-    const style = typeof window.getComputedStyle === 'function' ? window.getComputedStyle(el) : null
-    return style ? style.display : ''
+    return typeof window.getComputedStyle === 'function' ? window.getComputedStyle(el) : null
   } catch (err) {
-    return ''
+    return null
   }
+}
+
+function displayOf(el) {
+  const style = styleOf(el)
+  return style ? style.display : ''
+}
+
+// Whether the page shows a line break in `el`'s text as a space.
+function folds(el) {
+  const style = styleOf(el)
+  return !/^(pre|break-spaces)/.test((style && style.whiteSpace) || '')
 }
 
 const blank = (text) => !/\S/.test(text)
@@ -95,16 +106,32 @@ function trimBlank(nodes) {
   return nodes.slice(start, end)
 }
 
-// A word-break hint, an empty element, a footnote number or a link to no
-// stylesheet sits inside a sentence without being read.
+// A word-break hint, an empty element, a footnote number, a link to no
+// stylesheet or a line break the sentence runs across sits inside a sentence
+// without being read.
 function invisible(el) {
   const tag = tagOf(el)
   if (tag === 'WBR' || marker(el)) return true
+  if (tag === 'BR') return joins(el)
   if (tag === 'LINK') return !/stylesheet/i.test(attributeOf(el, 'rel') || '')
   if (BLOCKS.has(tag) || BREAKS.has(tag) || tag.includes('-') || matches(el, OBJECTS) || !blank(textOf(el))) {
     return false
   }
   return !querySelector(el, BREAKING)
+}
+
+// A line break the page hides, or on a Japanese page one that cuts a
+// phrase. Both models end a paragraph at a line break.
+function joins(br) {
+  if (displayOf(br) === 'none') return true
+  if (!state || state.primary !== 'ja' || attributeOf(br, 'style') != null) return false
+  let line = ''
+  for (let prev = previousOf(br); prev && !line.trim(); prev = previousOf(prev)) {
+    if (kind(prev) === 1 && BREAKS.has(tagOf(prev))) break
+    if (kind(prev) === 3) line = prev.nodeValue + line
+    else if (kind(prev) === 1 && !marker(prev)) line = ownText(prev) + line
+  }
+  return CUT.test(line.trimEnd())
 }
 
 // An object, or an element holding only objects, keeps its place in the
@@ -191,6 +218,14 @@ function segmentOf(root, nodes) {
   const hidden = nodes.filter((n) => !textual(n))
   const long = runs.filter((r) => !blank(r.text)).length > MAX_PIECES
   return { root, nodes, whole: null, tagged, opaque: fixed, needed, required, long, objects, hidden, runs, sent }
+}
+
+// The runs as the models read them: both end a paragraph at a line break,
+// so one the page folds into a space is sent as one. Kept text goes as it is.
+function readRuns(seg) {
+  if (!/[\r\n]/.test(seg.sent) || !folds(seg.root)) return seg.runs
+  const fold = (r) => ({ ...r, text: r.text.replace(/\s*[\r\n]\s*/g, ' ') })
+  return seg.runs.map((r) => (r.tag != null && seg.opaque.has(r.tag) ? r : fold(r)))
 }
 
 // The segment's text now, to tell whether the page changed it since.
