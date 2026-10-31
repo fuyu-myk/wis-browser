@@ -429,7 +429,10 @@ mod tests {
             r#"<gupdate><app{distinct}{repeated} appid="{ID}"><updatecheck status="ok" version="2" codebase="https://example.com/x.crx"/></app></gupdate>"#
         );
         let started = std::time::Instant::now();
-        assert_eq!(offered(&xml, ID).map(|offer| offer.version), Some("2".into()));
+        assert_eq!(
+            offered(&xml, ID).map(|offer| offer.version),
+            Some("2".into())
+        );
         assert!(started.elapsed() < std::time::Duration::from_secs(1));
     }
 
