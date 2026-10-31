@@ -1155,7 +1155,7 @@ fn read_document_title<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) 
     }
 }
 
-fn is_loading<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) -> bool {
+pub(crate) fn is_loading<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) -> bool {
     #[cfg(target_os = "macos")]
     {
         use objc2::msg_send;

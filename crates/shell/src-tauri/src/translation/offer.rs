@@ -1,6 +1,6 @@
-//! The address bar's offer to translate: once a page has loaded, the
-//! language it is in and whether the reader reads it, decided once per
-//! language for the session.
+//! The address bar's offer to translate: once a page has loaded, or a
+//! single-page app has moved to another address, the language it is in and
+//! whether the reader reads it, decided once per language for the session.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -12,7 +12,9 @@ use wis_core::TabId;
 
 use super::bridge::{self, Check, Status, TranslateError};
 use super::language::{decide, page_language};
-use crate::commands::mutate_unit;
+use super::page;
+use crate::commands::{is_loading, mutate_unit};
+use crate::platform::content_world;
 use crate::state::AppState;
 
 /// Languages remembered at most; past it the cache starts again.
@@ -58,8 +60,30 @@ pub fn available() -> bool {
     !UNAVAILABLE.load(Ordering::Relaxed)
 }
 
+/// Asks the page in `webview` what language it is in.
+pub fn probe(webview: &tauri::Webview) {
+    if !available() {
+        return;
+    }
+    let probe = register(webview.label());
+    if let Err(err) = content_world::eval(webview, page::probe_script(probe)) {
+        log::debug!("the translation probe failed to run: {err}");
+    }
+}
+
+/// Probes tab `label`'s page again, unless a load has started, which probes
+/// once it ends. On the main thread, where a load's start forgets the probe.
+pub fn reprobe(app: &AppHandle, label: &str) {
+    if let Some(webview) = app
+        .get_webview(label)
+        .filter(|webview| !is_loading(webview))
+    {
+        probe(&webview);
+    }
+}
+
 /// A new probe of tab `label`'s page.
-pub fn register(label: &str) -> u64 {
+fn register(label: &str) -> u64 {
     let probe = NEXT_PROBE.fetch_add(1, Ordering::Relaxed);
     probes()
         .get_or_insert_with(HashMap::new)
@@ -87,13 +111,22 @@ fn current(label: &str, probe: u64) -> bool {
     probes().as_ref().and_then(|map| map.get(label)) == Some(&probe)
 }
 
+fn tab_of(label: &str) -> Option<TabId> {
+    label
+        .strip_prefix("tab-")
+        .and_then(|id| uuid::Uuid::parse_str(id).ok())
+        .map(TabId::from_uuid)
+}
+
 /// The tag a cached offer stands for, whole. (zh-TW is Traditional Chinese,
 /// zh-CN Simplified)
 fn key(source: &str) -> String {
     source.replace('_', "-").to_ascii_lowercase()
 }
 
-async fn offer_for(source: &str) -> Option<String> {
+/// The offer for `source` (`Some(None)` when there is none), or `None` when
+/// the check timed out.
+async fn offer_for(source: &str) -> Option<Option<String>> {
     let cell = {
         let mut guard = offers();
         let map = guard.get_or_insert_with(HashMap::new);
@@ -117,30 +150,41 @@ async fn offer_for(source: &str) -> Option<String> {
             }
         })
         .await;
-    decided.ok().cloned().flatten()
+    decided.ok().cloned()
+}
+
+/// The offer an answer leaves on the button, or `None` to leave the button
+/// as it is: when nothing changed, or the page's language or the check could
+/// not be told.
+fn change(shown: Option<&str>, decided: Option<Option<String>>) -> Option<Option<String>> {
+    decided.filter(|offer| offer.as_deref() != shown)
 }
 
 async fn show(app: AppHandle, label: String, probe: u64, lang: String, sample: String) {
-    let Some(source) = language_of(&lang, &sample).await else {
-        return;
+    let decided = match language_of(&lang, &sample).await {
+        Some(source) => offer_for(&source).await,
+        None => None,
     };
-    let Some(offer) = offer_for(&source).await else {
-        return;
-    };
-    let Some(tab_id) = label
-        .strip_prefix("tab-")
-        .and_then(|id| uuid::Uuid::parse_str(id).ok())
-        .map(TabId::from_uuid)
-    else {
+    let Some(tab_id) = tab_of(&label) else {
         return;
     };
     if !current(&label, probe) {
         return;
     }
     let state = app.state::<AppState>();
+    let offer = {
+        let browser = state.browser.lock().await;
+        let Ok(tab) = browser.tab(tab_id) else {
+            return;
+        };
+        change(tab.translatable_from.as_deref(), decided)
+    };
+    let Some(offer) = offer else {
+        return;
+    };
     let result = mutate_unit(&app, &state, |s| {
         if current(&label, probe) {
-            s.with_tab_translatable_from(tab_id, Some(offer))
+            s.with_tab_translatable_from(tab_id, offer)
         } else {
             Ok(s.clone())
         }
@@ -179,6 +223,20 @@ mod tests {
         );
         assert_eq!(offer(&check(false, Status::Unsupported)), None);
         assert_eq!(offer(&check(true, Status::Installed)), None);
+    }
+
+    #[test]
+    fn an_answer_changes_the_offer_only_when_it_could_tell_and_it_differs() {
+        let japanese = Some("Japanese".to_string());
+        assert_eq!(change(None, Some(japanese.clone())), Some(japanese.clone()));
+        assert_eq!(
+            change(Some("Japanese"), Some(None)),
+            Some(None),
+            "taken back"
+        );
+        assert_eq!(change(Some("Japanese"), None), None, "could not tell");
+        assert_eq!(change(Some("Japanese"), Some(japanese)), None, "unchanged");
+        assert_eq!(change(None, Some(None)), None, "unchanged");
     }
 
     #[test]

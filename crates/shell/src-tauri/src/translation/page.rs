@@ -1,15 +1,26 @@
-//! The page side of translation: the page script, run in Wis's content
-//! world, and the `wisTranslate` handler its messages arrive on. Only Wis's
+//! The page side of translation: the page scripts (the translator, and the
+//! probe every load runs), run in Wis's content world, and the
+//! `wisTranslate` handler their messages arrive on. Only Wis's
 //! world can post to the handler, and only the main frame's messages count.
 
 use super::message::{parse_message, Run};
 
 const PAGE_JS: &str = concat!(
     "(function () {\nif (window.__wisTranslate) return\n",
+    include_str!("page/text.js"),
+    include_str!("page/probe.js"),
     include_str!("page/segments.js"),
     include_str!("page/layout.js"),
     include_str!("page/flow.js"),
     "})()\n",
+);
+
+/// What every page load runs: the language sample alone.
+const PROBE_JS: &str = concat!(
+    "(function () {\nif (Object.prototype.hasOwnProperty.call(window, '__wisProbe')) return\n",
+    include_str!("page/text.js"),
+    include_str!("page/probe.js"),
+    "window.__wisProbe = probe\nwatchMoves()\n})()\n",
 );
 
 const HANDLER: &str = "wisTranslate";
@@ -23,10 +34,10 @@ pub fn start_script(gen: u64) -> String {
     format!("{finder}\n{PAGE_JS}\nwindow.__wisTranslate.start({gen});")
 }
 
-/// Defines the scripts if this document lacks them, then reports the page's
+/// Defines the probe if this document lacks it, then reports the page's
 /// language for the address bar's offer, as probe `probe`.
 pub fn probe_script(probe: u64) -> String {
-    format!("{PAGE_JS}\nwindow.__wisTranslate.probe({probe});")
+    format!("{PROBE_JS}\nwindow.__wisProbe({probe});")
 }
 
 /// Collects the page's segments for generation `gen`, translating from
@@ -225,5 +236,16 @@ mod tests {
         let page = script.find(PAGE_JS).unwrap();
         assert!(finder < page, "the main-content finder comes first");
         assert!(script.ends_with("window.__wisTranslate.start(4);"));
+    }
+
+    #[test]
+    fn a_probe_carries_the_sampler_but_not_the_translator() {
+        let sampler = include_str!("page/probe.js");
+        let script = probe_script(4);
+        assert!(script.contains(sampler));
+        assert!(!script.contains(include_str!("page/segments.js")));
+        assert!(!script.contains(include_str!("page/flow.js")));
+        assert!(script.ends_with("window.__wisProbe(4);"));
+        assert!(PAGE_JS.contains(sampler), "start samples the same way");
     }
 }

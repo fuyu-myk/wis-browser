@@ -35,15 +35,11 @@ pub fn install(webview: &tauri::Webview) {
 }
 
 /// Asks the page just loaded in `webview` what language it is in, so the
-/// address bar can offer to translate it. No-op off macOS.
+/// address bar can offer to translate it, and again whenever it moves to
+/// another address without loading. No-op off macOS.
 pub fn probe(webview: &tauri::Webview) {
     #[cfg(target_os = "macos")]
-    if offer::available() {
-        let probe = offer::register(webview.label());
-        if let Err(err) = crate::platform::content_world::eval(webview, page::probe_script(probe)) {
-            log::debug!("the translation probe failed to run: {err}");
-        }
-    }
+    offer::probe(webview);
 
     #[cfg(not(target_os = "macos"))]
     let _ = webview;

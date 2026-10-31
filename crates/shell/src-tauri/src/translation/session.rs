@@ -14,7 +14,7 @@ use tokio::sync::oneshot;
 use super::bridge::{self, Check, Status, Strategy, TranslateError, TranslateRequest};
 use super::message::{Block, PageMessage, Queue, Run};
 use super::objects::{held, place, HELD, OBJECT};
-use super::offer::{language_of, probed};
+use super::offer::{language_of, probed, reprobe};
 use super::page;
 use super::pieces::{anchor, lost_tags, piecewise, relabel, spaced, tag_within, tidy, verbatim};
 use super::readings::unread;
@@ -182,7 +182,30 @@ pub fn stop(label: &str) {
 /// Ends the tab's translation and restores the original page.
 pub fn disable(app: &AppHandle, label: &str) {
     stop(label);
+    restore(app, label);
+}
+
+/// Restores the original page and asks its language again.
+/// Not if a newer press is translating it already.
+fn restore(app: &AppHandle, label: &str) {
     eval(app, label, page::REVERT_SCRIPT.to_string());
+    let main = app.clone();
+    let label = label.to_string();
+    let probe_again = move || {
+        if !translating(&label) {
+            reprobe(&main, &label);
+        }
+    };
+    if let Err(err) = app.run_on_main_thread(probe_again) {
+        log::debug!("the restored page was not probed: {err}");
+    }
+}
+
+/// Whether the tab is translating or starting to.
+fn translating(label: &str) -> bool {
+    sessions()
+        .as_ref()
+        .is_some_and(|map| map.contains_key(label))
 }
 
 /// Whether translation `gen` is still the tab's, not replaced by a newer
@@ -210,7 +233,7 @@ fn remove_if_current(label: &str, gen: u64) -> bool {
 fn end(app: &AppHandle, label: &str, gen: u64) -> bool {
     let current = remove_if_current(label, gen);
     if current {
-        eval(app, label, page::REVERT_SCRIPT.to_string());
+        restore(app, label);
     }
     current
 }
@@ -295,6 +318,11 @@ pub fn on_message(label: &str, message: PageMessage) {
         PageMessage::Probe { id, lang, sample } => {
             if let Some(app) = APP.get() {
                 probed(app, label, id, lang, sample);
+            }
+        }
+        PageMessage::Moved => {
+            if let Some(app) = APP.get().filter(|_| !translating(label)) {
+                reprobe(app, label);
             }
         }
         PageMessage::Blocks { gen, wave, blocks } => {

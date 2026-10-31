@@ -108,6 +108,9 @@ pub enum PageMessage {
         wave: u64,
         blocks: Vec<Block>,
     },
+    /// The page moved to another address without loading, and has had
+    /// time to render.
+    Moved,
 }
 
 /// The message in `body`, or `None` when it is malformed or over a cap. A
@@ -134,6 +137,7 @@ pub fn parse_message(body: &str) -> Option<PageMessage> {
             blocks.retain(Block::within_caps);
             Some(PageMessage::Blocks { gen, wave, blocks })
         }
+        PageMessage::Moved => Some(PageMessage::Moved),
     }
 }
 
@@ -236,6 +240,14 @@ mod tests {
             "a".repeat(MAX_SAMPLE_BYTES + 1)
         );
         assert_eq!(parse_message(&long), None);
+    }
+
+    #[test]
+    fn a_page_that_moved_without_loading_says_so() {
+        assert_eq!(
+            parse_message(r#"{"kind":"moved"}"#),
+            Some(PageMessage::Moved)
+        );
     }
 
     #[test]

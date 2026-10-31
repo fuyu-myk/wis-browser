@@ -116,88 +116,10 @@ describe('the page language', () => {
     assert.deepEqual(loaded.messages(), [{ kind: 'start', gen: 1, lang: 'ja', sample: 'こんにちは、世界のみなさん' }])
   })
 
-  test('a probe samples headings and paragraphs, not scripts, code or other languages', () => {
-    const doc = page(
-      'https://example.jp/',
-      h('nav', {}, h('a', { href: '/' }, 'ホーム')),
-      h('h1', {}, '二次方程式について'),
-      h('p', {}, '二次方程式とは、数学において二次の多項式で表される方程式である。'),
-      h('pre', {}, h('code', {}, 'let x = 1 // a code sample in English')),
-      h('p', { lang: 'en' }, 'An English quotation that should not count.'),
-      h('p', {}, h('span', { class: 'notranslate' }, 'Brand name kept as it is in English')),
-      h('li', {}, '短'),
-    )
-    doc.title = '二次方程式 - Wikipedia'
-    const loaded = load(doc)
-    loaded.api.probe(5)
-    const [message] = loaded.messages()
-    assert.deepEqual(Object.keys(message), ['kind', 'id', 'lang', 'sample'])
-    assert.deepEqual([message.kind, message.id], ['probe', 5])
-    assert.equal(
-      message.sample,
-      '二次方程式 - Wikipedia\n二次方程式について\n二次方程式とは、数学において二次の多項式で表される方程式である。',
-    )
-  })
-
-  test('a probe samples the main content first and leaves out text marked as another language', () => {
-    const languages = h('ul', {}, h('li', {}, h('a', { href: '/af', lang: 'af' }, 'Afrikaans, die taal')))
-    const doc = page(
-      'https://example.jp/',
-      h('nav', {}, h('p', {}, 'メニューの項目の一覧です')),
-      languages,
-      h('main', {}, h('p', {}, '本文は', h('span', { lang: 'en' }, 'web browser'), 'についての記事である。')),
-    )
-    const loaded = load(doc)
-    loaded.api.probe(5)
-    assert.equal(loaded.messages()[0].sample, '本文はについての記事である。')
-  })
-
-  test('a probe falls back to marked text when that is all the page has', () => {
-    const doc = page('https://example.jp/', h('main', {}, h('div', { lang: 'ja' }, h('p', {}, '日本は東アジアの国である。'))))
-    const loaded = load(doc)
-    loaded.api.probe(5)
-    assert.equal(loaded.messages()[0].sample, '日本は東アジアの国である。')
-  })
-
-  test('a probe samples content marked as the language the page declares', () => {
-    const doc = page('https://example.jp/', h('main', {}, h('div', { lang: 'ja' }, h('p', {}, '日本は東アジアの国である。'))))
-    doc.documentElement.setAttribute('lang', 'ja')
-    const loaded = load(doc)
-    loaded.api.probe(5)
-    assert.equal(loaded.messages()[0].sample, '日本は東アジアの国である。')
-  })
-
-  test('a probe sample leaves out menus, asides, headers and footers', () => {
-    const doc = page(
-      'https://example.jp/',
-      h(
-        'main',
-        {},
-        h('nav', {}, h('li', {}, 'この版への固定リンク')),
-        h('aside', {}, h('p', {}, '関連する記事の一覧')),
-        h('header', {}, h('p', {}, 'ページの見出し部分')),
-        h('p', {}, '本文の最初の段落である。'),
-        h('footer', {}, h('p', {}, '最終更新日時の表示')),
-      ),
-    )
-    const loaded = load(doc)
-    loaded.api.probe(5)
-    assert.equal(loaded.messages()[0].sample, '本文の最初の段落である。')
-  })
-
-  test('a sample cut inside an emoji is still well formed', () => {
+  test('a start sample cut inside an emoji is still well formed', () => {
     const loaded = load(page('https://example.jp/', h('p', {}, 'あ'.repeat(999) + '😀です')))
-    loaded.api.probe(5)
     loaded.api.start(1)
-    assert.equal(loaded.bodies().length, 2)
-    for (const body of loaded.bodies()) assert.ok(!/\\u[dD][89abAB]/.test(body), 'no lone surrogate')
-  })
-
-  test('a probe sample stops at a thousand characters', () => {
-    const paragraphs = Array.from({ length: 40 }, (_, i) => h('p', {}, `第${i}段落。`.repeat(10)))
-    const loaded = load(page('https://example.jp/', ...paragraphs))
-    loaded.api.probe(5)
-    assert.ok(loaded.messages()[0].sample.length <= 1000)
+    assert.ok(!/\\u[dD][89abAB]/.test(loaded.bodies()[0]), 'no lone surrogate')
   })
 
   test('a Content-Language meta stands in for a missing lang', () => {

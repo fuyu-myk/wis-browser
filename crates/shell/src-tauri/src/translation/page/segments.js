@@ -1,15 +1,6 @@
 // The page read into segments: runs of a block's text, with the inline
 // elements they sit in tagged and the ones a translation must keep marked.
-const BLOCKS = new Set([
-  'ADDRESS', 'ARTICLE', 'ASIDE', 'BLOCKQUOTE', 'BODY', 'BUTTON', 'CAPTION', 'CENTER', 'DD',
-  'DETAILS', 'DIALOG', 'DIV', 'DL', 'DT', 'FIELDSET', 'FIGCAPTION', 'FIGURE', 'FOOTER', 'FORM',
-  'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HEADER', 'HGROUP', 'LABEL', 'LEGEND', 'LI', 'MAIN', 'NAV',
-  'OL', 'P', 'SECTION', 'SUMMARY', 'TABLE', 'TBODY', 'TD', 'TFOOT', 'TH', 'THEAD', 'TR', 'UL',
-])
-const SKIP =
-  'script, style, noscript, template, code, pre, kbd, samp, var, textarea, input, select, ' +
-  'option, svg, math, rt, rp, [contenteditable=""], [contenteditable=true], ' +
-  '[contenteditable=plaintext-only], [translate=no], .notranslate'
+
 // Kept inside a sentence where they stand, their text left as it is.
 const OPAQUE = 'code, kbd, samp, var, [translate=no], .notranslate'
 // Inline elements a translation must keep; styling ones may be dropped, and
@@ -25,7 +16,6 @@ const BREAKS = new Set([
 
 const OBJECTS = 'img, picture, svg, math, canvas'
 const OBJECT = '\uFFFC'
-const FOOTNOTE = /foot|note|ref|cite/i
 const SENTENCE_END = /[。！？.!?]\s*$/
 const BREAKING = [...BREAKS].join(', ').toLowerCase()
 
@@ -35,39 +25,14 @@ const MAX_RUNS = 128
 const MAX_IDS = 1000000
 const MAX_PIECES = 12
 
-// DOM reads through the prototypes: a page's named controls and images
-// (an input named `parentNode`, an img named `body`) shadow the properties
-// of their form or of the document, even in this world.
-const typeOf = (name) => (typeof window[name] === 'function' ? window[name] : null)
-function getter(type, name) {
-  const d = type ? Object.getOwnPropertyDescriptor(type.prototype, name) : null
-  return d && d.get ? (o) => d.get.call(o) : (o) => o[name]
-}
-function method(type, name) {
-  const f = type ? type.prototype[name] : null
-  return typeof f === 'function' ? (o, ...args) => f.apply(o, args) : (o, ...args) => o[name](...args)
-}
-const NodeType = typeOf('Node')
-const ElementType = typeOf('Element')
-const DocumentType = typeOf('Document')
 const parentOf = getter(NodeType, 'parentNode')
-const parentElementOf = getter(NodeType, 'parentElement')
 const previousOf = getter(NodeType, 'previousSibling')
-const kind = getter(NodeType, 'nodeType')
-const childNodesOf = getter(NodeType, 'childNodes')
-const tagOf = getter(ElementType, 'tagName')
-const matches = method(ElementType, 'matches')
 const querySelector = method(ElementType, 'querySelector')
-const attributeOf = method(ElementType, 'getAttribute')
-const closest = method(ElementType, 'closest')
 const insertBefore = method(NodeType, 'insertBefore')
 const removeChild = method(NodeType, 'removeChild')
 const connected = getter(NodeType, 'isConnected')
 const bodyOf = getter(DocumentType, 'body')
-const titleOf = getter(DocumentType, 'title')
-const documentElementOf = getter(DocumentType, 'documentElement')
 const createText = (text) => method(DocumentType, 'createTextNode')(document, text)
-const childrenOf = (node) => Array.from(childNodesOf(node))
 
 function displayOf(el) {
   try {
@@ -79,24 +44,14 @@ function displayOf(el) {
 }
 
 const blank = (text) => !/\S/.test(text)
-const worded = (text) => /\p{L}/u.test(text)
 
 function within(ancestor, node) {
   for (let n = node; n; n = parentOf(n)) if (n === ancestor) return true
   return false
 }
 
-// Codes that name the same language here, and codes that name none.
-const ALIASES = new Map([
-  ['iw', 'he'], ['in', 'id'], ['ji', 'yi'], ['jw', 'jv'], ['mo', 'ro'], ['tl', 'fil'],
-  ['nb', 'no'], ['nn', 'no'], ['cmn', 'zh'], ['yue', 'zh'], ['wuu', 'zh'],
-])
+// Codes that name no language.
 const UNMARKED = new Set(['', 'und', 'mul', 'x', 'i'])
-function primaryOf(lang) {
-  const code = (lang || '').split(/[-_,\s]/)[0].toLowerCase()
-  return ALIASES.get(code) || code
-}
-
 function foreign(el, primary) {
   const marked = primary ? closest(el, '[lang]') : null
   const lang = marked && marked !== documentElementOf(document) ? primaryOf(attributeOf(marked, 'lang')) : ''
@@ -123,36 +78,6 @@ function rootOf(block, texts) {
     if (!only || kind(only) !== 1) return root
     root = only
   }
-}
-
-// An inline element's own text: a nested block's text is its own segment's.
-function textNodesIn(el) {
-  const out = []
-  const stack = childrenOf(el).reverse()
-  while (stack.length) {
-    const node = stack.pop()
-    const type = kind(node)
-    if (type === 3) out.push(node)
-    else if (type === 1 && !BLOCKS.has(tagOf(node)) && !matches(node, SKIP) && tagOf(node) !== 'WBR' && !marker(node)) {
-      const kids = childrenOf(node)
-      for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i])
-    }
-  }
-  return out
-}
-
-function textOf(el) {
-  let text = ''
-  const stack = childrenOf(el).reverse()
-  while (stack.length) {
-    const node = stack.pop()
-    if (kind(node) === 3) text += node.nodeValue
-    else if (kind(node) === 1) {
-      const kids = childrenOf(node)
-      for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i])
-    }
-  }
-  return text
 }
 
 const opaque = (el) =>
@@ -190,13 +115,6 @@ function object(el) {
   if (BLOCKS.has(tag) || BREAKS.has(tag)) return false
   if (!tag.includes('-') && !querySelector(el, OBJECTS)) return false
   return blank(ownText(el))
-}
-
-function marker(el) {
-  if (tagOf(el) !== 'SUP' || worded(textOf(el))) return false
-  const local = (a) => (attributeOf(a, 'href') || '').startsWith('#')
-  const links = method(ElementType, 'querySelectorAll')(el, 'a')
-  return Array.from(links).some(local) || FOOTNOTE.test(attributeOf(el, 'class') || '')
 }
 
 // A link or control inside an element makes it one the translation must keep.
