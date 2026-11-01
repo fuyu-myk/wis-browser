@@ -6,7 +6,7 @@ use std::{collections::HashMap, sync::Mutex};
 
 #[cfg(target_os = "macos")]
 use objc2::runtime::ProtocolObject;
-use objc2::{define_class, rc::Retained, runtime::Bool, DeclaredClass};
+use objc2::{DeclaredClass, define_class, rc::Retained, runtime::Bool};
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{NSDraggingDestination, NSEvent};
 use objc2_foundation::{NSObjectProtocol, NSUUID};
@@ -15,8 +15,8 @@ use objc2_foundation::{NSObjectProtocol, NSUUID};
 use crate::wkwebview::ios::WKWebView::WKWebView;
 #[cfg(target_os = "macos")]
 use crate::{
-  wkwebview::{drag_drop, synthetic_mouse_events},
   DragDropEvent,
+  wkwebview::{drag_drop, synthetic_mouse_events},
 };
 #[cfg(target_os = "ios")]
 use objc2_ui_kit::UIEvent as NSEvent;
@@ -194,7 +194,8 @@ fn menu_reserves_event(event: &NSEvent, id: &str) -> bool {
     return false;
   };
 
-  let key = unsafe { event.charactersIgnoringModifiers() }
+  let key = event
+    .charactersIgnoringModifiers()
     .map(|s| s.to_string().to_lowercase())
     .unwrap_or_default();
   if key.is_empty() {
@@ -205,7 +206,7 @@ fn menu_reserves_event(event: &NSEvent, id: &str) -> bool {
     | NSEventModifierFlags::Shift
     | NSEventModifierFlags::Option
     | NSEventModifierFlags::Control;
-  let event_mask = unsafe { event.modifierFlags() } & relevant;
+  let event_mask = event.modifierFlags() & relevant;
 
   // SAFETY: the menu is read on the main thread within this synchronous
   // call; every msg_send receiver is checked non-nil first.
@@ -223,58 +224,62 @@ unsafe fn menu_claims(
   use objc2::runtime::AnyObject;
   use objc2_app_kit::NSEventModifierFlags;
 
-  let count: isize = objc2::msg_send![menu, numberOfItems];
-  for i in 0..count {
-    let item: *mut AnyObject = objc2::msg_send![menu, itemAtIndex: i];
-    if item.is_null() {
-      continue;
-    }
-
-    let submenu: *mut objc2_app_kit::NSMenu = objc2::msg_send![&*item, submenu];
-    if !submenu.is_null() {
-      if menu_claims(&*submenu, key, event_mask, relevant, id) {
-        return true;
+  // SAFETY: called on the main thread (see `menu_reserves_event`), and every
+  // msg_send receiver is checked non-nil first.
+  unsafe {
+    let count: isize = objc2::msg_send![menu, numberOfItems];
+    for i in 0..count {
+      let item: *mut AnyObject = objc2::msg_send![menu, itemAtIndex: i];
+      if item.is_null() {
+        continue;
       }
 
-      continue;
-    }
-    let ke_ptr: *mut objc2_foundation::NSString = objc2::msg_send![&*item, keyEquivalent];
-    if ke_ptr.is_null() {
-      continue;
-    }
+      let submenu: *mut objc2_app_kit::NSMenu = objc2::msg_send![&*item, submenu];
+      if !submenu.is_null() {
+        if menu_claims(&*submenu, key, event_mask, relevant, id) {
+          return true;
+        }
 
-    let ke = (*ke_ptr).to_string();
-    if ke.is_empty() {
-      continue;
-    }
+        continue;
+      }
+      let ke_ptr: *mut objc2_foundation::NSString = objc2::msg_send![&*item, keyEquivalent];
+      if ke_ptr.is_null() {
+        continue;
+      }
 
-    let mut mask: NSEventModifierFlags = objc2::msg_send![&*item, keyEquivalentModifierMask];
-    mask &= relevant;
-    // An uppercase key equivalent implies Shift.
-    if ke != ke.to_lowercase() {
-      mask |= NSEventModifierFlags::Shift;
-    }
-    if ke.to_lowercase() != key || mask != event_mask {
-      continue;
-    }
+      let ke = (*ke_ptr).to_string();
+      if ke.is_empty() {
+        continue;
+      }
 
-    let action: Option<objc2::runtime::Sel> = objc2::msg_send![&*item, action];
-    let editing = action
-      .and_then(|sel| {
-        sel
-          .name()
-          .to_str()
-          .ok()
-          .map(|n| EDITING_ACTIONS.contains(&n))
-      })
-      .unwrap_or(false);
-    let title: *mut objc2_foundation::NSString = objc2::msg_send![&*item, title];
-    let title = if title.is_null() {
-      String::new()
-    } else {
-      (*title).to_string()
-    };
-    return !crate::wkwebview::offers_menu_item_to_page(id, &title, editing);
+      let mut mask: NSEventModifierFlags = objc2::msg_send![&*item, keyEquivalentModifierMask];
+      mask &= relevant;
+      // An uppercase key equivalent implies Shift.
+      if ke != ke.to_lowercase() {
+        mask |= NSEventModifierFlags::Shift;
+      }
+      if ke.to_lowercase() != key || mask != event_mask {
+        continue;
+      }
+
+      let action: Option<objc2::runtime::Sel> = objc2::msg_send![&*item, action];
+      let editing = action
+        .and_then(|sel| {
+          sel
+            .name()
+            .to_str()
+            .ok()
+            .map(|n| EDITING_ACTIONS.contains(&n))
+        })
+        .unwrap_or(false);
+      let title: *mut objc2_foundation::NSString = objc2::msg_send![&*item, title];
+      let title = if title.is_null() {
+        String::new()
+      } else {
+        (*title).to_string()
+      };
+      return !crate::wkwebview::offers_menu_item_to_page(id, &title, editing);
+    }
   }
 
   false

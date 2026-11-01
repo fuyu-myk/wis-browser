@@ -171,6 +171,6 @@ retained but dormant for this reason; see `vendor/wry/WIS-PATCH.md`.
 
 `vendor/wry`, applied via `[patch.crates-io]`. See `vendor/wry/WIS-PATCH.md`.
 
-- wry 0.55.1 verbatim except `url_from_webview` no longer unwraps a nil `WKWebView.URL`. Clicking "go back" on WebKit's fraud-warning interstitial with an empty back stack returned nil and panicked inside the navigation delegate, aborting the process.
+- wry 0.57.1 verbatim except `url_from_webview` no longer unwraps a nil `WKWebView.URL`. Clicking "go back" on WebKit's fraud-warning interstitial with an empty back stack returned nil and panicked inside the navigation delegate, aborting the process.
 - The fix is applied verbatim from upstream PR tauri-apps/wry#1729, so dropping the vendor once that ships is a zero-behavior-change swap.
 - Kept verbatim deliberately: app features never patch the vendor, so the drop stays clean. Media consent, for instance, lives entirely in the shell.

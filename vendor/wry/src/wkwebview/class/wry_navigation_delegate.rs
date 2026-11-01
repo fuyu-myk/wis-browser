@@ -5,14 +5,13 @@
 use std::sync::{Arc, Mutex};
 
 use objc2::{
-  define_class, msg_send,
+  MainThreadOnly, define_class, msg_send,
   rc::Retained,
   runtime::{AnyObject, NSObject},
-  MainThreadOnly,
 };
 use objc2_foundation::{
-  MainThreadMarker, NSError, NSObjectProtocol, NSString, NSURLAuthenticationChallenge,
-  NSURLCredential, NSURLSessionAuthChallengeDisposition, NSURL,
+  MainThreadMarker, NSError, NSObjectProtocol, NSString, NSURL, NSURLAuthenticationChallenge,
+  NSURLCredential, NSURLSessionAuthChallengeDisposition,
 };
 use objc2_web_kit::{
   WKDownload, WKNavigation, WKNavigationAction, WKNavigationActionPolicy, WKNavigationDelegate,
@@ -25,7 +24,7 @@ use crate::wkwebview::ios::WKWebView::WKWebView;
 use objc2_web_kit::WKWebView;
 
 use crate::{
-  url_from_webview,
+  PageLoadEvent, WryWebView, url_from_webview,
   wkwebview::{
     download::{navigation_download_action, navigation_download_response},
     navigation::{
@@ -35,7 +34,6 @@ use crate::{
       web_content_process_did_terminate,
     },
   },
-  PageLoadEvent, WryWebView,
 };
 
 use super::wry_download_delegate::WryDownloadDelegate;
@@ -181,7 +179,7 @@ impl WryNavigationDelegate {
     let navigation_policy_function = Box::new(move |url: String| -> bool {
       navigation_handler
         .as_ref()
-        .map_or(true, |navigation_handler| (navigation_handler)(url))
+        .is_none_or(|navigation_handler| (navigation_handler)(url))
     });
 
     let on_page_load_handler = if let Some(handler) = on_page_load_handler {

@@ -41,14 +41,14 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Tauri
-tauri = { version = "2.11.2", features = [
+tauri = { version = "2.12.5", features = [
     "macos-private-api",
     "unstable",
     "macos-proxy",
     "image-png",
     "devtools",
 ] }
-tauri-build = "2.6.2"
+tauri-build = "2.7.4"
 tauri-plugin-log = "2"
 # In-app updater: verifies signed update bundles against the embedded public
 # key; `process` provides relaunch after an update is installed.
@@ -90,11 +90,11 @@ wis-import = { path = "crates/import" }
 # Vendored Tauri-stack crates: each a verbatim registry copy plus a small,
 # documented patch (see each crate's WIS-PATCH.md). Drop a patch once its
 # upstream PR ships, then `cargo update`.
-#   wry 0.55.1               nil-URL panic (wry#1729) + webview2 container leak;
+#   wry 0.57.1               nil-URL panic (wry#1729) + webview2 container leak;
 #                            Linux gtk::Fixed set_bounds persistence (wry#1745);
 #                            macOS webpage-preferences hook (autoplay policy)
-#   tao 0.35.2               Linux `content_fixed` overlay layer (tao#1232)
-#   tauri-runtime-wry 2.11.2 route Linux child webviews into `content_fixed`
+#   tao 0.37.2               Linux `content_fixed` overlay layer (tao#1232)
+#   tauri-runtime-wry 2.12.3 route Linux child webviews into `content_fixed`
 #                            (tauri#15463); requires the tao + wry patches
 #                            + per-webview opt-out of Tauri's scripts
 # The tao + tauri-runtime-wry + wry#1745 trio fixes positioned multi-webview on

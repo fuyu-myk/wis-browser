@@ -1,7 +1,7 @@
-# Vendored tauri-runtime-wry 2.11.2 (patched)
+# Vendored tauri-runtime-wry 2.12.3 (patched)
 
-Verbatim copy of tauri-runtime-wry 2.11.2 from crates.io, applied via
-`[patch.crates-io]` in the workspace `Cargo.toml`, with two patches.
+Verbatim copy of tauri-runtime-wry 2.12.3 from crates.io, applied via
+`[patch.crates-io]` in the workspace `Cargo.toml`, with three patches.
 
 One addition beyond the verbatim crate: a `rustfmt.toml` (copied from the
 sibling vendored wry). The published crate ships none, so without it a

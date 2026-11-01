@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-  cell::RefCell,
+  cell::{Cell, RefCell},
   collections::{HashSet, VecDeque},
   error::Error,
   process,
@@ -105,8 +105,10 @@ impl<T> EventLoopWindowTarget<T> {
       unsafe {
         if let Ok(xlib) = x11_dl::xlib::Xlib::open() {
           let display = (xlib.XOpenDisplay)(std::ptr::null());
-          display_handle.display = display as _;
-          display_handle.screen = (xlib.XDefaultScreen)(display) as _;
+          if !display.is_null() {
+            display_handle.display = display as _;
+            display_handle.screen = (xlib.XDefaultScreen)(display) as _;
+          }
         }
       }
 
@@ -120,21 +122,21 @@ impl<T> EventLoopWindowTarget<T> {
       let display = unsafe {
         gdk_wayland_sys::gdk_wayland_display_get_wl_display(self.display.as_ptr() as *mut _)
       };
-      let display = unsafe { std::ptr::NonNull::new_unchecked(display) };
+      let display = std::ptr::NonNull::new(display).ok_or(rwh_06::HandleError::Unavailable)?;
       let display_handle = rwh_06::WaylandDisplayHandle::new(display);
       Ok(rwh_06::RawDisplayHandle::Wayland(display_handle))
     } else {
       #[cfg(feature = "x11")]
       unsafe {
         if let Ok(xlib) = x11_dl::xlib::Xlib::open() {
-          let display = (xlib.XOpenDisplay)(std::ptr::null());
-          let screen = (xlib.XDefaultScreen)(display) as _;
-          let display = std::ptr::NonNull::new_unchecked(display as _);
-          let display_handle = rwh_06::XlibDisplayHandle::new(Some(display), screen);
-          Ok(rwh_06::RawDisplayHandle::Xlib(display_handle))
-        } else {
-          Err(rwh_06::HandleError::Unavailable)
+          let display_ptr = (xlib.XOpenDisplay)(std::ptr::null());
+          if let Some(display) = std::ptr::NonNull::new(display_ptr as *mut std::ffi::c_void) {
+            let screen = (xlib.XDefaultScreen)(display.as_ptr() as *mut _) as _;
+            let display_handle = rwh_06::XlibDisplayHandle::new(Some(display), screen);
+            return Ok(rwh_06::RawDisplayHandle::Xlib(display_handle));
+          }
         }
+        Err(rwh_06::HandleError::Unavailable)
       }
       #[cfg(not(feature = "x11"))]
       Err(rwh_06::HandleError::Unavailable)
@@ -554,6 +556,13 @@ impl<T: 'static> EventLoop<T> {
               glib::Propagation::Proceed
             });
             window.connect_touch_event(move |window, event| {
+              // Only begin a resize drag when the touch sequence starts. Issuing
+              // `begin_resize_drag_for_device` for every touch event re-sends
+              // `xdg_toplevel.resize` with a serial the compositor already
+              // consumed, which can take down the whole session (#1380).
+              if event.event_type() != gdk::EventType::TouchBegin {
+                return glib::Propagation::Proceed;
+              }
               if !window.is_decorated() && window.is_resizable() && !window.is_maximized() {
                 if let Some(window) = window.window() {
                   if let Some((cx, cy)) = event.root_coords() {
@@ -695,8 +704,10 @@ impl<T: 'static> EventLoop<T> {
             });
 
             let tx_clone = event_tx.clone();
+            let last_motion_time = Rc::new(Cell::new(0u32));
             window.connect_motion_notify_event(move |window, motion| {
-              if cursor_moved {
+              let last = last_motion_time.replace(motion.time());
+              if cursor_moved && motion.time() != last {
                 if let Some(cursor) = motion.device() {
                   let scale_factor = window.scale_factor();
                   let (_, x, y) = cursor.window_at_position();
@@ -713,7 +724,7 @@ impl<T: 'static> EventLoop<T> {
                   }
                 }
               }
-              glib::Propagation::Stop
+              glib::Propagation::Proceed
             });
 
             let tx_clone = event_tx.clone();
@@ -730,55 +741,63 @@ impl<T: 'static> EventLoop<T> {
             });
 
             let tx_clone = event_tx.clone();
+            let last_press_time = Rc::new(Cell::new(0u32));
             window.connect_button_press_event(move |_, event| {
-              let button = event.button();
-              if let Err(e) = tx_clone.send(Event::WindowEvent {
-                window_id: RootWindowId(id),
-                event: WindowEvent::MouseInput {
-                  button: match button {
-                    1 => MouseButton::Left,
-                    2 => MouseButton::Middle,
-                    3 => MouseButton::Right,
-                    _ => MouseButton::Other(button as u16),
+              let last = last_press_time.replace(event.time());
+              if event.time() != last {
+                let button = event.button();
+                if let Err(e) = tx_clone.send(Event::WindowEvent {
+                  window_id: RootWindowId(id),
+                  event: WindowEvent::MouseInput {
+                    button: match button {
+                      1 => MouseButton::Left,
+                      2 => MouseButton::Middle,
+                      3 => MouseButton::Right,
+                      _ => MouseButton::Other(button as u16),
+                    },
+                    state: ElementState::Pressed,
+                    device_id: DEVICE_ID,
+                    // this field is depracted so it is fine to pass empty state
+                    modifiers: ModifiersState::empty(),
                   },
-                  state: ElementState::Pressed,
-                  device_id: DEVICE_ID,
-                  // this field is depracted so it is fine to pass empty state
-                  modifiers: ModifiersState::empty(),
-                },
-              }) {
-                log::warn!(
-                  "Failed to send mouse input pressed event to event channel: {}",
-                  e
-                );
+                }) {
+                  log::warn!(
+                    "Failed to send mouse input pressed event to event channel: {}",
+                    e
+                  );
+                }
               }
-              glib::Propagation::Stop
+              glib::Propagation::Proceed
             });
 
             let tx_clone = event_tx.clone();
+            let last_release_time = Rc::new(Cell::new(0u32));
             window.connect_button_release_event(move |_, event| {
-              let button = event.button();
-              if let Err(e) = tx_clone.send(Event::WindowEvent {
-                window_id: RootWindowId(id),
-                event: WindowEvent::MouseInput {
-                  button: match button {
-                    1 => MouseButton::Left,
-                    2 => MouseButton::Middle,
-                    3 => MouseButton::Right,
-                    _ => MouseButton::Other(button as u16),
+              let last = last_release_time.replace(event.time());
+              if event.time() != last {
+                let button = event.button();
+                if let Err(e) = tx_clone.send(Event::WindowEvent {
+                  window_id: RootWindowId(id),
+                  event: WindowEvent::MouseInput {
+                    button: match button {
+                      1 => MouseButton::Left,
+                      2 => MouseButton::Middle,
+                      3 => MouseButton::Right,
+                      _ => MouseButton::Other(button as u16),
+                    },
+                    state: ElementState::Released,
+                    device_id: DEVICE_ID,
+                    // this field is depracted so it is fine to pass empty state
+                    modifiers: ModifiersState::empty(),
                   },
-                  state: ElementState::Released,
-                  device_id: DEVICE_ID,
-                  // this field is depracted so it is fine to pass empty state
-                  modifiers: ModifiersState::empty(),
-                },
-              }) {
-                log::warn!(
-                  "Failed to send mouse input released event to event channel: {}",
-                  e
-                );
+                }) {
+                  log::warn!(
+                    "Failed to send mouse input released event to event channel: {}",
+                    e
+                  );
+                }
               }
-              glib::Propagation::Stop
+              glib::Propagation::Proceed
             });
 
             let tx_clone = event_tx.clone();

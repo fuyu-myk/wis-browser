@@ -1,6 +1,6 @@
-# Vendored wry 0.55.1 (patched)
+# Vendored wry 0.57.1 (patched)
 
-Verbatim copy of wry 0.55.1 from crates.io, applied via `[patch.crates-io]`
+Verbatim copy of wry 0.57.1 from crates.io, applied via `[patch.crates-io]`
 in the workspace `Cargo.toml`, with a single fix:
 
 - `src/wkwebview/mod.rs`, `url_from_webview`: `WKWebView.URL` can be nil in
@@ -402,6 +402,10 @@ from remote webviews anyway, so the global only does harm there.
   `window.ipc` init script is added only when the hook allows it. The `ipc`
   message handler itself is untouched.
 
+Since 0.57 upstream adds the global only to a webview with an IPC handler
+(wry#1816, wry#1839). Tauri gives every webview one, so the hook still
+decides. On Windows `attach_ipc_handler` takes the hook's answer.
+
 ## Eleventh patch: `window.print()` opens the print sheet (macOS) (Wis-original)
 
 WebKit hands `window.print()` to the UI delegate's private
@@ -459,6 +463,9 @@ from its web tabs' without a separate environment (another browser process).
   `ICoreWebView2ControllerOptions::SetProfileName`. A runtime without
   `ICoreWebView2Environment10` refuses a named profile (`E_NOINTERFACE`)
   rather than fall back to the default one, which would undo the isolation.
+  Since 0.56 upstream has its own `profile_name` attribute (wry#1738), which
+  Tauri does not expose and which falls back to the default profile on such a
+  runtime; the hook's name wins over it, and the refusal covers both.
 - `src/lib.rs`: re-exports the setter on Windows.
 
 ## Fifteenth patch: the embedder adjusts each webview's configuration (macOS) (Wis-original)
@@ -562,4 +569,11 @@ Linux workspace (one context per data directory) already broke:
   registration for a webview with none, such as a popup wry builds from its
   opener; each download has its own failed
   flag; the old one was shared and never reset, so one failure marked every
-  later download failed. `register_download_handler` takes the webview.
+  later download failed (upstream since 0.57.1, wry#1893).
+  `register_download_handler` takes the webview.
+
+## Edition 2024 (wry 0.57)
+
+wry builds as edition 2024, so the patches keep the unsafe operations of their
+unsafe functions in `unsafe` blocks, and their extern blocks are
+`unsafe extern "C"`.

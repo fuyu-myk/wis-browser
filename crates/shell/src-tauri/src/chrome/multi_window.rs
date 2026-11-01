@@ -51,6 +51,7 @@ pub fn chrome_window_effects() -> WindowEffectsConfig {
         state: Some(WindowEffectState::Active),
         radius: Some(14.0),
         color: None,
+        interactive: false,
     }
 }
 

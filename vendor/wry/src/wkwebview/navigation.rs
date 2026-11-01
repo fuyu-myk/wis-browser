@@ -63,7 +63,21 @@ pub(crate) fn did_commit_navigation(
     let mut pending_scripts = this.ivars().pending_scripts.lock().unwrap();
     if let Some(scripts) = &*pending_scripts {
       for script in scripts {
-        webview.evaluateJavaScript_completionHandler(&NSString::from_str(script), None);
+        #[cfg(feature = "tracing")]
+        let handler = block2::RcBlock::new(
+          |_val: *mut objc2::runtime::AnyObject, err: *mut objc2_foundation::NSError| {
+            if !err.is_null() {
+              let description = (*err).localizedDescription().to_string();
+              tracing::debug!("Exception during script eval: {description}");
+            }
+          },
+        );
+        #[cfg(feature = "tracing")]
+        let handler = Some(&*handler);
+        #[cfg(not(feature = "tracing"))]
+        let handler = None;
+
+        webview.evaluateJavaScript_completionHandler(&NSString::from_str(script), handler);
       }
       *pending_scripts = None;
     }
@@ -108,7 +122,7 @@ pub(crate) fn did_fail_provisional_navigation(
 // without forcing a trust evaluation. Declared raw because neither framework
 // has an objc2 binding in this dependency set.
 #[link(name = "Security", kind = "framework")]
-extern "C" {
+unsafe extern "C" {
   fn SecTrustGetCertificateAtIndex(
     trust: *const core::ffi::c_void,
     ix: isize,
@@ -117,7 +131,7 @@ extern "C" {
 }
 
 #[link(name = "CoreFoundation", kind = "framework")]
-extern "C" {
+unsafe extern "C" {
   fn CFDataGetLength(data: *const core::ffi::c_void) -> isize;
   fn CFDataGetBytePtr(data: *const core::ffi::c_void) -> *const u8;
   fn CFRelease(cf: *const core::ffi::c_void);
@@ -131,20 +145,24 @@ unsafe fn leaf_certificate_der(trust: *const core::ffi::c_void) -> Option<Vec<u8
   if trust.is_null() {
     return None;
   }
-  let cert = SecTrustGetCertificateAtIndex(trust, 0);
-  if cert.is_null() {
-    return None;
+  // SAFETY: `trust` is a live, non-null SecTrustRef; the certificate is
+  // borrowed, and the copied data is released once its bytes are copied out.
+  unsafe {
+    let cert = SecTrustGetCertificateAtIndex(trust, 0);
+    if cert.is_null() {
+      return None;
+    }
+    let data = SecCertificateCopyData(cert);
+    if data.is_null() {
+      return None;
+    }
+    let len = CFDataGetLength(data);
+    let ptr = CFDataGetBytePtr(data);
+    let der =
+      (len > 0 && !ptr.is_null()).then(|| std::slice::from_raw_parts(ptr, len as usize).to_vec());
+    CFRelease(data);
+    der
   }
-  let data = SecCertificateCopyData(cert);
-  if data.is_null() {
-    return None;
-  }
-  let len = CFDataGetLength(data);
-  let ptr = CFDataGetBytePtr(data);
-  let der =
-    (len > 0 && !ptr.is_null()).then(|| std::slice::from_raw_parts(ptr, len as usize).to_vec());
-  CFRelease(data);
-  der
 }
 
 /// WIS patch: the URL the failed navigation was for. The webview's own URL is

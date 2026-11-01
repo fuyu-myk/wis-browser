@@ -87,7 +87,7 @@ fn authenticate_blocking(reason: &str) -> bool {
 
     let outcome = (|| -> windows::core::Result<bool> {
         // Gate only when Hello is actually available; otherwise allow the unlock.
-        let availability = UserConsentVerifier::CheckAvailabilityAsync()?.get()?;
+        let availability = UserConsentVerifier::CheckAvailabilityAsync()?.join()?;
         if availability != UserConsentVerifierAvailability::Available {
             log::warn!(
                 "vault: Windows Hello unavailable ({availability:?}); unlocking without a biometric gate"
@@ -104,7 +104,7 @@ fn authenticate_blocking(reason: &str) -> bool {
         let op: IAsyncOperation<UserConsentVerificationResult> =
             unsafe { interop.RequestVerificationForWindowAsync(hwnd, &message)? };
 
-        Ok(op.get()? == UserConsentVerificationResult::Verified)
+        Ok(op.join()? == UserConsentVerificationResult::Verified)
     })();
 
     outcome.unwrap_or(false)

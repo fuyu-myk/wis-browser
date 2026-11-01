@@ -1,6 +1,6 @@
-# Vendored tao 0.35.2 (patched)
+# Vendored tao 0.37.2 (patched)
 
-Verbatim copy of tao 0.35.2 from crates.io, applied via `[patch.crates-io]`
+Verbatim copy of tao 0.37.2 from crates.io, applied via `[patch.crates-io]`
 in the workspace `Cargo.toml`, with one feature added and one macOS input fix.
 
 One addition beyond the verbatim crate: a `rustfmt.toml` (copied from the
