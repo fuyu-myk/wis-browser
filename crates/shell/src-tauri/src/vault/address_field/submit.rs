@@ -55,6 +55,8 @@ function countryCode(text) {
 function typedValues(fields) {
   var values = {};
   var lines = [];
+  var number = null;
+  var named = -1;
   var typedStreet = false;
   var typedPlace = false;
   var changed = false;
@@ -74,16 +76,24 @@ function typedValues(fields) {
     if (field.kind === 'country') text = countryCode(raw) || countryCode(text);
     if (field.kind === 'region' && list) values.regionCode = raw;
     if (!text) return;
-    var line = field.kind === 'street' || field.kind.indexOf('line') === 0;
+    var line = field.kind === 'street' || field.kind.indexOf('line') === 0 ||
+      field.kind === 'streetName';
     var mark = written && written.get(el);
     if (!mark || mark.value !== el.value) changed = true;
     if (typed.has(el)) {
       if (line) typedStreet = true;
       if (field.kind === 'city' || field.kind === 'postal') typedPlace = true;
     }
-    if (line) lines.push(text);
-    else if (!own(values, field.kind)) values[field.kind] = text;
+    if (field.kind === 'houseNumber') number = { text: text, first: named < 0, typed: typed.has(el) };
+    else if (line) {
+      if (field.kind === 'streetName') named = lines.length;
+      lines.push(text);
+    } else if (!own(values, field.kind)) values[field.kind] = text;
   });
+  if (number && named >= 0) {
+    lines[named] = number.first ? number.text + ' ' + lines[named] : lines[named] + ' ' + number.text;
+    if (number.typed) typedStreet = true;
+  }
   if (lines.length) values.street = lines.join('\n');
   return typedStreet && typedPlace && changed ? values : null;
 }

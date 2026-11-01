@@ -35,7 +35,7 @@ const LEAVE_EVENT: &str = "wis-address-leave";
 const PICK_EVENT: &str = "wis-address-pick";
 
 /// The kinds of fields `CLASSIFY_JS` knows.
-const KINDS: [&str; 14] = [
+const KINDS: [&str; 16] = [
     "name",
     "given",
     "family",
@@ -44,6 +44,8 @@ const KINDS: [&str; 14] = [
     "line1",
     "line2",
     "line3",
+    "streetName",
+    "houseNumber",
     "city",
     "region",
     "postal",
@@ -388,11 +390,18 @@ fn fill_script(offered: &Offered, address: &wis_core::vault::address::Address) -
         }
     }
 
+    let line1 = address.street_address.lines().next().unwrap_or("");
+    let (street_name, house_number) = reaches(&["houseNumber"])
+        .then(|| address.street_and_number())
+        .flatten()
+        .unwrap_or((line1, ""));
     let values = serde_json::json!({
         "given": keep(reaches(&["name", "given"]), &address.given_name),
         "family": keep(reaches(&["name", "family"]), &address.family_name),
         "organization": keep(reaches(&["organization"]), &address.organization),
         "street": keep(reaches(&["street", "line1", "line2", "line3"]), &address.street_address),
+        "streetName": keep(reaches(&["streetName"]), street_name),
+        "houseNumber": keep(reaches(&["houseNumber"]), house_number),
         "city": keep(reaches(&["city"]), &address.city),
         "region": keep(reaches(&["region"]), &address.region),
         "postal": keep(reaches(&["postal"]), &address.postal_code),
@@ -584,6 +593,35 @@ mod tests {
     }
 
     #[test]
+    fn a_street_and_house_number_pair_gets_the_first_line_split() {
+        let offered = Offered {
+            origin: "https://shop.example".into(),
+            form: Form::Address,
+            kinds: vec!["streetName", "houseNumber"],
+            token: TOKEN.into(),
+        };
+        let script = fill_script(&offered, &home());
+        assert!(script.contains(r#""streetName":"St James's Square""#));
+        assert!(script.contains(r#""houseNumber":"12""#));
+        assert!(script.contains(r#""street":"""#), "the lines stay out");
+
+        let street_only = Offered {
+            kinds: vec!["streetName"],
+            ..offered.clone()
+        };
+        let script = fill_script(&street_only, &home());
+        assert!(script.contains(r#""streetName":"12 St James's Square""#));
+
+        let unsplit = wis_core::vault::address::Address {
+            street_address: "Flat 3, Baker House\nLeeds Road".into(),
+            ..home()
+        };
+        let script = fill_script(&offered, &unsplit);
+        assert!(script.contains(r#""streetName":"Flat 3, Baker House""#));
+        assert!(script.contains(r#""houseNumber":"""#));
+    }
+
+    #[test]
     fn a_fill_takes_only_the_offer_the_card_showed() {
         let tab = "tab-test-take";
         let offer = |token: &str| Offered {
@@ -657,10 +695,19 @@ mod tests {
 
     #[test]
     fn a_report_lists_only_known_kinds_once_each() {
-        let listed = serde_json::json!(["postal", "city", "postal", "password", 7, "email"]);
+        let listed = serde_json::json!([
+            "postal",
+            "city",
+            "postal",
+            "password",
+            7,
+            "email",
+            "streetName",
+            "houseNumber"
+        ]);
         assert_eq!(
             known_kinds(Some(&listed), &KINDS),
-            vec!["postal", "city", "email"]
+            vec!["postal", "city", "email", "streetName", "houseNumber"]
         );
         assert!(known_kinds(None, &KINDS).is_empty());
         assert!(known_kinds(Some(&serde_json::json!("postal")), &KINDS).is_empty());

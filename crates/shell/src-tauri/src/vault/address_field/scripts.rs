@@ -24,7 +24,8 @@ var ADDRESS_KINDS = {
   'tel-national': 'tel',
   'email': 'email'
 };
-var PLACE_KINDS = ['street', 'line1', 'city', 'region', 'postal', 'country'];
+var PLACE_KINDS = ['street', 'line1', 'streetName', 'houseNumber', 'city', 'region', 'postal',
+  'country'];
 var INPUT_TYPES = { '': 1, text: 1, search: 2, tel: 4, number: 8, email: 16 };
 // The autofill field names that are not an address's.
 var OTHER_FIELDS = ['username', 'new-password', 'current-password', 'one-time-code',
@@ -390,6 +391,8 @@ try {
       case 'line1': return lines[0] || '';
       case 'line2': return lines[1] || '';
       case 'line3': return lines.slice(2).join(', ');
+      case 'streetName': return V.streetName;
+      case 'houseNumber': return V.houseNumber;
       case 'city': return V.city;
       case 'region': return V.region;
       case 'postal': return V.postal;

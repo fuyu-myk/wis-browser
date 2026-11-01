@@ -189,6 +189,93 @@ impl Address {
             .iter()
             .any(|whole| same_words(whole, name) || alphanumeric(whole).eq(alphanumeric(name)))
     }
+
+    /// The first street line as its street name and house number. `None`
+    /// unless exactly one end of the line is a number, and none where a
+    /// flat or floor number may be the one closing it.
+    pub fn street_and_number(&self) -> Option<(&str, &str)> {
+        let line = self.street_address.lines().next()?.trim_matches(street_gap);
+        let (first, _) = line.char_indices().find(|&(_, c)| street_gap(c))?;
+        let (last, gap) = line.char_indices().rev().find(|&(_, c)| street_gap(c))?;
+        let head = &line[..first];
+        let tail = &line[last + gap.len_utf8()..];
+        let (street, number, crowded) = match (house_number(head), house_number(tail)) {
+            (false, true) => {
+                let street = without_number_sign(line[..last].trim_end_matches(street_gap));
+                (street, tail, street.contains(',') || numbered(street))
+            }
+            (true, false) => {
+                let street = line[first..].trim_start_matches(street_gap);
+                (
+                    street,
+                    head,
+                    street_words(street).next().is_some_and(number_like),
+                )
+            }
+            _ => return None,
+        };
+        (!crowded && street.chars().any(char::is_alphabetic)).then_some((street, number))
+    }
+}
+
+const NUMBER_SIGNS: [&str; 12] = [
+    "nº", "n°", "n.º", "no", "no.", "nr", "nr.", "n.", "nro.", "num.", "núm.", "número",
+];
+
+fn street_gap(c: char) -> bool {
+    c.is_whitespace() || c == ','
+}
+
+fn street_words(text: &str) -> impl DoubleEndedIterator<Item = &str> {
+    text.split(street_gap).filter(|word| !word.is_empty())
+}
+
+fn number_like(word: &str) -> bool {
+    word == "-" || house_number(word)
+}
+
+/// Whether `street` holds a number other than one opening a name.
+fn numbered(street: &str) -> bool {
+    let mut words = street_words(street).peekable();
+    while let Some(word) = words.next() {
+        let named = words
+            .peek()
+            .is_some_and(|next| NAME_JOINERS.contains(&next.to_lowercase().as_str()));
+        if number_like(word) && !named {
+            return true;
+        }
+    }
+    false
+}
+
+const NAME_JOINERS: [&str; 9] = ["de", "do", "da", "dos", "das", "del", "des", "di", "of"];
+
+/// "12", "5a", "221B", "10/12", "12-14" or "s/n" (no number), never an
+/// ordinal such as "3º".
+fn house_number(token: &str) -> bool {
+    let digits = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
+    let body = token
+        .strip_suffix(|c: char| c.is_alphabetic() && !matches!(c, 'º' | 'ª'))
+        .unwrap_or(token);
+    token.eq_ignore_ascii_case("s/n")
+        || match body.split_once(['-', '/']) {
+            Some((from, to)) => digits(from) && digits(to),
+            None => digits(body),
+        }
+}
+
+/// `street` less a closing "nº" or "Nr.".
+fn without_number_sign(street: &str) -> &str {
+    let start = street
+        .char_indices()
+        .rev()
+        .find(|&(_, c)| street_gap(c))
+        .map_or(0, |(at, c)| at + c.len_utf8());
+    if NUMBER_SIGNS.contains(&street[start..].to_lowercase().as_str()) {
+        street[..start].trim_end_matches(street_gap)
+    } else {
+        street
+    }
 }
 
 fn alphanumeric(text: &str) -> impl Iterator<Item = char> + '_ {
@@ -527,5 +614,69 @@ mod tests {
         assert!(!phone("").covers(&phone("n/a")));
         assert!(!phone("+1 212 555 0123").covers(&phone("312-555-0123")));
         assert!(phone("+1 212 555 0123").covers(&phone("(212) 555-0123")));
+    }
+
+    #[test]
+    fn the_first_street_line_splits_into_street_and_house_number() {
+        let split = |street: &str| {
+            Address {
+                street_address: street.into(),
+                ..Address::default()
+            }
+            .street_and_number()
+            .map(|(name, number)| (name.to_string(), number.to_string()))
+        };
+        let parts = |name: &str, number: &str| Some((name.to_string(), number.to_string()));
+        assert_eq!(split("Rua Augusta, 1500"), parts("Rua Augusta", "1500"));
+        assert_eq!(
+            split("Hauptstraße 5a\nHinterhaus"),
+            parts("Hauptstraße", "5a")
+        );
+        assert_eq!(split("1500 Main St"), parts("Main St", "1500"));
+        assert_eq!(split("221B Baker Street"), parts("Baker Street", "221B"));
+        assert_eq!(
+            split("Rua 25 de Março, 100"),
+            parts("Rua 25 de Março", "100")
+        );
+        assert_eq!(
+            split("ul. Marszałkowska 10/12"),
+            parts("ul. Marszałkowska", "10/12")
+        );
+        assert_eq!(split("Rua das Flores, nº 7"), parts("Rua das Flores", "7"));
+        assert_eq!(split("Rua das Flores, S/N"), parts("Rua das Flores", "S/N"));
+        assert_eq!(
+            split("Calle\u{a0}Mayor\u{3000}12"),
+            parts("Calle\u{a0}Mayor", "12")
+        );
+        assert_eq!(split("Rua X, n.º 7"), parts("Rua X", "7"));
+        assert_eq!(split(",Rua Augusta 1500,"), parts("Rua Augusta", "1500"));
+        assert_eq!(split("1500 Main St,"), parts("Main St", "1500"));
+        assert_eq!(split("Av. 9 de Julho 300"), parts("Av. 9 de Julho", "300"));
+        assert_eq!(
+            split("Straße des 17. Juni 135"),
+            parts("Straße des 17. Juni", "135")
+        );
+
+        for whole in [
+            "Flat 3, Baker House",
+            "12 Avenue 5",
+            "1500",
+            "nº 7",
+            "",
+            ",,,",
+            "Main St A1",
+            "Rua Augusta, 1500, apto 12",
+            "Rua Augusta 1500 apto 12",
+            "Calle Mayor 12, 3º",
+            "Calle Mayor, 3º",
+            "Hauptstraße 5, Wohnung 3",
+            "ul. Marszałkowska 10 m. 12",
+            "Rua X 12 - 14",
+            "12 - 14 Main St",
+            "Rua Augusta 1500 bloco B apto 12",
+            "Hauptstraße 5 Hinterhaus Whg 3",
+        ] {
+            assert_eq!(split(whole), None, "{whole}");
+        }
     }
 }

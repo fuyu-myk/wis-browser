@@ -60,6 +60,8 @@ const KIND_LABELS: Record<string, string> = {
   line1: 'street address',
   line2: 'street address',
   line3: 'street address',
+  streetName: 'street address',
+  houseNumber: 'street address',
   city: 'city',
   region: 'region',
   postal: 'postal code',

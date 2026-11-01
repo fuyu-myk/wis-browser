@@ -326,3 +326,51 @@ test('a card without an expiry is not reported', () => {
   env.submit()
   assert.deepEqual(cards(env), [])
 })
+
+test('a street and house number typed in two boxes are saved as one line', () => {
+  const words = (said) => ({
+    labels: [{ nodeType: 1, tagName: 'LABEL', childNodes: [{ nodeType: 3, nodeValue: said }] }],
+  })
+  const env = page()
+  const number = env.field('', '12', words('House number'))
+  const street = env.field('', 'St James Square', words('Street'))
+  env.field('', 'Flat 3', words('Address line 2'))
+  const city = env.field('', 'London', words('Town'))
+  env.start()
+  env.type(number, street, city)
+  env.submit()
+  assert.deepEqual(env.saves().map((body) => body.values), [
+    { street: '12 St James Square\nFlat 3', city: 'London' },
+  ])
+})
+
+test('a house number typed beside a street already there is saved with it', () => {
+  const words = (said) => ({
+    labels: [{ nodeType: 1, tagName: 'LABEL', childNodes: [{ nodeType: 3, nodeValue: said }] }],
+  })
+  const env = page()
+  env.field('', 'St James Square', words('Street'))
+  const number = env.field('', '12', words('House number'))
+  const city = env.field('', 'London', words('Town'))
+  env.start()
+  env.type(number, city)
+  env.submit()
+  assert.deepEqual(env.saves().map((body) => body.values), [
+    { street: 'St James Square 12', city: 'London' },
+  ])
+})
+
+test('a house number typed without a street is no address', () => {
+  const words = (said) => ({
+    labels: [{ nodeType: 1, tagName: 'LABEL', childNodes: [{ nodeType: 3, nodeValue: said }] }],
+  })
+  const env = page()
+  env.field('', '', words('Street'))
+  const number = env.field('', '12', words('House number'))
+  const city = env.field('', 'London', words('Town'))
+  env.field('', 'SW1Y 4JH', words('Postcode'))
+  env.start()
+  env.type(number, city)
+  env.submit()
+  assert.deepEqual(env.saves(), [])
+})

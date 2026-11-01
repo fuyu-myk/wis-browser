@@ -15,6 +15,7 @@ var GUESS_ORDER = [
   ['LAST_NAME_SECOND', null], ['LAST_NAME_FIRST', 'family'], ['FIRST_NAME', 'given'],
   ['LAST_NAME', 'family'], ['FULL_NAME', 'name']
 ];
+var STREET_PAIR = ['ADDRESS_HOME_STREET_NAME', 'ADDRESS_HOME_HOUSE_NUMBER'];
 var PHONE_PARTS = ['PHONE_AREA_CODE', 'PHONE_PREFIX', 'PHONE_SUFFIX'];
 var INLINE = ['B', 'STRONG', 'SPAN', 'FONT'];
 var SKIP_TEXT = ['INPUT', 'SELECT', 'TEXTAREA', 'OPTION', 'BUTTON', 'SCRIPT', 'STYLE'];
@@ -229,12 +230,48 @@ function maybeAddress(el) {
   var field = describe(el);
   return GUESS_ORDER.some(function (step) {
     return step[1] && matches(step[0], field);
-  }) || matches('ADDRESS_LINE_2', field);
+  }) || matches('ADDRESS_LINE_2', field) || STREET_PAIR.some(function (key) {
+    return matches(key, field);
+  });
 }
 
 // Whether `field`, right after a postal code, is its ZIP+4 box.
 function zipTail(field) {
   return matches('ZIP_4', field) || (field.short && (field.bare || matches('ZIP_CODE', field)));
+}
+
+// A street name box beside a house number box, in either order, as Chromium
+// reads them. Neither may be read as something else first, bar a street, and
+// the number box is read by its own words, or by its name when it has none.
+function streetPairs(fields, carded) {
+  var parts = {};
+  var free = function (field) {
+    var kind = guessOne(field, carded);
+    return !kind || kind === 'line1';
+  };
+  var numbered = function (field) {
+    var said = field.label || field.placeholder
+      ? { type: field.type, label: field.label, placeholder: field.placeholder, name: '' }
+      : field;
+    return matches(STREET_PAIR[1], said);
+  };
+  for (var i = 0; i + 1 < fields.length; i++) {
+    var a = fields[i];
+    var b = fields[i + 1];
+    var kinds = ['streetName', 'houseNumber'];
+    var named = matches(STREET_PAIR[0], a) && numbered(b);
+    if (!named && numbered(a) && matches(STREET_PAIR[0], b)) {
+      kinds = ['houseNumber', 'streetName'];
+      named = true;
+    }
+    var street = kinds[0] === 'streetName' ? a : b;
+    var number = street === a ? b : a;
+    if (!named || !free(street) || !free(number)) continue;
+    parts[i] = kinds[0];
+    parts[i + 1] = kinds[1];
+    i++;
+  }
+  return parts;
 }
 
 // The kinds of `controls`, in page order. A phone split over adjacent boxes,
@@ -243,21 +280,23 @@ function zipTail(field) {
 function guessKinds(controls, carded) {
   var fields = controls.map(describe);
   carded = carded || fields.some(function (field) { return matches('CREDIT_CARD_NUMBER', field); });
+  var pairs = streetPairs(fields, carded);
   var out = [];
   var seen = {};
   var section = 1;
   var last = '';
   fields.forEach(function (field, i) {
-    if (last === 'postal' && zipTail(field)) {
+    if (!own(pairs, i) && last === 'postal' && zipTail(field)) {
       last = 'zip4';
       return;
     }
     var kind;
-    if (last === 'line1' && matches('ADDRESS_LINE_2', field)) kind = 'line2';
+    if (own(pairs, i)) kind = pairs[i];
+    else if (last === 'line1' && matches('ADDRESS_LINE_2', field)) kind = 'line2';
     else if (last === 'line2' && matches('ADDRESS_LINE_EXTRA', field)) kind = 'line3';
     else kind = guessOne(field, carded);
     var again = kind === last && (kind === 'email' || kind === 'tel');
-    last = kind || '';
+    last = own(pairs, i) ? 'line1' : kind || '';
     if (!kind) return;
     if (own(seen, kind) && !again) {
       section += 1;

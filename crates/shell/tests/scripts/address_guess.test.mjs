@@ -452,3 +452,109 @@ test('a form read from words is filled like a tagged one', () => {
     ['Ada', 'Lovelace', '12 St James Square', 'Flat 3', 'London', 'SW1Y 4JH'],
   )
 })
+
+test('a street box beside a house-number box is read as the pair, and filled split', () => {
+  const fields = [
+    control({ words: 'Rua' }),
+    control({ words: 'Número' }),
+    control({ words: 'Complemento' }),
+    control({ words: 'Cidade' }),
+    control({ words: 'Estado' }),
+    control({ words: 'CEP' }),
+  ]
+  const env = page(fields, { lang: 'pt-BR' })
+  assert.deepEqual(
+    fields.map((el) => env.kindOf(el)),
+    ['streetName', 'houseNumber', 'line2', 'city', 'region', 'postal'],
+  )
+  for (const box of fields.slice(0, 2)) {
+    assert.deepEqual(kinds(env, box), ['streetName', 'houseNumber', 'line2', 'city', 'region', 'postal'])
+  }
+  env.run('var ORIGIN = location.origin; var TOKEN = "offer-1";\n' + FILL, {
+    V: {
+      street: 'Rua Augusta 1500\nApto 42',
+      streetName: 'Rua Augusta',
+      houseNumber: '1500',
+      city: 'São Paulo',
+      region: 'SP',
+      postal: '01304-001',
+    },
+  })
+  assert.deepEqual(
+    fields.map((el) => el.value),
+    ['Rua Augusta', '1500', 'Apto 42', 'São Paulo', 'SP', '01304-001'],
+  )
+
+  const uk = [
+    control({ words: 'House number' }),
+    control({ words: 'Street' }),
+    control({ words: 'Town' }),
+    control({ words: 'Postcode' }),
+  ]
+  const british = page(uk)
+  assert.deepEqual(
+    uk.map((el) => british.kindOf(el)),
+    ['houseNumber', 'streetName', 'city', 'postal'],
+  )
+})
+
+test('a house number alone, or a phone beside a street, is not read as the pair', () => {
+  const lone = [control({ words: 'CEP' }), control({ words: 'Número' }), control({ words: 'Cidade' })]
+  const env = page(lone, { lang: 'pt-BR' })
+  assert.deepEqual(
+    lone.map((el) => env.kindOf(el)),
+    ['postal', null, 'city'],
+  )
+
+  const phoned = [
+    control({ words: 'Street' }),
+    control({ type: 'tel', words: 'Phone', attrs: { name: 'number' } }),
+    control({ words: 'City' }),
+    control({ words: 'Postcode' }),
+  ]
+  const english = page(phoned)
+  assert.deepEqual(
+    phoned.map((el) => english.kindOf(el)),
+    ['line1', 'tel', 'city', 'postal'],
+  )
+})
+
+test('a box named a number, a card number or a quantity is no house number beside a street', () => {
+  const carded = [
+    control({ words: 'Street' }),
+    control({ words: 'Card number', attrs: { name: 'number' } }),
+    control({ words: 'Expiry date' }),
+    control({ words: 'City' }),
+  ]
+  const shop = page(carded)
+  assert.deepEqual(carded.slice(0, 2).map((el) => shop.kindOf(el)), ['line1', null])
+
+  const named = [
+    control({ words: 'Street address' }),
+    control({ words: 'Gift code', attrs: { name: 'number' } }),
+    control({ words: 'City' }),
+    control({ words: 'Postcode' }),
+  ]
+  const gift = page(named)
+  assert.deepEqual(named.map((el) => gift.kindOf(el)), ['line1', null, 'city', 'postal'])
+
+  const bare = [
+    control({ words: 'Street' }),
+    control({ attrs: { name: 'house_number' } }),
+    control({ words: 'City' }),
+  ]
+  const unlabelled = page(bare)
+  assert.deepEqual(bare.map((el) => unlabelled.kindOf(el)), ['streetName', 'houseNumber', 'city'])
+
+  const placeheld = [
+    control({ words: 'Rua' }),
+    control({ attrs: { placeholder: 'Número' } }),
+    control({ words: 'Cidade' }),
+  ]
+  const hinted = page(placeheld, { lang: 'pt-BR' })
+  assert.deepEqual(placeheld.map((el) => hinted.kindOf(el)), ['streetName', 'houseNumber', 'city'])
+
+  const both = [control({ words: 'Street name' }), control({ words: 'Street number' }), control({ words: 'City' })]
+  const spelled = page(both)
+  assert.deepEqual(both.map((el) => spelled.kindOf(el)), ['streetName', 'houseNumber', 'city'])
+})
