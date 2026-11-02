@@ -10,6 +10,7 @@ pub(crate) mod preferences;
 pub(crate) mod print;
 pub(crate) mod print_export;
 pub(crate) mod reader;
+pub(crate) mod save_url;
 pub(crate) mod screenshot;
 pub(crate) mod selection_color;
 pub(crate) mod source;

@@ -20,6 +20,9 @@ pub use class::wry_web_view::WryWebView;
 
 // WIS patch: cancel-by-path for in-flight downloads (see WIS-PATCH.md).
 pub use download::cancel_download_to;
+// WIS patch: the embedder starts a download in a web view (see WIS-PATCH.md).
+#[cfg(target_os = "macos")]
+pub use download::start_download;
 
 // WIS patch: side channel exposing the expected byte count of the download
 // whose `started` handler is currently executing on this thread (the handler

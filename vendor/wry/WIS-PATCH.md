@@ -572,6 +572,28 @@ Linux workspace (one context per data directory) already broke:
   later download failed (upstream since 0.57.1, wry#1893).
   `register_download_handler` takes the webview.
 
+## Twentieth patch: the embedder can start a download (macOS) (Wis-original)
+
+wry hands its download delegate only to downloads a navigation turns into,
+so a download the embedder starts itself (WebKit's
+`startDownloadUsingRequest:completionHandler:`) would have no delegate, and
+its destination, progress, cancel and finish would never reach the shell.
+
+- `src/wkwebview/download.rs`: `wry::start_download(webview, url, started)`
+  finds the web view's `WryNavigationDelegate` (`navigationDelegate`,
+  downcast), starts the download and, in the completion handler, gives it that
+  delegate's `download_delegate`, the one `navigation_download_action` uses.
+  The download then runs through `download_policy` like any other, so the
+  expected-size and cancel patches apply to it too. The handler also passes
+  `started` the `originalRequest` URL, the string the download is reported
+  under: `NSURL` re-encodes characters such as `[ ] | ^` that `url::Url`
+  leaves alone, so the embedder cannot rebuild it. WebKit runs the handler
+  before it asks for a destination. Main thread only.
+
+Removal checklist: once wry exposes a way to start a download, drop
+`start_download` and its re-exports, and move `pages/save_url.rs` onto the
+upstream API.
+
 ## Edition 2024 (wry 0.57)
 
 wry builds as edition 2024, so the patches keep the unsafe operations of their

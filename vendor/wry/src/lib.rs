@@ -410,6 +410,8 @@ pub use wkwebview::{
   set_page_first_menu_hook, set_server_trust_evaluator, set_webpage_preferences_hook,
   take_last_page_load_error, PrintMargin, PrintOptions, WryWebView,
 };
+#[cfg(target_os = "macos")]
+pub use wkwebview::start_download;
 
 #[cfg(target_os = "windows")]
 pub(crate) mod webview2;

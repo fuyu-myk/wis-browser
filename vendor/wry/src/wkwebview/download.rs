@@ -1,6 +1,12 @@
+#[cfg(target_os = "macos")]
+use std::ptr::NonNull;
 use std::{cell::RefCell, env::current_dir, ptr::null_mut};
 
+#[cfg(target_os = "macos")]
+use objc2::runtime::AnyObject;
 use objc2::{DeclaredClass, Message, rc::Retained, runtime::ProtocolObject};
+#[cfg(target_os = "macos")]
+use objc2_foundation::NSURLRequest;
 use objc2_foundation::{NSData, NSError, NSString, NSURL, NSURLResponse};
 use objc2_web_kit::{WKDownload, WKNavigationAction, WKNavigationResponse};
 
@@ -80,6 +86,55 @@ pub(crate) fn navigation_download_response(
       download.setDelegate(Some(proto_delegate));
     }
   }
+}
+
+/// WIS patch: download `url` in `webview`'s own session, through the download
+/// delegate wry gave that web view, so the embedder's handlers pick the
+/// destination and hear of the finish as for any other download. `started`
+/// gets the URL the download will be reported under, before its destination
+/// is asked for. Main thread only. False when the URL does not parse or
+/// `webview` has no wry download delegate. See WIS-PATCH.md.
+#[cfg(target_os = "macos")]
+pub fn start_download(
+  webview: &WKWebView,
+  url: &str,
+  started: impl FnOnce(String) + 'static,
+) -> bool {
+  // SAFETY: main thread, per this function's contract; a plain getter.
+  let delegate = unsafe { webview.navigationDelegate() }.and_then(|navigation| {
+    let navigation: &AnyObject = (*navigation).as_ref();
+    navigation
+      .downcast_ref::<WryNavigationDelegate>()?
+      .ivars()
+      .download_delegate
+      .clone()
+  });
+  let Some(delegate) = delegate else {
+    return false;
+  };
+  let Some(url) = NSURL::URLWithString(&NSString::from_str(url)) else {
+    return false;
+  };
+  let request = NSURLRequest::requestWithURL(&url);
+  let started = std::cell::Cell::new(Some(started));
+  let handler = block2::RcBlock::new(move |download: NonNull<WKDownload>| {
+    // SAFETY: WebKit calls this on the main thread with the new download,
+    // before it asks the delegate for a destination.
+    let reported = unsafe {
+      let download = download.as_ref();
+      download.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+      download
+        .originalRequest()
+        .and_then(|request| request.URL())
+        .and_then(|url| url.absoluteString())
+    };
+    if let (Some(started), Some(reported)) = (started.take(), reported) {
+      started(reported.to_string());
+    }
+  });
+  // SAFETY: main thread; WebKit copies the block and the request.
+  unsafe { webview.startDownloadUsingRequest_completionHandler(&request, &handler) };
+  true
 }
 
 pub(crate) fn download_policy(

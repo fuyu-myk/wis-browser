@@ -409,7 +409,8 @@ fn on_requested(app: &AppHandle, url: &Url, destination: &mut PathBuf, private: 
         .expect("download_prefs poisoned")
         .clone();
 
-    let path = if prefs.ask_where {
+    let save_as = crate::pages::save_url::take_mark(url).is_some();
+    let path = if prefs.ask_where || save_as {
         match pick_destination(app, &state, &prefs, &sanitized, &dir) {
             Some(path) => path,
             None => return false,
@@ -635,6 +636,7 @@ fn on_finished(app: &AppHandle, url: &Url, success: bool) {
             .find(|item| item.status == DownloadStatus::InProgress && item.url == url.as_str())
         else {
             log::warn!("finish event for untracked download: {url}");
+            crate::pages::save_url::finished_untracked(app, url, success);
             return;
         };
 

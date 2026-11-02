@@ -688,6 +688,7 @@ pub fn run() {
             pages::source::capture_page_source,
             pages::source::page_source,
             pages::image::save_image_as,
+            pages::save_url::save_url_as,
             pages::screenshot::save_last_screenshot,
             chrome::peek::open_peek,
             chrome::peek::set_peek_bounds,

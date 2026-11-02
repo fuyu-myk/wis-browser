@@ -999,6 +999,11 @@ export const commands = {
     return invoke('copy_image', { workspaceId, src })
   },
 
+  /** Download `url` in the tab's own session, asking where it goes. */
+  async saveUrlAs(tabId: TabId, url: string): Promise<void> {
+    return invoke('save_url_as', { tabId, url })
+  },
+
   /**
    * Have the engine write a complete single-file archive of a tab's loaded
    * page, wherever the save panel points. `null` when it is cancelled.

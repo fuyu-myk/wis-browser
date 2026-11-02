@@ -346,6 +346,19 @@ function useRows(
           label: 'Open link in new private window',
           run: openInWindow(followed, true),
         },
+        ...(target.kind === 'page'
+          ? [
+              {
+                id: 'link-save',
+                label: 'Save link as…',
+                run: after(() =>
+                  commands
+                    .saveUrlAs(target.tabId, link)
+                    .catch(reportFailure('Saving the link failed')),
+                ),
+              },
+            ]
+          : []),
         {
           id: 'link-copy',
           label: 'Copy link address',
