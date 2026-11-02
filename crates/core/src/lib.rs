@@ -38,8 +38,10 @@ pub use error::{WisError, WisResult};
 pub use ids::{
     CanvasId, DownloadId, TabFolderId, TabId, ThemeId, UserscriptId, WidgetId, WorkspaceId,
 };
+pub use library::chain_cookies::ChainCookies;
 pub use library::download::{
-    sanitize_filename, unique_filename, DownloadStatus, FALLBACK_FILENAME,
+    sanitize_filename, suggested_filename, unique_filename, zone_identifier, DownloadStatus,
+    FALLBACK_FILENAME,
 };
 pub use library::netscape::{parse_netscape, to_netscape, ParsedBookmark, ParsedBookmarks};
 pub use navigation::link_clean::{clean_followed_link, clean_link, CleanedLink};

@@ -2,8 +2,8 @@
 //!
 //! The tab's own engine downloads the URL in its session, so the request
 //! carries the site's cookies, streams to disk and is tracked like any other
-//! download. The download is marked as it starts, under the URL the engine
-//! reports it by.
+//! download. WebView2 cannot start a download, so on Windows Wis fetches the
+//! URL itself in the tab's session (`fetch_win`).
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -12,6 +12,11 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use url::Url;
 use wis_core::{TabId, WisError, WisResult};
+
+#[cfg(windows)]
+mod fetch_win;
+#[cfg(windows)]
+use fetch_win::start;
 
 const MARK_TTL: Duration = Duration::from_secs(120);
 /// Bounds what a burst of saves that never started can leave behind.
@@ -116,9 +121,7 @@ fn web_url(raw: &str) -> WisResult<Url> {
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SaveTarget {
-    /// A link, cleaned as following it would be.
     Link,
-    /// An image, video or audio source, as the page loaded it.
     Source,
 }
 
@@ -143,13 +146,13 @@ pub async fn save_url_as(
     let webview = app
         .get_webview(&format!("tab-{}", tab_id.as_uuid()))
         .ok_or(WisError::TabNotFound { id: tab_id })?;
-    let window = webview.window().label().to_string();
 
-    start(&webview, url, window).await
+    start(&app, tab_id, &webview, url).await
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-async fn start(webview: &tauri::Webview, url: Url, window: String) -> WisResult<()> {
+async fn start(_: &AppHandle, _: TabId, webview: &tauri::Webview, url: Url) -> WisResult<()> {
+    let window = webview.window().label().to_string();
     let (tx, rx) = tokio::sync::oneshot::channel();
     webview
         .with_webview(move |w| {
@@ -181,11 +184,6 @@ async fn start(webview: &tauri::Webview, url: Url, window: String) -> WisResult<
         Ok(true) => Ok(()),
         _ => Err(invalid("the download could not start")),
     }
-}
-
-#[cfg(windows)]
-async fn start(_webview: &tauri::Webview, _url: Url, _window: String) -> WisResult<()> {
-    Err(invalid("Save as isn't available on Windows yet"))
 }
 
 #[cfg(test)]

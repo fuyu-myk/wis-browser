@@ -399,7 +399,7 @@ function useRows(
     const image = target.imageSrc && isWebUrl(target.imageSrc) ? target.imageSrc : null
     if (image) {
       const saveImage: () => Promise<unknown> =
-        target.kind === 'page' && currentPlatform() !== 'windows'
+        target.kind === 'page'
           ? () => commands.saveUrlAs(target.tabId, image, 'source')
           : () => commands.saveImageAs(target.workspaceId, image)
       rows.push(

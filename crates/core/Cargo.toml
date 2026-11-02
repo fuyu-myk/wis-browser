@@ -18,3 +18,4 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 zeroize = { workspace = true, features = ["serde"] }
 url = { workspace = true }
+percent-encoding = { workspace = true }

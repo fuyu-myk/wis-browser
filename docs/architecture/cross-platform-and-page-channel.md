@@ -56,7 +56,7 @@ Also wired: `wisPageText` (all three platforms), the AI page-text channel (`page
 
 - Clipboard copy (`system/clipboard.rs`): `NSPasteboard` on macOS, `arboard` on Windows/Linux, text-only.
 - File dialogs (`system/panels.rs`): `NSSave/OpenPanel` on macOS, `rfd` on Windows/Linux, all shown on the main thread via `dispatch`; the ask-where save panel and wallpaper picker call `rfd` directly (already inside a main-thread callback, so no re-`dispatch`).
-- Download open/reveal (`data/downloads.rs`): `open`/`open -R` (macOS), `xdg-open` (Linux), `explorer`/`explorer /select,` (Windows).
+- Download open/reveal (`data/downloads/os.rs`): `open`/`open -R` (macOS), `xdg-open` (Linux), `explorer`/`explorer /select,` (Windows).
 - Split-pane click-to-focus (`chrome/pane_focus.rs`): app-wide `NSEvent` monitor / per-controller `add_GotFocus` gated on a live `GetKeyState(VK_LBUTTON)` press.
 - Find-in-page (`pages/find.rs`): WebKit find SPI (`_WKFindDelegate`, retained as an associated object; reports total + index over `wis-find-result`) on macOS; a JS `CSS.highlights` engine over `wisFindResult` on Windows (top-document, ASCII-only case folding to keep offsets length-stable); WebKitGTK `FindController` on Linux, which exposes no current-match index so it reports the total count only.
 - Print / Save-as-PDF (`pages/print.rs`): WKWebView `printOperationWithPrintInfo:` / `ICoreWebView2_16::ShowPrintUI` / WebKitGTK `webkit_print_operation_run_dialog`.

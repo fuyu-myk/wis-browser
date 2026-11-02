@@ -109,8 +109,8 @@ test('only an in-progress download counts as in progress', () => {
   )
 })
 
-test('the change event is the one data/downloads.rs emits', () => {
-  const rust = readSource('src-tauri/src/data/downloads.rs')
+test('the change event is the one data/downloads/mod.rs emits', () => {
+  const rust = readSource('src-tauri/src/data/downloads/mod.rs')
   assert.ok(rust.includes(`pub const DOWNLOADS_CHANGED_EVENT: &str = "${dl.DOWNLOADS_CHANGED_EVENT}";`))
 })
 

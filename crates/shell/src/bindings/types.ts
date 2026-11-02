@@ -1048,7 +1048,7 @@ export interface SiteDataEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Downloads (mirror of `data/downloads.rs` `DownloadItem`, camelCase serde).
+// Downloads (mirror of `data/downloads/mod.rs` `DownloadItem`, camelCase serde).
 // ---------------------------------------------------------------------------
 
 export type DownloadStatus = 'in_progress' | 'completed' | 'failed' | 'cancelled'

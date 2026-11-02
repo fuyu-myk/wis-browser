@@ -2,6 +2,7 @@
 
 pub mod backup;
 pub mod bookmark_tree;
+pub mod chain_cookies;
 pub mod download;
 pub mod netscape;
 pub mod usage;

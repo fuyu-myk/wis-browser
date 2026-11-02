@@ -33,6 +33,8 @@ use wis_storage::DownloadRecord;
 
 use crate::state::AppState;
 
+mod os;
+
 /// Sync mirror of the download-related settings, readable from wry's
 /// synchronous main-thread download callback (which cannot await the async
 /// `BrowserState` lock without risking a deadlock against commands that
@@ -74,14 +76,18 @@ pub struct DownloadItem {
     pub path: PathBuf,
     pub received_bytes: u64,
     /// Expected total from the response's Content-Length; `None` when the
-    /// server sent no length (chunked) or off macOS. Drives the determinate
-    /// pie in the chrome.
+    /// server sent no length (chunked), or for an engine download off macOS.
+    /// Drives the determinate pie in the chrome.
     pub total_bytes: Option<u64>,
     pub status: DownloadStatus,
     /// Requested from an ephemeral (private) context: still saved to disk at
     /// the user's request, but never recorded in persistent history.
     pub private: bool,
     pub started_at_ms: u64,
+    /// Fetched by Wis rather than written by the engine, so no engine event
+    /// may finish it.
+    #[serde(skip)]
+    pub fetched: bool,
 }
 
 /// Wire download handling onto a remote webview builder. `private` marks
@@ -242,7 +248,7 @@ pub async fn open_download(state: State<'_, AppState>, id: DownloadId) -> WisRes
     let Some(valid) = validate_on_disk(&path)? else {
         return Ok(false);
     };
-    spawn_open(open_path_command(&valid))?;
+    spawn_open(os::open_path_command(&valid))?;
 
     Ok(true)
 }
@@ -257,59 +263,9 @@ pub async fn reveal_download(state: State<'_, AppState>, id: DownloadId) -> WisR
     let Some(valid) = validate_on_disk(&path)? else {
         return Ok(false);
     };
-    spawn_open(reveal_path_command(&valid))?;
+    spawn_open(os::reveal_path_command(&valid))?;
 
     Ok(true)
-}
-
-/// Open a file with its default application, per OS.
-#[cfg(target_os = "macos")]
-fn open_path_command(path: &Path) -> std::process::Command {
-    let mut cmd = std::process::Command::new("open");
-    cmd.arg(path);
-    cmd
-}
-
-#[cfg(target_os = "linux")]
-fn open_path_command(path: &Path) -> std::process::Command {
-    let mut cmd = std::process::Command::new("xdg-open");
-    cmd.arg(path);
-    cmd
-}
-
-#[cfg(windows)]
-fn open_path_command(path: &Path) -> std::process::Command {
-    // Simplify the canonicalized (verbatim `\\?\`) `path`.
-    let path = dunce::simplified(path);
-    let mut cmd = std::process::Command::new("cmd");
-    cmd.args(["/C", "start", ""]).arg(path);
-    cmd
-}
-
-/// Reveal a file in the OS file manager, selecting it where the platform can.
-#[cfg(target_os = "macos")]
-fn reveal_path_command(path: &Path) -> std::process::Command {
-    let mut cmd = std::process::Command::new("open");
-    cmd.arg("-R").arg(path);
-    cmd
-}
-
-#[cfg(target_os = "linux")]
-fn reveal_path_command(path: &Path) -> std::process::Command {
-    let mut cmd = std::process::Command::new("xdg-open");
-    cmd.arg(path.parent().unwrap_or(path));
-    cmd
-}
-
-#[cfg(windows)]
-fn reveal_path_command(path: &Path) -> std::process::Command {
-    // Simplify the canonicalized `path`.
-    let path = dunce::simplified(path);
-    let mut cmd = std::process::Command::new("explorer");
-    let mut arg = std::ffi::OsString::from("/select,");
-    arg.push(path);
-    cmd.arg(arg);
-    cmd
 }
 
 /// The recorded path of a *completed* download, from the session list or
@@ -446,35 +402,89 @@ fn on_requested(app: &AppHandle, url: &Url, destination: &mut PathBuf, private: 
     #[cfg(not(target_os = "macos"))]
     let total_bytes = None;
 
-    let id = {
-        let mut items = state.downloads.lock().expect("downloads poisoned");
-        let item = DownloadItem {
-            id: DownloadId::new(),
-            url: url.to_string(),
-            filename: path
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_else(|| wis_core::FALLBACK_FILENAME.to_string()),
-            path: path.clone(),
-            received_bytes: 0,
-            total_bytes,
-            status: DownloadStatus::InProgress,
-            private,
-            started_at_ms: now_ms(),
-        };
-        let id = item.id;
-        log::info!("download started: {url} -> {}", path.display());
-
-        items.push(item);
-        trim_terminal(&mut items);
-        *destination = path;
-
-        id
-    };
-
-    emit_changed(app);
+    *destination = path.clone();
+    let id = track(app, url, path, total_bytes, private, false);
     spawn_progress_poller(app.clone(), id);
     true
+}
+
+/// List a download writing to `path` as in progress.
+pub(crate) fn track(
+    app: &AppHandle,
+    url: &Url,
+    path: PathBuf,
+    total_bytes: Option<u64>,
+    private: bool,
+    fetched: bool,
+) -> DownloadId {
+    let item = DownloadItem {
+        id: DownloadId::new(),
+        url: url.to_string(),
+        filename: path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| wis_core::FALLBACK_FILENAME.to_string()),
+        path,
+        received_bytes: 0,
+        total_bytes,
+        status: DownloadStatus::InProgress,
+        private,
+        started_at_ms: now_ms(),
+        fetched,
+    };
+    let id = item.id;
+    log::info!("download started: {url} -> {}", item.path.display());
+    {
+        let state = app.state::<AppState>();
+        let mut items = state.downloads.lock().expect("downloads poisoned");
+        items.push(item);
+        trim_terminal(&mut items);
+    }
+
+    emit_changed(app);
+    id
+}
+
+/// Record how much of an in-flight download has arrived.
+#[cfg(windows)]
+pub(crate) fn progress(app: &AppHandle, id: DownloadId, received: u64) {
+    {
+        let state = app.state::<AppState>();
+        let mut items = state.downloads.lock().expect("downloads poisoned");
+        let Some(item) = items
+            .iter_mut()
+            .find(|item| item.id == id && item.status == DownloadStatus::InProgress)
+        else {
+            return;
+        };
+        item.received_bytes = received;
+    }
+
+    emit_changed(app);
+}
+
+/// Ask where a Save as download goes, starting in the remembered directory.
+/// `None` when the user cancels. Blocks on the panel, so never call it on
+/// the async runtime.
+#[cfg(windows)]
+pub(crate) fn ask_save_as(app: &AppHandle, suggested: &str) -> Option<PathBuf> {
+    let dir = downloads_dir(app)
+        .map_err(|err| log::warn!("save as denied, no downloads dir: {err}"))
+        .ok()?;
+    let state = app.state::<AppState>();
+    let prefs = state
+        .download_prefs
+        .lock()
+        .expect("download_prefs poisoned")
+        .clone();
+
+    pick_destination(
+        app,
+        &state,
+        &prefs,
+        &wis_core::sanitize_filename(suggested),
+        &dir,
+    )
 }
 
 /// Ask-where flow: run the native save panel (starting in the remembered
@@ -492,7 +502,7 @@ fn pick_destination(
         .as_deref()
         .filter(|dir| dir.is_dir())
         .unwrap_or(default_dir);
-    let Some(chosen) = ask_destination(suggested, start_dir) else {
+    let Some(chosen) = os::ask_destination(suggested, start_dir) else {
         log::info!("download cancelled in the save panel");
         return None;
     };
@@ -540,73 +550,6 @@ fn persist_last_dir(app: &AppHandle, dir: PathBuf) {
     });
 }
 
-/// Native save panel on the main thread (wry's download callback runs there;
-/// `runModal` spins a nested event loop until the user decides). Returns the
-/// chosen full path, or `None` on cancel. Downloads are macOS-only territory
-/// for this panel; other platforms behave as a cancel.
-#[cfg(target_os = "macos")]
-fn ask_destination(suggested: &str, start_dir: &Path) -> Option<PathBuf> {
-    use objc2::runtime::AnyObject;
-    use objc2::{class, msg_send};
-    use std::ffi::{CStr, CString};
-    use std::os::raw::c_char;
-
-    let c_dir = CString::new(start_dir.to_str()?).ok()?;
-    let c_name = CString::new(suggested).ok()?;
-
-    unsafe {
-        let panel: *mut AnyObject = msg_send![class!(NSSavePanel), savePanel];
-        if panel.is_null() {
-            return None;
-        }
-
-        let dir_string: *mut AnyObject =
-            msg_send![class!(NSString), stringWithUTF8String: c_dir.as_ptr()];
-        let dir_url: *mut AnyObject =
-            msg_send![class!(NSURL), fileURLWithPath: dir_string, isDirectory: true];
-        if !dir_url.is_null() {
-            let _: () = msg_send![panel, setDirectoryURL: dir_url];
-        }
-
-        let name_string: *mut AnyObject =
-            msg_send![class!(NSString), stringWithUTF8String: c_name.as_ptr()];
-        let _: () = msg_send![panel, setNameFieldStringValue: name_string];
-        let _: () = msg_send![panel, setCanCreateDirectories: true];
-
-        // NSModalResponseOK == 1.
-        let response: isize = msg_send![panel, runModal];
-        if response != 1 {
-            return None;
-        }
-        let url: *mut AnyObject = msg_send![panel, URL];
-        if url.is_null() {
-            return None;
-        }
-        let path_string: *mut AnyObject = msg_send![url, path];
-        if path_string.is_null() {
-            return None;
-        }
-        let utf8: *const c_char = msg_send![path_string, UTF8String];
-        if utf8.is_null() {
-            return None;
-        }
-
-        Some(PathBuf::from(
-            CStr::from_ptr(utf8).to_string_lossy().into_owned(),
-        ))
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn ask_destination(suggested: &str, start_dir: &Path) -> Option<PathBuf> {
-    let mut dialog = rfd::FileDialog::new().set_file_name(suggested);
-    if start_dir.is_dir() {
-        dialog = dialog.set_directory(start_dir);
-    }
-
-    dialog.save_file()
-}
-
 impl DownloadItem {
     /// A persisted history row, viewed as a (completed) list item.
     fn from_record(record: DownloadRecord) -> Self {
@@ -620,31 +563,49 @@ impl DownloadItem {
             status: DownloadStatus::Completed,
             private: false,
             started_at_ms: record.completed_at.timestamp_millis().max(0) as u64,
+            fetched: false,
         }
     }
 }
 
-/// Mark the matching in-flight download finished and quarantine the file.
+/// Mark the matching in-flight download finished.
 fn on_finished(app: &AppHandle, url: &Url, success: bool) {
+    // macOS reports no path on finish, so match the oldest in-flight engine
+    // download of this URL.
+    let found = finish_where(
+        app,
+        |item| {
+            !item.fetched && item.status == DownloadStatus::InProgress && item.url == url.as_str()
+        },
+        success,
+    );
+    if !found {
+        log::warn!("finish event for untracked download: {url}");
+        crate::pages::save_url::finished_untracked(app, url, success);
+    }
+}
+
+/// End an in-flight download.
+#[cfg(windows)]
+pub(crate) fn finish(app: &AppHandle, id: DownloadId, success: bool) {
+    finish_where(app, |item| item.id == id, success);
+}
+
+/// End the first download `matches` picks, quarantining and recording it
+/// when it succeeded. `false` when none matches.
+fn finish_where(app: &AppHandle, matches: impl Fn(&DownloadItem) -> bool, success: bool) -> bool {
     let state = app.state::<AppState>();
     let completed = {
         let mut items = state.downloads.lock().expect("downloads poisoned");
-        // macOS reports no path on finish, so match the oldest in-flight
-        // download of this URL.
-        let Some(item) = items
-            .iter_mut()
-            .find(|item| item.status == DownloadStatus::InProgress && item.url == url.as_str())
-        else {
-            log::warn!("finish event for untracked download: {url}");
-            crate::pages::save_url::finished_untracked(app, url, success);
-            return;
+        let Some(item) = items.iter_mut().find(|item| matches(item)) else {
+            return false;
         };
 
         match item.status.finished(success) {
             Ok(next) => item.status = next,
             Err(err) => {
-                log::warn!("download {url}: {err}");
-                return;
+                log::warn!("download {}: {err}", item.url);
+                return true;
             }
         }
 
@@ -661,7 +622,7 @@ fn on_finished(app: &AppHandle, url: &Url, success: bool) {
     };
 
     if let Some(item) = completed {
-        if let Err(err) = set_quarantine(&item.path) {
+        if let Err(err) = os::set_quarantine(&item.path) {
             log::warn!("quarantine xattr on {} failed: {err}", item.path.display());
         }
         if !item.private {
@@ -670,6 +631,7 @@ fn on_finished(app: &AppHandle, url: &Url, success: bool) {
     }
 
     emit_changed(app);
+    true
 }
 
 /// Write a completed download's history row off the main thread. Private
@@ -757,42 +719,4 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
-}
-
-/// Tag a completed download with `com.apple.quarantine` so Gatekeeper treats
-/// it like any browser download. Field order: flags;hex-timestamp;agent;.
-#[cfg(target_os = "macos")]
-fn set_quarantine(path: &Path) -> std::io::Result<()> {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
-
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let value = format!("0081;{secs:08x};Wis;");
-    let cpath = CString::new(path.as_os_str().as_bytes())
-        .map_err(|_| std::io::Error::other("path contains NUL"))?;
-    let cname = CString::new("com.apple.quarantine").expect("static name has no NUL");
-    let rc = unsafe {
-        libc::setxattr(
-            cpath.as_ptr(),
-            cname.as_ptr(),
-            value.as_ptr().cast(),
-            value.len(),
-            0,
-            0,
-        )
-    };
-
-    if rc != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-
-    Ok(())
-}
-
-#[cfg(not(target_os = "macos"))]
-fn set_quarantine(_path: &Path) -> std::io::Result<()> {
-    Ok(())
 }
