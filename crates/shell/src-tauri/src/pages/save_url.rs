@@ -1,4 +1,4 @@
-//! "Save as" for a link under the page menu.
+//! "Save as" for a link, image, video or audio under the page menu.
 //!
 //! The tab's own engine downloads the URL in its session, so the request
 //! carries the site's cookies, streams to disk and is tracked like any other
@@ -112,11 +112,34 @@ fn web_url(raw: &str) -> WisResult<Url> {
     }
 }
 
-/// Download `url`, cleaned as following it would be, in the tab's own
-/// session, asking where it goes.
+/// What the page menu saves.
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveTarget {
+    /// A link, cleaned as following it would be.
+    Link,
+    /// An image, video or audio source, as the page loaded it.
+    Source,
+}
+
+fn saved_url(raw: &str, target: SaveTarget, clean: impl FnOnce(&str) -> String) -> WisResult<Url> {
+    match target {
+        SaveTarget::Link => web_url(&clean(raw)),
+        SaveTarget::Source => web_url(raw),
+    }
+}
+
+/// Download `url` in the tab's own session, asking where it goes.
 #[tauri::command]
-pub async fn save_url_as(app: AppHandle, tab_id: TabId, url: String) -> WisResult<()> {
-    let url = web_url(&crate::protection::clean_links::cleaned(&app, &url))?;
+pub async fn save_url_as(
+    app: AppHandle,
+    tab_id: TabId,
+    url: String,
+    target: SaveTarget,
+) -> WisResult<()> {
+    let url = saved_url(&url, target, |raw| {
+        crate::protection::clean_links::cleaned(&app, raw)
+    })?;
     let webview = app
         .get_webview(&format!("tab-{}", tab_id.as_uuid()))
         .ok_or(WisError::TabNotFound { id: tab_id })?;
@@ -162,7 +185,7 @@ async fn start(webview: &tauri::Webview, url: Url, window: String) -> WisResult<
 
 #[cfg(windows)]
 async fn start(_webview: &tauri::Webview, _url: Url, _window: String) -> WisResult<()> {
-    Err(invalid("saving links isn't available on Windows yet"))
+    Err(invalid("Save as isn't available on Windows yet"))
 }
 
 #[cfg(test)]
@@ -221,6 +244,33 @@ mod tests {
         let mut marks = marks_of(&urls, now);
         assert_eq!(marks.take(&url("0"), now), None);
         assert!(marks.take(&url(&MAX_MARKS.to_string()), now).is_some());
+    }
+
+    fn clean(href: &str) -> String {
+        wis_core::clean_followed_link(href).url
+    }
+
+    #[test]
+    fn a_link_is_saved_as_following_it_would_go() {
+        let raw = "https://example.com/a.zip?utm_source=feed";
+        let saved = saved_url(raw, SaveTarget::Link, clean);
+        assert_eq!(saved.unwrap().as_str(), "https://example.com/a.zip");
+    }
+
+    #[test]
+    fn a_source_is_saved_as_the_page_loaded_it() {
+        let raw = "https://cdn.example.com/a.png?utm_source=feed";
+        let saved = saved_url(raw, SaveTarget::Source, clean);
+        assert_eq!(saved.unwrap().as_str(), raw);
+    }
+
+    #[test]
+    fn the_target_is_named_as_the_chrome_sends_it() {
+        let parse = serde_json::from_str::<SaveTarget>;
+        assert!(matches!(parse("\"link\""), Ok(SaveTarget::Link)));
+        assert!(matches!(parse("\"source\""), Ok(SaveTarget::Source)));
+        assert!(parse("\"Source\"").is_err());
+        assert!(parse("\"other\"").is_err());
     }
 
     #[test]

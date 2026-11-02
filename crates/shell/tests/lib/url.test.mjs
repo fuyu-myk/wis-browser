@@ -10,6 +10,7 @@ import {
   HISTORY_URL,
   isChromeUrl,
   isSearchQuery,
+  isStreamPlaylist,
   isWebUrl,
   NEW_TAB_URL,
   normaliseUrl,
@@ -277,6 +278,25 @@ describe('link safety', () => {
     assert.equal(isChromeUrl(NEW_TAB_URL), true)
     assert.equal(isChromeUrl(SETTINGS_URL), true)
     assert.equal(isChromeUrl('https://about.com'), false)
+  })
+})
+
+describe('stream playlists', () => {
+  test('an HLS or DASH playlist is a stream, whatever its case or query', () => {
+    for (const href of ['https://cdn.example.com/live/master.m3u8', 'https://cdn.example.com/a/manifest.MPD?token=x']) {
+      assert.equal(isStreamPlaylist(href), true, href)
+    }
+  })
+
+  test('a media file or an unparseable source is not', () => {
+    for (const href of [
+      'https://cdn.example.com/a.mp4',
+      'https://cdn.example.com/m3u8/a.mp4',
+      'https://example.com/a.mp4?list=b.m3u8',
+      'not a url',
+    ]) {
+      assert.equal(isStreamPlaylist(href), false, href)
+    }
   })
 })
 

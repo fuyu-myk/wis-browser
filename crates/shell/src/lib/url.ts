@@ -179,6 +179,18 @@ export function isWebUrl(href: string): boolean {
   }
 }
 
+/**
+ * Whether a media source is an HLS or DASH playlist, which WebKit streams
+ * natively. Saving one saves the playlist, not the video.
+ */
+export function isStreamPlaylist(href: string): boolean {
+  try {
+    return /\.(m3u8|mpd)$/i.test(new URL(href).pathname)
+  } catch {
+    return false
+  }
+}
+
 /** Truthy when a tab's URL should not cause a native webview to be created. */
 export function isChromeUrl(url: string): boolean {
   return url.startsWith('about:')

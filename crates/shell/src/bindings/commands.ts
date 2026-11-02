@@ -999,9 +999,12 @@ export const commands = {
     return invoke('copy_image', { workspaceId, src })
   },
 
-  /** Download `url` in the tab's own session, asking where it goes. */
-  async saveUrlAs(tabId: TabId, url: string): Promise<void> {
-    return invoke('save_url_as', { tabId, url })
+  /**
+   * Download `url` in the tab's own session, asking where it goes. A link is
+   * cleaned as following it would be; a source is saved as the page loaded it.
+   */
+  async saveUrlAs(tabId: TabId, url: string, target: 'link' | 'source'): Promise<void> {
+    return invoke('save_url_as', { tabId, url, target })
   },
 
   /**

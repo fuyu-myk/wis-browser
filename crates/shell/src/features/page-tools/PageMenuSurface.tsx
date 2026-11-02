@@ -36,7 +36,7 @@ import { currentPlatform } from '@/lib/platform'
 import { useAiAvailable } from '@/features/ai/hooks/useAiAvailable'
 import { nextAccent } from '@/lib/accents'
 import { AI_ASK_EVENT } from '@/features/ai/lib/aiAsk'
-import { activeEngine, isWebUrl, sourceUrlFor } from '@/lib/url'
+import { activeEngine, isStreamPlaylist, isWebUrl, sourceUrlFor } from '@/lib/url'
 
 /** Kept off the window edges. */
 const MARGIN = 8
@@ -353,7 +353,7 @@ function useRows(
                 label: 'Save link as…',
                 run: after(() =>
                   commands
-                    .saveUrlAs(target.tabId, link)
+                    .saveUrlAs(target.tabId, link, 'link')
                     .catch(reportFailure('Saving the link failed')),
                 ),
               },
@@ -398,6 +398,10 @@ function useRows(
 
     const image = target.imageSrc && isWebUrl(target.imageSrc) ? target.imageSrc : null
     if (image) {
+      const saveImage: () => Promise<unknown> =
+        target.kind === 'page' && currentPlatform() !== 'windows'
+          ? () => commands.saveUrlAs(target.tabId, image, 'source')
+          : () => commands.saveImageAs(target.workspaceId, image)
       rows.push(
         {
           id: 'image-tab',
@@ -407,11 +411,7 @@ function useRows(
         {
           id: 'image-save',
           label: 'Save image as…',
-          run: after(() =>
-            commands
-              .saveImageAs(target.workspaceId, image)
-              .catch(reportFailure('Saving the image failed')),
-          ),
+          run: after(() => saveImage().catch(reportFailure('Saving the image failed'))),
         },
         {
           id: 'image-copy-image',
@@ -431,7 +431,6 @@ function useRows(
       )
     }
 
-    // Saving media is not offered; TODO: implement fetch URL entry point.
     const media =
       target.mediaSrc && isWebUrl(target.mediaSrc) && target.mediaKind ? target.mediaSrc : null
     if (media) {
@@ -442,6 +441,19 @@ function useRows(
           label: `Open ${noun} in new tab`,
           run: afterHere(() => commands.createRelatedTab(target.workspaceId, media)),
         },
+        ...(target.kind === 'page' && !isStreamPlaylist(media)
+          ? [
+              {
+                id: 'media-save',
+                label: `Save ${noun} as…`,
+                run: after(() =>
+                  commands
+                    .saveUrlAs(target.tabId, media, 'source')
+                    .catch(reportFailure(`Saving the ${noun} failed`)),
+                ),
+              },
+            ]
+          : []),
         {
           id: 'media-copy',
           label: `Copy ${noun} address`,
