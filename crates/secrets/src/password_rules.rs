@@ -2,8 +2,10 @@
 //!
 //! The attribute is how a site tells a password manager what it will accept.
 //! Only what decides a rejection is honoured: the length bounds, which classes
-//! are allowed at all, and a custom symbol set. `max-consecutive` is left out.
-//! Lowercase stays in regardless.
+//! are allowed at all, a custom symbol set and `max-consecutive`. Lowercase
+//! stays in regardless.
+
+use std::num::NonZeroUsize;
 
 use crate::password::{
     PasswordRecipe, DEFAULT_PASSWORD_LENGTH, DEFAULT_SYMBOLS, MAX_PASSWORD_LENGTH,
@@ -43,6 +45,7 @@ fn split_outside_sets(text: &str, sep: char) -> Vec<&str> {
 struct Parsed {
     min_length: Option<usize>,
     max_length: Option<usize>,
+    max_consecutive: Option<NonZeroUsize>,
     named: bool,
     upper: bool,
     digit: bool,
@@ -89,6 +92,12 @@ impl Parsed {
                     self.max_length = Some(self.max_length.map_or(max, |held| held.min(max)));
                 }
             }
+            "max-consecutive" => {
+                if let Ok(max) = value.parse::<NonZeroUsize>() {
+                    self.max_consecutive =
+                        Some(self.max_consecutive.map_or(max, |held| held.min(max)));
+                }
+            }
             "required" | "allowed" => {
                 for class in split_outside_sets(value, ',') {
                     self.class(class.trim());
@@ -124,7 +133,11 @@ pub fn recipe_for_rules(rules: Option<&str>, field_max_length: Option<usize>) ->
     let default = PasswordRecipe::default();
     if !parsed.named || parsed.everything {
         return RulesRecipe {
-            recipe: PasswordRecipe { length, ..default },
+            recipe: PasswordRecipe {
+                length,
+                max_consecutive: parsed.max_consecutive,
+                ..default
+            },
             symbols: DEFAULT_SYMBOLS.to_vec(),
         };
     }
@@ -146,6 +159,7 @@ pub fn recipe_for_rules(rules: Option<&str>, field_max_length: Option<usize>) ->
             uppercase: parsed.upper,
             digits: parsed.digit,
             symbols: !symbols.is_empty(),
+            max_consecutive: parsed.max_consecutive,
         },
         symbols,
     }
@@ -277,6 +291,50 @@ mod tests {
         let got = recipe("maxlength: 12;");
         let password = crate::password::generate_password_from(&got.recipe, &got.symbols);
         assert_eq!(password.len(), 12);
+    }
+
+    #[test]
+    fn the_smallest_max_consecutive_wins() {
+        assert_eq!(
+            recipe("max-consecutive: 2;").recipe.max_consecutive,
+            NonZeroUsize::new(2)
+        );
+        assert_eq!(
+            recipe("max-consecutive: 3; required: upper; max-consecutive: 2;")
+                .recipe
+                .max_consecutive,
+            NonZeroUsize::new(2)
+        );
+        assert_eq!(
+            recipe("allowed: unicode; Max-Consecutive : 4")
+                .recipe
+                .max_consecutive,
+            NonZeroUsize::new(4)
+        );
+    }
+
+    #[test]
+    fn a_max_consecutive_that_is_not_a_positive_number_is_ignored() {
+        for rules in ["max-consecutive: 0;", "max-consecutive: two;"] {
+            assert_eq!(recipe(rules).recipe.max_consecutive, None, "{rules}");
+        }
+    }
+
+    #[test]
+    fn a_generated_password_keeps_to_max_consecutive() {
+        let got = recipe("required: lower; required: [-]; max-consecutive: 1;");
+        for _ in 0..200 {
+            let password = crate::password::generate_password_from(&got.recipe, &got.symbols);
+            assert!(password.contains('-'), "{}", &*password);
+            assert!(
+                password
+                    .as_bytes()
+                    .windows(2)
+                    .all(|pair| pair[0] != pair[1]),
+                "{}",
+                &*password
+            );
+        }
     }
 
     #[test]

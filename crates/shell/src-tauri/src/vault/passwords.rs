@@ -244,6 +244,7 @@ pub fn generate_password(length: u32, uppercase: bool, digits: bool, symbols: bo
         uppercase,
         digits,
         symbols,
+        max_consecutive: None,
     };
     wis_secrets::generate_password(&recipe).to_string()
 }
