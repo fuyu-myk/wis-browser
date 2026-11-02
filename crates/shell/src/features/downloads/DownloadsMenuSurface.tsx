@@ -14,7 +14,6 @@ import { commands } from '@/bindings/commands'
 import type { DownloadId, DownloadItem } from '@/bindings/types'
 import { cx } from '@/lib/cx'
 import { FileIcon, XIcon } from '@/lib/icons'
-import { currentPlatform } from '@/lib/platform'
 import { isChromeUrl, DOWNLOADS_URL } from '@/lib/url'
 import {
   downloadHost,
@@ -172,11 +171,7 @@ export function DownloadsMenuSurface() {
                   missing={missing.has(item.id)}
                   onOpen={() => openFile(item)}
                   onRemove={() => setConfirmRemove(item)}
-                  onCancel={
-                    currentPlatform() === 'macos'
-                      ? () => cancelOne.mutate(item.id)
-                      : undefined
-                  }
+                  onCancel={item.cancellable ? () => cancelOne.mutate(item.id) : undefined}
                 />
               ))}
             </ul>
@@ -214,7 +209,7 @@ interface DownloadRowProps {
   missing: boolean
   onOpen: () => void
   onRemove: () => void
-  /** Cancel the in-flight engine download; absent where unsupported. */
+  /** Cancel the in-flight download; absent where unsupported. */
   onCancel?: () => void
 }
 

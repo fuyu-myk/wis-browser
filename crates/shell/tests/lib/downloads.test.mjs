@@ -21,6 +21,7 @@ function item(over = {}) {
     status: 'completed',
     private: false,
     startedAtMs: 0,
+    cancellable: false,
     ...over,
   }
 }

@@ -3,6 +3,7 @@
 //! cookies and user agent, and streams it into Downloads.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
@@ -11,6 +12,7 @@ use reqwest::header::{
 };
 use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::sync::Notify;
 use url::Url;
 use webview2_com::Microsoft::Web::WebView2::Win32::{
     ICoreWebView2CookieList, ICoreWebView2Settings2, ICoreWebView2_2,
@@ -79,15 +81,16 @@ pub(super) async fn start(
         invalid("The file could not be written")
     })?;
     mark_of_the_web(&path, response.url(), private).await;
+    let stop = Arc::new(Notify::new());
     let id = downloads::track(
         app,
         &url,
         path.clone(),
         response.content_length(),
         private,
-        true,
+        Some(Arc::clone(&stop)),
     );
-    tauri::async_runtime::spawn(stream(app.clone(), id, path, file, response));
+    tauri::async_runtime::spawn(stream(app.clone(), id, path, file, response, stop));
 
     Ok(())
 }
@@ -253,26 +256,33 @@ async fn mark_of_the_web(path: &Path, source: &Url, private: bool) {
     }
 }
 
-/// Write the body to the file, then end the download. A transfer that fails
-/// removes its partial file.
+/// Write the body to the file until it ends or `stop` is notified, then end
+/// the download. A transfer that fails or is cancelled removes its file,
+/// even one whose last bytes landed as the cancel did.
 async fn stream(
     app: AppHandle,
     id: DownloadId,
     path: PathBuf,
     file: tokio::fs::File,
     response: reqwest::Response,
+    stop: Arc<Notify>,
 ) {
     let mut file = BufWriter::with_capacity(WRITE_BUFFER_BYTES, file);
-    let written = write_body(&app, id, &mut file, response).await;
+    let written = tokio::select! {
+        written = write_body(&app, id, &mut file, response) => written
+            .inspect_err(|err| log::warn!("download {}: {err}", path.display()))
+            .is_ok(),
+        () = stop.notified() => false,
+    };
     drop(file);
-    if let Err(err) = &written {
-        log::warn!("download {}: {err}", path.display());
-        if let Err(err) = tokio::fs::remove_file(&path).await {
-            log::debug!("partial file remove: {err}");
-        }
+    if written && downloads::finish(&app, id, true) {
+        return;
     }
 
-    downloads::finish(&app, id, written.is_ok());
+    if let Err(err) = tokio::fs::remove_file(&path).await {
+        log::debug!("partial file remove: {err}");
+    }
+    downloads::finish(&app, id, false);
 }
 
 async fn write_body(

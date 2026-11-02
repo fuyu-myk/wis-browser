@@ -1080,12 +1080,14 @@ export interface DownloadItem {
   filename: string
   path: string
   receivedBytes: number
-  /** Content-Length total, or null when unknown (chunked, or non-macOS). */
+  /** Content-Length total, or null when unknown (chunked, or an engine download off macOS). */
   totalBytes: number | null
   status: DownloadStatus
   /** From a private context; saved to disk but never in persistent history. */
   private: boolean
   startedAtMs: number
+  /** Can be cancelled in flight: any download on macOS, a Save as on Windows. */
+  cancellable: boolean
 }
 
 // ---------------------------------------------------------------------------

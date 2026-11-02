@@ -18,15 +18,17 @@
 //!
 //! macOS API limits (WKDownload via wry): the finish event carries only
 //! `url + success` (no path), so completion is matched to the oldest
-//! in-flight download of that URL; there is no native progress or cancel
-//! hook, so progress is the destination file's growing size, polled.
+//! in-flight download of that URL; there is no native progress hook, so
+//! progress is the destination file's growing size, polled.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use tauri::webview::{DownloadEvent, WebviewBuilder};
 use tauri::{AppHandle, Emitter, Manager, State, Wry};
+use tokio::sync::Notify;
 use url::Url;
 use wis_core::{DownloadId, DownloadStatus, UserSettings, UserSettingsPatch, WisError, WisResult};
 use wis_storage::DownloadRecord;
@@ -84,10 +86,12 @@ pub struct DownloadItem {
     /// the user's request, but never recorded in persistent history.
     pub private: bool,
     pub started_at_ms: u64,
-    /// Fetched by Wis rather than written by the engine, so no engine event
-    /// may finish it.
+    /// Whether the chrome may offer to cancel it in flight: any engine
+    /// download on macOS, and a fetch Wis runs itself.
+    pub cancellable: bool,
+    /// Set when Wis fetches the file itself rather than the engine.
     #[serde(skip)]
-    pub fetched: bool,
+    pub stop: Option<Arc<Notify>>,
 }
 
 /// Wire download handling onto a remote webview builder. `private` marks
@@ -138,56 +142,63 @@ pub async fn list_downloads(state: State<'_, AppState>) -> WisResult<Vec<Downloa
     Ok(merged)
 }
 
-/// Cancel an in-flight download: stop the engine's WKDownload (macOS, via
-/// the vendored wry's fifth patch), mark the item cancelled, and best-effort
-/// remove the partial file. The cancel affordance is macOS-only until the
-/// other engines expose a cancel path.
+/// Cancel an in-flight download, mark it cancelled, and best-effort remove
+/// the partial file. A fetch Wis runs itself stops through its handle; an
+/// engine download stops through the engine's WKDownload (macOS, via the
+/// vendored wry's fifth patch). Other engines expose no cancel path.
 #[tauri::command]
 pub async fn cancel_download(
     app: AppHandle,
     state: State<'_, AppState>,
     id: DownloadId,
 ) -> WisResult<()> {
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = (app, state, id);
-        Err(WisError::InvalidInput {
-            message: "download cancel is not available on this platform".to_string(),
-        })
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        let path = {
-            let mut items = state.downloads.lock().expect("downloads poisoned");
-            let Some(item) = items
-                .iter_mut()
-                .find(|item| item.id == id && item.status == DownloadStatus::InProgress)
-            else {
-                return Ok(());
-            };
-            item.status = DownloadStatus::Cancelled;
-            item.path.clone()
+    let (path, stop) = {
+        let mut items = state.downloads.lock().expect("downloads poisoned");
+        let Some(item) = items
+            .iter_mut()
+            .find(|item| item.id == id && item.status == DownloadStatus::InProgress)
+        else {
+            return Ok(());
         };
-
-        let path_str = path.display().to_string();
-        let result = app.run_on_main_thread(move || {
-            if !wry::cancel_download_to(&path_str) {
-                log::warn!("cancel_download: no live engine download for {path_str}");
-            }
-            // POSIX unlink: removal completes once the engine closes its
-            // handle. May already be gone if nothing was written yet.
-            if let Err(err) = std::fs::remove_file(&path_str) {
-                log::debug!("cancel_download: partial file remove: {err}");
-            }
-        });
-        if let Err(err) = result {
-            log::warn!("cancel_download: main-thread hop failed: {err}");
+        if !item.cancellable {
+            return Err(WisError::InvalidInput {
+                message: "This download cannot be cancelled".to_string(),
+            });
         }
-
-        emit_changed(&app);
-        Ok(())
+        item.status = item.status.cancelled()?;
+        (item.path.clone(), item.stop.clone())
+    };
+    match stop {
+        Some(stop) => stop.notify_one(),
+        None => cancel_engine_download(&app, &path),
     }
+
+    emit_changed(&app);
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn cancel_engine_download(app: &AppHandle, path: &Path) {
+    let path_str = path.display().to_string();
+    let result = app.run_on_main_thread(move || {
+        if !wry::cancel_download_to(&path_str) {
+            log::warn!("cancel_download: no live engine download for {path_str}");
+        }
+        // POSIX unlink: removal completes once the engine closes its
+        // handle. May already be gone if nothing was written yet.
+        if let Err(err) = std::fs::remove_file(&path_str) {
+            log::debug!("cancel_download: partial file remove: {err}");
+        }
+    });
+    if let Err(err) = result {
+        log::warn!("cancel_download: main-thread hop failed: {err}");
+    }
+}
+
+/// Never reached: other engines' downloads are not `cancellable`.
+#[cfg(not(target_os = "macos"))]
+fn cancel_engine_download(_: &AppHandle, path: &Path) {
+    log::error!("cancel_download: no engine cancel for {}", path.display());
 }
 
 /// Remove a download from the list and persisted history (the file itself is
@@ -403,7 +414,7 @@ fn on_requested(app: &AppHandle, url: &Url, destination: &mut PathBuf, private: 
     let total_bytes = None;
 
     *destination = path.clone();
-    let id = track(app, url, path, total_bytes, private, false);
+    let id = track(app, url, path, total_bytes, private, None);
     spawn_progress_poller(app.clone(), id);
     true
 }
@@ -415,23 +426,9 @@ pub(crate) fn track(
     path: PathBuf,
     total_bytes: Option<u64>,
     private: bool,
-    fetched: bool,
+    stop: Option<Arc<Notify>>,
 ) -> DownloadId {
-    let item = DownloadItem {
-        id: DownloadId::new(),
-        url: url.to_string(),
-        filename: path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| wis_core::FALLBACK_FILENAME.to_string()),
-        path,
-        received_bytes: 0,
-        total_bytes,
-        status: DownloadStatus::InProgress,
-        private,
-        started_at_ms: now_ms(),
-        fetched,
-    };
+    let item = DownloadItem::in_progress(url, path, total_bytes, private, stop);
     let id = item.id;
     log::info!("download started: {url} -> {}", item.path.display());
     {
@@ -551,6 +548,31 @@ fn persist_last_dir(app: &AppHandle, dir: PathBuf) {
 }
 
 impl DownloadItem {
+    fn in_progress(
+        url: &Url,
+        path: PathBuf,
+        total_bytes: Option<u64>,
+        private: bool,
+        stop: Option<Arc<Notify>>,
+    ) -> Self {
+        Self {
+            id: DownloadId::new(),
+            url: url.to_string(),
+            filename: path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| wis_core::FALLBACK_FILENAME.to_string()),
+            path,
+            received_bytes: 0,
+            total_bytes,
+            status: DownloadStatus::InProgress,
+            private,
+            started_at_ms: now_ms(),
+            cancellable: cfg!(target_os = "macos") || stop.is_some(),
+            stop,
+        }
+    }
+
     /// A persisted history row, viewed as a (completed) list item.
     fn from_record(record: DownloadRecord) -> Self {
         Self {
@@ -563,7 +585,8 @@ impl DownloadItem {
             status: DownloadStatus::Completed,
             private: false,
             started_at_ms: record.completed_at.timestamp_millis().max(0) as u64,
-            fetched: false,
+            cancellable: false,
+            stop: None,
         }
     }
 }
@@ -575,7 +598,9 @@ fn on_finished(app: &AppHandle, url: &Url, success: bool) {
     let found = finish_where(
         app,
         |item| {
-            !item.fetched && item.status == DownloadStatus::InProgress && item.url == url.as_str()
+            item.stop.is_none()
+                && item.status == DownloadStatus::InProgress
+                && item.url == url.as_str()
         },
         success,
     );
@@ -585,10 +610,14 @@ fn on_finished(app: &AppHandle, url: &Url, success: bool) {
     }
 }
 
-/// End an in-flight download.
+/// End an in-flight download. `false` when it is no longer in flight.
 #[cfg(windows)]
-pub(crate) fn finish(app: &AppHandle, id: DownloadId, success: bool) {
-    finish_where(app, |item| item.id == id, success);
+pub(crate) fn finish(app: &AppHandle, id: DownloadId, success: bool) -> bool {
+    finish_where(
+        app,
+        |item| item.id == id && item.status == DownloadStatus::InProgress,
+        success,
+    )
 }
 
 /// End the first download `matches` picks, quarantining and recording it
@@ -719,4 +748,31 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(stop: Option<Arc<Notify>>) -> DownloadItem {
+        let url = Url::parse("https://example.com/a.zip").unwrap();
+        DownloadItem::in_progress(&url, PathBuf::from("a.zip"), None, false, stop)
+    }
+
+    #[test]
+    fn a_fetch_wis_runs_itself_can_be_cancelled() {
+        assert!(item(Some(Arc::default())).cancellable);
+    }
+
+    #[test]
+    fn only_a_macos_engine_download_can_be_cancelled() {
+        assert_eq!(item(None).cancellable, cfg!(target_os = "macos"));
+    }
+
+    #[test]
+    fn the_chrome_learns_it_can_cancel_but_never_gets_the_handle() {
+        let json = serde_json::to_value(item(Some(Arc::default()))).unwrap();
+        assert_eq!(json["cancellable"], true);
+        assert!(json.get("stop").is_none());
+    }
 }
