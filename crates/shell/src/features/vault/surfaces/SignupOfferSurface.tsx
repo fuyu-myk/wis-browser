@@ -80,7 +80,9 @@ export function SignupOfferSurface() {
     <div className={cx('kb-signup-card', { 'glass-menus': menusGlass(state?.settings) })}>
       <div className="kb-signup-head">Use a strong password?</div>
       <div className="kb-signup-host">{offer.host}</div>
-      <code className="kb-signup-password">{offer.password}</code>
+      <code className="kb-signup-password">
+        <span>{offer.password}</span>
+      </code>
       <div className="kb-signup-remember">
         <Switch checked={remember} onChange={setRemember} label="Remember this decision" />
         <span>Remember this decision</span>

@@ -9263,14 +9263,21 @@ body.motion-off .kb-ai-think-label.is-live {
   font-size: 12px;
 }
 
+/* 32 characters a line and the line height, in step with signupPlacement.ts. */
 .kb-signup-password {
   padding: 8px 10px;
   border-radius: 8px;
   background: rgba(128, 128, 128, 0.16);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
+  line-height: 20px;
   letter-spacing: 0.02em;
-  overflow-wrap: anywhere;
+  line-break: anywhere;
+}
+
+.kb-signup-password > span {
+  display: block;
+  width: calc(32.5ch + 0.65em);
 }
 
 .kb-signup-remember {

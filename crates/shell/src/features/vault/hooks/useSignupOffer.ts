@@ -16,7 +16,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { commands } from '@/bindings/commands'
 import type { BrowserState, TabId } from '@/bindings/types'
 import { FIELD_LEAVE_EVENT, useAnchoredCard, type FieldRect } from '@/features/vault/hooks/useAnchoredCard'
-import type { Rect } from '@/features/vault/lib/signupPlacement'
+import { offerSize, type Rect, type Size } from '@/features/vault/lib/signupPlacement'
 
 export const SIGNUP_FIELD_EVENT = 'wis-signup-field'
 export const SIGNUP_SHOW_EVENT = 'wis-signup-show'
@@ -24,7 +24,6 @@ export const SIGNUP_CLOSE_EVENT = 'wis-signup-close'
 export const SIGNUP_READY_EVENT = 'wis-signup-ready'
 const SIGNUP_GONE_EVENT = 'wis-signup-gone'
 
-const CARD = { width: 340, height: 190 }
 /** Used only when the page gave no usable field box. */
 const MARGIN = 14
 
@@ -74,13 +73,13 @@ export function useSignupOffer(
     const track = (pending: Promise<UnlistenFn>) =>
       void pending.then((fn) => (cancelled ? fn() : unlistens.push(fn)))
 
-    const fallback = (): Rect | null => {
+    const fallback = (size: Size): Rect | null => {
       const host = hostRef.current?.getBoundingClientRect()
       if (!host) return null
       return {
-        x: host.x + Math.max(0, (host.width - CARD.width) / 2),
+        x: host.x + Math.max(0, (host.width - size.width) / 2),
         y: host.y + MARGIN,
-        ...CARD,
+        ...size,
       }
     }
 
@@ -95,8 +94,9 @@ export function useSignupOffer(
 
         // Already open on this page: follow focus to the field now taking it.
         if (offerRef.current?.tabId === tabId && card.openFor() === tabId) {
-          const rect = field.rect ? card.placeAt(tabId, field.rect, CARD) : null
-          if (rect) void card.open(tabId, rect, CARD).catch(() => undefined)
+          const size = offerSize(offerRef.current.password)
+          const rect = field.rect ? card.placeAt(tabId, field.rect, size) : null
+          if (rect) void card.open(tabId, rect, size).catch(() => undefined)
           return
         }
 
@@ -112,10 +112,11 @@ export function useSignupOffer(
             return
           }
 
-          const rect = field.rect ? card.placeAt(tabId, field.rect, CARD) : fallback()
+          const size = offerSize(password)
+          const rect = field.rect ? card.placeAt(tabId, field.rect, size) : fallback(size)
           if (!rect) return
           offerRef.current = { window: field.window, tabId, host: field.host, password }
-          await card.open(tabId, rect, CARD)
+          await card.open(tabId, rect, size)
           void emit(SIGNUP_SHOW_EVENT, offerRef.current)
         })()
       }),

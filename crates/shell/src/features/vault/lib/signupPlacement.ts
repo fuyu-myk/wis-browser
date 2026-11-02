@@ -18,6 +18,17 @@ export interface Size {
   height: number
 }
 
+/** The card with a one-line password. */
+const OFFER: Size = { width: 340, height: 190 }
+const PASSWORD_LINE_CHARS = 32
+const PASSWORD_LINE_HEIGHT = 20
+
+/** The offer card's size, one line height taller for each password line past the first. */
+export function offerSize(password: string): Size {
+  const lines = Math.max(1, Math.ceil(password.length / PASSWORD_LINE_CHARS))
+  return { width: OFFER.width, height: OFFER.height + (lines - 1) * PASSWORD_LINE_HEIGHT }
+}
+
 /** The field's rect in window coordinates. */
 export function fieldInWindow(field: Rect, viewWidth: number, pane: Rect): Rect {
   const scale = viewWidth > 0 ? pane.width / viewWidth : 1

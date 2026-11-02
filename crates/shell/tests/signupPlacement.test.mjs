@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { fieldInWindow, placeOffer } from '../src/features/vault/lib/signupPlacement.ts'
+import { fieldInWindow, offerSize, placeOffer } from '../src/features/vault/lib/signupPlacement.ts'
 
 const pane = { x: 100, y: 50, width: 800, height: 600 }
 const card = { width: 340, height: 190 }
@@ -53,4 +53,14 @@ test('an unknown viewport width is not scaled', () => {
     width: 30,
     height: 40,
   })
+})
+
+test('the offer grows a line height for each 32 characters past the first line', () => {
+  const tall = (length) => offerSize('x'.repeat(length)).height
+  assert.deepEqual(offerSize('x'.repeat(20)), { width: 340, height: 190 })
+  assert.equal(tall(0), 190)
+  assert.equal(tall(32), 190)
+  assert.equal(tall(33), 210)
+  assert.equal(tall(64), 210)
+  assert.equal(tall(128), 250)
 })
