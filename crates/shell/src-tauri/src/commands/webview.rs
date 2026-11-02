@@ -856,6 +856,10 @@ pub async fn create_tab_webview(
     #[cfg(any(windows, target_os = "linux"))]
     crate::tabs::load_failure::install(&child, tab_id);
 
+    // WebView2 keeps a fullscreen element inside the webview's own bounds.
+    #[cfg(windows)]
+    crate::tabs::element_fullscreen::install(&child);
+
     // Windows click-to-focus is per-controller (no app-wide mouse monitor like
     // macOS); a no-op elsewhere.
     crate::chrome::pane_focus::install_controller(&child);
@@ -981,6 +985,8 @@ pub(crate) fn destroy_tab_webview(app: &AppHandle, webview: &tauri::Webview) -> 
     crate::canvas::page::forget(app, label);
     #[cfg(windows)]
     crate::platform::win_dispatch::forget(label);
+    #[cfg(windows)]
+    crate::tabs::element_fullscreen::forget(app, label);
     webview.close()
 }
 
@@ -1002,6 +1008,10 @@ pub async fn set_tab_webview_bounds(
     if crate::chrome::pane_container::set_bounds(&webview, x, y, width, height) {
         return Ok(());
     }
+    #[cfg(windows)]
+    if crate::tabs::element_fullscreen::hold_bounds(&webview, x, y, width, height) {
+        return Ok(());
+    }
 
     webview
         .set_position(tauri::LogicalPosition::new(x, y))
@@ -1016,6 +1026,9 @@ pub async fn set_tab_webview_bounds(
 
     #[cfg(windows)]
     crate::platform::win_webview2::reapply_corner_radius(&webview, (width, height));
+
+    #[cfg(windows)]
+    crate::tabs::element_fullscreen::hold_bounds(&webview, x, y, width, height);
 
     Ok(())
 }

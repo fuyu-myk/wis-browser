@@ -3,6 +3,8 @@
 pub(crate) mod archive;
 pub(crate) mod audio;
 pub(crate) mod autoplay;
+#[cfg(any(windows, test))]
+pub(crate) mod element_fullscreen;
 pub(crate) mod interaction_state;
 #[cfg(any(windows, target_os = "linux"))]
 pub(crate) mod load_failure;

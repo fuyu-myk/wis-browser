@@ -118,6 +118,17 @@ pub fn forget_corner_radius(label: &str) {
         .remove(label);
 }
 
+/// Remove the webview's region until the next [`reapply_corner_radius`], so
+/// it can grow past the size the region was cut for.
+pub fn clear_corner_region<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>) {
+    with_container_hwnd(webview, |hwnd| {
+        use windows::Win32::Graphics::Gdi::SetWindowRgn;
+
+        // SAFETY: runs on the UI thread; a null region removes the window's own.
+        unsafe { SetWindowRgn(hwnd, None, true) };
+    });
+}
+
 fn apply_region<R: tauri::Runtime>(
     webview: &tauri::webview::Webview<R>,
     radius: f64,

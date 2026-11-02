@@ -195,7 +195,8 @@ pub fn focus_window(app: &AppHandle, label: &str) {
 /// Snapshot a window's geometry (logical px) into the per-workspace cache and
 /// schedule a debounced persist. Called from move/resize events (which fire in
 /// bursts during a drag), so the write is coalesced via a generation counter:
-/// only the last event of a burst reaches storage.
+/// only the last event of a burst reaches storage. A fullscreen window is
+/// skipped, so it reopens at its windowed size.
 pub fn record_window_geometry(app: &AppHandle, label: &str) {
     use std::sync::atomic::Ordering;
 
@@ -207,6 +208,9 @@ pub fn record_window_geometry(app: &AppHandle, label: &str) {
     let Some(win) = app.get_window(label) else {
         return;
     };
+    if win.is_fullscreen().unwrap_or(false) {
+        return;
+    }
 
     let (Ok(scale), Ok(pos), Ok(size)) =
         (win.scale_factor(), win.outer_position(), win.inner_size())
