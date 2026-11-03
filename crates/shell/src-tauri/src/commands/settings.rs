@@ -185,9 +185,6 @@ pub async fn update_settings(
             policy: settings.autoplay_policy,
             overrides: settings.autoplay_site_overrides.clone(),
         });
-
-        #[cfg(target_os = "linux")]
-        crate::tabs::autoplay::apply_to_all_remote(&app);
     }
 
     if site_protection_touched {

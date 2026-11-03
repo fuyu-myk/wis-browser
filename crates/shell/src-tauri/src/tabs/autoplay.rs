@@ -10,9 +10,7 @@
 //! change reaches a page on its next load. As on macOS, media in every frame
 //! follows the page's policy. WebKitGTK raises the decision for subframes too
 //! without naming the frame, so a frame's own URL only sets whether its media
-//! preloads. `media-playback-requires-user-gesture`, still set from the page's
-//! policy at creation and when each main-frame load starts, is never read by
-//! WebKitGTK.
+//! preloads.
 //!
 //! On Windows, there is no runtime knob: WebView2's own rule (sound after the
 //! user interacts with the page) stays.
@@ -83,48 +81,6 @@ fn gtk_policy(policy: AutoplayPolicy) -> webkit2gtk::AutoplayPolicy {
         AutoplayPolicy::Allow => webkit2gtk::AutoplayPolicy::Allow,
         AutoplayPolicy::BlockAudible => webkit2gtk::AutoplayPolicy::AllowWithoutSound,
         AutoplayPolicy::Block => webkit2gtk::AutoplayPolicy::Deny,
-    }
-}
-
-/// Apply `policy` to a live webview's WebKitGTK settings.
-#[cfg(target_os = "linux")]
-pub fn apply<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, policy: AutoplayPolicy) {
-    use webkit2gtk::{SettingsExt, WebViewExt};
-
-    let _ = webview.with_webview(move |w| {
-        if let Some(settings) = w.inner().settings() {
-            settings.set_media_playback_requires_user_gesture(policy != AutoplayPolicy::Allow);
-        }
-    });
-}
-
-/// Re-apply the policy for the main-frame document `webview`.
-#[cfg(target_os = "linux")]
-pub fn apply_for_page_load<R: tauri::Runtime>(
-    app: &tauri::AppHandle,
-    webview: &tauri::webview::Webview<R>,
-    url: &str,
-) {
-    use tauri::Manager;
-
-    let policy = app
-        .state::<crate::state::AppState>()
-        .autoplay_policy_for(url);
-    apply(webview, policy);
-}
-
-/// Push a changed setting to every live remote webview, each under the
-/// policy for the page it shows.
-#[cfg(target_os = "linux")]
-pub fn apply_to_all_remote(app: &tauri::AppHandle) {
-    use tauri::Manager;
-
-    let state = app.state::<crate::state::AppState>();
-    for (label, webview) in app.webviews() {
-        if crate::platform::webview_prefs::is_remote(&label) {
-            let url = webview.url().map(|u| u.to_string()).unwrap_or_default();
-            apply(&webview, state.autoplay_policy_for(&url));
-        }
     }
 }
 

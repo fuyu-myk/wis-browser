@@ -394,8 +394,6 @@ pub async fn create_tab_webview(
                 if let Err(err) = crate::pages::find::clear_webview(&webview) {
                     log::debug!("clearing find on navigation failed: {err}");
                 }
-                #[cfg(target_os = "linux")]
-                crate::tabs::autoplay::apply_for_page_load(&app, &webview, payload.url().as_str());
                 crate::commands::apply_zoom_to_webview(
                     &webview,
                     wis_core::zoom_factor(
@@ -738,10 +736,6 @@ pub async fn create_tab_webview(
 
     // MSE + EME/FairPlay (adaptive streaming + DRM key system).
     crate::platform::webview_prefs::apply_media_extensions(&child, media_extensions);
-
-    // Autoplay: macOS applies per navigation through the wry hook.
-    #[cfg(target_os = "linux")]
-    crate::tabs::autoplay::apply(&child, state.autoplay_policy_for(parsed.as_str()));
 
     // A muted tab stays muted across sleep/wake webview recreation.
     {

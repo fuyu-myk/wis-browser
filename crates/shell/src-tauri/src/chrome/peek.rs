@@ -186,9 +186,6 @@ pub async fn open_peek(
         .parse::<Url>()
         .expect("loopback proxy URL is valid");
 
-    #[cfg(target_os = "linux")]
-    let autoplay_policy = state.autoplay_policy_for(parsed.as_str());
-
     let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed))
         .initialization_script(tauri_runtime_wry::SKIP_TAURI_SCRIPTS)
         .focused(true)
@@ -242,11 +239,6 @@ pub async fn open_peek(
         let app = app.clone();
         let window_label = window.label().to_string();
         builder = builder.on_page_load(move |webview, _payload| {
-            #[cfg(target_os = "linux")]
-            if matches!(_payload.event(), tauri::webview::PageLoadEvent::Started) {
-                crate::tabs::autoplay::apply_for_page_load(&app, &webview, _payload.url().as_str());
-            }
-
             emit_nav_state(&app, &window_label, &webview);
         });
     }
@@ -303,8 +295,6 @@ pub async fn open_peek(
     // Apple-proxied Safe Browsing warning.
     crate::platform::webview_prefs::apply_fraud_warning(&child, fraud_warning);
     crate::platform::webview_prefs::apply_media_extensions(&child, media_extensions);
-    #[cfg(target_os = "linux")]
-    crate::tabs::autoplay::apply(&child, autoplay_policy);
 
     // Per-site camera/microphone consent gate.
     crate::protection::permissions::install(&child);
