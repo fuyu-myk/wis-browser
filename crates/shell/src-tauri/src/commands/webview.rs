@@ -128,7 +128,9 @@ pub async fn create_tab_webview(
             .initialization_script(private(crate::video_popout::page_script()))
             .initialization_script(private(crate::chrome::peek::page_script()))
             .initialization_script(private(crate::pages::link_open::page_script()))
-            .initialization_script(private(&crate::pages::context_menu::page_script()))
+            .initialization_script(private(&crate::pages::context_menu::page_script(
+                &crate::pages::selection_color::selection_css(),
+            )))
             .initialization_script(private(crate::vault::signup::page_script()))
             .initialization_script(private(crate::vault::address_field::page_script()));
     }

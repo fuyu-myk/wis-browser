@@ -54,7 +54,9 @@ pub fn install<R: tauri::Runtime>(
             register(&ucm, "wisZap", &label);
         }
 
-        let page_menu = crate::pages::context_menu::page_script();
+        let page_menu = crate::pages::context_menu::page_script(
+            &crate::pages::selection_color::selection_css(&wv),
+        );
         let mut isolated: Vec<(&'static str, &str)> = vec![
             (
                 crate::pages::link_open::HANDLER_BACKGROUND,

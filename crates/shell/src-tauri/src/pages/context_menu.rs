@@ -25,6 +25,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use wis_core::TabId;
 
+use crate::pages::selection_color::SelectionCss;
+
 /// Tauri event carrying a right-click to the chrome.
 const PAGE_MENU_EVENT: &str = "wis-page-menu";
 
@@ -76,10 +78,9 @@ pub fn set_app_handle(app: AppHandle) {
 /// the event: a site with its own menu, the element picker (`cosmetic.rs`),
 /// and the pop-out overlay all call `preventDefault()` first.
 ///
-/// The selection colours are baked in at injection.
-pub fn page_script() -> String {
-    let css = crate::pages::selection_color::selection_css();
-
+/// The selection colours (`selection_color::selection_css`) are baked in at
+/// injection.
+pub fn page_script(css: &SelectionCss) -> String {
     PAGE_MENU_JS
         .replace("__WIS_SEL_FALLBACK__", &css.fallback)
         .replace("__WIS_SEL_PREFERRED__", &css.preferred)
@@ -473,7 +474,7 @@ mod macos {
     }
 
     pub(super) fn install<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, label: String) {
-        let script = super::page_script();
+        let script = super::page_script(&crate::pages::selection_color::selection_css());
         let _ = webview.with_webview(move |w| unsafe {
             let wk: *mut AnyObject = w.inner() as *mut AnyObject;
             if wk.is_null() {

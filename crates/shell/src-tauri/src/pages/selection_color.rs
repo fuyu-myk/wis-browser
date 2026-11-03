@@ -14,8 +14,8 @@
 //! the app. WebKit reads the document's used `color-scheme`, and CSS
 //! `light-dark()` resolves through the same thing.
 //!
-//! Only macOS is reproduced exactly. Elsewhere the CSS system keywords stand
-//! in, with the engine's own alpha applied over them.
+//! macOS and Linux are reproduced exactly. On Windows the CSS system keywords
+//! stand in, with Blink's alpha applied over them.
 
 /// CSS for the `::highlight()` rule, as two declaration blocks.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,8 +28,16 @@ pub struct SelectionCss {
 }
 
 /// The declarations a `::highlight()` rule should carry on this platform.
+#[cfg(not(target_os = "linux"))]
 pub fn selection_css() -> SelectionCss {
     imp::selection_css().unwrap_or_else(keyword_css)
+}
+
+/// The declarations a `::highlight()` rule should carry in `webview`. Runs
+/// on the GTK main thread.
+#[cfg(target_os = "linux")]
+pub fn selection_css(webview: &webkit2gtk::WebView) -> SelectionCss {
+    accent_css(imp::accent(webview))
 }
 
 /// The CSS system keywords, for a platform that cannot be asked. `Highlight`
@@ -84,6 +92,34 @@ fn blend_with_white(rgb: (u8, u8, u8)) -> ((u8, u8, u8), u8) {
 
 /// The dark branch is a flat alpha on the untouched channels, with no blend.
 const DARK_ALPHA: u8 = 204;
+
+/// WebKitGTK's accent when the theme names none.
+#[cfg(any(target_os = "linux", test))]
+const ADWAITA_ACCENT: (u8, u8, u8) = (52, 132, 228);
+
+/// `RenderThemeAdwaita::platformActiveSelectionBackgroundColor`.
+#[cfg(any(target_os = "linux", test))]
+const ADWAITA_SELECTION_ALPHA: f32 = 0.3;
+
+/// The selection WebKitGTK paints for a GTK accent, given as red, green, blue
+/// and alpha from 0 to 1. It has no dark branch and sets no foreground.
+///
+/// Rounds as WebKit's `Color(GdkRGBA)` and `colorWithAlphaMultipliedBy` do.
+#[cfg(any(target_os = "linux", test))]
+fn accent_css(accent: Option<(f64, f64, f64, f64)>) -> SelectionCss {
+    let byte = |value: f64| (value.clamp(0.0, 1.0) as f32 * 255.0).round() as u8;
+    let (rgb, alpha) = match accent {
+        Some((red, green, blue, alpha)) => ((byte(red), byte(green), byte(blue)), byte(alpha)),
+        None => (ADWAITA_ACCENT, 255),
+    };
+    let alpha = (ADWAITA_SELECTION_ALPHA * (f32::from(alpha) / 255.0) * 255.0).round() as u8;
+    let background = format!("background-color:{}", css_rgba(rgb, alpha));
+
+    SelectionCss {
+        fallback: background.clone(),
+        preferred: background,
+    }
+}
 
 #[cfg(target_os = "macos")]
 mod imp {
@@ -195,24 +231,28 @@ mod imp {
     }
 }
 
-/// WebKitGTK paints the GTK accent at 30% and never recolours the glyphs. The
-/// accent itself lives in a style context that needs the web view's widget on
-/// the GTK main thread, which is not where this runs, so the keyword stands in
-/// for the hue and only the alpha is reproduced.
+/// WebKitGTK paints the accent its web view's GTK theme names. `Highlight`
+/// cannot stand in, since WebKitGTK pins it to its own blue so that a page
+/// cannot read the theme.
 #[cfg(target_os = "linux")]
 mod imp {
-    use super::SelectionCss;
+    use gtk::prelude::{StyleContextExt, WidgetExt};
 
-    /// `RenderThemeAdwaita::platformActiveSelectionBackgroundColor`.
-    const ADWAITA_ALPHA_PERCENT: u8 = 30;
+    /// The names `PageClientImpl::accentColor` looks up, in its order.
+    const ACCENT_NAMES: [&str; 4] = [
+        "accent_bg_color",
+        "accent_color",
+        "accentColor",
+        "theme_selected_bg_color",
+    ];
 
-    pub(super) fn selection_css() -> Option<SelectionCss> {
-        Some(SelectionCss {
-            fallback: "background-color:Highlight".to_string(),
-            preferred: format!(
-                "background-color:color-mix(in srgb, Highlight {ADWAITA_ALPHA_PERCENT}%, transparent)"
-            ),
-        })
+    pub(super) fn accent(webview: &webkit2gtk::WebView) -> Option<(f64, f64, f64, f64)> {
+        let context = webview.style_context();
+
+        ACCENT_NAMES
+            .iter()
+            .find_map(|name| context.lookup_color(name))
+            .map(|color| (color.red(), color.green(), color.blue(), color.alpha()))
     }
 }
 
@@ -260,6 +300,39 @@ mod tests {
         assert!(
             alpha <= 204,
             "expected the walk to stop at 80%, got {alpha}"
+        );
+    }
+
+    #[test]
+    fn a_gtk_accent_is_painted_at_thirty_percent_with_no_foreground() {
+        let accent = (53.0 / 255.0, 132.0 / 255.0, 228.0 / 255.0, 1.0);
+        let css = accent_css(Some(accent));
+        assert_eq!(css.fallback, "background-color:rgba(53, 132, 228, 0.302)");
+        assert_eq!(css.preferred, css.fallback);
+    }
+
+    #[test]
+    fn a_theme_with_no_accent_gets_webkitgtks_own_blue() {
+        assert_eq!(
+            accent_css(None).preferred,
+            "background-color:rgba(52, 132, 228, 0.302)"
+        );
+    }
+
+    /// The accent's own alpha is rounded to a byte before the 30% applies.
+    #[test]
+    fn a_translucent_accent_multiplies_its_own_alpha() {
+        assert_eq!(
+            accent_css(Some((1.0, 0.0, 0.0, 0.5))).preferred,
+            "background-color:rgba(255, 0, 0, 0.149)"
+        );
+    }
+
+    #[test]
+    fn accent_channels_outside_the_range_are_clamped() {
+        assert_eq!(
+            accent_css(Some((1.5, -0.2, 0.5, 2.0))).preferred,
+            "background-color:rgba(255, 0, 128, 0.302)"
         );
     }
 
