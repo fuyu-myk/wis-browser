@@ -134,6 +134,7 @@ const EMPTY = {
   imageSrc: null,
   mediaKind: null,
   mediaSrc: null,
+  videoReady: false,
   selection: null,
 }
 
@@ -589,5 +590,42 @@ describe('the node parked for Inspect Element', () => {
     const p = loadPage()
     p.rightClick([el('textarea')])
     assert.equal(p.window.__wisInspectTarget, undefined)
+  })
+})
+
+describe('the video parked for Pop out video', () => {
+  test('a right-clicked video is parked behind a WeakRef', () => {
+    const p = loadPage()
+    const video = el('video', { currentSrc: 'blob:https://example.com/0f0e' })
+    p.rightClick([video, el('div')])
+    assert.equal(p.window.__wisMenuVideo.deref(), video)
+  })
+
+  test('a right-click on anything else, audio included, clears it', () => {
+    const p = loadPage()
+    p.rightClick([el('video')])
+    p.rightClick([el('audio', { src: 'https://example.com/a.mp3' })])
+    assert.equal(p.window.__wisMenuVideo, null)
+    p.rightClick([el('video')])
+    p.rightClick([el('p')])
+    assert.equal(p.window.__wisMenuVideo, null)
+  })
+
+  test('a video reports whether it has frames to pop out', () => {
+    const p = loadPage()
+    p.rightClick([el('video', { videoWidth: 640 })])
+    p.rightClick([el('video', { videoWidth: 0 })])
+    p.rightClick([el('audio', { videoWidth: 640 })])
+    p.rightClick([el('p')])
+    assert.deepEqual(
+      p.posts().map((b) => b.videoReady),
+      [true, false, false, false],
+    )
+  })
+
+  test('without WeakRef nothing is parked', () => {
+    const p = loadPage({ weakRef: false })
+    p.rightClick([el('video')])
+    assert.equal(p.window.__wisMenuVideo, null)
   })
 })

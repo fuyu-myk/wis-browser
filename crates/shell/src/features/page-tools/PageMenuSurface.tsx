@@ -33,9 +33,11 @@ import {
   type PageMenuTarget,
 } from '@/features/page-tools/pageMenu'
 import { currentPlatform } from '@/lib/platform'
+import { isFeatureUnavailableHere } from '@/lib/platformSupport'
 import { useAiAvailable } from '@/features/ai/hooks/useAiAvailable'
 import { nextAccent } from '@/lib/accents'
 import { AI_ASK_EVENT } from '@/features/ai/lib/aiAsk'
+import { POPOUT_MENU_EVENT, type PopoutMenuPayload } from '@/features/video-popout/videoPopout'
 import { activeEngine, isStreamPlaylist, isWebUrl, sourceUrlFor } from '@/lib/url'
 
 /** Kept off the window edges. */
@@ -429,6 +431,15 @@ function useRows(
           run: after(() => commands.copyText(image)),
         },
       )
+    }
+
+    if (target.kind === 'page' && target.videoReady && !isFeatureUnavailableHere('pop_out_video')) {
+      const payload: PopoutMenuPayload = { window: target.window, tab: target.tabId }
+      rows.push({
+        id: 'video-popout',
+        label: 'Pop out video',
+        run: after(() => emit(POPOUT_MENU_EVENT, payload)),
+      })
     }
 
     const media =

@@ -100,6 +100,28 @@ describe("the shell's enter and exit PiP", () => {
     )
   })
 
+  test('enter from the page menu requests PiP on its video, and on nothing when it has no frames', () => {
+    const menuOnSmall = () => {
+      const p = pipPage({ videos: [{ width: 400, height: 225 }, { playing: true, width: 1280, height: 720 }] })
+      p.window.__wisMenuVideo = new WeakRef(p.videos[0])
+      return p
+    }
+    const p = menuOnSmall()
+    p.enterPipFromMenu()
+    assert.deepEqual(
+      p.videos.map((v) => v.pipRequests),
+      [1, 0],
+    )
+
+    const unloaded = menuOnSmall()
+    unloaded.videos[0].videoWidth = 0
+    unloaded.enterPipFromMenu()
+    assert.deepEqual(
+      unloaded.videos.map((v) => v.pipRequests),
+      [0, 0],
+    )
+  })
+
   test('enter does nothing without a usable video', () => {
     const p = pipPage({ videos: [{ width: 100, height: 50 }] })
     p.enterPip()

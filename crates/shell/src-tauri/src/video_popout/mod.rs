@@ -23,7 +23,8 @@
 //! module owns the native window lifecycle and validates every payload; the
 //! chrome decides *when* to pop out (automatically when a tab playing video
 //! leaves the visible layout, or explicitly via the in-page hover button /
-//! the Pop Out Video key action) and persists the remembered geometry.
+//! the page menu / the Pop Out Video key action) and persists the remembered
+//! geometry.
 //! The sender of each message is identified by the `accessibilityIdentifier`
 //! stamped on the tab's WKWebView, never by page-supplied data, so a hostile
 //! page can at worst fiddle with its own popout.
@@ -72,6 +73,11 @@ const OPENED_EVENT: &str = "wis-popout-opened";
 const CLOSED_EVENT: &str = "wis-popout-closed";
 
 const ENTER_EVAL: &str = "window.__wisPopoutEnter && window.__wisPopoutEnter();";
+/// Runs an enter (`__ENTER__`) on the video the page menu was opened on, and
+/// only while that video is on the page with a known picture size. Both
+/// scripts must share a world.
+const MENU_ENTER_EVAL: &str =
+    "if (window.__wisPopoutAdoptMenu && window.__wisPopoutAdoptMenu()) { __ENTER__ }";
 const EXIT_EVAL: &str = "window.__wisPopoutExit && window.__wisPopoutExit();";
 /// Moving a WKWebView between windows (reparent) pauses its media; this
 /// re-kicks playback page-side after each move, unless the pause was the
@@ -126,7 +132,9 @@ fn validate_label(label: &str) -> WisResult<()> {
 /// enter handshake (`entered` message), which actually creates the window;
 /// if no suitable video is present the webview simply stays hidden.
 /// `x`/`y` carry the chrome-remembered position of the last popout; the size
-/// always starts from the predefined default.
+/// always starts from the predefined default. `from_menu` pops out the video
+/// the page menu was opened on, or nothing once it left the page or lost its
+/// picture size.
 #[tauri::command]
 pub async fn open_video_popout(
     app: AppHandle,
@@ -134,7 +142,9 @@ pub async fn open_video_popout(
     label: String,
     x: Option<f64>,
     y: Option<f64>,
+    from_menu: Option<bool>,
 ) -> WisResult<()> {
+    let from_menu = from_menu.unwrap_or(false);
     validate_label(&label)?;
 
     #[cfg(target_os = "macos")]
@@ -164,11 +174,10 @@ pub async fn open_video_popout(
             });
         }
 
-        crate::platform::content_world::eval(&webview, ENTER_EVAL).map_err(|err| {
-            WisError::InvalidInput {
+        crate::platform::content_world::eval(&webview, enter_script(ENTER_EVAL, from_menu))
+            .map_err(|err| WisError::InvalidInput {
                 message: format!("video popout enter eval: {err}"),
-            }
-        })?;
+            })?;
     }
 
     // WebView2: enter the engine's native Picture-in-Picture.
@@ -176,14 +185,25 @@ pub async fn open_video_popout(
     {
         let _ = (state, x, y);
         if let Some(webview) = app.webviews().get(&label).cloned() {
-            let _ = webview.eval("window.__wisEnterPip && window.__wisEnterPip();");
+            let enter = "window.__wisEnterPip && window.__wisEnterPip();";
+            if let Err(err) = webview.eval(enter_script(enter, from_menu)) {
+                log::debug!("video popout PiP enter eval: {err}");
+            }
         }
     }
 
     #[cfg(not(any(target_os = "macos", windows)))]
-    let _ = (app, state, label, x, y);
+    let _ = (app, state, label, x, y, from_menu);
 
     Ok(())
+}
+
+fn enter_script(enter: &str, from_menu: bool) -> String {
+    if from_menu {
+        MENU_ENTER_EVAL.replace("__ENTER__", enter)
+    } else {
+        enter.to_string()
+    }
 }
 
 /// Restore `label`'s tab out of the popout (page styling unwound, webview
@@ -300,5 +320,13 @@ mod tests {
         assert!(validate_label("tab-").is_err());
         assert!(validate_label("widget-panel-x").is_err());
         assert!(validate_label("tab-../etc").is_err());
+    }
+
+    #[test]
+    fn a_menu_popout_enters_only_once_the_menu_video_is_adopted() {
+        assert_eq!(enter_script(ENTER_EVAL, false), ENTER_EVAL);
+        let script = enter_script(ENTER_EVAL, true);
+        assert!(script.starts_with("if (window.__wisPopoutAdoptMenu"));
+        assert!(script.ends_with(&format!("{{ {ENTER_EVAL} }}")));
     }
 }

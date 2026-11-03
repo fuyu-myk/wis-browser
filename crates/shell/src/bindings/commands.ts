@@ -1184,16 +1184,19 @@ export const commands = {
    * always-on-top mini player. The page confirms via the native enter
    * handshake; without a suitable video the webview just stays hidden.
    * `geometry` is the remembered position of the previous popout, if any;
-   * the size always starts from the predefined default.
+   * the size always starts from the predefined default. `fromMenu` pops out
+   * the video the page menu was opened on.
    */
   async openVideoPopout(
     label: string,
     geometry: { x: number; y: number } | null,
+    fromMenu = false,
   ): Promise<void> {
     return invoke('open_video_popout', {
       label,
       x: geometry?.x ?? null,
       y: geometry?.y ?? null,
+      fromMenu,
     })
   },
 

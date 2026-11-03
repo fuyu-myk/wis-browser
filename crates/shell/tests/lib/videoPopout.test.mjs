@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { beforeEach, describe, test } from 'node:test'
 
 import * as popout from '../../src/features/video-popout/videoPopout.ts'
-import { readSource } from '../support/l3-harness.mjs'
+import { filesSpelling, readSource } from '../support/l3-harness.mjs'
 
 const KEY = 'wis-video-popout-geometry'
 
@@ -82,4 +82,9 @@ test('the event names are the ones video_popout emits', () => {
   for (const [rustName, value] of Object.entries(expected)) {
     assert.ok(rust.includes(`const ${rustName}: &str = "${value}";`), `${rustName} = ${value}`)
   }
+})
+
+test("the page menu's request goes to its own window under a name native never emits", () => {
+  assert.deepEqual(filesSpelling(popout.POPOUT_MENU_EVENT), ['features/video-popout/videoPopout.ts'])
+  assert.ok(!readSource('src-tauri/src/video_popout/mod.rs').includes(`"${popout.POPOUT_MENU_EVENT}"`))
 })

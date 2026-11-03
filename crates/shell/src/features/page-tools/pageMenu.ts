@@ -33,6 +33,7 @@ export interface PageMenuReport {
   imageSrc: string | null
   mediaKind: string | null
   mediaSrc: string | null
+  videoReady: boolean
   selection: string | null
 }
 
@@ -71,6 +72,8 @@ export interface PageMenuTarget {
   mediaKind: string | null
   /** That element's resolved source, which a `<source>` child may have chosen. */
   mediaSrc: string | null
+  /** The right-clicked video has a known picture size for pop outs. */
+  videoReady: boolean
   selection: string | null
   canGoBack: boolean
   canGoForward: boolean

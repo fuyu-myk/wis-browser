@@ -11,6 +11,8 @@ export const POPOUT_OPENED_EVENT = 'wis-popout-opened'
 export const POPOUT_CLOSED_EVENT = 'wis-popout-closed'
 /** The page's hover button asked to pop its video out. */
 export const POPOUT_REQUESTED_EVENT = 'wis-popout-requested'
+/** The page menu's "Pop out video" asked for the video it was opened on. */
+export const POPOUT_MENU_EVENT = 'wis-popout-menu'
 
 export interface PopoutMediaPayload {
   tab: string
@@ -21,6 +23,12 @@ export interface PopoutMediaPayload {
 }
 
 export interface PopoutRequestedPayload {
+  tab: string
+}
+
+export interface PopoutMenuPayload {
+  /** The window whose tab it is. */
+  window: string
   tab: string
 }
 

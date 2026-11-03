@@ -12,6 +12,7 @@ export const NATIVE = {
   exit: rustLiteral('video_popout/mod.rs', '__wisPopoutExit('),
   resume: rustLiteral('video_popout/mod.rs', '__wisPopoutResume('),
   enterPip: rustLiteral('video_popout/mod.rs', '__wisEnterPip('),
+  menuEnter: rustLiteral('video_popout/mod.rs', '__wisPopoutAdoptMenu('),
   exitPip: rustLiteral('video_popout/mod.rs', '__wisExitPip('),
   hoverOn: rustLiteral('video_popout/imp.rs', '__wisPopoutHover(true)'),
   hoverOff: rustLiteral('video_popout/imp.rs', '__wisPopoutHover(false)'),
@@ -355,6 +356,8 @@ export function loadPopout({ videos = [{}], pip = false, subframe = false, chann
     hover: (on) => evalIn(window, on ? NATIVE.hoverOn : NATIVE.hoverOff),
     enterPip: () => evalIn(window, NATIVE.enterPip),
     exitPip: () => evalIn(window, NATIVE.exitPip),
+    enterFromMenu: () => evalIn(window, NATIVE.menuEnter.replace('__ENTER__', NATIVE.enter)),
+    enterPipFromMenu: () => evalIn(window, NATIVE.menuEnter.replace('__ENTER__', NATIVE.enterPip)),
 
     /** A media event on `video`: document capture listeners first, then the video's own. */
     media(video, type) {

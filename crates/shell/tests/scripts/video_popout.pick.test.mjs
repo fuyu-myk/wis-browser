@@ -242,3 +242,60 @@ describe('the hover-clicked video', () => {
     assert.deepEqual(emptied.videos.map(pinned), [false, true])
   })
 })
+
+describe('the video the page menu was opened on', () => {
+  function menuOnSmall() {
+    const p = loadPopout({
+      videos: [
+        { left: 0, top: 0, width: 400, height: 225 },
+        { playing: true, left: 0, top: 300, width: 1280, height: 720 },
+      ],
+    })
+    p.window.__wisMenuVideo = new WeakRef(p.videos[0])
+    return p
+  }
+
+  test('is pinned over a larger playing one', () => {
+    const p = menuOnSmall()
+    p.enterFromMenu()
+    assert.deepEqual(p.videos.map(pinned), [true, false])
+  })
+
+  test('is left alone by an enter that is not from the menu', () => {
+    const p = menuOnSmall()
+    p.enter()
+    assert.deepEqual(p.videos.map(pinned), [false, true])
+  })
+
+  test('without frames, off the page or gone, nothing pops out rather than the main video', () => {
+    const unloaded = menuOnSmall()
+    unloaded.videos[0].videoWidth = 0
+    const removed = menuOnSmall()
+    removed.videos[0].parentNode.remove()
+    const none = menuOnSmall()
+    none.window.__wisMenuVideo = null
+    for (const p of [unloaded, removed, none]) {
+      p.enterFromMenu()
+      assert.deepEqual(p.videos.map(pinned), [false, false])
+      assert.equal(p.ui(), null)
+    }
+  })
+
+  test('a hover click armed on another video is not used when the menu video fails', () => {
+    const p = loadPopout({
+      videos: [
+        { left: 0, top: 0, width: 400, height: 225 },
+        { playing: true, left: 0, top: 300, width: 1280, height: 720 },
+        { left: 0, top: 1100, width: 600, height: 338 },
+      ],
+    })
+    p.window.__wisMenuVideo = new WeakRef(p.videos[0])
+    p.videos[0].videoWidth = 0
+    p.mouse(300, 1200)
+    p.hoverButton().fire('click')
+    p.enterFromMenu()
+    assert.deepEqual(p.videos.map(pinned), [false, false, false])
+    p.enter()
+    assert.deepEqual(p.videos.map(pinned), [false, false, true], 'the hover click was armed')
+  })
+})

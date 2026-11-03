@@ -59,6 +59,8 @@ struct PageMenuEvent {
     media_kind: Option<String>,
     /// The media element's resolved source.
     media_src: Option<String>,
+    /// The right-clicked video has a known picture size, for pop outs.
+    video_ready: bool,
     selection: Option<String>,
 }
 
@@ -231,7 +233,7 @@ const PAGE_MENU_JS: &str = r#"(function () {
     if (!path.length && e.target) path = [e.target];
 
     var link = null, linkText = null, image = null, editable = false;
-    var media = null, mediaSrc = null;
+    var media = null, mediaSrc = null, mediaEl = null;
     for (var i = 0; i < path.length; i++) {
       var el = path[i];
       if (!el || !el.tagName) continue;
@@ -241,6 +243,7 @@ const PAGE_MENU_JS: &str = r#"(function () {
       if (!media && (tag === 'video' || tag === 'audio')) {
         media = tag;
         mediaSrc = el.currentSrc || el.src || null;
+        mediaEl = el;
       }
       if (!link && tag === 'a' && el.href) {
         link = el.href;
@@ -267,6 +270,8 @@ const PAGE_MENU_JS: &str = r#"(function () {
       window.__wisInspectTarget =
         (node && typeof WeakRef === 'function') ? new WeakRef(node) : node;
     } catch (err) {}
+    window.__wisMenuVideo =
+      (media === 'video' && typeof WeakRef === 'function') ? new WeakRef(mediaEl) : null;
 
     post({
       x: e.clientX,
@@ -278,6 +283,7 @@ const PAGE_MENU_JS: &str = r#"(function () {
       imageSrc: image,
       mediaKind: media,
       mediaSrc: mediaSrc,
+      videoReady: media === 'video' && !!mediaEl.videoWidth,
       selection: selection
     });
   }, false);
@@ -331,6 +337,10 @@ pub(crate) fn dispatch_message(label: &str, body: &serde_json::Value) {
         image_src: url("imageSrc"),
         media_kind: text("mediaKind"),
         media_src: url("mediaSrc"),
+        video_ready: body
+            .get("videoReady")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
         selection: capped_text(body, "selection", MAX_SELECTION_BYTES),
     };
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { commands } from '@/bindings/commands'
 import type { TabId } from '@/bindings/types'
@@ -9,11 +10,13 @@ import {
   loadPopoutGeometry,
   POPOUT_CLOSED_EVENT,
   POPOUT_MEDIA_EVENT,
+  POPOUT_MENU_EVENT,
   POPOUT_OPENED_EVENT,
   POPOUT_REQUESTED_EVENT,
   savePopoutGeometry,
   type PopoutClosedPayload,
   type PopoutMediaPayload,
+  type PopoutMenuPayload,
   type PopoutOpenedPayload,
   type PopoutRequestedPayload,
 } from '@/features/video-popout/videoPopout'
@@ -25,7 +28,8 @@ const PENDING_TIMEOUT_MS = 4000
 type PopoutPhase = 'pending' | 'open' | 'closing'
 
 /** How the popout came to be: `auto` (tab playing video left the layout;
- *  folds back when the tab returns) or `manual` (hover button / key action). */
+ *  folds back when the tab returns) or `manual` (hover button / key action /
+ *  page menu). */
 type PopoutMode = 'auto' | 'manual'
 
 interface PopoutSession {
@@ -51,8 +55,9 @@ export interface VideoPopoutController {
    *  pane placeholder. */
   onVisible: (id: TabId) => void
   /** Explicitly pop `id` out (hover button / key action); toggles back when
-   *  `id` is already the popout. Gated on the page reporting a usable video. */
-  requestPopOut: (id: TabId) => void
+   *  `id` is already the popout. Gated on the page reporting a usable video,
+   *  except from the page menu, which names its video. */
+  requestPopOut: (id: TabId, fromMenu?: boolean) => void
   /** Fold the popout back in. The registered reconcile callback re-shows the
    *  webview once the native restore lands. */
   release: (id: TabId) => void
@@ -109,7 +114,7 @@ export function useVideoPopout({ enabled }: { enabled: boolean }): VideoPopoutHa
   )
 
   const open = useCallback(
-    (id: TabId, mode: PopoutMode) => {
+    (id: TabId, mode: PopoutMode, fromMenu = false) => {
       if (isFeatureUnavailableHere('pop_out_video')) {
         if (mode === 'manual') guardFeatureUnavailable('pop_out_video')
         return
@@ -117,7 +122,9 @@ export function useVideoPopout({ enabled }: { enabled: boolean }): VideoPopoutHa
       // Windows uses the engine's native Picture-in-Picture.
       if (currentPlatform() === 'windows') {
         if (mode === 'manual') {
-          void commands.openVideoPopout(labelFor(id), loadPopoutGeometry()).catch(() => undefined)
+          void commands
+            .openVideoPopout(labelFor(id), loadPopoutGeometry(), fromMenu)
+            .catch(() => undefined)
         }
         return
       }
@@ -132,7 +139,7 @@ export function useVideoPopout({ enabled }: { enabled: boolean }): VideoPopoutHa
         void commands.closeVideoPopout(labelFor(id)).catch(() => undefined)
       }, PENDING_TIMEOUT_MS)
 
-      void commands.openVideoPopout(labelFor(id), loadPopoutGeometry()).catch(() => {
+      void commands.openVideoPopout(labelFor(id), loadPopoutGeometry(), fromMenu).catch(() => {
         if (sessionRef.current?.tabId === id) {
           setSession(null)
           clearPendingTimer()
@@ -178,21 +185,22 @@ export function useVideoPopout({ enabled }: { enabled: boolean }): VideoPopoutHa
   )
 
   const requestPopOut = useCallback(
-    (id: TabId) => {
+    (id: TabId, fromMenu = false) => {
       const session = sessionRef.current
       if (session) {
         // Toggle semantics: re-triggering on the popped tab folds it back.
         if (session.tabId === id) release(id)
         return
       }
-      // Only macOS posts media reports.
+      // Only macOS posts media reports. The page menu names its own video.
       if (
+        !fromMenu &&
         currentPlatform() === 'macos' &&
         !presentRef.current.has(id) &&
         !playingRef.current.has(id)
       )
         return
-      open(id, 'manual')
+      open(id, 'manual', fromMenu)
     },
     [open, release],
   )
@@ -233,6 +241,13 @@ export function useVideoPopout({ enabled }: { enabled: boolean }): VideoPopoutHa
     track(
       listen<PopoutRequestedPayload>(POPOUT_REQUESTED_EVENT, (e) => {
         requestPopOut(e.payload.tab as TabId)
+      }),
+    )
+
+    track(
+      listen<PopoutMenuPayload>(POPOUT_MENU_EVENT, (e) => {
+        if (e.payload.window !== getCurrentWindow().label) return
+        requestPopOut(e.payload.tab as TabId, true)
       }),
     )
 

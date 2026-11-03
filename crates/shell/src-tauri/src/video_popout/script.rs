@@ -283,6 +283,17 @@ pub(super) const POPOUT_JS: &str = r#"(function () {
       }
     } catch (e) {}
   }
+  // The next enter takes the video the page menu was opened on
+  // (`pages/context_menu.rs` parks it). False once it left the page or lost
+  // its picture size.
+  window.__wisPopoutAdoptMenu = function () {
+    var parked = window.__wisMenuVideo;
+    var v = parked && parked.deref();
+    if (!v || !v.isConnected || !v.videoWidth) return false;
+    manualTarget = v;
+    manualAt = Date.now();
+    return true;
+  };
   window.__wisEnterPip = function () { enterPip(null); };
   window.__wisExitPip = exitPip;
 
