@@ -594,6 +594,29 @@ Removal checklist: once wry exposes a way to start a download, drop
 `start_download` and its re-exports, and move `pages/save_url.rs` onto the
 upstream API.
 
+## Twenty-first patch: the embedder sets a navigation's autoplay policy (Linux) (Wis-original)
+
+The GTK side of the webpage-preferences hook, for the autoplay policy only.
+WebKitGTK takes per-page policies only when a navigation is accepted
+(`webkit_policy_decision_use_with_policies`), and wry's `decide-policy`
+handler accepts every navigation itself and stops the signal, so a handler
+the embedder connects later never runs.
+
+- `src/webkitgtk/mod.rs`: `wry::set_autoplay_policy_hook(Box<dyn Fn(&str) ->
+  Option<AutoplayPolicy> + Send + Sync>)` (`OnceLock`, first registration
+  wins), called on the main thread with the navigation's URL. When the
+  navigation handler allows a navigation and the hook returns a policy, the
+  decision is used with `WebsitePolicies` carrying it; otherwise it is used as
+  before. WebKitGTK raises the decision for subframes too and does not say
+  which frame, so each frame gets the policy for its own URL; WebCore reads
+  autoplay from the main frame's document, so a subframe's policy only sets
+  whether its media preloads. The handler's raw `webkit_policy_decision_use`
+  and `_ignore` calls became the safe `PolicyDecisionExt` ones.
+- `src/lib.rs`: re-exports the setter on GTK.
+
+Removal checklist: once wry lets the embedder attach website policies to a
+navigation, drop the hook and move `tabs/autoplay.rs` onto it.
+
 ## Edition 2024 (wry 0.57)
 
 wry builds as edition 2024, so the patches keep the unsafe operations of their

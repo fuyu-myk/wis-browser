@@ -5,9 +5,14 @@
 //! `_autoplayPolicy`, SPI guarded by `respondsToSelector:`), so the per-site
 //! table applies there and a change reaches a page on its next load.
 //!
-//! On Linux, WebKitGTK's `media-playback-requires-user-gesture` is toggled per
-//! webview, at creation and when each main-frame load starts. The setting
-//! cannot separate sound, so "block audible" blocks all media there.
+//! On Linux, each navigation wry accepts carries its site's policy as WebKitGTK
+//! website policies (`wry::set_autoplay_policy_hook`), sound included, and a
+//! change reaches a page on its next load. As on macOS, media in every frame
+//! follows the page's policy. WebKitGTK raises the decision for subframes too
+//! without naming the frame, so a frame's own URL only sets whether its media
+//! preloads. `media-playback-requires-user-gesture`, still set from the page's
+//! policy at creation and when each main-frame load starts, is never read by
+//! WebKitGTK.
 //!
 //! On Windows, there is no runtime knob: WebView2's own rule (sound after the
 //! user interacts with the page) stays.
@@ -56,6 +61,28 @@ pub mod imp {
         if supported {
             let _: () = msg_send![preferences, _setAutoplayPolicy: wk_value(policy)];
         }
+    }
+}
+
+/// Give every accepted navigation the policy for its URL.
+#[cfg(target_os = "linux")]
+pub fn install_hook(app: tauri::AppHandle) {
+    use tauri::Manager;
+
+    wry::set_autoplay_policy_hook(Box::new(move |url| {
+        let policy = app
+            .state::<crate::state::AppState>()
+            .autoplay_policy_for(url);
+        Some(gtk_policy(policy))
+    }));
+}
+
+#[cfg(target_os = "linux")]
+fn gtk_policy(policy: AutoplayPolicy) -> webkit2gtk::AutoplayPolicy {
+    match policy {
+        AutoplayPolicy::Allow => webkit2gtk::AutoplayPolicy::Allow,
+        AutoplayPolicy::BlockAudible => webkit2gtk::AutoplayPolicy::AllowWithoutSound,
+        AutoplayPolicy::Block => webkit2gtk::AutoplayPolicy::Deny,
     }
 }
 
@@ -120,5 +147,18 @@ mod tests {
             AutoplayPolicy::Block
         );
         assert_eq!(policy_for_url(&cache, "about:blank"), AutoplayPolicy::Block);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn each_setting_maps_to_its_webkitgtk_policy() {
+        use webkit2gtk::AutoplayPolicy as Gtk;
+
+        assert_eq!(gtk_policy(AutoplayPolicy::Allow), Gtk::Allow);
+        assert_eq!(
+            gtk_policy(AutoplayPolicy::BlockAudible),
+            Gtk::AllowWithoutSound
+        );
+        assert_eq!(gtk_policy(AutoplayPolicy::Block), Gtk::Deny);
     }
 }

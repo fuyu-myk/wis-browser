@@ -346,6 +346,8 @@ pub fn run() {
             vault::capture::set_app_handle(app.handle().clone());
             #[cfg(target_os = "macos")]
             pages::preferences::install_hook(app.handle().clone());
+            #[cfg(target_os = "linux")]
+            tabs::autoplay::install_hook(app.handle().clone());
             #[cfg(target_os = "macos")]
             protection::page_blocks::install(app.handle().clone());
             #[cfg(any(target_os = "macos", windows))]

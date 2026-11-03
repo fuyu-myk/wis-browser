@@ -37,7 +37,7 @@ use webkit2gtk::{
   AutoplayPolicy, CookieManagerExt, GeolocationPermissionRequest, InputMethodContextExt, LoadEvent,
   NavigationPolicyDecision, NavigationPolicyDecisionExt, NetworkProxyMode, NetworkProxySettings,
   NotificationPermissionRequest, PermissionRequestExt, PointerLockPermissionRequest,
-  PolicyDecisionType, PrintOperationExt, SettingsExt, URIRequest, URIRequestExt,
+  PolicyDecisionExt, PolicyDecisionType, PrintOperationExt, SettingsExt, URIRequest, URIRequestExt,
   UserContentInjectedFrames, UserContentManager, UserContentManagerExt, UserMediaPermissionRequest,
   UserMediaPermissionRequestExt, UserScript, UserScriptInjectionTime,
   WebContextExt as Webkit2gtkWeContextExt, WebView, WebViewExt, WebsiteDataManagerExt,
@@ -45,7 +45,6 @@ use webkit2gtk::{
 };
 use webkit2gtk_sys::{
   webkit_get_major_version, webkit_get_micro_version, webkit_get_minor_version,
-  webkit_policy_decision_ignore, webkit_policy_decision_use,
 };
 #[cfg(feature = "x11")]
 use x11_dl::xlib::*;
@@ -61,6 +60,24 @@ use crate::{
 use self::web_context::WebContextExt;
 
 const WEBVIEW_ID: &str = "webview_id";
+
+// WIS patch: embedder hook consulted when the navigation handler accepts a
+// navigation, with its URL. The autoplay policy it returns goes into the
+// navigation's website policies, the GTK side of the webpage-preferences hook.
+// See WIS-PATCH.md.
+type AutoplayPolicyHook = Box<dyn Fn(&str) -> Option<AutoplayPolicy> + Send + Sync>;
+static AUTOPLAY_POLICY_HOOK: std::sync::OnceLock<AutoplayPolicyHook> = std::sync::OnceLock::new();
+
+/// WIS patch: register the process-wide autoplay-policy hook. The first
+/// registration wins; later calls are ignored.
+pub fn set_autoplay_policy_hook(hook: AutoplayPolicyHook) {
+  let _ = AUTOPLAY_POLICY_HOOK.set(hook);
+}
+
+fn autoplay_policies(uri: &str) -> Option<WebsitePolicies> {
+  let autoplay = AUTOPLAY_POLICY_HOOK.get()?(uri)?;
+  Some(WebsitePolicies::builder().autoplay(autoplay).build())
+}
 
 mod drag_drop;
 mod synthetic_mouse_events;
@@ -576,13 +593,13 @@ impl InnerWebView {
             if let Some(uri_req) = nav_action.request() {
               if let Some(uri) = uri_req.uri() {
                 let allow = handler(uri.to_string());
-                let pointer = policy_decision.as_ptr();
-                unsafe {
-                  if allow {
-                    webkit_policy_decision_use(pointer)
-                  } else {
-                    webkit_policy_decision_ignore(pointer)
+                if allow {
+                  match autoplay_policies(&uri) {
+                    Some(policies) => policy_decision.use_with_policies(&policies),
+                    None => policy_decision.use_(),
                   }
+                } else {
+                  policy_decision.ignore()
                 }
 
                 return true;

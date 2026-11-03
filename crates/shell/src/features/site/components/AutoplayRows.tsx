@@ -15,8 +15,6 @@ const PLATFORM = currentPlatform()
 function policyHelp(): string {
   if (PLATFORM === 'windows')
     return 'Unavailable. Handled automatically on interaction by the engine.'
-  if (PLATFORM === 'linux')
-    return 'What media may start on its own. Block sound behaves as Block all.'
   return 'What media may start on its own. Block sound lets muted video play and holds sound until you interact. Applies on the next page load.'
 }
 
