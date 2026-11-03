@@ -42,6 +42,8 @@ describe('siteOf', () => {
     assert.equal(siteOf('https://www.News.example:8443/a?b'), 'news.example')
     assert.equal(siteOf('http://localhost:3000/'), 'localhost')
     assert.equal(siteOf('about:settings'), null)
+    assert.equal(siteOf('blob:https://www.News.example/0b5f7c1e'), 'news.example')
+    assert.equal(siteOf('blob:null/0b5f7c1e'), null)
     assert.equal(siteOf('tauri://localhost/index.html'), null)
     assert.equal(siteOf('not a url'), null)
   })

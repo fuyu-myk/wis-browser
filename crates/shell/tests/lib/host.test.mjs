@@ -3,7 +3,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { normalizeHostInput } from '../../src/features/site/lib/host.ts'
+import { normalizeHostInput, siteUrl } from '../../src/features/site/lib/host.ts'
+import { readSource } from '../support/l3-harness.mjs'
 
 test('blank input gives no host', () => {
   assert.equal(normalizeHostInput(''), '')
@@ -46,4 +47,23 @@ test("an unparseable URL is no host, never the host 'https:'", () => {
 test('a typed host:port drops the port, as the Rust lookup keys by host alone', () => {
   assert.equal(normalizeHostInput('localhost:3000'), 'localhost')
   assert.equal(normalizeHostInput('www.example.com:8443/path'), 'example.com')
+})
+
+test('a page belongs to its own URL, a blob page to the web page that made it', () => {
+  assert.equal(siteUrl('https://news.example/a?b')?.href, 'https://news.example/a?b')
+  assert.equal(siteUrl('about:blank')?.href, 'about:blank')
+  assert.equal(siteUrl('blob:https://www.video.example/0b5f7c1e')?.href, 'https://www.video.example/0b5f7c1e')
+})
+
+test('a blob from anywhere but a web page, or no URL at all, has no site', () => {
+  assert.equal(siteUrl('blob:null/0b5f7c1e'), null)
+  assert.equal(siteUrl('blob:ws://video.example/0b5f7c1e'), null)
+  assert.equal(siteUrl('blob:blob:https://video.example/0b5f7c1e'), null)
+  assert.equal(siteUrl('not a url'), null)
+})
+
+test('the blob rule is the one wis_core::sites::domain::site_url applies', () => {
+  const rust = readSource('../core/src/sites/domain.rs')
+  assert.ok(rust.includes('Url::parse(url.path())'))
+  assert.ok(rust.includes('matches!(inner.scheme(), "http" | "https")'))
 })

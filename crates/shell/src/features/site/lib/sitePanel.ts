@@ -1,6 +1,6 @@
 import type { PrivacyMode, SiteProtection, TabId } from '@/bindings/types'
 import type { Box } from '@/features/extensions/lib/extensionsMenu'
-import { normalizeHostInput } from '@/features/site/lib/host'
+import { normalizeHostInput, siteUrl } from '@/features/site/lib/host'
 import { isFeatureUnavailableHere } from '@/lib/platformSupport'
 
 export const SITE_PANEL_OPEN = 'wis-sitepanel-open'
@@ -34,13 +34,9 @@ export function panelBounds(anchor: Box, height: number, viewport: { width: numb
 }
 
 export function siteOf(url: string): string | null {
-  try {
-    const { protocol } = new URL(url)
-    if (protocol !== 'http:' && protocol !== 'https:') return null
-  } catch {
-    return null
-  }
-  return normalizeHostInput(url) || null
+  const site = siteUrl(url)
+  if (!site || (site.protocol !== 'http:' && site.protocol !== 'https:')) return null
+  return normalizeHostInput(site.href) || null
 }
 
 type Overrides = Record<string, SiteProtection> | undefined

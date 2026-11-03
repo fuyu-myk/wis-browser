@@ -11,7 +11,7 @@ The pure data model has no I/O and no Tauri dependency, so it stays trivially te
 | `tabs/` | a tab, folders, split panes, archiving, where a new tab lands |
 | `workspaces/` | the workspace, its upstream proxy and link routes |
 | `navigation/` | search, link cleaning and safety, load errors, external app launches |
-| `sites/` | per-site overrides: user agent, autoplay, zoom, protection, registrable domains |
+| `sites/` | per-site overrides: user agent, autoplay, zoom, protection, registrable domains, and the site a page belongs to (`domain::site_url`: a `blob:` page counts as the http(s) origin that made it) |
 | `privacy/` | privacy modes and per-site policy, filter-list choices, clearing data |
 | `vault/` | addresses, password CSV import and export, the generated-password offer |
 | `extensions/` | installed extensions, site access, listings, updates, user scripts |

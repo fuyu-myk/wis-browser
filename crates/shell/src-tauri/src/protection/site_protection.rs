@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 use tauri::{AppHandle, Emitter, Manager, State};
+use wis_core::sites::domain::site_url;
 use wis_core::sites::protection::with_site_protection;
 use wis_core::sites::user_agent::normalize_host;
 use wis_core::{site_protection_for_host, SiteProtection, TabId, WisError, WisResult};
@@ -21,11 +22,13 @@ pub fn for_url(
     session: &HashMap<String, SiteProtection>,
     url: &str,
 ) -> SiteProtection {
-    let Some(host) = url::Url::parse(url)
-        .ok()
-        .filter(|u| matches!(u.scheme(), "http" | "https"))
-        .and_then(|u| u.host_str().map(str::to_owned))
-    else {
+    let Some(host) = url::Url::parse(url).ok().and_then(|u| {
+        let site = site_url(&u)?;
+        match site.scheme() {
+            "http" | "https" => site.host_str().map(str::to_owned),
+            _ => None,
+        }
+    }) else {
         return SiteProtection::default();
     };
     session
@@ -55,8 +58,9 @@ pub async fn tab_set_site_protection(
         (tab.url.clone(), private)
     };
     let url = live.clone().unwrap_or(stored);
-    let host = match (url.scheme(), url.host_str()) {
-        ("http" | "https", Some(host)) => normalize_host(host),
+    let page_site = site_url(&url);
+    let host = match page_site.as_deref().map(|u| (u.scheme(), u.host_str())) {
+        Some(("http" | "https", Some(host))) => normalize_host(host),
         _ => String::new(),
     };
     if host.is_empty() || host != normalize_host(&site) {
@@ -235,5 +239,19 @@ mod tests {
             SiteProtection::default()
         );
         assert_eq!(for_url(&saved, &HashMap::new(), "https://a.example/"), OFF);
+    }
+
+    #[test]
+    fn a_blob_page_takes_the_protection_of_the_site_that_made_it() {
+        let saved = HashMap::from([("a.example".to_string(), OFF)]);
+        let none = HashMap::new();
+        assert_eq!(
+            for_url(&saved, &none, "blob:https://a.example/0b5f7c1e"),
+            OFF
+        );
+        assert_eq!(
+            for_url(&saved, &none, "blob:null/0b5f7c1e"),
+            SiteProtection::default()
+        );
     }
 }

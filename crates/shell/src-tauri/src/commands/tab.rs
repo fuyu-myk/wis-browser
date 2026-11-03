@@ -661,7 +661,12 @@ pub async fn tab_zoom(
             Some(url) => url,
             None => state.browser.lock().await.tab(id)?.url.clone(),
         };
-        wis_core::sites::user_agent::normalize_host(url.host_str().unwrap_or_default())
+        let site = wis_core::sites::domain::site_url(&url);
+        wis_core::sites::user_agent::normalize_host(
+            site.as_deref()
+                .and_then(url::Url::host_str)
+                .unwrap_or_default(),
+        )
     };
     if host.is_empty() {
         return Ok(());

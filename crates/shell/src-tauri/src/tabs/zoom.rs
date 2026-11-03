@@ -7,6 +7,8 @@
 
 use std::collections::HashMap;
 
+use wis_core::sites::domain::site_url;
+
 /// Sync mirror of the zoom settings, read per navigation.
 pub struct ZoomCache {
     pub default_percent: u16,
@@ -18,7 +20,7 @@ pub struct ZoomCache {
 pub fn percent_for_url(cache: &ZoomCache, url: &str) -> u16 {
     let host = url::Url::parse(url)
         .ok()
-        .and_then(|parsed| parsed.host_str().map(str::to_owned))
+        .and_then(|parsed| site_url(&parsed)?.host_str().map(str::to_owned))
         .unwrap_or_default();
     wis_core::zoom_percent_for_host(&host, &cache.overrides, cache.default_percent)
 }
@@ -65,5 +67,14 @@ mod tests {
     fn a_url_without_a_host_takes_the_default() {
         assert_eq!(percent_for_url(&cache(), "about:blank"), 110);
         assert_eq!(percent_for_url(&cache(), "not a url"), 110);
+    }
+
+    #[test]
+    fn a_blob_page_takes_the_zoom_of_the_site_that_made_it() {
+        assert_eq!(
+            percent_for_url(&cache(), "blob:https://docs.example/0b5f7c1e"),
+            120
+        );
+        assert_eq!(percent_for_url(&cache(), "blob:null/0b5f7c1e"), 110);
     }
 }

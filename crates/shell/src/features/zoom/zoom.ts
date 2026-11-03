@@ -5,6 +5,8 @@
  * loaded as written, so reads snap too.
  */
 
+import { siteUrl } from '@/features/site/lib/host'
+
 /** `wis_core::sites::zoom::ZOOM_LADDER`, the percentages zoom steps through. */
 export const ZOOM_LADDER: readonly number[] = [
   20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 220,
@@ -21,13 +23,9 @@ export function saneZoomPercent(percent: number): number {
   )
 }
 
-/** The host of a page URL, or an empty string when it has none. */
+/** The host of a page URL's site (`siteUrl`), or an empty string when it has none. */
 export function hostOfUrl(url: string): string {
-  try {
-    return new URL(url).hostname
-  } catch {
-    return ''
-  }
+  return siteUrl(url)?.hostname ?? ''
 }
 
 /** The zoom for `host`: its own percentage when set, else the default. */

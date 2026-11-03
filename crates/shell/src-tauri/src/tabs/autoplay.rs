@@ -17,6 +17,7 @@
 
 use std::collections::HashMap;
 
+use wis_core::sites::domain::site_url;
 use wis_core::{autoplay_policy_for_host, AutoplayPolicy};
 
 /// Sync mirror of the two settings, read on the main thread per navigation.
@@ -25,11 +26,11 @@ pub struct AutoplayCache {
     pub overrides: HashMap<String, AutoplayPolicy>,
 }
 
-/// The policy for the page at `url`.
+/// The policy for the site of the page at `url` (`site_url`).
 pub fn policy_for_url(cache: &AutoplayCache, url: &str) -> AutoplayPolicy {
     let host = url::Url::parse(url)
         .ok()
-        .and_then(|u| u.host_str().map(str::to_owned))
+        .and_then(|u| site_url(&u)?.host_str().map(str::to_owned))
         .unwrap_or_default();
     autoplay_policy_for_host(&host, &cache.overrides, cache.policy)
 }
@@ -103,6 +104,26 @@ mod tests {
             AutoplayPolicy::Block
         );
         assert_eq!(policy_for_url(&cache, "about:blank"), AutoplayPolicy::Block);
+    }
+
+    #[test]
+    fn a_blob_page_takes_the_policy_of_the_site_that_made_it() {
+        let cache = AutoplayCache {
+            policy: AutoplayPolicy::Block,
+            overrides: HashMap::from([("video.example".to_string(), AutoplayPolicy::Allow)]),
+        };
+        assert_eq!(
+            policy_for_url(&cache, "blob:https://www.video.example/0b5f7c1e"),
+            AutoplayPolicy::Allow
+        );
+        assert_eq!(
+            policy_for_url(&cache, "blob:null/0b5f7c1e"),
+            AutoplayPolicy::Block
+        );
+        assert_eq!(
+            policy_for_url(&cache, "blob:ws://video.example/0b5f7c1e"),
+            AutoplayPolicy::Block
+        );
     }
 
     #[cfg(target_os = "linux")]

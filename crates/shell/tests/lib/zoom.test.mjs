@@ -15,6 +15,11 @@ test('a page URL gives its hostname, without port', () => {
   assert.equal(hostOfUrl('https://www.example.com:8443/a?b'), 'www.example.com')
 })
 
+test('a blob page gives the host of the site that made it', () => {
+  assert.equal(hostOfUrl('blob:https://www.example.com/0b5f7c1e'), 'www.example.com')
+  assert.equal(hostOfUrl('blob:null/0b5f7c1e'), '')
+})
+
 test('a URL with no host or no parse gives an empty host', () => {
   assert.equal(hostOfUrl('about:blank'), '')
   assert.equal(hostOfUrl('not a url'), '')
