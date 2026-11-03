@@ -64,7 +64,7 @@ fn css_rgba(rgb: (u8, u8, u8), alpha: u8) -> String {
 /// becomes translucent.
 ///
 /// Ported from `WebCore/platform/graphics/ColorBlending.cpp`, including its
-/// truncating integer division.
+/// single-precision division, truncated.
 fn blend_with_white(rgb: (u8, u8, u8)) -> ((u8, u8, u8), u8) {
     const START_ALPHA: i32 = 153;
     const END_ALPHA: i32 = 204;
@@ -76,7 +76,8 @@ fn blend_with_white(rgb: (u8, u8, u8)) -> ((u8, u8, u8), u8) {
     let mut alpha = START_ALPHA;
     while alpha <= END_ALPHA {
         let white_blend = 255 - alpha;
-        let component = |channel: u8| (i32::from(channel) - white_blend) * 255 / alpha;
+        let fraction = alpha as f32 / 255.0;
+        let component = |channel: u8| ((i32::from(channel) - white_blend) as f32 / fraction) as i32;
         let (red, green, blue) = (component(red), component(green), component(blue));
         let clamp = |value: i32| value.clamp(0, 255) as u8;
 
@@ -276,6 +277,12 @@ mod tests {
     #[test]
     fn the_white_blend_matches_webkits_own_arithmetic() {
         assert_eq!(blend_with_white((223, 197, 224)), ((201, 158, 203), 153));
+    }
+
+    /// 9 / 0.6 lands just under 15 in single precision, so WebKit gets 14.
+    #[test]
+    fn the_white_blend_divides_in_single_precision_as_webkit_does() {
+        assert_eq!(blend_with_white((111, 111, 111)), ((14, 14, 14), 153));
     }
 
     #[test]
