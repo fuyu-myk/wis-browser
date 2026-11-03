@@ -9,6 +9,8 @@ pub(crate) mod native_webview;
 #[cfg(any(windows, target_os = "linux", test))]
 pub(crate) mod page_message;
 #[cfg(target_os = "macos")]
+pub(crate) mod user_scripts;
+#[cfg(target_os = "macos")]
 pub(crate) mod webkit_features;
 pub(crate) mod webview_close;
 pub(crate) mod webview_prefs;

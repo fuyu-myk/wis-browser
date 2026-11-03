@@ -36,8 +36,19 @@ pub fn terminate_page(webview: &tauri::Webview) {
     }
 }
 
+/// Off macOS, where teardown already works, only per-webview state goes.
 #[cfg(not(target_os = "macos"))]
-pub fn terminate_page(_webview: &tauri::Webview) {}
+pub fn terminate_page(webview: &tauri::Webview) {
+    #[cfg(windows)]
+    {
+        let label = webview.label().to_string();
+        if let Err(err) = webview.with_webview(move |_| crate::protection::gpc::forget(&label)) {
+            log::debug!("terminate_page dispatch failed: {err}");
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = webview;
+}
 
 /// Tear down every remote-content webview owned by `window_label` (tabs,
 /// widget panels, peek, AI fetches). Runs on window close, where the OS

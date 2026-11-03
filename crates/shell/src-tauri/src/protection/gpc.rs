@@ -11,9 +11,10 @@
 //!
 //! 1. Flips the top frame of the current document through
 //!    `window.__wisGpcSet`.
-//! 2. Installs one more document-start script that flips every later
-//!    document in every frame. The flip scripts run after the baked one
-//!    and accumulate one per toggle, the last one winning.
+//! 2. Replaces the webview's document-start flip script, which runs after the
+//!    baked one and flips every later document in every frame. Each webview
+//!    keeps one: macOS removes the one before by its marker, Linux keeps its
+//!    handle on the web view and Windows the id WebView2 gave it.
 
 /// The property definition; `%ON%` is replaced by the setting at creation.
 const GPC_JS: &str = r#"(function () {
@@ -39,9 +40,34 @@ pub fn page_script(enabled: bool) -> String {
     GPC_JS.replace("%ON%", if enabled { "true" } else { "false" })
 }
 
+/// Starts every flip script, so a toggle can find the one before it.
+const FLIP_MARKER: &str = "/*wis-gpc-flip*/";
+
 /// The one-liner that moves an already-defined property to `enabled`.
 fn flip_script(enabled: bool) -> String {
-    format!("window.__wisGpcSet && window.__wisGpcSet({enabled});")
+    format!("{FLIP_MARKER}window.__wisGpcSet && window.__wisGpcSet({enabled});")
+}
+
+/// A webview's latest flip script: which install it was, and the id WebView2
+/// gave it once added.
+#[cfg(windows)]
+struct Flip {
+    install: u64,
+    id: Option<String>,
+}
+
+/// Each webview's latest flip script, by label.
+#[cfg(windows)]
+static FLIPS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, Flip>>> =
+    std::sync::LazyLock::new(Default::default);
+
+#[cfg(windows)]
+static NEXT_FLIP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Drop a closing webview's flip id.
+#[cfg(windows)]
+pub fn forget(label: &str) {
+    FLIPS.lock().expect("FLIPS poisoned").remove(label);
 }
 
 /// Move the signal to `enabled` on every live remote webview: the current
@@ -60,7 +86,7 @@ pub fn apply_to_all_remote(app: &tauri::AppHandle, enabled: bool) {
     }
 }
 
-/// Add `js` as a document-start, all-frames user script on a live webview.
+/// Make `js` the live webview's one document-start, all-frames flip script.
 #[cfg(target_os = "macos")]
 fn install_flip<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, js: String) {
     use objc2::runtime::AnyObject;
@@ -81,6 +107,7 @@ fn install_flip<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, js: Str
         if controller.is_null() {
             return;
         }
+        crate::platform::user_scripts::remove_marked(controller, FLIP_MARKER);
 
         let Ok(c) = std::ffi::CString::new(js) else {
             return;
@@ -105,11 +132,39 @@ fn install_flip<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, js: Str
     use webview2_com::AddScriptToExecuteOnDocumentCreatedCompletedHandler;
     use windows::core::HSTRING;
 
+    let label = webview.label().to_string();
     // WebView2 injects document-created scripts into every frame.
     crate::platform::win_webview2::with_core_webview2(webview, move |core| {
+        let install = NEXT_FLIP.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let previous = FLIPS
+            .lock()
+            .expect("FLIPS poisoned")
+            .insert(label.clone(), Flip { install, id: None })
+            .and_then(|flip| flip.id);
+        if let Some(id) = previous {
+            remove_flip(core, &id);
+        }
+
         let source = HSTRING::from(js.as_str());
-        let handler =
-            AddScriptToExecuteOnDocumentCreatedCompletedHandler::create(Box::new(|_, _| Ok(())));
+        let added_to = core.clone();
+        let handler = AddScriptToExecuteOnDocumentCreatedCompletedHandler::create(Box::new(
+            move |result, id| {
+                if result.is_err() {
+                    return Ok(());
+                }
+                let stale = match FLIPS.lock().expect("FLIPS poisoned").get_mut(&label) {
+                    Some(flip) if flip.install == install => {
+                        flip.id = Some(id);
+                        None
+                    }
+                    _ => Some(id),
+                };
+                if let Some(id) = stale {
+                    remove_flip(&added_to, &id);
+                }
+                Ok(())
+            },
+        ));
         // SAFETY: on the UI thread via `with_core_webview2`; `source` outlives
         // the synchronous call, which copies the string.
         if let Err(err) = unsafe { core.AddScriptToExecuteOnDocumentCreated(&source, &handler) } {
@@ -118,25 +173,50 @@ fn install_flip<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, js: Str
     });
 }
 
+#[cfg(windows)]
+fn remove_flip(core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2, id: &str) {
+    use windows::core::HSTRING;
+
+    // SAFETY: on the UI thread, inside `with_core_webview2` or a WebView2
+    // completion handler; WebView2 copies the id before returning.
+    if let Err(err) = unsafe { core.RemoveScriptToExecuteOnDocumentCreated(&HSTRING::from(id)) } {
+        log::debug!("gpc: RemoveScriptToExecuteOnDocumentCreated failed: {err}");
+    }
+}
+
+/// The web view's data key for its flip script.
+#[cfg(target_os = "linux")]
+const FLIP_KEY: &str = "wis-gpc-flip";
+
 #[cfg(target_os = "linux")]
 fn install_flip<R: tauri::Runtime>(webview: &tauri::webview::Webview<R>, js: String) {
+    use gtk::glib::object::ObjectExt;
     use webkit2gtk::{
         UserContentInjectedFrames, UserContentManagerExt, UserScript, UserScriptInjectionTime,
         WebViewExt,
     };
 
     let _ = webview.with_webview(move |w| {
-        let Some(ucm) = w.inner().user_content_manager() else {
+        let view = w.inner();
+        let Some(ucm) = view.user_content_manager() else {
             log::debug!("gpc: webview has no user content manager");
             return;
         };
-        ucm.add_script(&UserScript::new(
+        // SAFETY: `FLIP_KEY` is only ever set to a `UserScript`, here.
+        if let Some(previous) = unsafe { view.steal_data::<UserScript>(FLIP_KEY) } {
+            ucm.remove_script(&previous);
+        }
+
+        let script = UserScript::new(
             &js,
             UserContentInjectedFrames::AllFrames,
             UserScriptInjectionTime::Start,
             &[],
             &[],
-        ));
+        );
+        ucm.add_script(&script);
+        // SAFETY: as above.
+        unsafe { view.set_data(FLIP_KEY, script) };
     });
 }
 
@@ -153,9 +233,12 @@ mod tests {
 
     #[test]
     fn the_flip_guards_against_a_document_without_the_property() {
-        assert_eq!(
-            flip_script(false),
-            "window.__wisGpcSet && window.__wisGpcSet(false);"
-        );
+        assert!(flip_script(false).ends_with("window.__wisGpcSet && window.__wisGpcSet(false);"));
+    }
+
+    #[test]
+    fn the_flip_is_marked_so_the_next_toggle_can_find_it() {
+        assert!(flip_script(true).starts_with(FLIP_MARKER));
+        assert!(!FLIP_MARKER.starts_with(crate::protection::cosmetic::INJECT_MARKER_PREFIX));
     }
 }
