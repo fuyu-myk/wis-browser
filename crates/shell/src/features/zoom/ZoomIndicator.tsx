@@ -17,12 +17,12 @@ import { useEffect, useRef } from 'react'
 import type { Tab } from '@/bindings/types'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { cx } from '@/lib/cx'
-import { hostOfUrl, zoomPercentForHost } from '@/features/zoom/zoom'
+import { hostOfUrl, saneZoomPercent, zoomPercentForHost } from '@/features/zoom/zoom'
 
 export function ZoomIndicator({ activeTab }: { activeTab: Tab | null }) {
   const { data: state } = useBrowserState()
   const settings = state?.settings
-  const defaultPercent = settings?.default_zoom_percent ?? 100
+  const defaultPercent = saneZoomPercent(settings?.default_zoom_percent ?? 100)
   const percent =
     activeTab && settings
       ? zoomPercentForHost(hostOfUrl(activeTab.url), settings.zoom_site_overrides, defaultPercent)

@@ -5,20 +5,7 @@
 
 import { commands } from '@/bindings/commands'
 import type { UserSettings, UserSettingsPatch } from '@/bindings/types'
-import { Segmented } from '@/components/controls'
-
-/**
- * The rungs offered as a default. A subset of `wis_core::sites::zoom::ZOOM_LADDER`,
- * which runs 20% to 500%; a default outside these five still applies, but
- * leaves the control unset.
- */
-const ZOOM_OPTIONS = [
-  { value: '80', label: '80%' },
-  { value: '90', label: '90%' },
-  { value: '100', label: '100%' },
-  { value: '110', label: '110%' },
-  { value: '120', label: '120%' },
-] satisfies ReadonlyArray<{ value: string; label: string }>
+import { ZOOM_LADDER, saneZoomPercent } from '@/features/zoom/zoom'
 
 interface ZoomRowsProps {
   settings: UserSettings
@@ -40,12 +27,19 @@ export function ZoomRows({ settings, onUpdate }: ZoomRowsProps) {
           <span>Default zoom</span>
           <span>How pages are sized unless a site has its own zoom.</span>
         </div>
-        <Segmented
-          value={String(settings.default_zoom_percent)}
-          onChange={(value) => onUpdate({ default_zoom_percent: Number(value) })}
-          options={ZOOM_OPTIONS}
-          ariaLabel="Default zoom"
-        />
+        <span className="kb-select">
+          <select
+            value={saneZoomPercent(settings.default_zoom_percent)}
+            onChange={(e) => onUpdate({ default_zoom_percent: Number(e.currentTarget.value) })}
+            aria-label="Default zoom"
+          >
+            {ZOOM_LADDER.map((percent) => (
+              <option key={percent} value={percent}>
+                {percent}%
+              </option>
+            ))}
+          </select>
+        </span>
       </div>
       <div className="row">
         <div className="l">
