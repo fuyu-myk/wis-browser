@@ -10,10 +10,12 @@ const RAW = rawStringConst('protection/gpc.rs', 'GPC_JS')
 /** The script as `page_script(enabled)` bakes it. */
 const scriptFor = (enabled) => RAW.replaceAll('%ON%', enabled ? 'true' : 'false')
 
-// `flip_script` is a plain `format!` string, so it is read out directly.
+// `flip_script` is a plain `format!` string, so it is read out directly with
+// the marker it starts with.
 const SOURCE = readFileSync(new URL('../../src-tauri/src/protection/gpc.rs', import.meta.url), 'utf8')
 const FLIP = SOURCE.match(/fn flip_script[\s\S]*?format!\("([^"]*)"\)/)[1]
-const flipFor = (enabled) => FLIP.replace('{enabled}', String(enabled))
+const MARKER = SOURCE.match(/const FLIP_MARKER: &str = "([^"]*)";/)[1]
+const flipFor = (enabled) => FLIP.replace('{FLIP_MARKER}', MARKER).replace('{enabled}', String(enabled))
 
 /** Runs the script in a fresh realm stand-in; returns its window, navigator and Navigator. */
 function loadPage(enabled, { Navigator = class Navigator {}, navigator } = {}) {
@@ -96,7 +98,7 @@ describe('flipping the signal', () => {
     assert.equal(p.navigator.globalPrivacyControl, true)
   })
 
-  test("the toggle's flip scripts move the baked signal, the last one winning", () => {
+  test("each toggle's flip moves the baked signal, the latest winning", () => {
     const p = loadPage(true)
     p.flip(false)
     p.flip(true)
