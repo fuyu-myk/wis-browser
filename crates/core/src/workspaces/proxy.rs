@@ -162,6 +162,27 @@ mod tests {
         assert!(socks5("[nope]", 9050).validate().is_err());
     }
 
+    /// The settings row's inline check (`features/network/upstream.ts`) is
+    /// tested against the same cases.
+    #[test]
+    fn a_host_is_judged_by_the_domain_rules() {
+        for host in [
+            "exa%mple.com",
+            "1.2.3.999",
+            "proxy.1",
+            "a\u{1}b",
+            "a\u{7f}b",
+            "xn--a.com",
+            "a\\",
+            "example.com\\",
+        ] {
+            assert!(socks5(host, 9050).validate().is_err(), "{host:?}");
+        }
+        for host in ["münchen.de", "a%41b.com", "0x7f.1", "a_b.com"] {
+            assert!(socks5(host, 9050).validate().is_ok(), "{host}");
+        }
+    }
+
     #[test]
     fn the_length_and_port_bounds_are_inclusive() {
         assert!(socks5(&"a".repeat(MAX_PROXY_HOST_BYTES), 9050)

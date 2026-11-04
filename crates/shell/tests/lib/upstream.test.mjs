@@ -65,6 +65,15 @@ describe('proxy host', () => {
     }
   })
 
+  test('a host is judged by the domain rules url::Host::parse applies', () => {
+    for (const host of ['exa%mple.com', '1.2.3.999', 'proxy.1', 'a\x01b', 'a\x7fb', 'xn--a.com', 'a\\', 'example.com\\']) {
+      assert.equal(proxyHostProblem(host), INVALID, JSON.stringify(host))
+    }
+    for (const host of ['münchen.de', 'a%41b.com', '0x7f.1', 'a_b.com']) {
+      assert.equal(proxyHostProblem(host), null, host)
+    }
+  })
+
   test('a host carrying a query or fragment is refused, as the Rust side refuses it', () => {
     for (const host of ['proxy.example.com?x', 'proxy#x']) {
       assert.equal(proxyHostProblem(host), 'Enter a host and port only, with no scheme, credentials or path.', host)

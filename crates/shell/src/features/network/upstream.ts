@@ -29,8 +29,11 @@ export function proxyHostProblem(host: string): string | null {
   const inner = /^\[(.*)\]$/.exec(value)?.[1]
   const bare = inner !== undefined && inner.includes(':') ? inner : value
   const bracketed = bare.includes(':') ? `[${bare}]` : bare
+  // A special scheme, so the host gets the domain rules `url::Host::parse`
+  // applies. Those treat a backslash as the end of the host.
+  if (value.includes('\\')) return 'That host is not valid.'
   try {
-    if (new URL(`socks5://${bracketed}`).hostname === '') return 'That host is not valid.'
+    if (new URL(`http://${bracketed}`).pathname !== '/') return 'That host is not valid.'
   } catch {
     return 'That host is not valid.'
   }
