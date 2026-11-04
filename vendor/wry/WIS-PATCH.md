@@ -617,6 +617,25 @@ the embedder connects later never runs.
 Removal checklist: once wry lets the embedder attach website policies to a
 navigation, drop the hook and move `tabs/autoplay.rs` onto it.
 
+## Twenty-second patch: the embedder decides navigations in wry's own popups (Linux) (Wis-original)
+
+When the new-window handler answers `NewWindowResponse::Allow`, wry builds the
+popup with default attributes, so no navigation handler decides anything in
+it, and an OAuth popup redirecting to an app link (`zoommtg:`) failed silently.
+
+- `src/webkitgtk/mod.rs`: `wry::set_popup_navigation_hook(Box<dyn Fn(&str)
+  -> bool + Send + Sync>)` (`OnceLock`, first registration wins). The
+  `Allow` branch connects `decide-policy` on the popup's web view
+  (`decide_popup_navigation`), which calls the hook on the main thread with
+  each navigation or new-window action's URL; `false` ignores the navigation
+  and stops the signal, anything else falls through to WebKit's default.
+  Subframes are decided too. WebKitGTK does not say which page asked (the
+  popup, a frame in it, or its opener), so the hook gets no initiator.
+- `src/lib.rs`: re-exports the setter on GTK.
+
+Removal checklist: once wry gives popups it creates the embedder's navigation
+handler, drop the hook and move `app_launch::install_popup_hook` onto it.
+
 ## Edition 2024 (wry 0.57)
 
 wry builds as edition 2024, so the patches keep the unsafe operations of their

@@ -79,6 +79,51 @@ fn autoplay_policies(uri: &str) -> Option<WebsitePolicies> {
   Some(WebsitePolicies::builder().autoplay(autoplay).build())
 }
 
+// WIS patch: embedder hook consulted for each navigation in a popup wry opens
+// itself (`NewWindowResponse::Allow`), with the target URL. Such a popup is
+// built with default attributes, so nothing else decides its navigations.
+type PopupNavigationHook = Box<dyn Fn(&str) -> bool + Send + Sync>;
+static POPUP_NAVIGATION_HOOK: std::sync::OnceLock<PopupNavigationHook> = std::sync::OnceLock::new();
+
+/// WIS patch: register the process-wide popup-navigation hook; `false` ignores
+/// the navigation. The first registration wins; later calls are ignored.
+pub fn set_popup_navigation_hook(hook: PopupNavigationHook) {
+  let _ = POPUP_NAVIGATION_HOOK.set(hook);
+}
+
+/// Ignores a popup navigation the hook refuses and stops the signal; anything
+/// else goes on to WebKit's default handling.
+fn decide_popup_navigation(
+  _webview: &WebView,
+  decision: &webkit2gtk::PolicyDecision,
+  kind: PolicyDecisionType,
+) -> bool {
+  let Some(hook) = POPUP_NAVIGATION_HOOK.get() else {
+    return false;
+  };
+  if !matches!(
+    kind,
+    PolicyDecisionType::NavigationAction | PolicyDecisionType::NewWindowAction
+  ) {
+    return false;
+  }
+
+  let target = decision
+    .dynamic_cast_ref::<NavigationPolicyDecision>()
+    .and_then(|policy| policy.navigation_action())
+    .and_then(|action| action.request())
+    .and_then(|request| request.uri());
+  let Some(target) = target else {
+    return false;
+  };
+  if hook(&target) {
+    return false;
+  }
+
+  decision.ignore();
+  true
+}
+
 mod drag_drop;
 mod synthetic_mouse_events;
 mod web_context;
@@ -568,6 +613,9 @@ impl InnerWebView {
               },
             )
             .map(|webview| {
+              webview
+                .webview
+                .connect_decide_policy(decide_popup_navigation);
               let widget = webview.webview.upcast_ref::<gtk::Widget>().clone();
               related_webviews.lock().unwrap().insert(id, webview);
               widget

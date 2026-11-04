@@ -5,7 +5,8 @@
 //! immediately; anything else raises the `wis-app-launch-request` prompt
 //! overlay, answered by [`app_launch_decide`]. Tab navigations enter through
 //! the tab builder's `on_navigation`/`on_new_window` hooks; macOS popup
-//! redirects enter through the navigation delegate `popup_chrome` installs.
+//! redirects enter through the navigation delegate `popup_chrome` installs,
+//! Linux ones through wry's popup navigation hook.
 
 use std::sync::OnceLock;
 
@@ -34,8 +35,16 @@ pub fn set_app_handle(app: AppHandle) {
 /// A cancelled navigation awaiting the user's decision in the prompt overlay.
 pub struct PendingAppLaunch {
     pub url: Url,
-    /// Remember-key: `"<scheme>|<initiator host>"`.
-    pub key: String,
+    /// Remember-key: `"<scheme>|<initiator host>"`, or `None` when no site is
+    /// known.
+    pub key: Option<String>,
+}
+
+impl PendingAppLaunch {
+    /// Whether a new launch re-raises this prompt instead of adding one.
+    fn joins(&self, key: Option<&str>, url: &Url) -> bool {
+        self.key.as_deref() == key && (key.is_some() || self.url == *url)
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -101,10 +110,31 @@ pub fn intake_global(initiator_host: Option<String>, url: Url) {
     }
 }
 
+/// Hand each app link a popup wry opened itself navigates to over to
+/// [`intake`], as the macOS popup navigation delegate does.
+#[cfg(target_os = "linux")]
+pub fn install_popup_hook() {
+    wry::set_popup_navigation_hook(Box::new(|target| {
+        let Some(url) = Url::parse(target).ok().filter(should_intercept) else {
+            return true;
+        };
+        intake_global(None, url);
+        false
+    }));
+}
+
+/// The key a launch's decision is saved under, or `None` when no site sent it.
+fn remember_key(scheme: &str, initiator_host: Option<&str>) -> Option<String> {
+    initiator_host
+        .filter(|host| !host.is_empty())
+        .map(|host| wis_core::navigation::app_launch::permission_key(scheme, host))
+}
+
 /// Decide a cancelled custom-scheme navigation: a remembered decision launches
 /// or drops immediately, otherwise the prompt overlay is raised.
-/// `initiator_host` is the site that triggered the launch (`None` when
-/// unknown); one prompt per remember-key is in flight at a time.
+/// `initiator_host` is the site that triggered the launch; `None` when unknown,
+/// which always prompts and is never remembered. One prompt per remember-key
+/// is in flight at a time.
 pub fn intake(app: &AppHandle, initiator_host: Option<String>, url: Url) {
     let scheme = url.scheme().to_string();
     if !wis_core::navigation::app_launch::is_app_scheme(&scheme) {
@@ -112,17 +142,16 @@ pub fn intake(app: &AppHandle, initiator_host: Option<String>, url: Url) {
     }
 
     let state = app.state::<AppState>();
-    let key = wis_core::navigation::app_launch::permission_key(
-        &scheme,
-        initiator_host.as_deref().unwrap_or(""),
-    );
+    let key = remember_key(&scheme, initiator_host.as_deref());
 
-    let remembered = state
-        .app_launch_permissions
-        .read()
-        .expect("app_launch_permissions poisoned")
-        .get(&key)
-        .copied();
+    let remembered = key.as_ref().and_then(|key| {
+        state
+            .app_launch_permissions
+            .read()
+            .expect("app_launch_permissions poisoned")
+            .get(key)
+            .copied()
+    });
     match remembered {
         Some(true) => {
             if let Err(err) = launch(&url) {
@@ -136,17 +165,17 @@ pub fn intake(app: &AppHandle, initiator_host: Option<String>, url: Url) {
 
     let (app_name, has_handler) = handler_app(&url);
 
-    let request_id = {
+    let (request_id, shown) = {
         let mut pending = state
             .pending_app_launch
             .lock()
             .expect("pending_app_launch poisoned");
         let in_flight = pending
             .iter()
-            .find(|(_, p)| p.key == key)
-            .map(|(id, _)| *id);
+            .find(|(_, p)| p.joins(key.as_deref(), &url))
+            .map(|(id, p)| (*id, p.url.to_string()));
         match in_flight {
-            Some(id) => id,
+            Some(found) => found,
             None => {
                 // Distinct pending prompt cap.
                 if pending.len() >= MAX_PENDING {
@@ -164,7 +193,7 @@ pub fn intake(app: &AppHandle, initiator_host: Option<String>, url: Url) {
                     },
                 );
 
-                id
+                (id, url.to_string())
             }
         }
     };
@@ -173,7 +202,7 @@ pub fn intake(app: &AppHandle, initiator_host: Option<String>, url: Url) {
         APP_LAUNCH_REQUEST_EVENT,
         AppLaunchRequest {
             request_id,
-            url: url.to_string(),
+            url: shown,
             scheme,
             initiator_host,
             app_name,
@@ -201,12 +230,12 @@ pub async fn app_launch_decide(
         return Ok(());
     };
 
-    if remember {
+    if let Some(key) = pending.key.filter(|_| remember) {
         state
             .app_launch_permissions
             .write()
             .expect("app_launch_permissions poisoned")
-            .insert(pending.key, granted);
+            .insert(key, granted);
     }
     if granted {
         launch(&pending.url)?;
@@ -350,5 +379,49 @@ mod imp {
                 true,
             )
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_launch_is_remembered_against_the_site_that_sent_it() {
+        assert_eq!(
+            remember_key("zoommtg", Some("zoom.us")).as_deref(),
+            Some("zoommtg|zoom.us")
+        );
+    }
+
+    fn pending(url: &str, key: Option<&str>) -> PendingAppLaunch {
+        PendingAppLaunch {
+            url: Url::parse(url).unwrap(),
+            key: key.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn a_site_joins_its_own_prompt_for_that_scheme() {
+        let waiting = pending("zoommtg://zoom.us/join?confno=1", Some("zoommtg|zoom.us"));
+        let next = Url::parse("zoommtg://zoom.us/join?confno=2").unwrap();
+        assert!(waiting.joins(Some("zoommtg|zoom.us"), &next));
+        assert!(!waiting.joins(Some("zoommtg|example.com"), &next));
+        assert!(!waiting.joins(None, &next));
+    }
+
+    #[test]
+    fn a_launch_from_no_known_site_joins_only_the_same_link() {
+        let waiting = pending("zoommtg://zoom.us/join?confno=1", None);
+        let same = Url::parse("zoommtg://zoom.us/join?confno=1").unwrap();
+        let other = Url::parse("zoommtg://zoom.us/join?confno=2").unwrap();
+        assert!(waiting.joins(None, &same));
+        assert!(!waiting.joins(None, &other));
+    }
+
+    #[test]
+    fn a_launch_from_no_known_site_is_never_remembered() {
+        assert_eq!(remember_key("zoommtg", None), None);
+        assert_eq!(remember_key("zoommtg", Some("")), None);
     }
 }

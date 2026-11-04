@@ -396,6 +396,8 @@ pub fn run() {
 
             // App handle for the popup open-in-app navigation delegate.
             system::app_launch::set_app_handle(app.handle().clone());
+            #[cfg(target_os = "linux")]
+            system::app_launch::install_popup_hook();
 
             // App handle for the find-in-page match-count delegate.
             pages::find::set_app_handle(app.handle().clone());

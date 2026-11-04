@@ -188,7 +188,7 @@ mod imp {
             #[method(webView:decidePolicyForNavigationAction:decisionHandler:)]
             fn decide_policy(
                 &self,
-                webview: *mut AnyObject,
+                _webview: *mut AnyObject,
                 action: *mut AnyObject,
                 handler: &block2::Block<dyn Fn(isize)>,
             ) {
@@ -202,7 +202,10 @@ mod imp {
 
                 handler.call((0,));
 
-                let initiator_host = unsafe { committed_host(webview) };
+                // SAFETY: `action` is live for this callback and owns its
+                // `sourceFrame`; the origin is autoreleased into the run
+                // loop's pool and the host is copied out before returning.
+                let initiator_host = unsafe { source_host(action) };
                 crate::system::app_launch::intake_global(initiator_host, url);
             }
         }
@@ -240,18 +243,26 @@ mod imp {
         (!text.is_empty()).then_some(text)
     }
 
-    /// Host of the popup's committed page; `None` before anything committed.
-    unsafe fn committed_host(webview: *mut AnyObject) -> Option<String> {
-        if webview.is_null() {
+    /// Host of the page that asked for the navigation: the popup, a frame in
+    /// it, or its opener, kept across redirects. The popup's own URL would
+    /// name a page still loading, or the app link itself after a redirect.
+    /// `None` for an opaque origin.
+    unsafe fn source_host(action: *mut AnyObject) -> Option<String> {
+        if action.is_null() {
             return None;
         }
 
-        let nsurl: *mut AnyObject = msg_send![webview, URL];
-        if nsurl.is_null() {
+        let frame: *mut AnyObject = msg_send![action, sourceFrame];
+        if frame.is_null() {
             return None;
         }
 
-        let host: *mut AnyObject = msg_send![nsurl, host];
+        let origin: *mut AnyObject = msg_send![frame, securityOrigin];
+        if origin.is_null() {
+            return None;
+        }
+
+        let host: *mut AnyObject = msg_send![origin, host];
         let text = nsstring_to_string(host);
 
         (!text.is_empty()).then_some(text)
@@ -706,6 +717,23 @@ mod imp {
 #[cfg(test)]
 mod site_tests {
     use super::same_site;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_sender_lookup_matches_webkit() {
+        use objc2::runtime::AnyObject;
+        use objc2::{class, sel};
+
+        class!(WKNavigationAction)
+            .verify_sel::<(), *mut AnyObject>(sel!(sourceFrame))
+            .unwrap();
+        class!(WKFrameInfo)
+            .verify_sel::<(), *mut AnyObject>(sel!(securityOrigin))
+            .unwrap();
+        class!(WKSecurityOrigin)
+            .verify_sel::<(), *mut AnyObject>(sel!(host))
+            .unwrap();
+    }
 
     fn u(s: &str) -> tauri::Url {
         s.parse().expect("valid test URL")
