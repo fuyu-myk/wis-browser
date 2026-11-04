@@ -236,7 +236,8 @@ pub async fn set_workspace_privacy_mode(
 
 /// Set (or clear) a workspace's upstream proxy. The running proxy's policy is
 /// updated in place so open tabs route through the new upstream on their next
-/// request without losing their connection.
+/// request without losing their connection. Gaining or losing an upstream
+/// rebuilds the workspace on macOS, as its pages lose or regain WebRTC.
 #[tauri::command]
 pub async fn set_workspace_upstream(
     app: AppHandle,
@@ -258,18 +259,28 @@ pub async fn set_workspace_upstream(
         .await
         .map_err(WisError::from)?;
 
-    let workspace = mutate(&app, &state, |s| {
+    let (workspace, rehardened, pages) = mutate(&app, &state, |s| {
+        let before = crate::protection::hardening::Hardening::of(s.workspace(id)?);
         let next = s.with_workspace_upstream_proxy(id, upstream.clone())?;
         let updated = next.workspace(id)?.clone();
+        let rehardened = crate::protection::hardening::Hardening::of(&updated) != before;
+        let pages = crate::protection::hardening::web_pages(&next, id);
 
-        Ok((next, updated))
+        Ok((next, (updated, rehardened, pages)))
     })
     .await?;
 
-    state
-        .update_proxy_policy(id, true)
-        .await
-        .map_err(WisError::from)?;
+    let policy = state.update_proxy_policy(id, true).await;
+    if rehardened {
+        #[cfg(target_os = "macos")]
+        crate::extensions::release(&app, id);
+        crate::protection::hardening::rebuild_workspace(&app, &state, id, pages);
+    }
+    policy.map_err(WisError::from)?;
+    if rehardened {
+        log::info!("workspace {id} upstream proxy updated");
+        return Ok(workspace);
+    }
 
     let tab_labels: Vec<String> = {
         let browser = state.browser.lock().await;

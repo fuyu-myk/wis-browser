@@ -314,6 +314,8 @@ pub(super) fn open_options(context: &WKWebExtensionContext) -> Result<(), String
             false,
         );
         window.setReleasedWhenClosed(false);
+        let identifier = NSString::from_str(crate::chrome::popup::NOT_A_POPUP);
+        let _: () = objc2_06::msg_send![&window, setIdentifier: &*identifier];
         window.setTitle(&NSString::from_str(&format!("{name} options")));
         let webview = WKWebView::initWithFrame_configuration(WKWebView::alloc(mtm), frame, &config);
         window.setContentView(Some(&webview));

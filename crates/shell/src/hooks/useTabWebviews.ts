@@ -228,6 +228,8 @@ export function useTabWebviews({
   // Asked to rebuild while still being created, which may have read the old
   // settings: rebuilt as soon as the webview exists.
   const rebuildWhenCreatedRef = useRef(new Set<TabId>())
+  // Asked to rebuild while popped out: rebuilt once it folds back in.
+  const rebuildAfterPopoutRef = useRef(new Set<TabId>())
 
   const sleepWebview = useCallback(
     (id: TabId, wv: Webview) => {
@@ -271,8 +273,9 @@ export function useTabWebviews({
   )
 
   // Rebuild the listed tabs through the sleep path, so they keep their session
-  // and come back under the new extensions or Lockdown Mode. Extensions spare
-  // audible tabs.
+  // and come back under the new extensions or workspace hardening. Extensions
+  // spare audible and popped-out tabs; hardening folds a popped-out tab back
+  // and rebuilds it then.
   useEffect(() => {
     let cancelled = false
     const unlistens: UnlistenFn[] = []
@@ -282,7 +285,14 @@ export function useTabWebviews({
         const wv = webviewsRef.current.get(id)
         if (creatingRef.current.has(id)) rebuildWhenCreatedRef.current.add(id)
         if (!wv || (wv as unknown) === PENDING) continue
-        if (popoutRef.current?.isPopout(id) || (spareAudible && audibleRef.current.has(id))) continue
+        if (popoutRef.current?.isPopout(id)) {
+          if (!spareAudible) {
+            rebuildAfterPopoutRef.current.add(id)
+            popoutRef.current.release(id)
+          }
+          continue
+        }
+        if (spareAudible && audibleRef.current.has(id)) continue
         sleepWebview(id, wv)
       }
     }
@@ -527,13 +537,18 @@ export function useTabWebviews({
   // After a popout restore lands, the webview is hidden in the main window.
   useEffect(() => {
     popout?.setReconcile((id: TabId) => {
+      const rebuild = rebuildAfterPopoutRef.current.delete(id)
       const wv = webviewsRef.current.get(id)
       if (!wv || (wv as unknown) === PENDING) return
+      if (rebuild) {
+        sleepWebview(id, wv)
+        return
+      }
       hiddenSinceRef.current.delete(id)
       visibilityRef.current.set(id, false)
       reconcileOne(id, wv)
     })
-  }, [popout, reconcileOne])
+  }, [popout, reconcileOne, sleepWebview])
 
   const syncLayout = useCallback(
     (layout: WebviewLayout, focusedTabId: TabId | null, transient = false) => {

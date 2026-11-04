@@ -63,6 +63,25 @@ pub fn ensure_running(app: &AppHandle, url: &str) {
     let _ = (app, url);
 }
 
+/// The identifier of Wis's own bare windows that hold a `WKWebView`, such as
+/// extension options.
+pub(crate) const NOT_A_POPUP: &str = "wis-not-a-popup";
+
+/// Close every engine popup, whose webview keeps the configuration it was
+/// made with. macOS only, where Wis can reach them.
+pub fn close_all(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        let app2 = app.clone();
+        if let Err(err) = app.run_on_main_thread(move || imp::close_all(&app2)) {
+            log::warn!("engine popups were not closed: {err}");
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
     use std::ffi::CStr;
@@ -357,14 +376,15 @@ mod imp {
         }
     }
 
-    fn tick(app: &AppHandle) {
-        let tauri_windows: Vec<usize> = app
-            .windows()
+    fn tauri_windows(app: &AppHandle) -> Vec<usize> {
+        app.windows()
             .values()
             .filter_map(|w| w.ns_window().ok().map(|p| p as usize))
-            .collect();
+            .collect()
+    }
 
-        let live = unsafe { decorate_pass(&tauri_windows) };
+    fn tick(app: &AppHandle) {
+        let live = unsafe { decorate_pass(&tauri_windows(app)) };
 
         // No popup remains: release any hover suppression left armed by a popup
         // that closed while the cursor was inside it.
@@ -390,26 +410,30 @@ mod imp {
         }
     }
 
-    /// Decorate every engine popup and refresh its URL. Returns the live popup
-    /// count so the caller can decide when to stop polling.
-    unsafe fn decorate_pass(tauri_windows: &[usize]) -> u32 {
+    /// Each engine popup's window and webview: a window neither Tauri nor
+    /// Wis owns, whose content view is a `WKWebView`.
+    unsafe fn engine_popups(tauri_windows: &[usize]) -> Vec<(*mut AnyObject, *mut AnyObject)> {
         let nsapp: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
         if nsapp.is_null() {
-            return 0;
+            return Vec::new();
         }
 
         let windows: *mut AnyObject = msg_send![nsapp, windows];
         if windows.is_null() {
-            return 0;
+            return Vec::new();
         }
 
         let count: usize = msg_send![windows, count];
         let wk_class = class!(WKWebView);
 
-        let mut live = 0u32;
+        let mut popups = Vec::new();
         for i in 0..count {
             let win: *mut AnyObject = msg_send![windows, objectAtIndex: i];
             if win.is_null() || tauri_windows.contains(&(win as usize)) {
+                continue;
+            }
+            let identifier: *mut AnyObject = msg_send![win, identifier];
+            if nsstring_to_string(identifier) == super::NOT_A_POPUP {
                 continue;
             }
             let content: *mut AnyObject = msg_send![win, contentView];
@@ -417,10 +441,34 @@ mod imp {
                 continue;
             }
             let is_wk: Bool = msg_send![content, isKindOfClass: wk_class];
-            if !is_wk.as_bool() {
-                continue;
+            if is_wk.as_bool() {
+                popups.push((win, content));
             }
+        }
 
+        popups
+    }
+
+    /// Closes each popup's page, so its content process exits.
+    pub fn close_all(app: &AppHandle) {
+        // SAFETY: on the main thread; every window and webview is live for
+        // the pass, and wry's popup windows are not released when closed.
+        unsafe {
+            for (win, content) in engine_popups(&tauri_windows(app)) {
+                let responds: Bool = msg_send![content, respondsToSelector: sel!(_close)];
+                if responds.as_bool() {
+                    let _: () = msg_send![content, _close];
+                }
+                let _: () = msg_send![win, close];
+            }
+        }
+    }
+
+    /// Decorate every engine popup and refresh its URL. Returns the live popup
+    /// count.
+    unsafe fn decorate_pass(tauri_windows: &[usize]) -> u32 {
+        let mut live = 0u32;
+        for (win, content) in engine_popups(tauri_windows) {
             live += 1;
             let ui_delegate: *mut AnyObject = msg_send![content, UIDelegate];
             if ui_delegate.is_null() {
@@ -732,6 +780,20 @@ mod site_tests {
             .unwrap();
         class!(WKSecurityOrigin)
             .verify_sel::<(), *mut AnyObject>(sel!(host))
+            .unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn own_windows_are_named_with_a_send_appkit_has() {
+        use objc2::runtime::AnyObject;
+        use objc2::{class, sel};
+
+        class!(NSWindow)
+            .verify_sel::<(), *mut AnyObject>(sel!(identifier))
+            .unwrap();
+        class!(NSWindow)
+            .verify_sel::<(*mut AnyObject,), ()>(sel!(setIdentifier:))
             .unwrap();
     }
 

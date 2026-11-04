@@ -10,6 +10,9 @@ use objc2_web_kit::{WKPreferences, WKWebViewConfiguration};
 /// WebKit draws pages at 60 fps on faster displays while this is on.
 pub(crate) const FRAME_RATE_CAP: &str = "PreferPageRenderingUpdatesNear60FPSEnabled";
 
+/// WebRTC, whose sockets never use the data store's proxy.
+pub(crate) const PEER_CONNECTIONS: &str = "PeerConnectionEnabled";
+
 /// Wis's own surfaces draw at the display's full rate; web pages keep
 /// WebKit's 60 fps cap. Pages get their workspace's hardening here too.
 pub fn install_configuration_hook() {

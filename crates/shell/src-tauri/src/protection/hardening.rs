@@ -1,6 +1,7 @@
 //! Workspace hardening WebKit only reads from the configuration a webview is
-//! created with: Lockdown Mode (macOS 14+) and fingerprinting protection
-//! (macOS 13.3+). Each creation marks its label first and the configuration
+//! created with: Lockdown Mode (macOS 14+), fingerprinting protection
+//! (macOS 13.3+), and no WebRTC behind Tor or SOCKS, since WebRTC's sockets
+//! skip the proxy. Each creation marks its label first and the configuration
 //! hook, which runs later on the main thread, reads the mark. Every creation
 //! sets or clears its label's mark, so the latest creation's intent wins.
 
@@ -21,6 +22,8 @@ const PEEK_CLOSE_EVENT: &str = "wis-peek-close";
 pub struct Hardening {
     pub lockdown: bool,
     pub fingerprinting: bool,
+    /// The workspace routes through an upstream proxy WebRTC would skip.
+    pub no_webrtc: bool,
 }
 
 impl Hardening {
@@ -31,6 +34,7 @@ impl Hardening {
         Self {
             lockdown: workspace.lockdown,
             fingerprinting: workspace.privacy_mode != PrivacyMode::Permissive,
+            no_webrtc: workspace.upstream_proxy.is_some(),
         }
     }
 }
@@ -89,21 +93,33 @@ pub unsafe fn apply(label: &str, config: &objc2_web_kit::WKWebViewConfiguration)
         let raw = objc2_06::rc::Retained::as_ptr(&preferences) as *mut objc2::runtime::AnyObject;
         crate::protection::site_protection::imp::set_fingerprinting_protection(raw, true);
     }
+    if hardening.no_webrtc {
+        use crate::platform::webkit_features::{disable, PEER_CONNECTIONS};
+
+        if !disable(&config.preferences(), &[PEER_CONNECTIONS]).is_empty() {
+            log::error!("WebKit feature {PEER_CONNECTIONS} is gone; {label} keeps WebRTC");
+        }
+    }
 }
 
+/// The workspace's tabs with a page in a webview of their own, `blob:` and
+/// `data:` ones included; canvases keep their own configuration.
 pub fn web_pages(state: &BrowserState, workspace: WorkspaceId) -> Vec<TabId> {
     state
         .tabs
         .iter()
         .filter(|tab| tab.workspace_id == workspace)
-        .filter(|tab| matches!(tab.url.scheme(), "http" | "https" | "file"))
+        .filter(|tab| !crate::commands::is_chrome_url(tab.url.as_str()))
+        .filter(|tab| !crate::canvas::page::is_canvas_url(&tab.url))
         .map(|tab| tab.id)
         .collect()
 }
 
 /// Closes the workspace's Peek and widget panels, which reopen under the new
-/// hardening, and rebuilds its open pages.
+/// hardening, and every engine popup, which cannot be traced to a workspace,
+/// and rebuilds its open pages.
 pub fn rebuild_workspace(app: &AppHandle, state: &AppState, id: WorkspaceId, pages: Vec<TabId>) {
+    crate::chrome::popup::close_all(app);
     let windows: Vec<String> = state
         .window_workspaces
         .lock()
@@ -164,11 +180,12 @@ pub async fn set_workspace_lockdown(
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
-    use wis_core::AccentColor;
+    use wis_core::{AccentColor, UpstreamProxy};
 
     const LOCKDOWN: Hardening = Hardening {
         lockdown: true,
         fingerprinting: false,
+        no_webrtc: false,
     };
 
     #[test]
@@ -196,6 +213,38 @@ mod tests {
         assert!(resists(PrivacyMode::Strict));
         assert!(resists(PrivacyMode::Balanced));
         assert!(!resists(PrivacyMode::Permissive));
+    }
+
+    #[test]
+    fn every_page_with_its_own_webview_is_rebuilt() {
+        let base = BrowserState::new_with_defaults();
+        let ws = base.active_workspace_id;
+        let tab = |url: &str| wis_core::Tab::new(ws, url::Url::parse(url).unwrap());
+        let pages = [
+            tab("https://example.com/"),
+            tab("blob:https://example.com/0f3c2a1e"),
+            tab("data:text/html,x"),
+            tab("file:///tmp/a.html"),
+        ];
+        let skipped = [tab("about:blank"), tab("wis-canvas://board/x")];
+        let state = BrowserState {
+            tabs: pages.iter().chain(&skipped).cloned().collect(),
+            ..base
+        };
+        let ids: Vec<TabId> = pages.iter().map(|t| t.id).collect();
+        assert_eq!(web_pages(&state, ws), ids);
+    }
+
+    #[test]
+    fn a_proxied_workspace_has_no_webrtc() {
+        let workspace = Workspace::new("w".into(), AccentColor::Primary);
+        let socks = UpstreamProxy::Socks5 {
+            host: "127.0.0.1".into(),
+            port: 1080,
+        };
+        assert!(!Hardening::of(&workspace).no_webrtc);
+        assert!(Hardening::of(&workspace.with_upstream_proxy(Some(UpstreamProxy::Tor))).no_webrtc);
+        assert!(Hardening::of(&workspace.with_upstream_proxy(Some(socks))).no_webrtc);
     }
 
     #[test]

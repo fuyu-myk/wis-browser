@@ -463,12 +463,20 @@ async fn ensure_host(
     }
 
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
-    let ensured = app.run_on_main_thread(move || {
-        grants::init(grants);
-        host::ensure(
-            workspace, private, proxy_port, dir, wanted, active, ready_tx,
-        );
-    });
+    let ensured = {
+        let browser = state.browser.lock().await;
+        let Ok(current) = browser.workspace(workspace) else {
+            return false;
+        };
+        let pages = host::Pages {
+            private,
+            no_webrtc: crate::protection::hardening::Hardening::of(current).no_webrtc,
+        };
+        app.run_on_main_thread(move || {
+            grants::init(grants);
+            host::ensure(workspace, pages, proxy_port, dir, wanted, active, ready_tx);
+        })
+    };
     if let Err(err) = ensured {
         log::warn!("extensions not started: {err}");
         return false;

@@ -198,9 +198,17 @@ fn persistent_configuration(
     }
 }
 
+/// How a workspace's extension pages are configured.
+#[derive(Clone, Copy)]
+pub(super) struct Pages {
+    pub private: bool,
+    /// `true` when behind Tor or SOCKS.
+    pub no_webrtc: bool,
+}
+
 fn new_host(
     workspace: WorkspaceId,
-    private: bool,
+    Pages { private, no_webrtc }: Pages,
     port: u16,
     wanted_active: Option<String>,
     mtm: MainThreadMarker,
@@ -226,6 +234,13 @@ fn new_host(
         config.setDefaultWebsiteDataStore(Some(&store));
         let pages = config.webViewConfiguration();
         pages.setWebsiteDataStore(&store);
+        if no_webrtc {
+            use crate::platform::webkit_features::{disable, PEER_CONNECTIONS};
+
+            if !disable(&pages.preferences(), &[PEER_CONNECTIONS]).is_empty() {
+                log::error!("WebKit feature {PEER_CONNECTIONS} is gone; extensions keep WebRTC");
+            }
+        }
         config.setWebViewConfiguration(Some(&pages));
         WKWebExtensionController::initWithConfiguration(
             WKWebExtensionController::alloc(mtm),
@@ -277,7 +292,7 @@ pub(super) fn tab_configuration(
 /// extensions are in: true, or false when it could not have one.
 pub(super) fn ensure(
     workspace: WorkspaceId,
-    private: bool,
+    pages: Pages,
     port: u16,
     dir: PathBuf,
     wanted: Vec<String>,
@@ -293,7 +308,7 @@ pub(super) fn ensure(
         return;
     }
 
-    let Some(host) = new_host(workspace, private, port, active, mtm) else {
+    let Some(host) = new_host(workspace, pages, port, active, mtm) else {
         let _ = ready.send(false);
         return;
     };
