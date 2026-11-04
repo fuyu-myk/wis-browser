@@ -286,6 +286,36 @@ async fn a_proxy_switched_to_refusing_keeps_its_port_and_refuses_traffic() {
 }
 
 #[tokio::test]
+async fn a_proxied_workspace_never_dials_this_machine() {
+    let socks = TcpListener::bind("127.0.0.1:0").await.expect("bind socks");
+    let socks_port = socks.local_addr().expect("socks addr").port();
+    let accepted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    tokio::spawn({
+        let accepted = accepted.clone();
+        async move {
+            while socks.accept().await.is_ok() {
+                accepted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+    });
+    let policy = RequestPolicy::new(
+        wis_core::PrivacyMode::Balanced,
+        Arc::new(TrackerBlocker::empty()),
+    )
+    .with_upstream(wis_core::UpstreamProxy::Socks5 {
+        host: "127.0.0.1".into(),
+        port: socks_port,
+    });
+    let proxy = start_proxy_with(policy, localhost_resolver()).await;
+
+    let (status, _) = connect_through(&proxy, "localhost:443").await;
+    assert_eq!(status, 502);
+    let resp = send_through_proxy(proxy.port(), Method::GET, "http://127.0.0.1:8080/").await;
+    assert_eq!(resp.status(), 403);
+    assert_eq!(accepted.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn proxy_blocks_http_to_tracker_host() {
     let resolver: Arc<dyn Resolver> = Arc::new(StubResolver::new());
     // Default tracker list blocks google-analytics.com. The request never

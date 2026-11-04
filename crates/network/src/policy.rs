@@ -12,7 +12,7 @@ use wis_core::{PerSitePolicy, PrivacyMode, UpstreamProxy};
 use crate::blocker::{BlockerVerdict, RequestType, TrackerBlocker};
 use crate::cloaking::Cloaking;
 use crate::error::NetworkResult;
-use crate::upgrader::{HttpsUpgrader, UpgradeAction};
+use crate::upgrader::{is_loopback, HttpsUpgrader, UpgradeAction};
 
 /// Everything the policy engine needs to know about a single outbound
 /// request. Built by the transport layer just before sending.
@@ -117,6 +117,12 @@ impl RequestPolicy {
         if self.refuse_all {
             return Ok(Decision::Block {
                 reason: "the workspace's route is unavailable".into(),
+            });
+        }
+        if self.upstream.is_some() && is_loopback(request.url) {
+            return Ok(Decision::Block {
+                reason: "local addresses are unreachable over this workspace's Tor or SOCKS route"
+                    .into(),
             });
         }
 

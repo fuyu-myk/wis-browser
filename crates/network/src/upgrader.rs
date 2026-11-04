@@ -57,12 +57,34 @@ impl HttpsUpgrader {
     }
 }
 
-/// Whether `url` points at this machine.
+/// Names `/etc/hosts` gives this machine besides `localhost` (Debian, Fedora).
+const LOOPBACK_ALIASES: [&str; 7] = [
+    "localhost.localdomain",
+    "localhost4",
+    "localhost4.localdomain4",
+    "localhost6",
+    "localhost6.localdomain6",
+    "ip6-localhost",
+    "ip6-loopback",
+];
+
+/// Whether `url` points at this machine: a `localhost` name or alias, or a
+/// loopback or unspecified address, IPv4-mapped ones included. A public name
+/// that resolves to loopback cannot be told apart without resolving it.
 pub fn is_loopback(url: &Url) -> bool {
     match url.host() {
-        Some(Host::Domain(d)) => d == "localhost" || d.ends_with(".localhost"),
-        Some(Host::Ipv4(addr)) => addr.is_loopback(),
-        Some(Host::Ipv6(addr)) => addr.is_loopback(),
+        Some(Host::Domain(name)) => {
+            let name = name.trim_end_matches('.');
+            name == "localhost" || name.ends_with(".localhost") || LOOPBACK_ALIASES.contains(&name)
+        }
+        Some(Host::Ipv4(addr)) => addr.is_loopback() || addr.is_unspecified(),
+        Some(Host::Ipv6(addr)) => {
+            addr.is_loopback()
+                || addr.is_unspecified()
+                || addr
+                    .to_ipv4_mapped()
+                    .is_some_and(|v4| v4.is_loopback() || v4.is_unspecified())
+        }
         None => false,
     }
 }

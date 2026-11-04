@@ -5,7 +5,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 
 use url::Url;
-use wis_core::{PerSitePolicy, PrivacyMode};
+use wis_core::{PerSitePolicy, PrivacyMode, UpstreamProxy};
 use wis_network::upgrader::UpgradeAction;
 use wis_network::{
     doh_provider_for, is_loopback, is_public_web_url, Decision, DohProvider, DohResolver,
@@ -265,6 +265,15 @@ fn only_this_machine_counts_as_loopback() {
         "http://127.0.0.2/",
         "http://[::1]:8080/",
         "https://localhost/",
+        "http://localhost.:3000/",
+        "http://0.0.0.0:11434/v1",
+        "http://[::]/",
+        "http://[::ffff:127.0.0.1]/",
+        "http://localhost.localdomain/",
+        "http://localhost4/",
+        "http://localhost6.localdomain6/",
+        "http://ip6-localhost/",
+        "http://ip6-loopback/",
     ] {
         assert!(is_loopback(&u(url_str)), "{url_str} is this machine");
     }
@@ -349,6 +358,63 @@ fn a_refusing_policy_blocks_every_request() {
         })
         .unwrap();
     assert!(matches!(decision, Decision::Block { .. }), "{decision:?}");
+}
+
+fn decide_document(p: &RequestPolicy, url: &str) -> Decision {
+    let url = u(url);
+    p.decide(&OutboundRequest {
+        url: &url,
+        source_url: &url,
+        request_type: RequestType::Document,
+    })
+    .unwrap()
+}
+
+#[test]
+fn a_proxied_workspace_never_reaches_this_machine() {
+    let socks = UpstreamProxy::Socks5 {
+        host: "127.0.0.1".into(),
+        port: 1080,
+    };
+    for upstream in [UpstreamProxy::Tor, socks] {
+        let p = policy(PrivacyMode::Permissive).with_upstream(upstream);
+        for host in [
+            "localhost",
+            "LOCALHOST.",
+            "app.localhost",
+            "127.0.0.1",
+            "127.8.9.10",
+            "2130706433",
+            "0.0.0.0",
+            "[::1]",
+            "[::]",
+            "[::ffff:127.0.0.1]",
+        ] {
+            let decision = decide_document(&p, &format!("https://{host}:8080/"));
+            assert!(
+                matches!(decision, Decision::Block { .. }),
+                "{host}: {decision:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn only_this_machine_is_off_a_proxied_route() {
+    let direct = policy(PrivacyMode::Permissive);
+    let decision = decide_document(&direct, "https://localhost:3000/");
+    assert!(matches!(decision, Decision::Allow), "{decision:?}");
+
+    let p = policy(PrivacyMode::Permissive).with_upstream(UpstreamProxy::Tor);
+    for host in [
+        "example.com",
+        "localhost.example.com",
+        "192.168.1.20",
+        "[fd00::1]",
+    ] {
+        let decision = decide_document(&p, &format!("https://{host}/"));
+        assert!(matches!(decision, Decision::Allow), "{host}: {decision:?}");
+    }
 }
 
 #[test]
