@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { commands } from '@/bindings/commands'
 import type { WorkspaceId } from '@/bindings/types'
 import { cx } from '@/lib/cx'
+import { errorMessage } from '@/lib/errors'
 import { bookmarkImportSummary } from '@/features/data-import/importSummary'
 import { useAnnounce } from '@/hooks/useAnnounce'
 import { SettingsGroup } from '@/components/SettingsGroup'
@@ -10,15 +11,6 @@ import { SettingsGroup } from '@/components/SettingsGroup'
 interface Status {
   kind: 'ok' | 'err'
   text: string
-}
-
-function errorMessage(error: unknown): string {
-  if (typeof error === 'string') return error
-  if (error && typeof error === 'object' && 'message' in error) {
-    const message = (error as { message?: unknown }).message
-    if (typeof message === 'string') return message
-  }
-  return 'unknown error'
 }
 
 interface BookmarksSectionProps {

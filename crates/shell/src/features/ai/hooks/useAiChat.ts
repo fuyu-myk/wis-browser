@@ -4,7 +4,8 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { commands } from '@/bindings/commands'
 import type { AiToolCall, StreamEvent, TabId, WorkspaceId } from '@/bindings/types'
-import { errorMessage, runToolAction, type ToolContext } from '@/features/ai/hooks/aiToolRunner'
+import { runToolAction, type ToolContext } from '@/features/ai/hooks/aiToolRunner'
+import { errorMessage } from '@/lib/errors'
 import {
   gatherSources,
   planWire,

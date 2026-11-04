@@ -21,6 +21,7 @@ import {
   type TabAction,
 } from '@/features/ai/lib/ai'
 import type { AiPageSource } from '@/features/ai/hooks/useAiChat'
+import { errorMessage } from '@/lib/errors'
 
 /** What one tool call left behind: its row, and what the model reads back. */
 export interface ToolOutcome {
@@ -202,18 +203,5 @@ export async function runToolAction(
     const display = errorMessage(error)
     return { ok: false, display, content: `${FAILED_AS[action.kind]} failed: ${display}` }
   }
-}
-
-export function errorMessage(error: unknown): string {
-  if (typeof error === 'string') return error
-  if (
-    error !== null &&
-    typeof error === 'object' &&
-    'message' in error &&
-    typeof (error as { message: unknown }).message === 'string'
-  ) {
-    return (error as { message: string }).message
-  }
-  return 'unknown error'
 }
 

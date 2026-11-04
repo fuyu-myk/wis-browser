@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { commands } from '@/bindings/commands'
 import { cx } from '@/lib/cx'
+import { errorMessage } from '@/lib/errors'
 import type { UserSettings, Workspace } from '@/bindings/types'
 import { Segmented, Switch } from '@/components/controls'
 import { dohProviderFor, DOH_PROVIDERS, type DohProviderId } from '@/features/network/doh'
@@ -25,20 +26,6 @@ const ROUTE_OPTIONS = [
   { value: 'tor' as const, label: 'Tor' },
   { value: 'socks5' as const, label: 'SOCKS5' },
 ] satisfies ReadonlyArray<{ value: UpstreamMode; label: string }>
-
-function errorMessage(error: unknown): string {
-  if (typeof error === 'string') return error
-  if (error instanceof Error) return error.message
-  if (
-    error !== null &&
-    typeof error === 'object' &&
-    'message' in error &&
-    typeof (error as { message: unknown }).message === 'string'
-  ) {
-    return (error as { message: string }).message
-  }
-  return 'unknown error'
-}
 
 type ProbeStatus =
   | { kind: 'idle' }

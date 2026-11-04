@@ -19,6 +19,7 @@ import type {
 import { Switch } from '@/components/controls'
 import { useVaultConfirm } from '@/features/vault/components/VaultPassword'
 import { cx } from '@/lib/cx'
+import { errorMessage } from '@/lib/errors'
 import { withImportedRoutes } from '@/features/site/lib/linkRoutes'
 import { BROWSER_STATE_KEY } from '@/hooks/useBrowserState'
 import { useAnnounce } from '@/hooks/useAnnounce'
@@ -26,19 +27,6 @@ import { SettingsGroup } from '@/components/SettingsGroup'
 
 interface BackupSectionProps {
   settings: UserSettings
-}
-
-function errorMessage(error: unknown): string {
-  if (typeof error === 'string') return error
-  if (
-    error !== null &&
-    typeof error === 'object' &&
-    'message' in error &&
-    typeof (error as { message: unknown }).message === 'string'
-  ) {
-    return (error as { message: string }).message
-  }
-  return 'unknown error'
 }
 
 interface Status {

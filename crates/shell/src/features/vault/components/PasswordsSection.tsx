@@ -9,6 +9,7 @@ import { Revealed, VaultActions, VaultRow } from '@/features/vault/components/Va
 import { useVaultConfirm } from '@/features/vault/components/VaultPassword'
 import { useVaultStatus, VAULT_STATUS_KEY } from '@/features/vault/hooks/useVaultStatus'
 import { cx } from '@/lib/cx'
+import { errorMessage } from '@/lib/errors'
 import { SearchIcon } from '@/lib/icons'
 import { isMacOS } from '@/lib/platform'
 import { showToast } from '@/lib/toast'
@@ -26,15 +27,6 @@ const BIOMETRIC_NAME = isMacOS() ? 'Touch ID' : 'Windows Hello'
 interface Status {
   kind: 'ok' | 'err'
   text: string
-}
-
-function errorMessage(error: unknown): string {
-  if (typeof error === 'string') return error
-  if (error && typeof error === 'object' && 'message' in error) {
-    const message = (error as { message?: unknown }).message
-    if (typeof message === 'string') return message
-  }
-  return 'unknown error'
 }
 
 const OFFER_OPTIONS = [

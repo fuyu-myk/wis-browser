@@ -7,6 +7,7 @@ import { baseUrlProblem } from '@/features/ai/lib/ai'
 import { BASE_URL_SUGGESTIONS } from '@/features/ai/lib/aiEndpoints'
 import { useBrowserState } from '@/hooks/useBrowserState'
 import { cx } from '@/lib/cx'
+import { errorMessage } from '@/lib/errors'
 import { isFeatureUnavailableHere } from '@/lib/platformSupport'
 import { Segmented, Switch } from '@/components/controls'
 import { SettingsGroup } from '@/components/SettingsGroup'
@@ -22,19 +23,6 @@ const BASE_SUGGESTIONS = BASE_URL_SUGGESTIONS.map(({ url, label }) => ({ value: 
 interface AiSectionProps {
   settings: UserSettings
   onUpdate: (patch: UserSettingsPatch) => void
-}
-
-function errorMessage(error: unknown): string {
-  if (typeof error === 'string') return error
-  if (
-    error !== null &&
-    typeof error === 'object' &&
-    'message' in error &&
-    typeof (error as { message: unknown }).message === 'string'
-  ) {
-    return (error as { message: string }).message
-  }
-  return 'unknown error'
 }
 
 /**
