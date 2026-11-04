@@ -58,7 +58,10 @@ pub async fn create_tab_webview(
             .map(|w| w.ephemeral)
             .unwrap_or(false);
         let user_agent = wis_core::ua_for_host(
-            parsed.host_str().unwrap_or_default(),
+            wis_core::sites::domain::site_url(&parsed)
+                .as_deref()
+                .and_then(url::Url::host_str)
+                .unwrap_or_default(),
             &browser.settings.ua_site_overrides,
             &browser.settings.user_agent_profile,
             wis_core::UaPlatform::host(),

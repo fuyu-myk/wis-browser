@@ -13,6 +13,7 @@
 use std::sync::OnceLock;
 
 use tauri::AppHandle;
+use wis_core::sites::domain::site_url;
 
 static APP: OnceLock<AppHandle> = OnceLock::new();
 
@@ -226,7 +227,7 @@ fn build_cosmetic_apply(
     if initial {
         if let Some(host) = url::Url::parse(href)
             .ok()
-            .and_then(|u| u.host_str().map(str::to_owned))
+            .and_then(|u| site_url(&u)?.host_str().map(str::to_owned))
         {
             for selector in state.user_cosmetic_selectors(&host) {
                 host_css.push_str(&selector);
@@ -742,7 +743,7 @@ pub async fn persist_zap(app: &tauri::AppHandle, href: &str, selector: &str) {
 
     let Some(host) = url::Url::parse(href)
         .ok()
-        .and_then(|u| u.host_str().map(String::from))
+        .and_then(|u| site_url(&u)?.host_str().map(String::from))
     else {
         return;
     };

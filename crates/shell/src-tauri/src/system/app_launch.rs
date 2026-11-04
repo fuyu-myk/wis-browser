@@ -11,6 +11,7 @@ use std::sync::OnceLock;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Url};
+use wis_core::sites::domain::site_url;
 use wis_core::{TabId, WisResult};
 
 use crate::state::AppState;
@@ -65,7 +66,7 @@ pub fn intake_from_tab(app: &AppHandle, tab_id: TabId, url: Url) {
             browser
                 .tab(tab_id)
                 .ok()
-                .and_then(|t| t.url.host_str().map(str::to_string))
+                .and_then(|t| site_url(&t.url)?.host_str().map(str::to_string))
         };
 
         intake(&app, initiator_host, url);
@@ -82,7 +83,7 @@ pub fn intake_from_webview(app: &AppHandle, label: String, url: Url) {
             .webviews()
             .get(&label)
             .and_then(|wv| wv.url().ok())
-            .and_then(|u| u.host_str().map(str::to_string));
+            .and_then(|u| site_url(&u)?.host_str().map(str::to_string));
         intake(&app, initiator_host, url);
     });
 }

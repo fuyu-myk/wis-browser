@@ -306,7 +306,10 @@ mod imp {
                 .or_else(|| state.window_workspace(window.label()))
                 .unwrap_or(browser.active_workspace_id);
             let user_agent = wis_core::ua_for_host(
-                target.host_str().unwrap_or_default(),
+                wis_core::sites::domain::site_url(&target)
+                    .as_deref()
+                    .and_then(url::Url::host_str)
+                    .unwrap_or_default(),
                 &browser.settings.ua_site_overrides,
                 &browser.settings.user_agent_profile,
                 wis_core::UaPlatform::host(),
