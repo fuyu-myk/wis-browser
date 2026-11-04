@@ -39,15 +39,15 @@ const OPENAI_DEFAULT_BASE: &str = "https://api.openai.com/v1";
 const AI_KEY_EVENT: &str = "wis-ai-key-changed";
 
 /// Platforms with an OS key store to seal the provider key in: macOS
-/// (Keychain) and Windows (DPAPI). Elsewhere the assistant stays off rather
-/// than holding the key somewhere weaker.
-pub(crate) fn ai_supported() -> bool {
+/// (Keychain) and Windows (DPAPI). Elsewhere only a server that needs no
+/// key works.
+pub(crate) fn key_store() -> bool {
     cfg!(any(target_os = "macos", windows))
 }
 
-fn unsupported() -> WisError {
+fn no_key_store() -> WisError {
     WisError::InvalidInput {
-        message: "the assistant is not available on this platform".into(),
+        message: "API keys cannot be stored on this platform".into(),
     }
 }
 
@@ -65,8 +65,8 @@ fn emit_key_present(app: &AppHandle, present: bool) {
 /// surrounding whitespace and rejects an empty key. Never echoes it back.
 #[tauri::command]
 pub async fn ai_set_key(app: AppHandle, key: String) -> WisResult<()> {
-    if !ai_supported() {
-        return Err(unsupported());
+    if !key_store() {
+        return Err(no_key_store());
     }
 
     let key = Zeroizing::new(key);
@@ -85,11 +85,11 @@ pub async fn ai_set_key(app: AppHandle, key: String) -> WisResult<()> {
     Ok(())
 }
 
-/// Whether a provider API key is currently stored. This is the assistant's
-/// activation switch. A platform without a key store answers `false`.
+/// Whether a provider API key is currently stored, one way the assistant
+/// activates. A platform without a key store answers `false`.
 #[tauri::command]
 pub async fn ai_key_present() -> WisResult<bool> {
-    if !ai_supported() {
+    if !key_store() {
         return Ok(false);
     }
 
@@ -103,7 +103,7 @@ pub async fn ai_key_present() -> WisResult<bool> {
 /// Remove the stored provider API key (idempotent).
 #[tauri::command]
 pub async fn ai_clear_key(app: AppHandle) -> WisResult<()> {
-    if !ai_supported() {
+    if !key_store() {
         return Ok(());
     }
 
@@ -211,10 +211,10 @@ pub(crate) fn cancel(state: &AppState, request_id: &str) -> bool {
     true
 }
 
-/// Whether a request could run: a supported platform, a model, and a stored key
-/// or an OpenAI-compatible endpoint (local servers need no key).
+/// Whether a request could run: a model, and a stored key or an
+/// OpenAI-compatible endpoint (local servers need no key).
 pub(crate) fn ready(ai: &AiSettings) -> bool {
-    if !ai_supported() || ai.model.trim().is_empty() {
+    if ai.model.trim().is_empty() {
         return false;
     }
 
@@ -223,7 +223,7 @@ pub(crate) fn ready(ai: &AiSettings) -> bool {
             .base_url
             .as_deref()
             .is_some_and(|base| !base.trim().is_empty());
-    endpoint || wis_secrets::ai_key_load().is_ok_and(|key| key.is_some())
+    endpoint || (key_store() && wis_secrets::ai_key_load().is_ok_and(|key| key.is_some()))
 }
 
 /// Stream a chat completion to `on_event` as [`StreamEvent`]s (`delta` / `done`
@@ -283,10 +283,6 @@ pub(crate) async fn stream_chat(
     tools: impl FnOnce(&AiSettings) -> ChatTools,
     emit: &mut (dyn FnMut(StreamEvent) -> bool + Send),
 ) -> WisResult<()> {
-    if !ai_supported() {
-        return Err(unsupported());
-    }
-
     let running = state
         .ai_cancels
         .lock()
@@ -479,7 +475,8 @@ pub(crate) struct Endpoint {
 }
 
 /// A local server never sees the key and is dialled direct; everything else
-/// carries the key as a sensitive header through the workspace's proxy.
+/// carries the stored key, if any, as a sensitive header through the
+/// workspace's proxy.
 pub(crate) async fn endpoint(
     state: &AppState,
     workspace: WorkspaceId,
@@ -488,7 +485,7 @@ pub(crate) async fn endpoint(
     route: Route,
 ) -> WisResult<Endpoint> {
     let local_server = provider == AiProvider::OpenAiCompatible && local_openai_base(base_url);
-    let key = if local_server {
+    let key = if local_server || !key_store() {
         None
     } else {
         wis_secrets::ai_key_load().map_err(|e| WisError::InvalidInput {
@@ -699,5 +696,29 @@ mod tests {
         assert!(!local_openai_base(Some("http://192.168.1.20:11434/v1")));
         assert!(!local_openai_base(Some("localhost:11434")));
         assert!(!local_openai_base(None));
+    }
+
+    #[test]
+    fn an_endpoint_needs_no_key_store() {
+        let ai = AiSettings {
+            provider: AiProvider::OpenAiCompatible,
+            model: "llama3.2".into(),
+            base_url: Some("http://127.0.0.1:11434/v1".into()),
+            ..AiSettings::default()
+        };
+        assert!(ready(&ai));
+        assert!(!ready(&AiSettings {
+            model: String::new(),
+            ..ai
+        }));
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    #[test]
+    fn without_a_key_store_claude_stays_off() {
+        assert!(!ready(&AiSettings {
+            model: "claude-x".into(),
+            ..AiSettings::default()
+        }));
     }
 }

@@ -29,12 +29,6 @@ pub(crate) async fn list_models(
     state: &AppState,
     workspace: WorkspaceId,
 ) -> WisResult<Vec<ModelInfo>> {
-    if !chat::ai_supported() {
-        return Err(failed(
-            "the assistant is not available on this platform".into(),
-        ));
-    }
-
     let (provider, base_url) = {
         let browser = state.browser.lock().await;
         (

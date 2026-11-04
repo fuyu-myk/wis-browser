@@ -19,8 +19,6 @@ export interface LoadedCanvas {
 export interface CanvasAiStatus {
   available: boolean
   model: string
-  /** Whether this platform has the agent at all. */
-  supported?: boolean
   /** Whether this platform can dictate prompts, and read PDF and Word files. */
   dictation?: boolean
   documents?: boolean

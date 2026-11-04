@@ -30,8 +30,9 @@ interface AiSectionProps {
  * section is where the assistant is switched on: it stays dormant until a key
  * is stored, or, for an OpenAI-compatible provider, a base URL is set (a local
  * server authenticates nothing, so it needs no key). The key is write-only
- * here (stored in the OS keychain, never shown back); the rest persists
- * through the normal settings patch.
+ * here (stored in the OS keychain, never shown back); Linux has no key store,
+ * so only a server that needs no key works there. The rest persists through
+ * the normal settings patch.
  */
 export function AiSection({ settings, onUpdate }: AiSectionProps) {
   const ai = settings.ai
@@ -43,14 +44,14 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
   const [keyBusy, setKeyBusy] = useState(false)
   const [keyError, setKeyError] = useState<string | null>(null)
 
-  const supported = !isFeatureUnavailableHere('ai_assistant')
+  const canStoreKey = !isFeatureUnavailableHere('ai_api_key')
   const keyOptional = ai.provider === 'open_ai_compatible'
   const baseProblem = baseUrlProblem(baseDraft)
 
   useEffect(() => {
-    if (!supported) return
+    if (!canStoreKey) return
     void commands.aiKeyPresent().then(setKeyPresent, () => setKeyPresent(false))
-  }, [supported])
+  }, [canStoreKey])
 
   const patchAi = (next: Partial<AiSettings>) => onUpdate({ ai: { ...ai, ...next } })
 
@@ -67,7 +68,7 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
   const { data: models = [] } = useQuery({
     queryKey: ['ai-model-suggestions', workspaceId, ai.provider, ai.base_url, keyPresent],
     queryFn: () => commands.aiListModels(workspaceId as NonNullable<typeof workspaceId>),
-    enabled: supported && workspaceId !== null && reachable,
+    enabled: workspaceId !== null && reachable,
     staleTime: 5 * 60_000,
     retry: false,
   })
@@ -98,18 +99,6 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
     } finally {
       setKeyBusy(false)
     }
-  }
-
-  if (!supported) {
-    return (
-      <section id="ai" className="sec">
-        <h2 className="sec-h">AI assistant</h2>
-        <p className="kb-vault-msg">
-          The assistant is not available on Linux yet as there is no OS key store to seal
-          the provider key in.
-        </p>
-      </section>
-    )
   }
 
   return (
@@ -165,45 +154,58 @@ export function AiSection({ settings, onUpdate }: AiSectionProps) {
             />
           </div>
         )}
-        <div className="row">
-          <div className="l">
-            <span>{keyOptional ? 'API key (optional)' : 'API key'}</span>
-            <span>
-              {keyPresent
-                ? 'A key is stored in your device keychain. Enter a new one to replace it.'
-                : keyOptional
-                  ? 'Kept in your device keychain. Leave blank for a local server.'
-                  : 'Kept in your device keychain, never on disk or synced.'}
-            </span>
-          </div>
-          <div className="kb-key-entry">
-            <input
-              type="password"
-              className="kb-text-input"
-              placeholder={keyPresent ? '••••••••••••' : keyOptional ? 'Not needed locally' : 'sk-...'}
-              value={keyDraft}
-              onChange={(e) => setKeyDraft(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void saveKey()
-              }}
-              aria-label="AI API key"
-              autoComplete="off"
-            />
-            {keyPresent && (
-              <button type="button" className="kb-btn" onClick={() => void clearKey()} disabled={keyBusy}>
-                Remove
+        {canStoreKey ? (
+          <div className="row">
+            <div className="l">
+              <span>{keyOptional ? 'API key (optional)' : 'API key'}</span>
+              <span>
+                {keyPresent
+                  ? 'A key is stored in your device keychain. Enter a new one to replace it.'
+                  : keyOptional
+                    ? 'Kept in your device keychain. Leave blank for a local server.'
+                    : 'Kept in your device keychain, never on disk or synced.'}
+              </span>
+            </div>
+            <div className="kb-key-entry">
+              <input
+                type="password"
+                className="kb-text-input"
+                placeholder={keyPresent ? '••••••••••••' : keyOptional ? 'Not needed locally' : 'sk-...'}
+                value={keyDraft}
+                onChange={(e) => setKeyDraft(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void saveKey()
+                }}
+                aria-label="AI API key"
+                autoComplete="off"
+              />
+              {keyPresent && (
+                <button type="button" className="kb-btn" onClick={() => void clearKey()} disabled={keyBusy}>
+                  Remove
+                </button>
+              )}
+              <button
+                type="button"
+                className="kb-btn is-primary"
+                onClick={() => void saveKey()}
+                disabled={keyBusy || !keyDraft.trim()}
+              >
+                Save
               </button>
-            )}
-            <button
-              type="button"
-              className="kb-btn is-primary"
-              onClick={() => void saveKey()}
-              disabled={keyBusy || !keyDraft.trim()}
-            >
-              Save
-            </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="row">
+            <div className="l">
+              <span>API key</span>
+              <span>
+                {keyOptional
+                  ? 'Linux has no OS key store to keep one in yet, so use a server that needs no key, such as Ollama or LM Studio.'
+                  : 'Claude needs a key, and Linux has no OS key store to keep one in yet. Switch to an OpenAI-compatible server that needs no key, such as Ollama or LM Studio.'}
+              </span>
+            </div>
+          </div>
+        )}
         {keyError !== null && <p className="kb-vault-msg">{keyError}</p>}
       </SettingsGroup>
       <SettingsGroup caption="Assistant">

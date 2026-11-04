@@ -35,8 +35,9 @@ const FEATURES: Readonly<Record<string, FeatureSupport>> = {
   // engine's native Picture-in-Picture. Linux (WebKitGTK) has neither yet.
   pop_out_video: { label: 'Video pop-out', unavailableOn: ['linux'] },
   // The provider key is sealed in the OS key store (Keychain / DPAPI), and
-  // Linux has none. Mirrors `ai_supported()` in `ai.rs`.
-  ai_assistant: { label: 'AI assistant', unavailableOn: ['linux'] },
+  // Linux has none, so only a server that needs no key works there. Mirrors
+  // `key_store()` in `ai/chat.rs`.
+  ai_api_key: { label: 'API key storage', unavailableOn: ['linux'] },
   // The `wisCanvas` page channel is macOS only so far.
   canvases: { label: 'Canvases', unavailableOn: [] },
   // Set per page through WebKit's navigation preferences.

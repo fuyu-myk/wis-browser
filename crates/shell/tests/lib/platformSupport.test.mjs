@@ -11,7 +11,7 @@ const UA = {
   windows: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/129.0.0.0 Edg/129.0.0.0',
   linux: 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko)',
 }
-const FEATURES = ['pop_out_video', 'ai_assistant']
+const FEATURES = ['pop_out_video', 'ai_api_key']
 
 // The platform is fixed when `lib/platform` loads, so this process runs as
 // Linux and the other platforms are probed in fresh processes.
@@ -52,16 +52,16 @@ test('every platform has the display name the toast uses', () => {
 })
 
 describe('on Linux', () => {
-  test('the video pop-out and the AI assistant are unavailable', () => {
+  test('the video pop-out and API key storage are unavailable', () => {
     assert.deepEqual(FEATURES.filter(isFeatureUnavailableHere), FEATURES)
   })
 
   test('guarding an unavailable feature raises its toast and reports it handled', () => {
     assert.equal(guardFeatureUnavailable('pop_out_video'), true)
-    assert.equal(guardFeatureUnavailable('ai_assistant'), true)
+    assert.equal(guardFeatureUnavailable('ai_api_key'), true)
     assert.deepEqual(toasts, [
       'Video pop-out not available on Linux',
-      'AI assistant not available on Linux',
+      'API key storage not available on Linux',
     ])
   })
 
@@ -83,9 +83,10 @@ for (const platform of ['macos', 'windows']) {
   })
 }
 
-test('the AI assistant is offered exactly where ai/chat.rs can seal its key', () => {
+test('API key storage is offered exactly where ai/chat.rs can seal a key', () => {
   const rust = readSource('src-tauri/src/ai/chat.rs')
-  const at = rust.indexOf('fn ai_supported()')
+  const at = rust.indexOf('fn key_store()')
+  assert.notEqual(at, -1)
   const body = rust.slice(at, rust.indexOf('}', at))
   const rustSupports = {
     macos: body.includes('target_os = "macos"'),
@@ -93,7 +94,7 @@ test('the AI assistant is offered exactly where ai/chat.rs can seal its key', ()
     linux: body.includes('target_os = "linux"') || /\bunix\b/.test(body),
   }
   assert.deepEqual(rustSupports, { macos: true, windows: true, linux: false })
-  assert.equal(isFeatureUnavailableHere('ai_assistant'), true, 'Linux')
+  assert.equal(isFeatureUnavailableHere('ai_api_key'), true, 'Linux')
 })
 
 test('the JavaScript switch is offered exactly where pages/preferences.rs sets it per page', () => {

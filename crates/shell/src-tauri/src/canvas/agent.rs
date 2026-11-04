@@ -233,7 +233,6 @@ async fn run(app: &AppHandle, label: &str, tab: CanvasTab, request: Request) -> 
             Ok(json!({
                 "available": chat::ready(settings),
                 "model": canvas_model(settings),
-                "supported": chat::ai_supported(),
                 "dictation": crate::canvas::dictation::SUPPORTED,
                 "documents": crate::canvas::document_text::SUPPORTED,
             }))
