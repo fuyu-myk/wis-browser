@@ -286,6 +286,20 @@ async fn a_proxy_switched_to_refusing_keeps_its_port_and_refuses_traffic() {
 }
 
 #[tokio::test]
+async fn a_tunnel_to_an_ipv6_literal_connects() {
+    let Ok(target) = TcpListener::bind("[::1]:0").await else {
+        return; // no IPv6 loopback on this machine
+    };
+    let port = target.local_addr().expect("target addr").port();
+    let accepted = tokio::spawn(async move { target.accept().await.is_ok() });
+    let proxy = start_proxy(TrackerBlocker::empty(), localhost_resolver()).await;
+
+    let (status, _) = connect_through(&proxy, &format!("[::1]:{port}")).await;
+    assert_eq!(status, 200);
+    assert!(accepted.await.expect("accept task"));
+}
+
+#[tokio::test]
 async fn a_proxied_workspace_never_dials_this_machine() {
     let socks = TcpListener::bind("127.0.0.1:0").await.expect("bind socks");
     let socks_port = socks.local_addr().expect("socks addr").port();

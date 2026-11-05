@@ -3,8 +3,9 @@
 //!
 //! For SOCKS5 upstreams, the proxy is asked to reach `host:port` by name,
 //! so the upstream performs DNS resolution, which is what keeps Tor from
-//! leaking lookups.
+//! leaking lookups. An IP literal goes by address, and is never looked up.
 
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -77,6 +78,11 @@ pub async fn connect_target(
     upstream: Option<&UpstreamProxy>,
     resolver: &Arc<dyn Resolver>,
 ) -> Result<TcpStream, String> {
+    let host = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .filter(|h| h.parse::<std::net::Ipv6Addr>().is_ok())
+        .unwrap_or(host);
     let stream = match upstream {
         None => direct(host, port, resolver).await?,
         Some(UpstreamProxy::Socks5 {
@@ -117,28 +123,31 @@ fn keep_alive(stream: &TcpStream) {
     }
 }
 
-/// Direct connection: DoH-resolve the host, then dial each address in turn
-/// until one connects.
+/// Direct connection: DoH-resolve the host unless it is an IP literal, then
+/// dial each address in turn until one connects.
 async fn direct(host: &str, port: u16, resolver: &Arc<dyn Resolver>) -> Result<TcpStream, String> {
     dial_resolved(host, port, resolver).await
 }
 
-/// Resolve `host` through the configured resolver, then dial each address it
-/// returns until one connects.
+/// Resolve `host` through the configured resolver, unless it is an IP
+/// literal, then dial each address until one connects.
 async fn dial_resolved(
     host: &str,
     port: u16,
     resolver: &Arc<dyn Resolver>,
 ) -> Result<TcpStream, String> {
-    let addrs = match timeout(RESOLVE_TIMEOUT, resolver.resolve(host)).await {
-        Ok(Ok(addrs)) => addrs,
-        Ok(Err(e)) => return Err(format!("dns {host}: {e}")),
-        Err(_) => {
-            return Err(format!(
-                "dns {host}: timed out after {}s",
-                RESOLVE_TIMEOUT.as_secs()
-            ))
-        }
+    let addrs = match host.parse::<IpAddr>() {
+        Ok(ip) => vec![ip],
+        Err(_) => match timeout(RESOLVE_TIMEOUT, resolver.resolve(host)).await {
+            Ok(Ok(addrs)) => addrs,
+            Ok(Err(e)) => return Err(format!("dns {host}: {e}")),
+            Err(_) => {
+                return Err(format!(
+                    "dns {host}: timed out after {}s",
+                    RESOLVE_TIMEOUT.as_secs()
+                ))
+            }
+        },
     };
 
     if addrs.is_empty() {
@@ -162,7 +171,8 @@ async fn dial_resolved(
     Err(last_err)
 }
 
-/// SOCKS5 no-auth CONNECT, asking the proxy to reach `host:port` by name.
+/// SOCKS5 no-auth CONNECT, asking the proxy to reach `host:port` by name, or
+/// by address for an IP literal.
 async fn socks5_connect(
     proxy_host: &str,
     proxy_port: u16,
@@ -175,7 +185,7 @@ async fn socks5_connect(
         return Err(format!("socks5: host {host} too long"));
     }
 
-    let mut s = match proxy_host.parse::<std::net::IpAddr>() {
+    let mut s = match proxy_host.parse::<IpAddr>() {
         Ok(ip) => TcpStream::connect((ip, proxy_port))
             .await
             .map_err(|e| format!("socks5 connect {proxy_host}:{proxy_port}: {e}"))?,
@@ -197,10 +207,24 @@ async fn socks5_connect(
         ));
     }
 
-    // CONNECT: VER=5, CMD=1, RSV=0, ATYP=3 (domain), LEN, domain, port (BE).
-    let mut req = Vec::with_capacity(7 + host_bytes.len());
-    req.extend_from_slice(&[0x05, 0x01, 0x00, 0x03, host_bytes.len() as u8]);
-    req.extend_from_slice(host_bytes);
+    // CONNECT: VER=5, CMD=1, RSV=0, the address (ATYP 1 IPv4, 4 IPv6, or
+    // 3 a name with its length), then the port (BE).
+    let mut req = Vec::with_capacity(7 + host_bytes.len().max(16));
+    req.extend_from_slice(&[0x05, 0x01, 0x00]);
+    match host.parse::<IpAddr>().map(|ip| ip.to_canonical()) {
+        Ok(IpAddr::V4(ip)) => {
+            req.push(0x01);
+            req.extend_from_slice(&ip.octets());
+        }
+        Ok(IpAddr::V6(ip)) => {
+            req.push(0x04);
+            req.extend_from_slice(&ip.octets());
+        }
+        Err(_) => {
+            req.extend_from_slice(&[0x03, host_bytes.len() as u8]);
+            req.extend_from_slice(host_bytes);
+        }
+    }
     req.extend_from_slice(&port.to_be_bytes());
     s.write_all(&req)
         .await
@@ -289,6 +313,85 @@ mod tests {
         stream.read_exact(&mut echoed).await.unwrap();
         assert_eq!(&echoed, b"example.com");
         server.await.unwrap();
+    }
+
+    /// The address a SOCKS5 CONNECT for `host` carries, as ATYP and bytes.
+    async fn socks5_address_for(host: &str) -> (u8, Vec<u8>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut s, _) = listener.accept().await.unwrap();
+            let mut greet = [0u8; 3];
+            s.read_exact(&mut greet).await.unwrap();
+            s.write_all(&[0x05, 0x00]).await.unwrap();
+
+            let mut head = [0u8; 4];
+            s.read_exact(&mut head).await.unwrap();
+            let len = match head[3] {
+                0x01 => 4,
+                0x04 => 16,
+                _ => {
+                    let mut len = [0u8; 1];
+                    s.read_exact(&mut len).await.unwrap();
+                    len[0] as usize
+                }
+            };
+            let mut address = vec![0u8; len + 2];
+            s.read_exact(&mut address).await.unwrap();
+            address.truncate(len);
+            s.write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+                .await
+                .unwrap();
+            (head[3], address)
+        });
+
+        let upstream = UpstreamProxy::Socks5 {
+            host: addr.ip().to_string(),
+            port: addr.port(),
+        };
+        connect_target(host, 443, Some(&upstream), &stub())
+            .await
+            .expect("socks5 connect");
+        server.await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn socks5_connect_sends_an_ip_literal_as_an_address() {
+        let v6: std::net::Ipv6Addr = "2001:db8::1".parse().unwrap();
+        assert_eq!(
+            socks5_address_for("[2001:db8::1]").await,
+            (0x04, v6.octets().to_vec())
+        );
+        assert_eq!(
+            socks5_address_for("192.0.2.7").await,
+            (0x01, vec![192, 0, 2, 7])
+        );
+        assert_eq!(
+            socks5_address_for("[::ffff:192.168.1.1]").await,
+            (0x01, vec![192, 168, 1, 1])
+        );
+        assert_eq!(
+            socks5_address_for("[example.com]").await,
+            (0x03, b"[example.com]".to_vec())
+        );
+        assert_eq!(
+            socks5_address_for("example.com").await,
+            (0x03, b"example.com".to_vec())
+        );
+    }
+
+    #[tokio::test]
+    async fn a_bracketed_ipv6_literal_dials_without_a_lookup() {
+        let Ok(listener) = TcpListener::bind("[::1]:0").await else {
+            return; // no IPv6 loopback on this machine
+        };
+        let port = listener.local_addr().unwrap().port();
+        let accepted = tokio::spawn(async move { listener.accept().await.is_ok() });
+
+        connect_target("[::1]", port, None, &stub())
+            .await
+            .expect("direct IPv6 connect");
+        assert!(accepted.await.unwrap());
     }
 
     #[tokio::test(start_paused = true)]
