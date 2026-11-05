@@ -237,7 +237,8 @@ pub async fn set_workspace_privacy_mode(
 /// Set (or clear) a workspace's upstream proxy. The running proxy's policy is
 /// updated in place so open tabs route through the new upstream on their next
 /// request without losing their connection. Gaining or losing an upstream
-/// rebuilds the workspace on macOS, as its pages lose or regain WebRTC.
+/// rebuilds the workspace on macOS, as its pages lose or regain WebRTC, and on
+/// Windows, whose webviews move to the route's own folder.
 #[tauri::command]
 pub async fn set_workspace_upstream(
     app: AppHandle,
@@ -260,11 +261,24 @@ pub async fn set_workspace_upstream(
         .map_err(WisError::from)?;
 
     let (workspace, rehardened, pages) = mutate(&app, &state, |s| {
-        let before = crate::protection::hardening::Hardening::of(s.workspace(id)?);
+        let previous = s.workspace(id)?;
+        let before = crate::protection::hardening::Hardening::of(previous);
+        let was_proxied = previous.upstream_proxy.is_some();
         let next = s.with_workspace_upstream_proxy(id, upstream.clone())?;
         let updated = next.workspace(id)?.clone();
-        let rehardened = crate::protection::hardening::Hardening::of(&updated) != before;
-        let pages = crate::protection::hardening::web_pages(&next, id);
+        let moves_folder = cfg!(windows) && updated.upstream_proxy.is_some() != was_proxied;
+        let rehardened =
+            crate::protection::hardening::Hardening::of(&updated) != before || moves_folder;
+        let mut pages = crate::protection::hardening::web_pages(&next, id);
+        if moves_folder {
+            pages.extend(
+                next.tabs
+                    .iter()
+                    .filter(|tab| tab.workspace_id == id)
+                    .filter(|tab| crate::canvas::page::is_canvas_url(&tab.url))
+                    .map(|tab| tab.id),
+            );
+        }
 
         Ok((next, (updated, rehardened, pages)))
     })

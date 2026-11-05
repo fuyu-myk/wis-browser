@@ -8,6 +8,8 @@ pub(crate) mod gtk_dispatch;
 pub(crate) mod native_webview;
 #[cfg(any(windows, target_os = "linux", test))]
 pub(crate) mod page_message;
+#[cfg(any(not(target_os = "macos"), test))]
+pub(crate) mod proxied_folder;
 #[cfg(target_os = "macos")]
 pub(crate) mod user_scripts;
 #[cfg(target_os = "macos")]

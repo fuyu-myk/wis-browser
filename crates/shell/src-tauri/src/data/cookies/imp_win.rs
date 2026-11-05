@@ -115,13 +115,21 @@ pub(super) async fn delete(
     workspace_id: WorkspaceId,
     domain: String,
 ) -> Result<(), String> {
-    let Some(webview) = workspace_webview(app, workspace_id).await else {
-        return Ok(());
-    };
-
     let target = domain.trim_start_matches('.').trim().to_ascii_lowercase();
+    if let Some(webview) = workspace_webview(app, workspace_id).await {
+        delete_cookies(&webview, target.clone()).await;
+    }
+    if let Some(other) = other_route_webview(app, workspace_id).await? {
+        delete_cookies(&other, target).await;
+        close(&other);
+    }
+    Ok(())
+}
+
+/// Deletes the cookies `webview`'s profile holds for `target`.
+async fn delete_cookies(webview: &tauri::webview::Webview<tauri::Wry>, target: String) {
     let (tx, rx) = mpsc::channel::<()>();
-    crate::platform::win_webview2::with_core_webview2(&webview, move |core| {
+    crate::platform::win_webview2::with_core_webview2(webview, move |core| {
         let started = (|| -> windows::core::Result<()> {
             let core2: ICoreWebView2_2 = core.cast()?;
             let manager: ICoreWebView2CookieManager = unsafe { core2.CookieManager() }?;
@@ -157,7 +165,6 @@ pub(super) async fn delete(
     });
 
     let _ = recv(rx, Duration::from_secs(10)).await;
-    Ok(())
 }
 
 /// Reaches a little past now so a record changed while the call is in
@@ -202,8 +209,23 @@ pub(super) async fn clear(
         (secs as f64, now + RANGE_END_SLACK_SECS)
     });
 
+    clear_profile(&webview, data_kinds, range).await?;
+    if let Some(other) = other_route_webview(app, workspace_id).await? {
+        let cleared = clear_profile(&other, data_kinds, range).await;
+        close(&other);
+        cleared?;
+    }
+    Ok(())
+}
+
+/// Clears `data_kinds` (within `range`, in seconds) from `webview`'s profile.
+async fn clear_profile(
+    webview: &tauri::webview::Webview<tauri::Wry>,
+    data_kinds: COREWEBVIEW2_BROWSING_DATA_KINDS,
+    range: Option<(f64, f64)>,
+) -> Result<(), String> {
     let (tx, rx) = mpsc::channel::<bool>();
-    crate::platform::win_webview2::with_core_webview2(&webview, move |core| {
+    crate::platform::win_webview2::with_core_webview2(webview, move |core| {
         let started = (|| -> windows::core::Result<()> {
             let core13: ICoreWebView2_13 = core.cast()?;
             // SAFETY: on the UI thread via `with_core_webview2`.
@@ -231,5 +253,68 @@ pub(super) async fn clear(
     match recv(rx, Duration::from_secs(15)).await {
         Some(true) => Ok(()),
         _ => Err("clearing site data failed".to_string()),
+    }
+}
+
+/// A hidden webview in the workspace's other route's folder, for reaching its
+/// data: Tor and SOCKS keep theirs apart on Windows (`proxied_folder`). `None`
+/// for a private workspace or a folder never made.
+async fn other_route_webview(
+    app: &AppHandle,
+    workspace_id: WorkspaceId,
+) -> Result<Option<tauri::webview::Webview<tauri::Wry>>, String> {
+    let state = app.state::<AppState>();
+    let proxied = {
+        let browser = state.browser.lock().await;
+        match browser.workspace(workspace_id) {
+            Ok(ws) if !ws.ephemeral => ws.upstream_proxy.is_some(),
+            _ => return Ok(None),
+        }
+    };
+    let dir = crate::commands::workspace_webview_data_dir(app, workspace_id, !proxied);
+    if !tokio::fs::try_exists(&dir).await.unwrap_or(false) {
+        return Ok(None);
+    }
+
+    let port = state.ensure_proxy_for(workspace_id).await.map_err(|err| {
+        log::warn!("site data: proxy for {workspace_id} unavailable: {err:?}");
+        "the other route's data could not be reached".to_string()
+    })?;
+    let window_label = state
+        .window_workspaces
+        .lock()
+        .expect("window_workspaces poisoned")
+        .iter()
+        .find(|(_, ws)| **ws == workspace_id)
+        .map(|(label, _)| label.clone());
+    let window = window_label
+        .and_then(|label| app.get_window(&label))
+        .or_else(|| app.windows().into_values().next())
+        .ok_or("no window to clear from")?;
+
+    let label = format!("wis-clear-{}", uuid::Uuid::new_v4());
+    let blank = "about:blank".parse().expect("about:blank is a valid URL");
+    let proxy = format!("http://127.0.0.1:{port}")
+        .parse()
+        .expect("loopback proxy URL is valid");
+    let builder = tauri::webview::WebviewBuilder::new(&label, tauri::WebviewUrl::External(blank))
+        .data_directory(dir)
+        .focused(false)
+        .proxy_url(proxy)
+        .scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
+    let webview = window
+        .add_child(
+            builder,
+            tauri::LogicalPosition::new(-10_000.0, 0.0),
+            tauri::LogicalSize::new(1.0, 1.0),
+        )
+        .map_err(|err| format!("the other route's folder would not open: {err}"))?;
+    let _ = webview.hide();
+    Ok(Some(webview))
+}
+
+fn close(webview: &tauri::webview::Webview<tauri::Wry>) {
+    if let Err(err) = webview.close() {
+        log::warn!("site data: a clearing webview stayed open: {err}");
     }
 }

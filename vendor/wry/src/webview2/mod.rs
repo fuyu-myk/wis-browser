@@ -69,6 +69,17 @@ pub fn set_profile_name_hook(hook: Box<dyn Fn(&str) -> Option<String> + Send + S
   let _ = PROFILE_HOOK.set(hook);
 }
 
+type BrowserArgsHook = Box<dyn Fn(Option<&std::path::Path>) -> Option<String> + Send + Sync>;
+
+/// WIS PATCH: browser flags to add for an environment, asked with its data
+/// directory when it is made; None adds nothing. Set once by the embedder;
+/// first registration wins.
+static BROWSER_ARGS_HOOK: std::sync::OnceLock<BrowserArgsHook> = std::sync::OnceLock::new();
+
+pub fn set_browser_args_hook(hook: BrowserArgsHook) {
+  let _ = BROWSER_ARGS_HOOK.set(hook);
+}
+
 /// WIS PATCH: what a main-frame `NavigationStarting` reports, for the
 /// navigation start hook.
 pub struct NavigationStart<'a> {
@@ -398,11 +409,11 @@ impl InnerWebView {
     attributes: &WebViewAttributes,
     pl_attrs: super::PlatformSpecificWebViewAttributes,
   ) -> Result<ICoreWebView2Environment> {
-    let data_directory = attributes
+    let data_path = attributes
       .context
       .as_deref()
-      .and_then(|context| context.data_directory())
-      .map(HSTRING::from);
+      .and_then(|context| context.data_directory());
+    let data_directory = data_path.map(HSTRING::from);
 
     // additional browser args
     let additional_browser_args = pl_attrs.additional_browser_args.unwrap_or_else(|| {
@@ -434,6 +445,11 @@ impl InnerWebView {
 
       arguments
     });
+    // WIS patch: the embedder's flags for this data directory's process.
+    let additional_browser_args = match BROWSER_ARGS_HOOK.get().and_then(|hook| hook(data_path)) {
+      Some(extra) => format!("{additional_browser_args} {extra}"),
+      None => additional_browser_args,
+    };
 
     let (tx, rx) = mpsc::channel();
     let options = CoreWebView2EnvironmentOptions::default();

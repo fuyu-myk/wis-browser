@@ -52,6 +52,7 @@ pub async fn create_tab_webview(
         nav_privacy_mode,
         global_privacy_control,
         local_off,
+        proxied,
     ) = {
         let browser = state.browser.lock().await;
         let ephemeral = browser
@@ -82,8 +83,13 @@ pub async fn create_tab_webview(
             browser
                 .workspace(workspace_id)
                 .is_ok_and(crate::protection::local_block::applies),
+            browser
+                .workspace(workspace_id)
+                .is_ok_and(|w| w.upstream_proxy.is_some()),
         )
     };
+    #[cfg(target_os = "macos")]
+    let _ = proxied;
 
     // The swipe-nav indicator colour; a new tab bakes the last
     // value the chrome pushed (`set_swipe_accent`).
@@ -289,9 +295,9 @@ pub async fn create_tab_webview(
         #[cfg(windows)]
         {
             builder = builder.incognito(true).data_directory(if ephemeral {
-                ephemeral_webview_data_dir(&app, workspace_id)
+                ephemeral_webview_data_dir(&app, workspace_id, proxied)
             } else {
-                workspace_webview_data_dir(&app, workspace_id)
+                workspace_webview_data_dir(&app, workspace_id, proxied)
             });
         }
     } else if ephemeral {
@@ -306,7 +312,7 @@ pub async fn create_tab_webview(
         {
             builder = builder
                 .incognito(true)
-                .data_directory(ephemeral_webview_data_dir(&app, workspace_id));
+                .data_directory(ephemeral_webview_data_dir(&app, workspace_id, proxied));
         }
     } else {
         builder = builder.data_store_identifier(workspace_id_to_data_store_bytes(workspace_id));
@@ -316,7 +322,8 @@ pub async fn create_tab_webview(
         // all collapse into one profile (and one shared cookie jar).
         #[cfg(any(windows, target_os = "linux"))]
         {
-            builder = builder.data_directory(workspace_webview_data_dir(&app, workspace_id));
+            builder =
+                builder.data_directory(workspace_webview_data_dir(&app, workspace_id, proxied));
         }
     }
 
@@ -913,18 +920,23 @@ fn canvas_webview_data_dir(app: &AppHandle) -> std::path::PathBuf {
 /// Linux WebKitGTK, both of which isolate by folder). Derived from the
 /// workspace uuid so it is stable across restarts (cookies/storage persist);
 /// the engine creates the folder if it is missing. The macOS analogue is
-/// [`workspace_id_to_data_store_bytes`] via `data_store_identifier`.
+/// [`workspace_id_to_data_store_bytes`] via `data_store_identifier`. Behind
+/// Tor or SOCKS, Windows uses a folder of its own (`proxied_folder`).
 #[cfg(any(windows, target_os = "linux"))]
 pub(crate) fn workspace_webview_data_dir(
     app: &AppHandle,
     workspace_id: WorkspaceId,
+    proxied: bool,
 ) -> std::path::PathBuf {
     let base = app
         .path()
         .app_local_data_dir()
         .unwrap_or_else(|_| std::env::temp_dir().join("app.myk.wis"));
     base.join("webviews")
-        .join(workspace_id.as_uuid().to_string())
+        .join(crate::platform::proxied_folder::name(
+            &workspace_id.as_uuid().to_string(),
+            proxied,
+        ))
 }
 
 /// The WebView2 user-data folder for an ephemeral (private) workspace's
@@ -934,17 +946,22 @@ pub(crate) fn workspace_webview_data_dir(
 /// already-running browser process. Ephemeral workspace uuids are minted per
 /// session, so [`sweep_ephemeral_webview_data`] clears stale trees at startup.
 /// On Linux the path only names the workspace's shared in-memory context.
+/// Behind Tor or SOCKS, Windows uses a folder of its own (`proxied_folder`).
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn ephemeral_webview_data_dir(
     app: &AppHandle,
     workspace_id: WorkspaceId,
+    proxied: bool,
 ) -> std::path::PathBuf {
     let base = app
         .path()
         .app_local_data_dir()
         .unwrap_or_else(|_| std::env::temp_dir().join("app.myk.wis"));
     base.join("webviews-ephemeral")
-        .join(workspace_id.as_uuid().to_string())
+        .join(crate::platform::proxied_folder::name(
+            &workspace_id.as_uuid().to_string(),
+            proxied,
+        ))
 }
 
 /// Best-effort removal of ephemeral webview data folders left by previous

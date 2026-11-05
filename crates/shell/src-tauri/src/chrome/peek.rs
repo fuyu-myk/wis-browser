@@ -154,6 +154,7 @@ pub async fn open_peek(
         active_ws,
         ephemeral,
         local_off,
+        proxied,
         user_agent,
         fraud_warning,
         media_extensions,
@@ -172,6 +173,9 @@ pub async fn open_peek(
         let local_off = browser
             .workspace(active_ws)
             .is_ok_and(crate::protection::local_block::applies);
+        let proxied = browser
+            .workspace(active_ws)
+            .is_ok_and(|w| w.upstream_proxy.is_some());
         let user_agent = wis_core::ua_for_host(
             wis_core::sites::domain::site_url(&parsed)
                 .as_deref()
@@ -185,6 +189,7 @@ pub async fn open_peek(
             active_ws,
             ephemeral,
             local_off,
+            proxied,
             user_agent,
             browser.settings.fraud_warning_enabled,
             browser.settings.media_extensions_enabled,
@@ -192,7 +197,7 @@ pub async fn open_peek(
         )
     };
     #[cfg(not(windows))]
-    let _ = ephemeral;
+    let _ = (ephemeral, proxied);
     let proxy_port = state
         .ensure_proxy_for(active_ws)
         .await
@@ -284,9 +289,9 @@ pub async fn open_peek(
     #[cfg(windows)]
     {
         let dir = if ephemeral {
-            crate::commands::ephemeral_webview_data_dir(app, active_ws)
+            crate::commands::ephemeral_webview_data_dir(app, active_ws, proxied)
         } else {
-            crate::commands::workspace_webview_data_dir(app, active_ws)
+            crate::commands::workspace_webview_data_dir(app, active_ws, proxied)
         };
         builder = builder.data_directory(dir);
     }

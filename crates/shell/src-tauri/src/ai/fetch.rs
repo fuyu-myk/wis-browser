@@ -300,7 +300,7 @@ mod imp {
         let app = tauri::Manager::app_handle(&window).clone();
         let label = format!("wis-fetch-{}", uuid::Uuid::new_v4());
 
-        let (active_ws, user_agent, local_off) = {
+        let (active_ws, user_agent, local_off, proxied) = {
             let browser = state.browser.lock().await;
             let active_ws = workspace
                 .or_else(|| state.window_workspace(window.label()))
@@ -308,6 +308,9 @@ mod imp {
             let local_off = browser
                 .workspace(active_ws)
                 .is_ok_and(crate::protection::local_block::applies);
+            let proxied = browser
+                .workspace(active_ws)
+                .is_ok_and(|w| w.upstream_proxy.is_some());
             let user_agent = wis_core::ua_for_host(
                 wis_core::sites::domain::site_url(&target)
                     .as_deref()
@@ -318,8 +321,10 @@ mod imp {
                 wis_core::UaPlatform::host(),
             );
 
-            (active_ws, user_agent, local_off)
+            (active_ws, user_agent, local_off, proxied)
         };
+        #[cfg(not(windows))]
+        let _ = proxied;
         let proxy_port = state
             .ensure_proxy_for(active_ws)
             .await
@@ -347,8 +352,11 @@ mod imp {
         #[cfg(windows)]
         {
             builder = builder
+                .scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay)
                 .initialization_script(crate::platform::win_dispatch::AI_FETCH_SHIM)
-                .data_directory(crate::commands::ephemeral_webview_data_dir(&app, active_ws));
+                .data_directory(crate::commands::ephemeral_webview_data_dir(
+                    &app, active_ws, proxied,
+                ));
         }
 
         {

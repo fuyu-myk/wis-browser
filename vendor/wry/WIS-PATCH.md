@@ -636,6 +636,23 @@ it, and an OAuth popup redirecting to an app link (`zoommtg:`) failed silently.
 Removal checklist: once wry gives popups it creates the embedder's navigation
 handler, drop the hook and move `app_launch::install_popup_hook` onto it.
 
+## Twenty-third patch: the embedder adds browser flags per data directory (Windows) (Wis-original)
+
+A WebView2 browser process takes its flags when the first environment for
+its user-data folder is made and keeps them while any webview there lives,
+and wry builds those flags itself unless the embedder replaces them all.
+
+- `src/webview2/mod.rs`: `wry::set_browser_args_hook(Box<dyn
+  Fn(Option<&Path>) -> Option<String> + Send + Sync>)` (`OnceLock`, first
+  registration wins), asked in `create_environment` with the environment's
+  data directory; what it returns is appended to the arguments wry would
+  pass anyway (or to the embedder's own `additional_browser_args`).
+- `src/lib.rs`: re-exports the setter on Windows.
+
+Removal checklist: once wry or Tauri let the embedder add browser arguments
+without replacing its defaults, drop the hook and pass them from
+`platform/proxied_folder.rs` directly.
+
 ## Edition 2024 (wry 0.57)
 
 wry builds as edition 2024, so the patches keep the unsafe operations of their

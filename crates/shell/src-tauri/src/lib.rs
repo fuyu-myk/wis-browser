@@ -68,6 +68,8 @@ pub fn run() {
         canvas::page::handle_request,
     );
     #[cfg(windows)]
+    platform::proxied_folder::install();
+    #[cfg(windows)]
     wry::set_profile_name_hook(Box::new(|label| {
         canvas::page::is_canvas_tab(label).then(|| canvas::page::WINDOWS_PROFILE.to_string())
     }));

@@ -353,6 +353,7 @@ pub async fn open_widget_panel(
         ephemeral,
         privacy_mode,
         local_off,
+        proxied,
         user_agent,
         fraud_warning,
         media_extensions,
@@ -364,12 +365,13 @@ pub async fn open_widget_panel(
         let ws_id = state
             .window_workspace(window.label())
             .unwrap_or(browser.active_workspace_id);
-        let (ephemeral, privacy_mode, local_off) =
+        let (ephemeral, privacy_mode, local_off, proxied) =
             browser
                 .workspace(ws_id)
-                .map_or((false, Default::default(), false), |w| {
+                .map_or((false, Default::default(), false, false), |w| {
                     let local_off = crate::protection::local_block::applies(w);
-                    (w.ephemeral, w.privacy_mode, local_off)
+                    let proxied = w.upstream_proxy.is_some();
+                    (w.ephemeral, w.privacy_mode, local_off, proxied)
                 });
         let user_agent = wis_core::ua_for_host(
             wis_core::sites::domain::site_url(&parsed)
@@ -386,6 +388,7 @@ pub async fn open_widget_panel(
             ephemeral,
             privacy_mode,
             local_off,
+            proxied,
             user_agent,
             browser.settings.fraud_warning_enabled,
             browser.settings.media_extensions_enabled,
@@ -393,6 +396,8 @@ pub async fn open_widget_panel(
         )
     };
 
+    #[cfg(target_os = "macos")]
+    let _ = proxied;
     let proxy_port = state
         .ensure_proxy_for(workspace_id)
         .await
@@ -478,7 +483,7 @@ pub async fn open_widget_panel(
         #[cfg(not(target_os = "macos"))]
         {
             builder = builder.incognito(true).data_directory(
-                crate::commands::ephemeral_webview_data_dir(&app, workspace_id),
+                crate::commands::ephemeral_webview_data_dir(&app, workspace_id, proxied),
             );
         }
     } else {
@@ -492,6 +497,7 @@ pub async fn open_widget_panel(
             builder = builder.data_directory(crate::commands::workspace_webview_data_dir(
                 &app,
                 workspace_id,
+                proxied,
             ));
         }
     }
