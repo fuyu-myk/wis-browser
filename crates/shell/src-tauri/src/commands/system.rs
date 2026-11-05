@@ -255,25 +255,25 @@ pub(crate) async fn rebuild_filter_lists(app: &AppHandle, state: &AppState) -> W
         .await
         .map_err(wis_core::WisError::from)?;
 
-    let tabs: Vec<(wis_core::TabId, wis_core::PrivacyMode)> = {
+    let tabs: Vec<(wis_core::TabId, wis_core::PrivacyMode, bool)> = {
         let browser = state.browser.lock().await;
         browser
             .tabs
             .iter()
             .filter_map(|tab| {
-                browser
-                    .workspace(tab.workspace_id)
-                    .ok()
-                    .map(|w| (tab.id, w.privacy_mode))
+                browser.workspace(tab.workspace_id).ok().map(|w| {
+                    let local = crate::protection::local_block::applies(w);
+                    (tab.id, w.privacy_mode, local)
+                })
             })
             .collect()
     };
-    for (tab_id, mode) in tabs {
+    for (tab_id, mode, local) in tabs {
         let label = format!("tab-{}", tab_id.as_uuid());
         let Some(webview) = app.webviews().get(&label).cloned() else {
             continue;
         };
-        let specs = state.content_rule_specs(mode);
+        let specs = state.rule_specs(mode, local);
         if let Err(err) = crate::protection::content_filter::replace_rule_lists(&webview, &specs) {
             log::warn!("content filter: re-attach for {label} skipped: {err}");
         }

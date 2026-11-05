@@ -203,7 +203,7 @@ pub async fn set_workspace_privacy_mode(
 
     let _ = state.update_proxy_policy(id, false).await;
 
-    let specs = state.content_rule_specs(mode);
+    let specs = state.workspace_rule_specs(&workspace);
     let tab_labels: Vec<String> = {
         let browser = state.browser.lock().await;
         browser

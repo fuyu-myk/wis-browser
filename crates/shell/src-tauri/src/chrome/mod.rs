@@ -11,4 +11,5 @@ pub(crate) mod pane_container;
 pub(crate) mod pane_focus;
 pub(crate) mod peek;
 pub(crate) mod popup;
+pub(crate) mod remote_toast;
 pub(crate) mod widget_panel;

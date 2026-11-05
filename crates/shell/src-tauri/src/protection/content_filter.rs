@@ -72,7 +72,21 @@ fn notice_spec(rules: &str) -> Option<RuleSpec> {
     }
 }
 
+/// The list that keeps a Tor or SOCKS workspace's pages off this machine.
+pub fn local_spec() -> &'static RuleSpec {
+    static SPEC: std::sync::LazyLock<RuleSpec> = std::sync::LazyLock::new(|| {
+        let json = wis_network::content_filter::local_blocking_json();
+        RuleSpec {
+            identifier: identifier_for("local", &json),
+            json,
+        }
+    });
+    &SPEC
+}
+
 pub const RULE_LIST_PREFIX: &str = "wis-cb-";
+/// The local list's identifiers, which [`identifier_for`] gives.
+pub const LOCAL_LIST_PREFIX: &str = "wis-cb-local-";
 
 /// Bump when the conversion to WebKit rules changes, so lists compiled by the
 /// old conversion are replaced.
@@ -109,132 +123,224 @@ pub fn attach_rule_list<R: tauri::Runtime>(
     webview: &tauri::webview::Webview<R>,
     spec: &RuleSpec,
 ) -> Result<(), String> {
+    use objc2::rc::Id;
+    use objc2::runtime::AnyObject;
+    use tauri::Manager;
+
+    let app = webview.app_handle().clone();
+    let spec = spec.clone();
+    webview
+        // SAFETY: `with_webview` runs on the main thread with the live
+        // WKWebView; it stays retained until the list is added.
+        .with_webview(move |w| unsafe {
+            let Some(wkwebview) = Id::retain(w.inner() as *mut AnyObject) else {
+                log::warn!("content filter: WKWebView pointer was null");
+                return;
+            };
+            resolve(app, spec, move |list| {
+                if !list.is_null() {
+                    swap_in(&wkwebview, false, &[list]);
+                }
+            });
+        })
+        .map_err(|err| format!("with_webview failed: {err}"))
+}
+
+/// Replaces Wis's lists on the webview in one step once every spec has
+/// resolved, so a page is never left between lists. Extensions' rule lists
+/// stay attached.
+#[cfg(target_os = "macos")]
+pub fn replace_rule_lists<R: tauri::Runtime>(
+    webview: &tauri::webview::Webview<R>,
+    specs: &[RuleSpec],
+) -> Result<(), String> {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use objc2::rc::Id;
+    use objc2::runtime::AnyObject;
+    use tauri::Manager;
+
+    let app = webview.app_handle().clone();
+    let specs = specs.to_vec();
+    webview
+        // SAFETY: `with_webview` runs on the main thread with the live
+        // WKWebView; it stays retained until every list has resolved.
+        .with_webview(move |w| unsafe {
+            let Some(wkwebview) = Id::retain(w.inner() as *mut AnyObject) else {
+                return;
+            };
+            if specs.is_empty() {
+                swap_in(&wkwebview, true, &[]);
+                return;
+            }
+
+            let left = Rc::new(RefCell::new((specs.len(), Vec::<Id<AnyObject>>::new())));
+            for spec in specs {
+                let left = left.clone();
+                let wkwebview = wkwebview.clone();
+                resolve(app.clone(), spec, move |list| {
+                    let mut left = left.borrow_mut();
+                    if let Some(list) = Id::retain(list) {
+                        left.1.push(list);
+                    }
+                    left.0 -= 1;
+                    if left.0 == 0 {
+                        let lists: Vec<*mut AnyObject> =
+                            left.1.iter().map(|l| Id::as_ptr(l).cast_mut()).collect();
+                        swap_in(&wkwebview, true, &lists);
+                    }
+                });
+            }
+        })
+        .map_err(|err| format!("with_webview failed: {err}"))
+}
+
+/// Adds `lists` to the webview's user-content controller, after removing
+/// every list first when `replace`.
+///
+/// # Safety
+/// Main thread, with `wkwebview` a `WKWebView`.
+#[cfg(target_os = "macos")]
+unsafe fn swap_in(
+    wkwebview: &objc2::runtime::AnyObject,
+    replace: bool,
+    lists: &[*mut objc2::runtime::AnyObject],
+) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+
+    let config: *mut AnyObject = msg_send![wkwebview, configuration];
+    let controller: *mut AnyObject = msg_send![config, userContentController];
+    if replace {
+        let _: () = msg_send![controller, removeAllContentRuleLists];
+    }
+    for &list in lists {
+        let _: () = msg_send![controller, addContentRuleList: list];
+    }
+}
+
+/// Hands `spec`'s compiled list to `then`, compiling it on a store miss, or a
+/// null list when it fails or a later rebuild no longer wants it. The store
+/// calls back on the main thread.
+///
+/// # Safety
+/// Main thread.
+#[cfg(target_os = "macos")]
+unsafe fn resolve<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    spec: RuleSpec,
+    then: impl FnOnce(*mut objc2::runtime::AnyObject) + 'static,
+) {
+    use std::cell::Cell;
     use std::ffi::{CStr, CString};
     use std::os::raw::c_char;
+    use std::rc::Rc;
 
     use block2::RcBlock;
     use objc2::runtime::AnyObject;
     use objc2::{class, msg_send};
-    use tauri::Manager;
 
-    let identifier = spec.identifier.clone();
-    let json = spec.json.clone();
-    let app = webview.app_handle().clone();
+    let then = Rc::new(Cell::new(Some(then)));
+    let finish = move |list: *mut AnyObject| {
+        if let Some(then) = then.take() {
+            then(list);
+        }
+    };
+
+    let store: *mut AnyObject = msg_send![class!(WKContentRuleListStore), defaultStore];
+    let Ok(id_c) = CString::new(spec.identifier.as_str()) else {
+        log::warn!("content filter: identifier contained NUL");
+        finish(std::ptr::null_mut());
+        return;
+    };
+    if store.is_null() {
+        log::warn!("content filter: no default WKContentRuleListStore");
+        finish(std::ptr::null_mut());
+        return;
+    }
     // Counts the top-level rule objects for the diagnostic log. Parse failure
     // here just degrades the log; the JSON itself is already known-valid.
-    let rule_count = serde_json::from_str::<Vec<serde_json::Value>>(&json)
+    let rule_count = serde_json::from_str::<Vec<serde_json::Value>>(&spec.json)
         .map(|v| v.len())
         .unwrap_or(0);
+    let RuleSpec { identifier, json } = spec;
 
-    /// Attach a compiled list to the webview identified by `webview_addr`.
-    /// Runs inside store completion blocks (main thread; the webview outlives
-    /// the tab, and the address travels as a usize to keep the block Send).
-    unsafe fn attach(webview_addr: usize, list: *mut AnyObject) {
-        let wkwebview = webview_addr as *mut AnyObject;
-        let config: *mut AnyObject = msg_send![wkwebview, configuration];
-        let controller: *mut AnyObject = msg_send![config, userContentController];
-        let _: () = msg_send![controller, addContentRuleList: list];
-    }
+    let lookup_handler = RcBlock::new(move |list: *mut AnyObject, _error: *mut AnyObject| {
+        if !still_wanted(&app, &identifier) {
+            finish(std::ptr::null_mut());
+            return;
+        }
+        if !list.is_null() {
+            finish(list);
+            log::info!("content filter: attached '{identifier}' from compiled cache");
+            return;
+        }
 
-    webview
-        .with_webview(move |w| unsafe {
-            let wkwebview: *mut AnyObject = w.inner() as *mut AnyObject;
-            if wkwebview.is_null() {
-                log::warn!("content filter: WKWebView pointer was null");
-                return;
-            }
+        // Cache miss (first run): compile, which also persists under the
+        // identifier for future lookups.
+        let (Ok(id_c), Ok(json_c)) = (
+            CString::new(identifier.as_str()),
+            CString::new(json.as_str()),
+        ) else {
+            log::warn!("content filter: identifier/JSON contained NUL");
+            finish(std::ptr::null_mut());
+            return;
+        };
+        let ns_id: *mut AnyObject =
+            msg_send![class!(NSString), stringWithUTF8String: id_c.as_ptr()];
+        let ns_json: *mut AnyObject =
+            msg_send![class!(NSString), stringWithUTF8String: json_c.as_ptr()];
+        let store: *mut AnyObject = msg_send![class!(WKContentRuleListStore), defaultStore];
+        if store.is_null() {
+            finish(std::ptr::null_mut());
+            return;
+        }
 
-            let store: *mut AnyObject = msg_send![class!(WKContentRuleListStore), defaultStore];
-            if store.is_null() {
-                log::warn!("content filter: no default WKContentRuleListStore");
-                return;
-            }
-
-            let webview_addr = wkwebview as usize;
-            let id_for_lookup = identifier.clone();
-            let json_for_compile = json.clone();
-
-            let lookup_handler = RcBlock::new(move |list: *mut AnyObject, _error: *mut AnyObject| {
-                if !still_wanted(&app, &id_for_lookup) {
-                    return;
-                }
-                if !list.is_null() {
-                    attach(webview_addr, list);
-                    log::info!(
-                        "content filter: attached '{id_for_lookup}' from compiled cache"
-                    );
-                    return;
-                }
-
-                // Cache miss (first run): compile, which also persists under
-                // the identifier for future lookups.
-                let (Ok(id_c), Ok(json_c)) = (
-                    CString::new(id_for_lookup.as_str()),
-                    CString::new(json_for_compile.as_str()),
-                ) else {
-                    log::warn!("content filter: identifier/JSON contained NUL");
-                    return;
+        let identifier = identifier.clone();
+        let app = app.clone();
+        let finish = finish.clone();
+        let compile_handler = RcBlock::new(move |list: *mut AnyObject, error: *mut AnyObject| {
+            if !error.is_null() {
+                let desc: *mut AnyObject = msg_send![error, localizedDescription];
+                let utf8: *const c_char = msg_send![desc, UTF8String];
+                let reason = if utf8.is_null() {
+                    "<no description>".to_owned()
+                } else {
+                    CStr::from_ptr(utf8).to_string_lossy().into_owned()
                 };
-                let ns_id: *mut AnyObject =
-                    msg_send![class!(NSString), stringWithUTF8String: id_c.as_ptr()];
-                let ns_json: *mut AnyObject =
-                    msg_send![class!(NSString), stringWithUTF8String: json_c.as_ptr()];
-                let store: *mut AnyObject =
-                    msg_send![class!(WKContentRuleListStore), defaultStore];
-                if store.is_null() {
-                    return;
-                }
-
-                let id_for_log = id_for_lookup.clone();
-                let app = app.clone();
-                let compile_handler =
-                    RcBlock::new(move |list: *mut AnyObject, error: *mut AnyObject| {
-                        if !error.is_null() {
-                            let desc: *mut AnyObject = msg_send![error, localizedDescription];
-                            let utf8: *const c_char = msg_send![desc, UTF8String];
-                            let reason = if utf8.is_null() {
-                                "<no description>".to_owned()
-                            } else {
-                                CStr::from_ptr(utf8).to_string_lossy().into_owned()
-                            };
-                            log::error!("content filter: compile failed: {reason}");
-                            return;
-                        }
-                        if list.is_null() {
-                            log::error!("content filter: compile returned nil list with no error");
-                            return;
-                        }
-                        if !still_wanted(&app, &id_for_log) {
-                            return;
-                        }
-
-                        attach(webview_addr, list);
-                        log::info!(
-                            "content filter: compiled + attached '{id_for_log}' ({rule_count} rules)"
-                        );
-                    });
-
-                let _: () = msg_send![
-                    store,
-                    compileContentRuleListForIdentifier: ns_id,
-                    encodedContentRuleList: ns_json,
-                    completionHandler: &*compile_handler,
-                ];
-            });
-
-            let Ok(id_c) = CString::new(identifier.as_str()) else {
-                log::warn!("content filter: identifier contained NUL");
+                log::error!("content filter: compile failed: {reason}");
+                finish(std::ptr::null_mut());
                 return;
-            };
-            let ns_id: *mut AnyObject =
-                msg_send![class!(NSString), stringWithUTF8String: id_c.as_ptr()];
-            let _: () = msg_send![
-                store,
-                lookUpContentRuleListForIdentifier: ns_id,
-                completionHandler: &*lookup_handler,
-            ];
-        })
-        .map_err(|err| format!("with_webview failed: {err}"))
+            }
+            if list.is_null() {
+                log::error!("content filter: compile returned nil list with no error");
+                finish(std::ptr::null_mut());
+                return;
+            }
+            if !still_wanted(&app, &identifier) {
+                finish(std::ptr::null_mut());
+                return;
+            }
+
+            finish(list);
+            log::info!("content filter: compiled + attached '{identifier}' ({rule_count} rules)");
+        });
+
+        let _: () = msg_send![
+            store,
+            compileContentRuleListForIdentifier: ns_id,
+            encodedContentRuleList: ns_json,
+            completionHandler: &*compile_handler,
+        ];
+    });
+
+    let ns_id: *mut AnyObject = msg_send![class!(NSString), stringWithUTF8String: id_c.as_ptr()];
+    let _: () = msg_send![
+        store,
+        lookUpContentRuleListForIdentifier: ns_id,
+        completionHandler: &*lookup_handler,
+    ];
 }
 
 /// Attaches each list; a failure skips that list only.
@@ -246,16 +352,6 @@ pub fn attach_rule_lists<R: tauri::Runtime>(
         .iter()
         .map(|spec| attach_rule_list(webview, spec))
         .fold(Ok(()), Result::and)
-}
-
-/// Extensions' rule lists stay attached: WebKit's removal of all lists
-/// spares those whose base URL is an extension's.
-pub fn replace_rule_lists<R: tauri::Runtime>(
-    webview: &tauri::webview::Webview<R>,
-    specs: &[RuleSpec],
-) -> Result<(), String> {
-    clear_rule_lists(webview)?;
-    attach_rule_lists(webview, specs)
 }
 
 /// A compile can finish after a later rebuild has replaced its list.
@@ -330,28 +426,6 @@ pub fn prune_stale_rule_lists(keep: Vec<String>) {
 #[cfg(not(target_os = "macos"))]
 pub fn prune_stale_rule_lists(_keep: Vec<String>) {}
 
-/// Remove every attached rule list from the webview (used when a workspace
-/// switches to a mode with less or no filtering).
-#[cfg(target_os = "macos")]
-pub fn clear_rule_lists<R: tauri::Runtime>(
-    webview: &tauri::webview::Webview<R>,
-) -> Result<(), String> {
-    use objc2::msg_send;
-    use objc2::runtime::AnyObject;
-
-    webview
-        .with_webview(move |w| unsafe {
-            let wkwebview: *mut AnyObject = w.inner() as *mut AnyObject;
-            if wkwebview.is_null() {
-                return;
-            }
-            let config: *mut AnyObject = msg_send![wkwebview, configuration];
-            let controller: *mut AnyObject = msg_send![config, userContentController];
-            let _: () = msg_send![controller, removeAllContentRuleLists];
-        })
-        .map_err(|err| format!("with_webview failed: {err}"))
-}
-
 #[cfg(not(target_os = "macos"))]
 pub fn attach_rule_list<R: tauri::Runtime>(
     _webview: &tauri::webview::Webview<R>,
@@ -361,8 +435,9 @@ pub fn attach_rule_list<R: tauri::Runtime>(
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn clear_rule_lists<R: tauri::Runtime>(
+pub fn replace_rule_lists<R: tauri::Runtime>(
     _webview: &tauri::webview::Webview<R>,
+    _specs: &[RuleSpec],
 ) -> Result<(), String> {
     Ok(())
 }

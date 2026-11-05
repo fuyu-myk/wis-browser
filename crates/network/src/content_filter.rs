@@ -90,6 +90,33 @@ fn third_party_script_block() -> Value {
     })
 }
 
+/// This machine's loopback as WebKit `url-filter` patterns.
+const LOCAL_URL_FILTERS: [&str; 8] = [
+    r"^[a-z]+://([^/@]*@)?localhost\.?[:/]",
+    r"^[a-z]+://([^/@]*@)?[a-z0-9.-]+\.localhost\.?[:/]",
+    r"^[a-z]+://([^/@]*@)?127\.[0-9]+\.[0-9]+\.[0-9]+[:/]",
+    r"^[a-z]+://([^/@]*@)?0\.0\.0\.0[:/]",
+    r"^[a-z]+://([^/@]*@)?\[::1\][:/]",
+    r"^[a-z]+://([^/@]*@)?\[::\][:/]",
+    r"^[a-z]+://([^/@]*@)?\[::ffff:7f[0-9a-f][0-9a-f]:[0-9a-f]+\][:/]",
+    r"^[a-z]+://([^/@]*@)?\[::ffff:0:0\][:/]",
+];
+
+/// WebKit rules that block every load of this machine's loopback, documents
+/// included, for workspaces behind Tor or SOCKS.
+pub fn local_blocking_json() -> String {
+    let rules = LOCAL_URL_FILTERS
+        .iter()
+        .map(|filter| {
+            serde_json::json!({
+                "trigger": { "url-filter": filter },
+                "action": { "type": "block" },
+            })
+        })
+        .collect();
+    serde_json::Value::Array(rules).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,5 +225,64 @@ mod tests {
         let out = content_blocking_json(&[DEFAULT_TRACKER_LIST], PrivacyMode::Permissive)
             .expect("conversion succeeds");
         assert!(out.is_none(), "permissive applies no engine filter");
+    }
+
+    fn local_filters() -> Vec<regex::Regex> {
+        let rules: serde_json::Value = serde_json::from_str(&local_blocking_json()).unwrap();
+        rules
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|rule| {
+                assert_eq!(rule["action"]["type"], "block");
+                assert!(rule["trigger"].get("resource-type").is_none(), "every load");
+                let filter = rule["trigger"]["url-filter"].as_str().unwrap();
+                regex::RegexBuilder::new(filter)
+                    .case_insensitive(true)
+                    .build()
+                    .unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_local_list_blocks_every_load_of_this_machine() {
+        let filters = local_filters();
+        for url in [
+            "http://localhost/",
+            "https://localhost:3000/a",
+            "http://localhost.:8080/",
+            "ws://localhost/socket",
+            "HTTP://LOCALHOST/",
+            "http://app.localhost/",
+            "http://user:pass@127.0.0.1/",
+            "http://127.0.0.1/",
+            "http://127.8.9.10:631/",
+            "http://0.0.0.0:11434/v1",
+            "http://[::1]:8080/",
+            "http://[::]/",
+            "http://[::ffff:7f00:1]/",
+            "http://[::ffff:0:0]/",
+        ] {
+            assert!(filters.iter().any(|f| f.is_match(url)), "{url}");
+        }
+    }
+
+    #[test]
+    fn the_local_list_leaves_other_hosts_alone() {
+        let filters = local_filters();
+        for url in [
+            "https://localhost.example.com/",
+            "https://notlocalhost/",
+            "https://example.com/localhost/",
+            "https://127.example.com/",
+            "https://example.com/?u=http://127.0.0.1/",
+            "http://192.168.1.20/",
+            "http://[fd00::1]/",
+            "http://[::ffff:7f:1]/",
+            "http://[::ffff:c000:207]/",
+        ] {
+            assert!(!filters.iter().any(|f| f.is_match(url)), "{url}");
+        }
     }
 }

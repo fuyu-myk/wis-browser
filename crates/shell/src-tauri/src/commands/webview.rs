@@ -51,6 +51,7 @@ pub async fn create_tab_webview(
         media_extensions,
         nav_privacy_mode,
         global_privacy_control,
+        local_off,
     ) = {
         let browser = state.browser.lock().await;
         let ephemeral = browser
@@ -78,6 +79,9 @@ pub async fn create_tab_webview(
             browser.settings.media_extensions_enabled,
             nav_privacy_mode,
             browser.settings.global_privacy_control,
+            browser
+                .workspace(workspace_id)
+                .is_ok_and(crate::protection::local_block::applies),
         )
     };
 
@@ -221,13 +225,15 @@ pub async fn create_tab_webview(
         crate::chrome::keybind::page_script(&wis_core::effective_keymap(&keybindings))
     };
 
-    // The single navigation hook carries two concerns: custom-scheme
-    // navigations are cancelled on every workspace and offered as an app
-    // handoff, and the per-page scriptlet swap (uBO `+js` rules) runs before
-    // each main-frame navigation commits, except on Permissive workspaces.
+    // The single navigation hook carries three concerns: this machine stays
+    // out of reach behind Tor or SOCKS on macOS, custom-scheme navigations
+    // are cancelled on every workspace and offered as an app handoff, and the
+    // per-page scriptlet swap (uBO `+js` rules) runs before each main-frame
+    // navigation commits, except on Permissive workspaces.
     {
         let app_for_nav = app.clone();
         let label_for_nav = label_ident.clone();
+        let window_for_nav = window.label().to_string();
         let scriptlets = nav_privacy_mode != wis_core::PrivacyMode::Permissive;
         builder = builder.on_navigation(move |url| {
             if !crate::canvas::page::navigation_allowed(canvas_tab, url) {
@@ -235,6 +241,11 @@ pub async fn create_tab_webview(
             }
             if canvas_tab {
                 return true;
+            }
+            if local_off
+                && crate::protection::local_block::refuses(&app_for_nav, &window_for_nav, url)
+            {
+                return false;
             }
 
             if crate::system::app_launch::should_intercept(url) {
@@ -720,16 +731,17 @@ pub async fn create_tab_webview(
     #[cfg(not(target_os = "macos"))]
     let _ = label_ident;
 
-    let privacy_mode = {
+    let (privacy_mode, local) = {
         let browser = state.browser.lock().await;
         browser
             .workspace(workspace_id)
-            .map(|w| w.privacy_mode)
-            .unwrap_or_default()
+            .map_or((wis_core::PrivacyMode::default(), false), |w| {
+                (w.privacy_mode, crate::protection::local_block::applies(w))
+            })
     };
 
     // Engine-level filtering is best-effort: a failure must not block the tab.
-    let specs = state.content_rule_specs(privacy_mode);
+    let specs = state.rule_specs(privacy_mode, local);
     if let Err(err) = crate::protection::content_filter::attach_rule_lists(&child, &specs) {
         log::warn!("content filter: attach skipped: {err}");
     }

@@ -20,7 +20,7 @@ pub fn install_hook(app: tauri::AppHandle) {
         let wis_rule_lists = if protection.blocking {
             Vec::new()
         } else {
-            state.wis_rule_list_ids()
+            state.blockable_rule_list_ids()
         };
         // SAFETY: called by the navigation delegate on the main thread with a
         // live WKWebpagePreferences; the pointer is used only for these calls.

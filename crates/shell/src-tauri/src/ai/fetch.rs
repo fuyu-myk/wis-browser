@@ -300,11 +300,14 @@ mod imp {
         let app = tauri::Manager::app_handle(&window).clone();
         let label = format!("wis-fetch-{}", uuid::Uuid::new_v4());
 
-        let (active_ws, user_agent) = {
+        let (active_ws, user_agent, local_off) = {
             let browser = state.browser.lock().await;
             let active_ws = workspace
                 .or_else(|| state.window_workspace(window.label()))
                 .unwrap_or(browser.active_workspace_id);
+            let local_off = browser
+                .workspace(active_ws)
+                .is_ok_and(crate::protection::local_block::applies);
             let user_agent = wis_core::ua_for_host(
                 wis_core::sites::domain::site_url(&target)
                     .as_deref()
@@ -315,7 +318,7 @@ mod imp {
                 wis_core::UaPlatform::host(),
             );
 
-            (active_ws, user_agent)
+            (active_ws, user_agent, local_off)
         };
         let proxy_port = state
             .ensure_proxy_for(active_ws)
@@ -403,6 +406,12 @@ mod imp {
                 }
             })?;
         let _ = child.hide();
+        if local_off {
+            let spec = crate::protection::content_filter::local_spec();
+            if let Err(err) = crate::protection::content_filter::attach_rule_list(&child, spec) {
+                log::warn!("ai fetch: local list attach skipped: {err}");
+            }
+        }
 
         #[cfg(target_os = "macos")]
         macos::install(&child, label.clone());

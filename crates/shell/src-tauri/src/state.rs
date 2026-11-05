@@ -462,6 +462,17 @@ impl AppState {
     }
 
     pub fn wis_rule_list_ids(&self) -> Vec<String> {
+        let mut ids = self.blockable_rule_list_ids();
+        ids.push(
+            crate::protection::content_filter::local_spec()
+                .identifier
+                .clone(),
+        );
+        ids
+    }
+
+    /// The lists the site panel's blocking switch lifts; never the local one.
+    pub fn blockable_rule_list_ids(&self) -> Vec<String> {
         self.content_rules
             .read()
             .expect("content_rules poisoned")
@@ -562,6 +573,26 @@ impl AppState {
             .get(&mode)
             .cloned()
             .unwrap_or_default()
+    }
+
+    /// The lists a workspace's pages attach: its privacy mode's, and the
+    /// local list where its pages must be kept off this machine.
+    pub fn workspace_rule_specs(&self, workspace: &wis_core::Workspace) -> Vec<RuleSpec> {
+        self.rule_specs(
+            workspace.privacy_mode,
+            crate::protection::local_block::applies(workspace),
+        )
+    }
+
+    /// [`Self::workspace_rule_specs`] from what it reads of the workspace.
+    /// The local list goes first: the store resolves lists in order, and it
+    /// must not wait behind a tracker list's compile.
+    pub fn rule_specs(&self, mode: PrivacyMode, local: bool) -> Vec<RuleSpec> {
+        let local = local.then(|| crate::protection::content_filter::local_spec().clone());
+        local
+            .into_iter()
+            .chain(self.content_rule_specs(mode))
+            .collect()
     }
 
     fn current_tracker_blocker(&self) -> Arc<TrackerBlocker> {
@@ -1001,6 +1032,35 @@ mod tests {
             state.content_rule_specs(PrivacyMode::Strict)[0].identifier,
             state.content_rule_specs(PrivacyMode::Balanced)[0].identifier,
             "each mode has a distinct cache identifier"
+        );
+    }
+
+    #[test]
+    fn a_proxied_workspace_on_macos_also_gets_the_local_list() {
+        let state = app_state_for_test();
+        let workspace = wis_core::Workspace::new("w".into(), wis_core::AccentColor::Primary);
+        let local = crate::protection::content_filter::local_spec()
+            .identifier
+            .clone();
+        let ids = |w: &wis_core::Workspace| -> Vec<String> {
+            state
+                .workspace_rule_specs(w)
+                .into_iter()
+                .map(|spec| spec.identifier)
+                .collect()
+        };
+
+        assert!(!ids(&workspace).contains(&local));
+        let proxied = workspace.with_upstream_proxy(Some(wis_core::UpstreamProxy::Tor));
+        assert_eq!(ids(&proxied).contains(&local), cfg!(target_os = "macos"));
+        if cfg!(target_os = "macos") {
+            assert_eq!(ids(&proxied)[0], local, "resolved before the tracker lists");
+        }
+        assert!(local.starts_with(crate::protection::content_filter::LOCAL_LIST_PREFIX));
+        assert!(state.wis_rule_list_ids().contains(&local));
+        assert!(
+            !state.blockable_rule_list_ids().contains(&local),
+            "the site panel's blocking switch never lifts the local list"
         );
     }
 

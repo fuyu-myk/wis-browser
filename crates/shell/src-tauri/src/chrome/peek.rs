@@ -150,7 +150,15 @@ pub async fn open_peek(
         let _ = existing.close();
     }
 
-    let (active_ws, ephemeral, user_agent, fraud_warning, media_extensions, global_privacy_control) = {
+    let (
+        active_ws,
+        ephemeral,
+        local_off,
+        user_agent,
+        fraud_warning,
+        media_extensions,
+        global_privacy_control,
+    ) = {
         let browser = state.browser.lock().await;
         // Preview through the calling window's workspace (one per window), so a
         // peek inherits that window's proxy / blocking / UA.
@@ -161,6 +169,9 @@ pub async fn open_peek(
             .workspace(active_ws)
             .map(|w| w.ephemeral)
             .unwrap_or(false);
+        let local_off = browser
+            .workspace(active_ws)
+            .is_ok_and(crate::protection::local_block::applies);
         let user_agent = wis_core::ua_for_host(
             wis_core::sites::domain::site_url(&parsed)
                 .as_deref()
@@ -173,6 +184,7 @@ pub async fn open_peek(
         (
             active_ws,
             ephemeral,
+            local_off,
             user_agent,
             browser.settings.fraud_warning_enabled,
             browser.settings.media_extensions_enabled,
@@ -196,11 +208,18 @@ pub async fn open_peek(
         .disable_drag_drop_handler()
         .proxy_url(proxy_url);
 
-    // Custom-scheme navigations app handoff.
+    // This machine out of reach behind Tor or SOCKS on macOS, and custom-scheme
+    // navigations app handoff.
     {
         let app_for_nav = app.clone();
         let label_for_nav = label.clone();
+        let window_for_nav = window.label().to_string();
         builder = builder.on_navigation(move |url| {
+            if local_off
+                && crate::protection::local_block::refuses(&app_for_nav, &window_for_nav, url)
+            {
+                return false;
+            }
             if crate::system::app_launch::should_intercept(url) {
                 crate::system::app_launch::intake_from_webview(
                     &app_for_nav,
@@ -298,6 +317,12 @@ pub async fn open_peek(
     // Apple-proxied Safe Browsing warning.
     crate::platform::webview_prefs::apply_fraud_warning(&child, fraud_warning);
     crate::platform::webview_prefs::apply_media_extensions(&child, media_extensions);
+    if local_off {
+        let spec = crate::protection::content_filter::local_spec();
+        if let Err(err) = crate::protection::content_filter::attach_rule_list(&child, spec) {
+            log::warn!("peek: local list attach skipped: {err}");
+        }
+    }
 
     // Per-site camera/microphone consent gate.
     crate::protection::permissions::install(&child);

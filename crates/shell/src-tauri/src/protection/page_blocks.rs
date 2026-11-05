@@ -96,7 +96,9 @@ static APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
 pub fn install(app: tauri::AppHandle) {
     let _ = APP.set(app);
     wry::set_content_rule_block_hook(Box::new(|webview, identifier, url| {
-        if !identifier.starts_with(crate::protection::content_filter::RULE_LIST_PREFIX) {
+        use crate::protection::content_filter::{LOCAL_LIST_PREFIX, RULE_LIST_PREFIX};
+
+        if !identifier.starts_with(RULE_LIST_PREFIX) || identifier.starts_with(LOCAL_LIST_PREFIX) {
             return;
         }
         // SAFETY: wry calls the hook on the main thread with a live WKWebView.

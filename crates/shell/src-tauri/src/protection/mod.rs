@@ -6,6 +6,7 @@ pub(crate) mod cosmetic;
 pub(crate) mod filter_engine;
 pub(crate) mod gpc;
 pub(crate) mod hardening;
+pub(crate) mod local_block;
 pub(crate) mod navguard;
 pub(crate) mod page_blocks;
 pub(crate) mod permissions;

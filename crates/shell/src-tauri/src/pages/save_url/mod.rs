@@ -8,8 +8,7 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use url::Url;
 use wis_core::{TabId, WisError, WisResult};
 
@@ -21,9 +20,6 @@ use fetch_win::start;
 const MARK_TTL: Duration = Duration::from_secs(120);
 /// Bounds what a burst of saves that never started can leave behind.
 const MAX_MARKS: usize = 16;
-/// In step with `TOAST_REMOTE_EVENT` in lib/toast.ts.
-const TOAST_REMOTE_EVENT: &str = "wis-toast-remote";
-
 struct Mark {
     url: Url,
     /// The window that asked, for a failure the page menu cannot see.
@@ -78,12 +74,6 @@ pub(crate) fn take_mark(url: &Url) -> Option<String> {
         .take(url, Instant::now())
 }
 
-#[derive(Clone, Serialize)]
-struct RemoteToast<'a> {
-    window: &'a str,
-    message: &'a str,
-}
-
 /// A download that finished without ever being tracked failed before any
 /// response, so its destination was never asked for.
 pub(crate) fn finished_untracked(app: &AppHandle, url: &Url, success: bool) {
@@ -91,13 +81,7 @@ pub(crate) fn finished_untracked(app: &AppHandle, url: &Url, success: bool) {
         return;
     }
     if let Some(window) = take_mark(url) {
-        let toast = RemoteToast {
-            window: &window,
-            message: "The download could not start",
-        };
-        if let Err(err) = app.emit(TOAST_REMOTE_EVENT, toast) {
-            log::warn!("save-as failure toast: {err}");
-        }
+        crate::chrome::remote_toast::show(app, &window, "The download could not start");
     }
 }
 

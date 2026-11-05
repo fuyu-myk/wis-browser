@@ -352,6 +352,7 @@ pub async fn open_widget_panel(
         workspace_id,
         ephemeral,
         privacy_mode,
+        local_off,
         user_agent,
         fraud_warning,
         media_extensions,
@@ -363,10 +364,13 @@ pub async fn open_widget_panel(
         let ws_id = state
             .window_workspace(window.label())
             .unwrap_or(browser.active_workspace_id);
-        let (ephemeral, privacy_mode) = browser
-            .workspace(ws_id)
-            .map(|w| (w.ephemeral, w.privacy_mode))
-            .unwrap_or((false, Default::default()));
+        let (ephemeral, privacy_mode, local_off) =
+            browser
+                .workspace(ws_id)
+                .map_or((false, Default::default(), false), |w| {
+                    let local_off = crate::protection::local_block::applies(w);
+                    (w.ephemeral, w.privacy_mode, local_off)
+                });
         let user_agent = wis_core::ua_for_host(
             wis_core::sites::domain::site_url(&parsed)
                 .as_deref()
@@ -381,6 +385,7 @@ pub async fn open_widget_panel(
             ws_id,
             ephemeral,
             privacy_mode,
+            local_off,
             user_agent,
             browser.settings.fraud_warning_enabled,
             browser.settings.media_extensions_enabled,
@@ -427,11 +432,18 @@ pub async fn open_widget_panel(
             .initialization_script(crate::platform::win_dispatch::SHIM_SCRIPT);
     }
 
-    // Custom-scheme navigations app handoff.
+    // This machine out of reach behind Tor or SOCKS on macOS, and custom-scheme
+    // navigations app handoff.
     {
         let app_for_nav = app.clone();
         let label_for_nav = label.clone();
+        let window_for_nav = window.label().to_string();
         builder = builder.on_navigation(move |url| {
+            if local_off
+                && crate::protection::local_block::refuses(&app_for_nav, &window_for_nav, url)
+            {
+                return false;
+            }
             if crate::system::app_launch::should_intercept(url) {
                 crate::system::app_launch::intake_from_webview(
                     &app_for_nav,
@@ -596,7 +608,7 @@ pub async fn open_widget_panel(
     notify_panels_changed(&app);
 
     // Same engine-level tracker blocking as tab webviews; best-effort.
-    let specs = state.content_rule_specs(privacy_mode);
+    let specs = state.rule_specs(privacy_mode, local_off);
     if let Err(err) = crate::protection::content_filter::attach_rule_lists(&child, &specs) {
         log::warn!("widget panel: content filter attach skipped: {err}");
     }
