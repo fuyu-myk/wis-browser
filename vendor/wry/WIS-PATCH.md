@@ -265,15 +265,12 @@ thread_local + `did_fail_provisional_navigation` + the delegate method + the
 
 ## Seventh patch: server-trust challenge evaluator (macOS) (Wis-original)
 
-DORMANT. Wis sets a Network.framework proxy config on every tab webview's
-data store (the loopback privacy proxy). That layer resolves TLS trust
-internally, so `webView:didReceiveAuthenticationChallenge:completionHandler:`
-is never invoked while the proxy is active (verified: with the proxy removed
-the delegate fires for both server-trust and HTTP-basic; with it on, neither
-does). The evaluator below is therefore never exercised, and no shell code
-registers it. The patch is retained pending an architecture decision on
-whether trust evaluation moves into the proxy/nw layer; drop it if that
-lands elsewhere. See `memory/auth-challenge-delegate-not-firing.md`.
+DORMANT: no shell code registers the evaluator. It was shelved in Aug 2026
+when `webView:didReceiveAuthenticationChallenge:completionHandler:` never
+fired behind Wis's Network.framework proxy config; on macOS 26.6 (WebKit
+7624.5.1.11.3) it does fire there again, for server trust and HTTP auth
+alike (the twenty-fourth patch relies on that), so the evaluator could be
+revived.
 
 WebKit rejects an untrusted TLS certificate during the provisional load
 unless `webView:didReceiveAuthenticationChallenge:completionHandler:` answers
@@ -652,6 +649,29 @@ and wry builds those flags itself unless the embedder replaces them all.
 Removal checklist: once wry or Tauri let the embedder add browser arguments
 without replacing its defaults, drop the hook and pass them from
 `platform/proxied_folder.rs` directly.
+
+## Twenty-fourth patch: the embedder answers credential challenges (macOS) (Wis-original)
+
+A site's HTTP Basic or Digest challenge reaches the navigation delegate,
+which upstream answers with the system default (no credential, so the page
+shows the server's 401).
+
+- `src/wkwebview/mod.rs`: `wry::set_auth_challenge_hook(Box<dyn
+  Fn(AuthChallenge, AuthReply) + Send + Sync>)` (`OnceLock`, first
+  registration wins). `AuthChallenge` carries the `WKWebView`, host, port,
+  protocol, realm and earlier failures; `AuthReply` holds the copied
+  completion block and answers once, on the main thread: `sign_in` with a
+  `ForSession` credential, `cancel` with `PerformDefaultHandling`, and the
+  same default when dropped unanswered, as WebKit throws on a completion
+  handler never called.
+- `src/wkwebview/navigation.rs` and `class/wry_navigation_delegate.rs`: the
+  delegate passes its webview and hands non-proxy Basic and Digest
+  challenges to the hook; server trust and every other method keep their
+  handling.
+- `src/lib.rs`: re-exports the setter and both types.
+
+Removal checklist: once wry lets the embedder answer authentication
+challenges, move `system/http_auth.rs` onto that and drop the hook.
 
 ## Edition 2024 (wry 0.57)
 

@@ -106,15 +106,16 @@ define_class!(
       did_fail_provisional_navigation(self, webview, error);
     }
 
-    // WIS patch: answer approved server-trust challenges. See WIS-PATCH.md.
+    // WIS patch: answer approved server-trust challenges, and hand credential
+    // challenges to the embedder. See WIS-PATCH.md.
     #[unsafe(method(webView:didReceiveAuthenticationChallenge:completionHandler:))]
     fn did_receive_authentication_challenge(
       &self,
-      _webview: &WKWebView,
+      webview: &WKWebView,
       challenge: &NSURLAuthenticationChallenge,
       handler: &block2::Block<dyn Fn(NSURLSessionAuthChallengeDisposition, *mut NSURLCredential)>,
     ) {
-      did_receive_authentication_challenge(challenge, handler);
+      did_receive_authentication_challenge(webview, challenge, handler);
     }
 
     #[unsafe(method(webView:didCommitNavigation:))]

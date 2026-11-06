@@ -398,6 +398,8 @@ pub fn run() {
 
             // App handle for the popup open-in-app navigation delegate.
             system::app_launch::set_app_handle(app.handle().clone());
+            #[cfg(target_os = "macos")]
+            system::http_auth::install(app.handle().clone());
             #[cfg(target_os = "linux")]
             system::app_launch::install_popup_hook();
 
@@ -770,6 +772,7 @@ pub fn run() {
             pages::text::request_page_text,
             protection::permissions::resolve_media_permission,
             system::app_launch::app_launch_decide,
+            system::http_auth::http_auth_respond,
             data::bookmarks::list_bookmark_folders,
             data::bookmarks::list_bookmarks,
             data::bookmarks::create_bookmark_folder,
@@ -816,6 +819,10 @@ pub fn run() {
                 data::usage::flush_now(&state);
                 canvas::page::flush_logged(state.storage.as_ref());
                 canvas::page::quit(app_handle);
+            }
+            #[cfg(target_os = "macos")]
+            if matches!(event, tauri::RunEvent::Exit) {
+                system::http_auth::cancel_all();
             }
 
             if let tauri::RunEvent::WindowEvent {

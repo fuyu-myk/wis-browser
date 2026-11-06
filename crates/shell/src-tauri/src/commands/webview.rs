@@ -411,6 +411,14 @@ pub async fn create_tab_webview(
             if matches!(event, PageLoadEvent::Started) {
                 crate::protection::page_blocks::forget(&label_for_load);
                 crate::translation::forget(&label_for_load);
+                #[cfg(target_os = "macos")]
+                {
+                    let (app_for_auth, label) = (app.clone(), label_for_load.clone());
+                    let forget = move || crate::system::http_auth::forget(&app_for_auth, &label);
+                    if let Err(err) = app.run_on_main_thread(forget) {
+                        log::debug!("sign-in prompts kept on navigation: {err}");
+                    }
+                }
                 crate::vault::signup::forget_field(&tab_id.as_uuid().to_string());
                 if let Err(err) = crate::pages::find::clear_webview(&webview) {
                     log::debug!("clearing find on navigation failed: {err}");

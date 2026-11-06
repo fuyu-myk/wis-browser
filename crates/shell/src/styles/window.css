@@ -707,6 +707,22 @@ body.is-overlay-surface:not(.glass-on) {
   text-overflow: ellipsis;
 }
 
+/* Sign-in prompt. */
+.kb-auth-card { justify-content: flex-start; }
+.kb-auth-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.kb-auth-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.kb-auth-notes .is-error { color: var(--danger); }
+
 /* Settings -> Privacy: remembered site-permission rows. */
 .kb-perm-row {
   display: flex;

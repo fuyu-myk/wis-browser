@@ -166,6 +166,105 @@ pub(crate) fn server_trust_allowed(host: &str, leaf_der: &[u8]) -> bool {
     .is_some_and(|eval| eval(host, leaf_der))
 }
 
+/// WIS patch: an HTTP credential challenge (Basic or Digest) from a webview's
+/// server, for the embedder to answer through its [`AuthReply`]. See
+/// WIS-PATCH.md.
+pub struct AuthChallenge {
+  /// The `WKWebView` the challenge is for.
+  pub webview: *mut std::ffi::c_void,
+  pub host: String,
+  pub port: isize,
+  /// `http` or `https`.
+  pub protocol: String,
+  pub realm: Option<String>,
+  /// Earlier credentials this load tried and the server refused.
+  pub previous_failures: usize,
+}
+
+/// WIS patch: answers one credential challenge, once, on the main thread.
+/// Dropped unanswered, it cancels: WebKit throws when a challenge's
+/// completion handler is never called.
+pub struct AuthReply {
+  handler: Option<
+    block2::RcBlock<
+      dyn Fn(
+        objc2_foundation::NSURLSessionAuthChallengeDisposition,
+        *mut objc2_foundation::NSURLCredential,
+      ),
+    >,
+  >,
+}
+
+impl AuthReply {
+  /// Answers with a credential WebKit keeps until the app quits.
+  pub fn sign_in(mut self, user: &str, password: &str) {
+    use objc2_foundation::{
+      NSString, NSURLCredential, NSURLCredentialPersistence, NSURLSessionAuthChallengeDisposition,
+    };
+
+    let Some(handler) = self.handler.take() else {
+      return;
+    };
+    let credential = NSURLCredential::credentialWithUser_password_persistence(
+      &NSString::from_str(user),
+      &NSString::from_str(password),
+      NSURLCredentialPersistence::ForSession,
+    );
+    handler.call((
+      NSURLSessionAuthChallengeDisposition::UseCredential,
+      Retained::as_ptr(&credential) as *mut NSURLCredential,
+    ));
+  }
+
+  /// Answers without a credential, so the page shows the server's refusal.
+  pub fn cancel(mut self) {
+    self.default_handling();
+  }
+
+  fn default_handling(&mut self) {
+    if let Some(handler) = self.handler.take() {
+      handler.call((
+        objc2_foundation::NSURLSessionAuthChallengeDisposition::PerformDefaultHandling,
+        std::ptr::null_mut(),
+      ));
+    }
+  }
+}
+
+impl Drop for AuthReply {
+  fn drop(&mut self) {
+    self.default_handling();
+  }
+}
+
+type AuthChallengeHook = Box<dyn Fn(AuthChallenge, AuthReply) + Send + Sync>;
+static AUTH_CHALLENGE_HOOK: std::sync::OnceLock<AuthChallengeHook> = std::sync::OnceLock::new();
+
+/// WIS patch: register the process-wide credential-challenge hook, called on
+/// the main thread. The first registration wins; later calls are ignored.
+pub fn set_auth_challenge_hook(hook: AuthChallengeHook) {
+  let _ = AUTH_CHALLENGE_HOOK.set(hook);
+}
+
+pub(crate) fn auth_challenge_hook() -> Option<&'static AuthChallengeHook> {
+  AUTH_CHALLENGE_HOOK.get()
+}
+
+impl AuthReply {
+  pub(crate) fn new(
+    handler: block2::RcBlock<
+      dyn Fn(
+        objc2_foundation::NSURLSessionAuthChallengeDisposition,
+        *mut objc2_foundation::NSURLCredential,
+      ),
+    >,
+  ) -> Self {
+    Self {
+      handler: Some(handler),
+    }
+  }
+}
+
 // WIS patch: embedder hook consulted on every main-frame navigation policy
 // decision with the target URL and the navigation's `WKWebpagePreferences`
 // (as a raw object pointer), so per-site page preferences such as the

@@ -22,6 +22,7 @@ import { PageMenuSurface } from '@/features/page-tools/PageMenuSurface'
 import { TabPreviewSurface } from '@/features/tabs/surfaces/TabPreviewSurface'
 import { PeekSurface } from '@/features/page-tools/PeekSurface'
 import { AppLaunchSurface } from '@/features/page-prompts/AppLaunchSurface'
+import { HttpAuthSurface } from '@/features/page-prompts/HttpAuthSurface'
 import { SavedLoginsSurface } from '@/features/vault/surfaces/SavedLoginsSurface'
 import { AddressCardSurface } from '@/features/vault/surfaces/AddressCardSurface'
 import { CardPickerSurface } from '@/features/vault/surfaces/CardPickerSurface'
@@ -65,6 +66,7 @@ export function OverlayRoot({ surface }: OverlayRootProps) {
   if (surface === 'addresses') return <AddressCardSurface />
   if (surface === 'cards') return <CardPickerSurface />
   if (surface === 'applaunch') return <AppLaunchSurface />
+  if (surface === 'httpauth') return <HttpAuthSurface />
   if (surface === 'bookmarks') return <BookmarksMenuSurface />
   if (surface === 'downloads') return <DownloadsMenuSurface />
   if (surface === 'bmpicker') return <BookmarkPickerSurface />

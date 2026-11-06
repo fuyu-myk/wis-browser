@@ -5,6 +5,7 @@ pub(crate) mod clipboard;
 pub(crate) mod default_browser;
 pub(crate) mod external;
 pub(crate) mod fatal_dialog;
+pub(crate) mod http_auth;
 pub(crate) mod idle;
 pub(crate) mod memory;
 pub(crate) mod panels;

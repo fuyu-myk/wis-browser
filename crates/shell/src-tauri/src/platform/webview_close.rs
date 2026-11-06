@@ -12,10 +12,14 @@
 pub fn terminate_page(webview: &tauri::Webview) {
     use objc2::{msg_send, sel};
 
+    use tauri::Manager;
+
     let label = webview.label().to_string();
+    let app = webview.app_handle().clone();
     let dispatched = webview.with_webview(move |w| {
         crate::extensions::tab_closed(&label);
         crate::protection::page_blocks::forget(&label);
+        crate::system::http_auth::forget(&app, &label);
         let wk = w.inner() as *mut objc2::runtime::AnyObject;
         if wk.is_null() {
             return;

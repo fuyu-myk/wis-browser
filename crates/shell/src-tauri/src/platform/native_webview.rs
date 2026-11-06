@@ -17,6 +17,19 @@ pub unsafe fn label(webview: *const std::ffi::c_void) -> Option<String> {
     ident.map(|ident| ident.to_string())
 }
 
+/// The URL the webview is loading or showing: a load's target while it is
+/// still provisional, unlike [`committed_url`].
+///
+/// # Safety
+///
+/// Main thread only; `webview` is null or a live `WKWebView`.
+pub unsafe fn url(webview: *const std::ffi::c_void) -> Option<String> {
+    let webview = webview.cast::<AnyObject>().as_ref()?;
+    let url: Option<Retained<NSURL>> = msg_send![webview, URL];
+    url.and_then(|url| url.absoluteString())
+        .map(|s| s.to_string())
+}
+
 /// The URL of the document on screen. `URL` already shows a redirect's
 /// target while WebKit decides on it; `_committedURL` does not.
 ///

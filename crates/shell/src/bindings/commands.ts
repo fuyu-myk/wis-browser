@@ -1676,6 +1676,14 @@ export const commands = {
     return invoke('app_launch_decide', { requestId, granted, remember })
   },
 
+  /** Answers a site's sign-in prompt; `null` cancels it. */
+  async httpAuthRespond(
+    requestId: number,
+    credentials: { username: string; password: string } | null,
+  ): Promise<void> {
+    return invoke('http_auth_respond', { requestId, credentials })
+  },
+
   // -- bookmarks (per-workspace, foldered) ----------------------------------
 
   async listBookmarkFolders(workspaceId: WorkspaceId): Promise<BookmarkFolder[]> {

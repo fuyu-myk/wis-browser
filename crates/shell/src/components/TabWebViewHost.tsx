@@ -8,6 +8,7 @@ import { isChromeUrl, isCanvasUrl, SETTINGS_URL } from '@/lib/url'
 import { currentPlatform } from '@/lib/platform'
 import { isWindowFocused } from '@/lib/windowFocus'
 import { useAppLaunchOverlay } from '@/features/page-prompts/useAppLaunchOverlay'
+import { useHttpAuthOverlay } from '@/features/page-prompts/useHttpAuthOverlay'
 import { useOverlay } from '@/hooks/useOverlay'
 import { usePermissionOverlay } from '@/features/page-prompts/usePermissionOverlay'
 import { useSavedLogins } from '@/features/vault/hooks/useSavedLogins'
@@ -38,6 +39,7 @@ export function TabWebViewHost({ state, onDiscardedChange }: TabWebViewHostProps
   const hostRef = useRef<HTMLDivElement | null>(null)
   usePermissionOverlay(hostRef)
   useAppLaunchOverlay(hostRef)
+  useHttpAuthOverlay(hostRef)
   const findOverlay = useOverlay('find')
   const findOpenRef = useRef(false)
 

@@ -2,6 +2,7 @@ use objc2::rc::Retained;
 use objc2::{msg_send, DeclaredClass};
 use objc2_foundation::{
   ns_string, NSError, NSHTTPURLResponse, NSObjectProtocol, NSString, NSURLAuthenticationChallenge,
+  NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest,
   NSURLAuthenticationMethodServerTrust, NSURLCredential, NSURLErrorFailingURLPeerTrustErrorKey,
   NSURLErrorFailingURLErrorKey, NSURLSessionAuthChallengeDisposition, NSURL,
 };
@@ -197,11 +198,32 @@ fn failing_leaf_certificate_der(error: &NSError) -> Option<Vec<u8>> {
 // returns true, the challenge is answered with a credential built from that
 // trust. Every other path keeps the system default handling. See WIS-PATCH.md.
 pub(crate) fn did_receive_authentication_challenge(
+  webview: &WKWebView,
   challenge: &NSURLAuthenticationChallenge,
   handler: &block2::Block<dyn Fn(NSURLSessionAuthChallengeDisposition, *mut NSURLCredential)>,
 ) {
   unsafe {
     let space = challenge.protectionSpace();
+    // WIS patch: a server's Basic or Digest challenge goes to the embedder's
+    // hook, which answers it now or later. See WIS-PATCH.md.
+    let method = space.authenticationMethod();
+    let credentials = method.isEqualToString(NSURLAuthenticationMethodHTTPBasic)
+      || method.isEqualToString(NSURLAuthenticationMethodHTTPDigest);
+    if let Some(hook) = super::auth_challenge_hook().filter(|_| credentials && !space.isProxy()) {
+      hook(
+        super::AuthChallenge {
+          webview: webview as *const WKWebView as *mut core::ffi::c_void,
+          host: space.host().to_string(),
+          port: space.port(),
+          protocol: space.protocol().map(|p| p.to_string()).unwrap_or_default(),
+          realm: space.realm().map(|r| r.to_string()),
+          previous_failures: challenge.previousFailureCount() as usize,
+        },
+        super::AuthReply::new(handler.copy()),
+      );
+      return;
+    }
+
     if space
       .authenticationMethod()
       .isEqualToString(NSURLAuthenticationMethodServerTrust)
