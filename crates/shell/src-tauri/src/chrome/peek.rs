@@ -335,6 +335,9 @@ pub async fn open_peek(
     // Native fallback for page-first editing keys (undo/redo/select-all).
     crate::chrome::edit_keys::install(&child);
 
+    #[cfg(any(windows, target_os = "linux"))]
+    crate::system::http_auth::attach(&child, None);
+
     // Find-in-peek match counts (WebKitGTK FindController signals).
     #[cfg(target_os = "linux")]
     {

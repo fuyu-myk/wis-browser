@@ -671,7 +671,7 @@ shows the server's 401).
 - `src/lib.rs`: re-exports the setter and both types.
 
 Removal checklist: once wry lets the embedder answer authentication
-challenges, move `system/http_auth.rs` onto that and drop the hook.
+challenges, move `system/http_auth/mac.rs` onto that and drop the hook.
 
 ## Edition 2024 (wry 0.57)
 

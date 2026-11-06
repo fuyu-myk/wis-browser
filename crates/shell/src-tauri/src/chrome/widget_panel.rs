@@ -582,6 +582,9 @@ pub async fn open_widget_panel(
     // Native replay channel for unconsumed page-first editing combos.
     crate::chrome::edit_keys::install(&child);
 
+    #[cfg(any(windows, target_os = "linux"))]
+    crate::system::http_auth::attach(&child, None);
+
     crate::pages::link_open::install_panel(&child);
     #[cfg(windows)]
     crate::platform::win_dispatch::install_link_open_only(&child);

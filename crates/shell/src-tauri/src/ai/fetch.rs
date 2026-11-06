@@ -427,6 +427,8 @@ mod imp {
         crate::platform::win_dispatch::install_ai_fetch_only(&child);
         #[cfg(target_os = "linux")]
         crate::platform::gtk_dispatch::install_ai_fetch_only(&child);
+        #[cfg(any(windows, target_os = "linux"))]
+        crate::system::http_auth::attach(&child, None);
 
         let outcome = tokio::time::timeout(FETCH_TIMEOUT, rx).await;
 

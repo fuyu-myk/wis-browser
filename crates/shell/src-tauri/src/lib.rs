@@ -820,7 +820,6 @@ pub fn run() {
                 canvas::page::flush_logged(state.storage.as_ref());
                 canvas::page::quit(app_handle);
             }
-            #[cfg(target_os = "macos")]
             if matches!(event, tauri::RunEvent::Exit) {
                 system::http_auth::cancel_all();
             }

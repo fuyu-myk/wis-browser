@@ -411,7 +411,6 @@ pub async fn create_tab_webview(
             if matches!(event, PageLoadEvent::Started) {
                 crate::protection::page_blocks::forget(&label_for_load);
                 crate::translation::forget(&label_for_load);
-                #[cfg(target_os = "macos")]
                 {
                     let (app_for_auth, label) = (app.clone(), label_for_load.clone());
                     let forget = move || crate::system::http_auth::forget(&app_for_auth, &label);
@@ -881,6 +880,10 @@ pub async fn create_tab_webview(
     // callbacks.
     #[cfg(any(windows, target_os = "linux"))]
     crate::tabs::load_failure::install(&child, tab_id);
+
+    // Site sign-in prompts; macOS takes every webview's through one wry hook.
+    #[cfg(any(windows, target_os = "linux"))]
+    crate::system::http_auth::attach(&child, Some(parsed.as_str()));
 
     // WebView2 keeps a fullscreen element inside the webview's own bounds.
     #[cfg(windows)]
